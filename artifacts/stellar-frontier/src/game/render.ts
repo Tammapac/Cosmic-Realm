@@ -1,23 +1,15 @@
 import {
-  Enemy,
-  MAP_RADIUS,
-  OtherPlayer,
-  Particle,
-  PORTALS,
-  Projectile,
-  SHIP_CLASSES,
-  STATIONS,
-  ShipClassId,
-  ZONES,
+  Asteroid, DRONE_DEFS, Drone, Enemy, MAP_RADIUS, OtherPlayer, Particle,
+  PORTALS, Projectile, SHIP_CLASSES, STATIONS, ShipClassId, ZONES,
 } from "./types";
 import { state } from "./store";
 
+// ── STAR FIELDS ────────────────────────────────────────────────────────────
 const STAR_LAYERS = [
-  { count: 200, speed: 0.1, size: 1, color: "#3a4980" },
-  { count: 120, speed: 0.3, size: 1, color: "#7a8ad8" },
-  { count: 60, speed: 0.55, size: 2, color: "#e8f0ff" },
+  { count: 220, speed: 0.1, size: 1, color: "#3a4980" },
+  { count: 130, speed: 0.3, size: 1, color: "#7a8ad8" },
+  { count: 65,  speed: 0.55, size: 2, color: "#e8f0ff" },
 ];
-
 type Star = { x: number; y: number; size: number; color: string; speed: number };
 const stars: Star[][] = STAR_LAYERS.map((layer) => {
   const arr: Star[] = [];
@@ -25,9 +17,7 @@ const stars: Star[][] = STAR_LAYERS.map((layer) => {
     arr.push({
       x: Math.random() * 4000 - 2000,
       y: Math.random() * 4000 - 2000,
-      size: layer.size,
-      color: layer.color,
-      speed: layer.speed,
+      size: layer.size, color: layer.color, speed: layer.speed,
     });
   }
   return arr;
@@ -49,14 +39,17 @@ function regenNebula(zone: keyof typeof ZONES): void {
 regenNebula(state.player.zone);
 let lastZone = state.player.zone;
 
+// ── PIXEL HELPERS ─────────────────────────────────────────────────────────
+function px(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string): void {
+  ctx.fillStyle = color;
+  ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
+}
+
+// ── 16-bit SHIP SPRITES ──────────────────────────────────────────────────
 function drawShip(
   ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  angle: number,
-  shipClass: ShipClassId,
-  scale = 1,
-  glow = true,
+  x: number, y: number, angle: number, shipClass: ShipClassId,
+  scale = 1, glow = true,
 ): void {
   const cls = SHIP_CLASSES[shipClass];
   ctx.save();
@@ -66,147 +59,351 @@ function drawShip(
     ctx.shadowColor = cls.color;
     ctx.shadowBlur = 12;
   }
-  // pixel-art body — 16-bit feel via blocky shapes
-  const s = scale;
-  ctx.fillStyle = cls.color;
-  // Hull
-  if (shipClass === "skimmer") {
-    ctx.beginPath();
-    ctx.moveTo(0, -10 * s);
-    ctx.lineTo(7 * s, 8 * s);
-    ctx.lineTo(0, 4 * s);
-    ctx.lineTo(-7 * s, 8 * s);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = "#0a1230";
-    ctx.fillRect(-2 * s, -3 * s, 4 * s, 6 * s);
-  } else if (shipClass === "vanguard") {
-    ctx.beginPath();
-    ctx.moveTo(0, -12 * s);
-    ctx.lineTo(10 * s, 6 * s);
-    ctx.lineTo(6 * s, 10 * s);
-    ctx.lineTo(-6 * s, 10 * s);
-    ctx.lineTo(-10 * s, 6 * s);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = "#0a2a14";
-    ctx.fillRect(-3 * s, -4 * s, 6 * s, 8 * s);
-  } else if (shipClass === "obsidian") {
-    ctx.beginPath();
-    ctx.moveTo(0, -14 * s);
-    ctx.lineTo(12 * s, 4 * s);
-    ctx.lineTo(8 * s, 12 * s);
-    ctx.lineTo(-8 * s, 12 * s);
-    ctx.lineTo(-12 * s, 4 * s);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = "#2a0a30";
-    ctx.fillRect(-3 * s, -6 * s, 6 * s, 10 * s);
-  } else {
-    // titan
-    ctx.fillRect(-12 * s, -10 * s, 24 * s, 20 * s);
-    ctx.beginPath();
-    ctx.moveTo(0, -16 * s);
-    ctx.lineTo(12 * s, -10 * s);
-    ctx.lineTo(-12 * s, -10 * s);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = "#3a2a08";
-    ctx.fillRect(-4 * s, -6 * s, 8 * s, 10 * s);
-  }
+  const c = cls.color;
+  const a = cls.accent;
+  const hi = "#ffffff";
+  const dk = shadeHex(c, -0.45);
+  drawShipPixels(ctx, shipClass, c, a, hi, dk, scale);
   ctx.restore();
 }
 
+function shadeHex(hex: string, amt: number): string {
+  // hex #rrggbb, amt in [-1,1]
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  if (!m) return hex;
+  const r = parseInt(m[1], 16), g = parseInt(m[2], 16), b = parseInt(m[3], 16);
+  const f = (v: number) => Math.max(0, Math.min(255, Math.round(v + amt * (amt < 0 ? v : (255 - v)))));
+  return `rgb(${f(r)},${f(g)},${f(b)})`;
+}
+
+function drawShipPixels(
+  ctx: CanvasRenderingContext2D, id: ShipClassId,
+  c: string, a: string, hi: string, dk: string, s: number,
+): void {
+  // origin: ship pointing UP (Y-) in local coords
+  switch (id) {
+    case "skimmer":
+      // Sleek arrow
+      px(ctx, -1*s, -10*s, 2*s, 4*s, c);
+      px(ctx, -3*s, -6*s,  6*s, 4*s, c);
+      px(ctx, -5*s, -2*s,  10*s, 4*s, c);
+      px(ctx, -7*s,  2*s,  14*s, 3*s, c);
+      px(ctx, -2*s, -3*s,  4*s, 4*s, a);
+      px(ctx, -1*s, -5*s,  2*s, 2*s, hi);
+      // wing tips
+      px(ctx, -7*s,  5*s,  2*s, 2*s, dk);
+      px(ctx,  5*s,  5*s,  2*s, 2*s, dk);
+      // engines
+      px(ctx, -3*s,  5*s,  2*s, 2*s, "#4ee2ff");
+      px(ctx,  1*s,  5*s,  2*s, 2*s, "#4ee2ff");
+      break;
+    case "wasp":
+      // sharp interceptor
+      px(ctx, -1*s, -12*s, 2*s, 5*s, c);
+      px(ctx, -2*s, -7*s,  4*s, 4*s, c);
+      px(ctx, -8*s, -3*s,  16*s, 3*s, c);
+      px(ctx, -5*s,  0*s,  10*s, 4*s, c);
+      px(ctx, -2*s,  4*s,  4*s, 3*s, dk);
+      px(ctx, -1*s, -4*s,  2*s, 3*s, hi);
+      px(ctx, -8*s, -1*s,  2*s, 2*s, a);
+      px(ctx,  6*s, -1*s,  2*s, 2*s, a);
+      px(ctx, -2*s,  6*s,  1*s, 2*s, "#ffd24a");
+      px(ctx,  1*s,  6*s,  1*s, 2*s, "#ffd24a");
+      break;
+    case "vanguard":
+      px(ctx, -1*s, -12*s, 2*s, 4*s, c);
+      px(ctx, -3*s, -8*s,  6*s, 4*s, c);
+      px(ctx, -7*s, -4*s,  14*s, 4*s, c);
+      px(ctx, -9*s,  0*s,  18*s, 4*s, c);
+      px(ctx, -6*s,  4*s,  12*s, 4*s, dk);
+      px(ctx, -3*s, -5*s,  6*s, 6*s, a);
+      px(ctx, -1*s, -3*s,  2*s, 2*s, hi);
+      px(ctx, -9*s,  3*s,  2*s, 3*s, dk);
+      px(ctx,  7*s,  3*s,  2*s, 3*s, dk);
+      px(ctx, -4*s,  8*s,  2*s, 2*s, "#5cff8a");
+      px(ctx,  2*s,  8*s,  2*s, 2*s, "#5cff8a");
+      break;
+    case "reaver":
+      px(ctx, -1*s, -13*s, 2*s, 5*s, c);
+      px(ctx, -3*s, -8*s,  6*s, 4*s, c);
+      px(ctx, -10*s,-4*s,  20*s, 3*s, c);
+      px(ctx, -7*s,  -1*s, 14*s, 4*s, c);
+      px(ctx, -3*s,  3*s,  6*s, 4*s, dk);
+      px(ctx, -2*s, -4*s,  4*s, 4*s, a);
+      px(ctx, -1*s, -6*s,  2*s, 2*s, hi);
+      px(ctx, -10*s,-2*s,  2*s, 4*s, dk);
+      px(ctx,  8*s, -2*s,  2*s, 4*s, dk);
+      px(ctx, -3*s,  7*s,  2*s, 2*s, "#ff5c6c");
+      px(ctx,  1*s,  7*s,  2*s, 2*s, "#ff5c6c");
+      break;
+    case "obsidian":
+      // angular predator
+      px(ctx, -1*s, -14*s, 2*s, 5*s, c);
+      px(ctx, -3*s, -9*s,  6*s, 4*s, c);
+      px(ctx, -6*s, -5*s,  12*s, 4*s, c);
+      px(ctx, -10*s,-1*s,  20*s, 4*s, c);
+      px(ctx, -8*s,  3*s,  16*s, 3*s, dk);
+      px(ctx, -4*s,  6*s,  8*s, 3*s, dk);
+      px(ctx, -3*s, -6*s,  6*s, 8*s, a);
+      px(ctx, -1*s, -4*s,  2*s, 3*s, hi);
+      px(ctx, -10*s, 1*s,  2*s, 3*s, c);
+      px(ctx,  8*s,  1*s,  2*s, 3*s, c);
+      px(ctx, -3*s,  9*s,  2*s, 2*s, "#ff5cf0");
+      px(ctx,  1*s,  9*s,  2*s, 2*s, "#ff5cf0");
+      break;
+    case "marauder":
+      px(ctx, -3*s, -12*s, 6*s, 4*s, c);
+      px(ctx, -5*s, -8*s,  10*s, 4*s, c);
+      px(ctx, -10*s,-4*s,  20*s, 4*s, c);
+      px(ctx, -12*s, 0*s,  24*s, 4*s, c);
+      px(ctx, -8*s,  4*s,  16*s, 4*s, dk);
+      px(ctx, -4*s,  8*s,  8*s, 3*s, dk);
+      px(ctx, -3*s, -6*s,  6*s, 6*s, a);
+      px(ctx, -1*s, -4*s,  2*s, 3*s, hi);
+      // gun pods
+      px(ctx, -12*s,-4*s,  3*s, 4*s, dk);
+      px(ctx,  9*s, -4*s,  3*s, 4*s, dk);
+      px(ctx, -4*s,  11*s, 2*s, 2*s, "#aaff5c");
+      px(ctx,  2*s,  11*s, 2*s, 2*s, "#aaff5c");
+      break;
+    case "phalanx":
+      // wide carrier
+      px(ctx, -2*s, -13*s, 4*s, 4*s, c);
+      px(ctx, -5*s, -9*s,  10*s, 4*s, c);
+      px(ctx, -12*s,-5*s,  24*s, 4*s, c);
+      px(ctx, -14*s,-1*s,  28*s, 5*s, c);
+      px(ctx, -10*s, 4*s,  20*s, 4*s, dk);
+      px(ctx, -4*s,  8*s,  8*s, 3*s, dk);
+      px(ctx, -4*s, -6*s,  8*s, 6*s, a);
+      px(ctx, -2*s, -4*s,  4*s, 3*s, hi);
+      // hangar bays
+      px(ctx, -14*s, 3*s, 2*s, 4*s, "#4ee2ff");
+      px(ctx,  12*s, 3*s, 2*s, 4*s, "#4ee2ff");
+      px(ctx, -5*s,  11*s, 2*s, 2*s, "#4ee2ff");
+      px(ctx,  3*s,  11*s, 2*s, 2*s, "#4ee2ff");
+      break;
+    case "titan":
+      // fortress
+      px(ctx, -4*s, -14*s, 8*s, 4*s, c);
+      px(ctx, -8*s, -10*s, 16*s, 4*s, c);
+      px(ctx, -12*s,-6*s,  24*s, 6*s, c);
+      px(ctx, -14*s, 0*s,  28*s, 6*s, c);
+      px(ctx, -12*s, 6*s,  24*s, 4*s, dk);
+      px(ctx, -6*s,  10*s, 12*s, 3*s, dk);
+      px(ctx, -5*s, -8*s,  10*s, 8*s, a);
+      px(ctx, -2*s, -6*s,  4*s, 4*s, hi);
+      // turrets
+      px(ctx, -12*s,-2*s, 3*s, 3*s, dk);
+      px(ctx,  9*s, -2*s, 3*s, 3*s, dk);
+      px(ctx, -12*s, 3*s, 3*s, 3*s, dk);
+      px(ctx,  9*s,  3*s, 3*s, 3*s, dk);
+      px(ctx, -6*s,  13*s, 3*s, 2*s, "#ffd24a");
+      px(ctx,  3*s,  13*s, 3*s, 2*s, "#ffd24a");
+      break;
+    case "leviathan":
+      // colossal dreadnought
+      px(ctx, -3*s, -16*s, 6*s, 4*s, c);
+      px(ctx, -7*s, -12*s, 14*s, 4*s, c);
+      px(ctx, -12*s,-8*s,  24*s, 4*s, c);
+      px(ctx, -15*s,-4*s,  30*s, 6*s, c);
+      px(ctx, -16*s, 2*s,  32*s, 6*s, c);
+      px(ctx, -14*s, 8*s,  28*s, 4*s, dk);
+      px(ctx, -8*s,  12*s, 16*s, 3*s, dk);
+      px(ctx, -5*s, -10*s, 10*s, 10*s, a);
+      px(ctx, -2*s, -8*s,  4*s, 5*s, hi);
+      px(ctx, -16*s,-1*s, 3*s, 4*s, dk);
+      px(ctx,  13*s,-1*s, 3*s, 4*s, dk);
+      px(ctx, -16*s, 5*s, 3*s, 4*s, dk);
+      px(ctx,  13*s, 5*s, 3*s, 4*s, dk);
+      px(ctx, -8*s,  15*s, 3*s, 3*s, "#ff5c6c");
+      px(ctx, -2*s,  15*s, 4*s, 3*s, "#ff5c6c");
+      px(ctx,  5*s,  15*s, 3*s, 3*s, "#ff5c6c");
+      break;
+    case "specter":
+      // phase-shifted
+      px(ctx, -1*s, -14*s, 2*s, 6*s, c);
+      px(ctx, -2*s, -8*s,  4*s, 4*s, c);
+      px(ctx, -8*s, -4*s,  16*s, 3*s, c);
+      px(ctx, -10*s,-1*s,  20*s, 3*s, c);
+      px(ctx, -8*s,  2*s,  16*s, 3*s, dk);
+      px(ctx, -4*s,  5*s,  8*s, 3*s, dk);
+      px(ctx, -2*s, -5*s,  4*s, 5*s, a);
+      px(ctx, -1*s, -3*s,  2*s, 2*s, hi);
+      // phase wings (translucent ish via highlight color)
+      px(ctx, -10*s, 0*s, 2*s, 2*s, "#b06cff");
+      px(ctx,  8*s,  0*s, 2*s, 2*s, "#b06cff");
+      px(ctx, -3*s,  8*s, 2*s, 2*s, "#b06cff");
+      px(ctx,  1*s,  8*s, 2*s, 2*s, "#b06cff");
+      break;
+  }
+}
+
+// ── ENEMY SPRITES ─────────────────────────────────────────────────────────
 function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
   ctx.save();
   ctx.translate(e.pos.x, e.pos.y);
   ctx.rotate(e.angle + Math.PI / 2);
   ctx.shadowColor = e.color;
   ctx.shadowBlur = 8;
-  ctx.fillStyle = e.color;
+  const c = e.color;
+  const dk = shadeHex(c, -0.5);
+  const hi = "#ffffff";
   const s = e.size / 10;
   if (e.type === "scout") {
-    ctx.beginPath();
-    ctx.moveTo(0, -10 * s);
-    ctx.lineTo(8 * s, 8 * s);
-    ctx.lineTo(-8 * s, 8 * s);
-    ctx.closePath();
-    ctx.fill();
+    px(ctx, -1*s, -8*s, 2*s, 4*s, c);
+    px(ctx, -3*s, -4*s, 6*s, 4*s, c);
+    px(ctx, -6*s,  0*s, 12*s, 4*s, c);
+    px(ctx, -4*s,  4*s, 8*s, 3*s, dk);
+    px(ctx, -1*s, -2*s, 2*s, 2*s, hi);
   } else if (e.type === "raider") {
-    ctx.fillRect(-8 * s, -6 * s, 16 * s, 12 * s);
-    ctx.fillRect(-3 * s, -10 * s, 6 * s, 4 * s);
+    px(ctx, -2*s, -8*s, 4*s, 3*s, c);
+    px(ctx, -6*s, -5*s, 12*s, 4*s, c);
+    px(ctx, -8*s, -1*s, 16*s, 4*s, c);
+    px(ctx, -6*s,  3*s, 12*s, 3*s, dk);
+    px(ctx, -2*s,  6*s, 4*s, 2*s, dk);
+    px(ctx, -8*s, -1*s, 2*s, 4*s, dk);
+    px(ctx,  6*s, -1*s, 2*s, 4*s, dk);
+    px(ctx, -1*s, -3*s, 2*s, 3*s, hi);
   } else if (e.type === "destroyer") {
-    ctx.beginPath();
-    ctx.moveTo(0, -14 * s);
-    ctx.lineTo(12 * s, 0);
-    ctx.lineTo(6 * s, 12 * s);
-    ctx.lineTo(-6 * s, 12 * s);
-    ctx.lineTo(-12 * s, 0);
-    ctx.closePath();
-    ctx.fill();
+    px(ctx, -3*s, -10*s, 6*s, 4*s, c);
+    px(ctx, -7*s, -6*s, 14*s, 4*s, c);
+    px(ctx, -10*s,-2*s, 20*s, 4*s, c);
+    px(ctx, -8*s,  2*s, 16*s, 4*s, dk);
+    px(ctx, -4*s,  6*s, 8*s, 3*s, dk);
+    px(ctx, -10*s, 0*s, 2*s, 3*s, dk);
+    px(ctx,  8*s,  0*s, 2*s, 3*s, dk);
+    px(ctx, -2*s, -4*s, 4*s, 4*s, hi);
+    px(ctx, -1*s, -2*s, 2*s, 2*s, c);
   } else if (e.type === "voidling") {
-    ctx.beginPath();
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2;
-      const r = i % 2 === 0 ? 14 * s : 7 * s;
-      const px = Math.cos(a) * r;
-      const py = Math.sin(a) * r;
-      if (i === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
-    }
-    ctx.closePath();
-    ctx.fill();
+    // organic blob with tendrils
+    px(ctx, -6*s, -6*s, 12*s, 12*s, c);
+    px(ctx, -8*s, -2*s, 2*s, 4*s, dk);
+    px(ctx,  6*s, -2*s, 2*s, 4*s, dk);
+    px(ctx, -2*s, -8*s, 4*s, 2*s, dk);
+    px(ctx, -2*s,  6*s, 4*s, 2*s, dk);
+    px(ctx, -3*s, -3*s, 6*s, 6*s, hi);
+    px(ctx, -1*s, -1*s, 2*s, 2*s, "#000000");
   } else {
-    // dread
-    ctx.fillRect(-16 * s, -14 * s, 32 * s, 28 * s);
-    ctx.fillStyle = "#5a3a08";
-    ctx.fillRect(-8 * s, -8 * s, 16 * s, 16 * s);
+    // dread — heavy capital
+    px(ctx, -4*s, -12*s, 8*s, 4*s, c);
+    px(ctx, -8*s, -8*s, 16*s, 4*s, c);
+    px(ctx, -14*s,-4*s, 28*s, 6*s, c);
+    px(ctx, -16*s, 2*s, 32*s, 6*s, c);
+    px(ctx, -12*s, 8*s, 24*s, 4*s, dk);
+    px(ctx, -6*s,  12*s, 12*s, 3*s, dk);
+    px(ctx, -16*s, 0*s, 3*s, 4*s, dk);
+    px(ctx,  13*s, 0*s, 3*s, 4*s, dk);
+    px(ctx, -5*s, -6*s, 10*s, 8*s, "#ffaa22");
+    px(ctx, -2*s, -4*s, 4*s, 4*s, hi);
   }
   ctx.restore();
 
-  // Health bar
-  const w = 28;
-  const h = 4;
-  const pct = e.hull / e.hullMax;
-  ctx.fillStyle = "rgba(0,0,0,0.6)";
-  ctx.fillRect(e.pos.x - w / 2, e.pos.y - e.size - 12, w, h);
-  ctx.fillStyle = pct > 0.5 ? "#5cff8a" : pct > 0.25 ? "#ffd24a" : "#ff5c6c";
-  ctx.fillRect(e.pos.x - w / 2, e.pos.y - e.size - 12, w * pct, h);
+  // health bar above
+  drawHealthBar(ctx, e.pos.x, e.pos.y - e.size - 10, 28, e.hull / e.hullMax);
 }
 
+// Mini health/shield bars above ship
+function drawHealthBar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, pct: number): void {
+  const h = 3;
+  ctx.fillStyle = "rgba(0,0,0,0.7)";
+  ctx.fillRect(x - w / 2, y, w, h);
+  ctx.fillStyle = pct > 0.5 ? "#5cff8a" : pct > 0.25 ? "#ffd24a" : "#ff5c6c";
+  ctx.fillRect(x - w / 2, y, Math.max(0, w * pct), h);
+}
+
+function drawHullShieldBars(
+  ctx: CanvasRenderingContext2D, x: number, y: number,
+  hullPct: number, shieldPct: number,
+): void {
+  const w = 36;
+  ctx.fillStyle = "rgba(0,0,0,0.7)";
+  ctx.fillRect(x - w / 2, y, w, 3);
+  ctx.fillStyle = hullPct > 0.5 ? "#5cff8a" : hullPct > 0.25 ? "#ffd24a" : "#ff5c6c";
+  ctx.fillRect(x - w / 2, y, Math.max(0, w * hullPct), 3);
+  ctx.fillStyle = "rgba(0,0,0,0.7)";
+  ctx.fillRect(x - w / 2, y + 4, w, 2);
+  ctx.fillStyle = "#4ee2ff";
+  ctx.fillRect(x - w / 2, y + 4, Math.max(0, w * shieldPct), 2);
+}
+
+// ── PROJECTILES ───────────────────────────────────────────────────────────
 function drawProjectile(ctx: CanvasRenderingContext2D, pr: Projectile): void {
   ctx.save();
   ctx.shadowColor = pr.color;
-  ctx.shadowBlur = 10;
-  ctx.fillStyle = pr.color;
+  ctx.shadowBlur = 12;
   ctx.translate(pr.pos.x, pr.pos.y);
   ctx.rotate(Math.atan2(pr.vel.y, pr.vel.x));
-  ctx.fillRect(-6, -1.5, 12, 3);
+  // glowing core
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(-3, -1, 6, 2);
+  ctx.fillStyle = pr.color;
+  ctx.fillRect(-7, -pr.size / 2, 14, pr.size);
+  ctx.fillStyle = pr.color;
+  ctx.globalAlpha = 0.5;
+  ctx.fillRect(-10, -pr.size / 2 - 1, 20, pr.size + 2);
+  ctx.globalAlpha = 1;
   ctx.restore();
 }
 
+// ── PARTICLES ─────────────────────────────────────────────────────────────
 function drawParticle(ctx: CanvasRenderingContext2D, pa: Particle): void {
   const a = Math.max(0, Math.min(1, pa.ttl / pa.maxTtl));
+  if (pa.kind === "ring") {
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.strokeStyle = pa.color;
+    ctx.lineWidth = 2;
+    ctx.shadowColor = pa.color;
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    const r = (1 - a) * 16 + 4;
+    ctx.arc(pa.pos.x, pa.pos.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+  if (pa.kind === "trail") {
+    ctx.globalAlpha = a * 0.7;
+    ctx.fillStyle = pa.color;
+    const s = pa.size * a;
+    ctx.fillRect(pa.pos.x - s / 2, pa.pos.y - s / 2, s, s);
+    ctx.globalAlpha = 1;
+    return;
+  }
   ctx.globalAlpha = a;
   ctx.fillStyle = pa.color;
   ctx.fillRect(pa.pos.x - pa.size / 2, pa.pos.y - pa.size / 2, pa.size, pa.size);
   ctx.globalAlpha = 1;
 }
 
-function drawStation(ctx: CanvasRenderingContext2D, x: number, y: number, name: string, t: number): void {
+// ── STATIONS ──────────────────────────────────────────────────────────────
+const STATION_GLYPH: Record<string, string> = {
+  hub: "✦", trade: "$", mining: "▰", military: "⚔", outpost: "□",
+};
+const STATION_COLOR: Record<string, string> = {
+  hub: "#4ee2ff", trade: "#5cff8a", mining: "#ffd24a", military: "#ff5c6c", outpost: "#7ad8ff",
+};
+
+function drawStation(
+  ctx: CanvasRenderingContext2D, x: number, y: number, name: string,
+  kind: string, t: number,
+): void {
+  const accent = STATION_COLOR[kind] || "#4ee2ff";
   ctx.save();
   ctx.translate(x, y);
-  // Outer dock ring
-  ctx.shadowColor = "#4ee2ff";
+
+  // outer landing ring (faint always)
+  ctx.shadowColor = accent;
   ctx.shadowBlur = 16;
-  ctx.strokeStyle = "#4ee2ff";
+  ctx.strokeStyle = accent;
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.arc(0, 0, 50, 0, Math.PI * 2);
   ctx.stroke();
-  // Rotating rings
+
+  // rotating struts
   ctx.rotate(t * 0.4);
-  ctx.strokeStyle = "rgba(78, 226, 255, 0.45)";
+  ctx.strokeStyle = `${accent}88`;
   ctx.beginPath();
   ctx.arc(0, 0, 38, 0, Math.PI * 1.4);
   ctx.stroke();
@@ -215,23 +412,58 @@ function drawStation(ctx: CanvasRenderingContext2D, x: number, y: number, name: 
   ctx.arc(0, 0, 28, 0, Math.PI * 1.6);
   ctx.stroke();
   ctx.shadowBlur = 0;
-  // Core
-  ctx.fillStyle = "#0c2050";
-  ctx.fillRect(-14, -14, 28, 28);
-  ctx.fillStyle = "#4ee2ff";
-  ctx.fillRect(-8, -8, 16, 16);
-  ctx.fillStyle = "#0a1530";
-  ctx.fillRect(-4, -4, 8, 8);
+
+  // station body — varies by kind
+  if (kind === "hub") {
+    px(ctx, -16, -16, 32, 32, "#0c2050");
+    px(ctx, -10, -10, 20, 20, accent);
+    px(ctx, -6, -6, 12, 12, "#0a1530");
+    px(ctx, -2, -2, 4, 4, accent);
+  } else if (kind === "trade") {
+    // trade: hex-like cluster
+    px(ctx, -14, -8, 28, 16, "#0c2050");
+    px(ctx, -10, -6, 20, 12, accent);
+    px(ctx, -4, -4, 8, 8, "#102a40");
+    px(ctx, -8, -10, 4, 4, accent);
+    px(ctx,  4, -10, 4, 4, accent);
+    px(ctx, -8,  6, 4, 4, accent);
+    px(ctx,  4,  6, 4, 4, accent);
+  } else if (kind === "mining") {
+    // refinery rectangles
+    px(ctx, -16, -10, 32, 6, "#604010");
+    px(ctx, -12, -4, 24, 14, accent);
+    px(ctx, -4, 0, 8, 6, "#0a1530");
+    px(ctx, -14, 8, 6, 4, "#604010");
+    px(ctx,  8, 8, 6, 4, "#604010");
+  } else if (kind === "military") {
+    // fortress
+    px(ctx, -14, -14, 28, 28, "#3a0810");
+    px(ctx, -10, -10, 20, 20, accent);
+    px(ctx, -6, -6, 12, 12, "#1a0410");
+    px(ctx, -2, -2, 4, 4, "#ffffff");
+    px(ctx, -16, -2, 4, 4, accent);
+    px(ctx,  12, -2, 4, 4, accent);
+    px(ctx, -2, -16, 4, 4, accent);
+    px(ctx, -2,  12, 4, 4, accent);
+  } else {
+    // outpost
+    px(ctx, -10, -10, 20, 20, "#0c2050");
+    px(ctx, -6, -6, 12, 12, accent);
+    px(ctx, -2, -2, 4, 4, "#0a1530");
+  }
+
   ctx.restore();
 
+  // labels
   ctx.fillStyle = "#e8f0ff";
   ctx.font = "bold 11px 'Courier New', monospace";
   ctx.textAlign = "center";
   ctx.shadowColor = "#000";
   ctx.shadowBlur = 4;
   ctx.fillText(name, x, y - 64);
-  ctx.fillStyle = "#4ee2ff";
+  ctx.fillStyle = accent;
   ctx.font = "9px 'Courier New', monospace";
+  ctx.fillText(`${STATION_GLYPH[kind] || "□"} ${kind.toUpperCase()}`, x, y - 52);
   ctx.fillText("[ DOCK ]", x, y + 70);
   ctx.shadowBlur = 0;
 }
@@ -269,6 +501,59 @@ function drawPortal(ctx: CanvasRenderingContext2D, x: number, y: number, toName:
   ctx.shadowBlur = 0;
 }
 
+// ── ASTEROIDS ─────────────────────────────────────────────────────────────
+function drawAsteroid(ctx: CanvasRenderingContext2D, a: Asteroid): void {
+  ctx.save();
+  ctx.translate(a.pos.x, a.pos.y);
+  ctx.rotate(a.rotation);
+  const isLumen = a.yields === "lumenite";
+  const c = isLumen ? "#7ad8ff" : "#a8784a";
+  const dk = isLumen ? "#3a78a8" : "#604028";
+  const lt = isLumen ? "#cdeaff" : "#d8a888";
+  const s = a.size / 18;
+  px(ctx, -10*s, -8*s, 20*s, 16*s, c);
+  px(ctx, -8*s, -10*s, 14*s, 4*s, c);
+  px(ctx, -6*s, 8*s, 14*s, 4*s, c);
+  px(ctx, -12*s, -4*s, 4*s, 8*s, dk);
+  px(ctx,  10*s, -4*s, 4*s, 8*s, dk);
+  px(ctx, -4*s, -4*s, 6*s, 6*s, lt);
+  if (isLumen) {
+    px(ctx, -2*s, -2*s, 2*s, 2*s, "#ffffff");
+    px(ctx, 2*s, 2*s, 2*s, 2*s, "#ffffff");
+  } else {
+    px(ctx, -2*s, -2*s, 2*s, 2*s, dk);
+    px(ctx, 4*s, 2*s, 2*s, 2*s, dk);
+  }
+  ctx.restore();
+
+  if (a.hp < a.hpMax) {
+    drawHealthBar(ctx, a.pos.x, a.pos.y - a.size - 8, 24, a.hp / a.hpMax);
+  }
+}
+
+// ── DRONES ────────────────────────────────────────────────────────────────
+function drawDrone(ctx: CanvasRenderingContext2D, d: Drone): void {
+  const anchor = (d as Drone & { anchor?: { x: number; y: number } }).anchor;
+  if (!anchor) return;
+  const def = DRONE_DEFS[d.kind];
+  ctx.save();
+  ctx.translate(anchor.x, anchor.y);
+  ctx.shadowColor = def.color;
+  ctx.shadowBlur = 8;
+  // small chevron drone
+  px(ctx, -1, -4, 2, 2, def.color);
+  px(ctx, -3, -2, 6, 2, def.color);
+  px(ctx, -4, 0, 8, 2, def.color);
+  px(ctx, -3, 2, 6, 2, shadeHex(def.color, -0.4));
+  px(ctx, -1, -1, 2, 1, "#ffffff");
+  ctx.restore();
+
+  if (d.hp < d.hpMax) {
+    drawHealthBar(ctx, anchor.x, anchor.y - 10, 18, d.hp / d.hpMax);
+  }
+}
+
+// ── OTHER PLAYERS ─────────────────────────────────────────────────────────
 function drawOtherPlayer(ctx: CanvasRenderingContext2D, o: OtherPlayer): void {
   drawShip(ctx, o.pos.x, o.pos.y, o.angle, o.shipClass, 0.85);
   ctx.fillStyle = o.inParty ? "#5cff8a" : "#8a9ac8";
@@ -285,6 +570,7 @@ function drawOtherPlayer(ctx: CanvasRenderingContext2D, o: OtherPlayer): void {
   ctx.shadowBlur = 0;
 }
 
+// ── MAIN RENDER ───────────────────────────────────────────────────────────
 export function render(ctx: CanvasRenderingContext2D, w: number, h: number): void {
   if (lastZone !== state.player.zone) {
     regenNebula(state.player.zone);
@@ -300,7 +586,7 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, w, h);
 
-  // Distant galaxy clouds (parallax)
+  // Distant nebulae
   for (const n of nebulaSeed) {
     const sx = w / 2 + (n.x - cam.x * 0.05);
     const sy = h / 2 + (n.y - cam.y * 0.05);
@@ -337,13 +623,24 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
   ctx.arc(0, 0, MAP_RADIUS, 0, Math.PI * 2);
   ctx.stroke();
 
-  // Stations in current zone
-  for (const st of STATIONS) {
-    if (st.zone !== state.player.zone) continue;
-    drawStation(ctx, st.pos.x, st.pos.y, st.name, state.tick);
+  // Trail particles draw FIRST (behind ship)
+  for (const pa of state.particles) {
+    if (pa.kind === "trail" || pa.kind === "engine") drawParticle(ctx, pa);
   }
 
-  // Portals in current zone
+  // Asteroids
+  for (const a of state.asteroids) {
+    if (a.zone !== state.player.zone) continue;
+    drawAsteroid(ctx, a);
+  }
+
+  // Stations
+  for (const st of STATIONS) {
+    if (st.zone !== state.player.zone) continue;
+    drawStation(ctx, st.pos.x, st.pos.y, st.name, st.kind, state.tick);
+  }
+
+  // Portals
   for (const po of PORTALS) {
     if (po.fromZone !== state.player.zone) continue;
     drawPortal(ctx, po.pos.x, po.pos.y, ZONES[po.toZone].name, state.tick);
@@ -358,12 +655,17 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
   // Projectiles
   for (const pr of state.projectiles) drawProjectile(ctx, pr);
 
-  // Particles
-  for (const pa of state.particles) drawParticle(ctx, pa);
+  // Other particles (sparks, rings)
+  for (const pa of state.particles) {
+    if (pa.kind !== "trail" && pa.kind !== "engine") drawParticle(ctx, pa);
+  }
+
+  // Player drones
+  for (const d of state.player.drones) drawDrone(ctx, d);
 
   // Player ship
   const p = state.player;
-  // Shield ring
+  // shield ring when shield > 0
   if (p.shield > 0) {
     ctx.strokeStyle = `rgba(78, 226, 255, ${0.3 + 0.3 * Math.sin(state.tick * 4)})`;
     ctx.lineWidth = 2;
@@ -372,6 +674,19 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
     ctx.stroke();
   }
   drawShip(ctx, p.pos.x, p.pos.y, p.angle, p.shipClass, 1, true);
+  // mini hull/shield bars over player ship
+  const cls = SHIP_CLASSES[p.shipClass];
+  // include drone bonuses
+  let hullMax = cls.hullMax, shieldMax = cls.shieldMax + p.equipment.shieldTier * 25;
+  for (const dr of p.drones) {
+    hullMax += DRONE_DEFS[dr.kind].hullBonus;
+    shieldMax += DRONE_DEFS[dr.kind].shieldBonus;
+  }
+  drawHullShieldBars(
+    ctx, p.pos.x, p.pos.y - 26,
+    Math.max(0, p.hull / hullMax),
+    Math.max(0, p.shield / shieldMax),
+  );
 
   // Move target indicator
   const dx = state.cameraTarget.x - p.pos.x;
@@ -391,6 +706,22 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
     ctx.lineTo(t.x, t.y + 14);
     ctx.stroke();
   }
+
+  // Floating honor numbers near player
+  ctx.font = "bold 10px 'Courier New', monospace";
+  ctx.textAlign = "center";
+  let hi = 0;
+  for (const honor of state.recentHonor) {
+    const a = honor.ttl / 1.4;
+    ctx.globalAlpha = a;
+    ctx.fillStyle = "#ff5cf0";
+    ctx.shadowColor = "#ff5cf0";
+    ctx.shadowBlur = 6;
+    ctx.fillText(`+${honor.amount} ✪`, p.pos.x, p.pos.y - 50 - hi * 12 - (1 - a) * 24);
+    hi++;
+  }
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
 
   ctx.restore();
 }

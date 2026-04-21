@@ -1,23 +1,12 @@
 import {
-  bump,
-  pushChat,
-  pushNotification,
-  refreshOthers,
-  save,
-  state,
+  bump, pushChat, pushNotification, pushHonor, save, addCargo,
+  state, travelToZone,
 } from "./store";
 import {
-  ENEMY_DEFS,
-  EXP_FOR_LEVEL,
-  Enemy,
-  EnemyType,
-  Particle,
-  PORTALS,
-  Projectile,
-  SHIP_CLASSES,
-  STATIONS,
-  ZONES,
-  ZoneId,
+  DRONE_DEFS, Drone, ENEMY_DEFS, EXP_FOR_LEVEL,
+  Enemy, EnemyType, LASER_TIER_COLOR, PORTALS,
+  SHIP_CLASSES, STATIONS, ZONES, ZoneId,
+  rankFor,
 } from "./types";
 
 let last = performance.now();
@@ -26,6 +15,7 @@ let enemySpawnTimer = 0;
 let saveTimer = 0;
 let chatTimer = 6;
 let aiUpdateTimer = 0;
+let trailTimer = 0;
 
 const CHAT_LINES = [
   "anyone selling void crystals?",
@@ -35,12 +25,33 @@ const CHAT_LINES = [
   "nebula portal is HOT, watch yourselves",
   "just hit lvl 10 lets gooo",
   "this thruster mk3 hits different",
-  "obsidian build > vanguard, fight me",
+  "iron belt prices are steal rn",
   "anyone in my clan online?",
   "scout swarm @ alpha sector",
   "anyone got spare scrap plating",
+  "azure port buying quantum chips premium",
 ];
 
+// ── PLAYER STATS (with drone bonuses) ────────────────────────────────────
+export function effectiveStats(): {
+  damage: number; speed: number; hullMax: number; shieldMax: number;
+} {
+  const p = state.player;
+  const cls = SHIP_CLASSES[p.shipClass];
+  let damage = cls.baseDamage + p.equipment.laserTier * 6;
+  let hullMax = cls.hullMax;
+  let shieldMax = cls.shieldMax + p.equipment.shieldTier * 25;
+  const speed = cls.baseSpeed + p.equipment.thrusterTier * 30;
+  for (const d of p.drones) {
+    const def = DRONE_DEFS[d.kind];
+    damage += def.damageBonus;
+    hullMax += def.hullBonus;
+    shieldMax += def.shieldBonus;
+  }
+  return { damage, speed, hullMax, shieldMax };
+}
+
+// ── SPAWN ──────────────────────────────────────────────────────────────────
 function spawnEnemy(): void {
   const z = ZONES[state.player.zone];
   if (state.enemies.length >= 8 + z.enemyTier * 2) return;
@@ -64,13 +75,15 @@ function spawnEnemy(): void {
     fireCd: Math.random() * 2,
     exp: Math.round(def.exp * tierMult),
     credits: Math.round(def.credits * tierMult),
+    honor: Math.round(def.honor * tierMult),
     color: def.color,
     size: def.size,
     loot: def.loot,
   });
 }
 
-function emitParticles(x: number, y: number, color: string, count: number, speed = 80, size = 2): void {
+// ── PARTICLES & FX ────────────────────────────────────────────────────────
+function emitSpark(x: number, y: number, color: string, count = 6, speed = 90, size = 2): void {
   for (let i = 0; i < count; i++) {
     const a = Math.random() * Math.PI * 2;
     const s = (0.4 + Math.random() * 0.6) * speed;
@@ -78,27 +91,56 @@ function emitParticles(x: number, y: number, color: string, count: number, speed
       id: `p-${Math.random().toString(36).slice(2, 8)}`,
       pos: { x, y },
       vel: { x: Math.cos(a) * s, y: Math.sin(a) * s },
-      ttl: 0.5 + Math.random() * 0.6,
-      maxTtl: 1,
-      color,
-      size,
+      ttl: 0.3 + Math.random() * 0.4,
+      maxTtl: 0.6,
+      color, size, kind: "spark",
     });
   }
 }
 
-function fireProjectile(from: "player" | "enemy", x: number, y: number, angle: number, damage: number, color: string): void {
-  const speed = from === "player" ? 520 : 320;
+function emitRing(x: number, y: number, color: string): void {
+  state.particles.push({
+    id: `r-${Math.random().toString(36).slice(2, 8)}`,
+    pos: { x, y }, vel: { x: 0, y: 0 },
+    ttl: 0.35, maxTtl: 0.35,
+    color, size: 4, kind: "ring",
+  });
+}
+
+function emitTrail(x: number, y: number, color: string): void {
+  state.particles.push({
+    id: `t-${Math.random().toString(36).slice(2, 8)}`,
+    pos: { x, y }, vel: { x: 0, y: 0 },
+    ttl: 0.5, maxTtl: 0.5,
+    color, size: 3, kind: "trail",
+  });
+}
+
+function emitDeath(x: number, y: number, color: string): void {
+  emitSpark(x, y, color, 24, 160, 3);
+  emitSpark(x, y, "#ffd24a", 10, 120, 2);
+  emitRing(x, y, color);
+}
+
+// ── PROJECTILES ───────────────────────────────────────────────────────────
+function fireProjectile(
+  from: "player" | "enemy" | "drone",
+  x: number, y: number, angle: number, damage: number, color: string, size = 3
+): void {
+  const speed = from === "player" ? 560 : from === "drone" ? 480 : 320;
   state.projectiles.push({
     id: `pr-${Math.random().toString(36).slice(2, 8)}`,
     pos: { x, y },
     vel: { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed },
     damage,
     ttl: 1.6,
-    fromPlayer: from === "player",
+    fromPlayer: from !== "enemy",
     color,
+    size,
   });
 }
 
+// ── XP / LEVEL ────────────────────────────────────────────────────────────
 function tryLevelUp(): void {
   const p = state.player;
   while (p.exp >= EXP_FOR_LEVEL(p.level)) {
@@ -106,31 +148,35 @@ function tryLevelUp(): void {
     p.level++;
     pushNotification(`LEVEL UP! Now level ${p.level}`, "good");
     pushChat("system", "SYSTEM", `You reached level ${p.level}.`);
-    const cls = SHIP_CLASSES[p.shipClass];
-    p.hull = cls.hullMax;
-    p.shield = cls.shieldMax;
+    const stats = effectiveStats();
+    p.hull = stats.hullMax;
+    p.shield = stats.shieldMax;
   }
 }
 
-function killEnemy(e: Enemy): void {
-  emitParticles(e.pos.x, e.pos.y, e.color, 24, 160, 3);
-  emitParticles(e.pos.x, e.pos.y, "#ffd24a", 10, 100, 2);
+function applyKill(e: Enemy): void {
+  emitDeath(e.pos.x, e.pos.y, e.color);
   state.player.exp += e.exp;
   state.player.credits += e.credits;
-  pushNotification(`+${e.exp} XP  +${e.credits}cr`, "good");
-  if (e.loot && state.player.cargo.length < SHIP_CLASSES[state.player.shipClass].cargoMax) {
-    const existing = state.player.cargo.find((c) => c.name === e.loot!.name);
-    if (existing) {
-      existing.qty++;
-    } else {
-      state.player.cargo.push({
-        id: `cargo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        name: e.loot.name,
-        qty: 1,
-        pricePerUnit: e.loot.price,
-      });
-    }
+  // honor handled separately for floating numbers
+  const prevRank = rankFor(state.player.honor).index;
+  state.player.honor += e.honor;
+  pushHonor(e.honor);
+  const newRank = rankFor(state.player.honor).index;
+  if (newRank > prevRank) {
+    pushNotification(`PROMOTED → ${rankFor(state.player.honor).name}`, "good");
+    pushChat("system", "SYSTEM", `You earned the rank of ${rankFor(state.player.honor).name}.`);
   }
+  pushNotification(`+${e.exp} XP  +${e.credits}cr  +${e.honor} honor`, "good");
+
+  // Loot
+  if (e.loot) {
+    const hasSalvage = state.player.drones.some((d) => d.kind === "salvage");
+    const qty = e.loot.qty + (hasSalvage ? 1 : 0);
+    const got = addCargo(e.loot.resourceId, qty);
+    if (got < qty) pushNotification("Cargo bay full", "bad");
+  }
+
   // Quest progress
   for (const q of state.player.activeQuests) {
     if (!q.completed && q.killType === e.type && q.zone === state.player.zone) {
@@ -151,13 +197,15 @@ function damagePlayer(amount: number): void {
     const absorbed = Math.min(p.shield, amount);
     p.shield -= absorbed;
     amount -= absorbed;
+    emitRing(p.pos.x, p.pos.y, "#4ee2ff");
   }
   if (amount > 0) {
     p.hull -= amount;
+    emitSpark(p.pos.x, p.pos.y, "#ff5c6c", 6, 70, 2);
     if (p.hull <= 0) {
-      // Death: respawn at station
-      p.hull = SHIP_CLASSES[p.shipClass].hullMax;
-      p.shield = SHIP_CLASSES[p.shipClass].shieldMax;
+      const stats = effectiveStats();
+      p.hull = stats.hullMax;
+      p.shield = stats.shieldMax;
       const lostCr = Math.floor(p.credits * 0.1);
       p.credits = Math.max(0, p.credits - lostCr);
       p.pos = { x: 0, y: 80 };
@@ -170,21 +218,26 @@ function damagePlayer(amount: number): void {
   }
 }
 
+function damageDrone(d: { id: string; hp: number; hpMax: number }, amount: number): boolean {
+  d.hp -= amount;
+  if (d.hp <= 0) return true;
+  return false;
+}
+
 function distance(ax: number, ay: number, bx: number, by: number): number {
   const dx = ax - bx;
   const dy = ay - by;
   return Math.sqrt(dx * dx + dy * dy);
 }
 
+// ── MAIN LOOP ─────────────────────────────────────────────────────────────
 export function startLoop(): void {
   if (raf) return;
   last = performance.now();
   const step = (now: number) => {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
-    if (!state.paused && !state.dockedAt) {
-      tickWorld(dt);
-    }
+    if (!state.paused && !state.dockedAt) tickWorld(dt);
     raf = requestAnimationFrame(step);
   };
   raf = requestAnimationFrame(step);
@@ -195,69 +248,67 @@ export function stopLoop(): void {
   raf = 0;
 }
 
+const playerFireCd = { value: 0 };
+
 function tickWorld(dt: number): void {
   state.tick += dt;
   const p = state.player;
-  const cls = SHIP_CLASSES[p.shipClass];
-  const speed = cls.baseSpeed + p.equipment.thrusterTier * 30;
-  const damage = cls.baseDamage + p.equipment.laserTier * 6;
-  const shieldMax = cls.shieldMax + p.equipment.shieldTier * 25;
+  const stats = effectiveStats();
 
-  // Player movement toward cameraTarget
+  // ── Player movement
   const dx = state.cameraTarget.x - p.pos.x;
   const dy = state.cameraTarget.y - p.pos.y;
   const dist = Math.sqrt(dx * dx + dy * dy);
   if (dist > 6) {
     p.angle = Math.atan2(dy, dx);
-    const accel = speed * 4;
+    const accel = stats.speed * 4;
     p.vel.x += Math.cos(p.angle) * accel * dt;
     p.vel.y += Math.sin(p.angle) * accel * dt;
   }
-  // Cap velocity
   const v = Math.sqrt(p.vel.x * p.vel.x + p.vel.y * p.vel.y);
-  if (v > speed) {
-    p.vel.x = (p.vel.x / v) * speed;
-    p.vel.y = (p.vel.y / v) * speed;
+  if (v > stats.speed) {
+    p.vel.x = (p.vel.x / v) * stats.speed;
+    p.vel.y = (p.vel.y / v) * stats.speed;
   }
-  // Drag
   p.vel.x *= 0.96;
   p.vel.y *= 0.96;
   p.pos.x += p.vel.x * dt;
   p.pos.y += p.vel.y * dt;
 
-  // Engine particles
-  if (Math.abs(p.vel.x) + Math.abs(p.vel.y) > 30 && Math.random() < 0.7) {
-    const back = p.angle + Math.PI;
-    state.particles.push({
-      id: `p-${Math.random().toString(36).slice(2, 8)}`,
-      pos: {
-        x: p.pos.x + Math.cos(back) * 12,
-        y: p.pos.y + Math.sin(back) * 12,
-      },
-      vel: {
-        x: Math.cos(back) * 60 + (Math.random() - 0.5) * 30,
-        y: Math.sin(back) * 60 + (Math.random() - 0.5) * 30,
-      },
-      ttl: 0.4,
-      maxTtl: 0.4,
-      color: cls.color,
-      size: 2,
-    });
+  // ── Engine particles + 16-bit trail
+  const cls = SHIP_CLASSES[p.shipClass];
+  if (Math.abs(p.vel.x) + Math.abs(p.vel.y) > 30) {
+    if (Math.random() < 0.7) {
+      const back = p.angle + Math.PI;
+      state.particles.push({
+        id: `p-${Math.random().toString(36).slice(2, 8)}`,
+        pos: { x: p.pos.x + Math.cos(back) * 12, y: p.pos.y + Math.sin(back) * 12 },
+        vel: { x: Math.cos(back) * 60 + (Math.random() - 0.5) * 30, y: Math.sin(back) * 60 + (Math.random() - 0.5) * 30 },
+        ttl: 0.4, maxTtl: 0.4,
+        color: cls.color, size: 2, kind: "engine",
+      });
+    }
+    trailTimer -= dt;
+    if (trailTimer <= 0) {
+      const back = p.angle + Math.PI;
+      emitTrail(p.pos.x + Math.cos(back) * 8, p.pos.y + Math.sin(back) * 8, cls.color);
+      trailTimer = 0.05;
+    }
   }
 
-  // Shield regen
-  if (p.shield < shieldMax) {
-    p.shield = Math.min(shieldMax, p.shield + (5 + p.equipment.shieldTier * 2) * dt);
+  // ── Shield regen
+  if (p.shield < stats.shieldMax) {
+    p.shield = Math.min(stats.shieldMax, p.shield + (5 + p.equipment.shieldTier * 2) * dt);
   }
 
-  // Spawn enemies
+  // ── Enemies spawn
   enemySpawnTimer -= dt;
   if (enemySpawnTimer <= 0) {
     spawnEnemy();
     enemySpawnTimer = 1.6 + Math.random() * 1.4;
   }
 
-  // Update enemies
+  // ── Update enemies (chase + fire)
   for (const e of state.enemies) {
     const exd = p.pos.x - e.pos.x;
     const eyd = p.pos.y - e.pos.y;
@@ -280,44 +331,91 @@ function tickWorld(dt: number): void {
     }
   }
 
-  // Player auto-fire at nearest enemy
+  // ── Player auto-fire at nearest enemy
   let nearest: Enemy | null = null;
   let nearestD = 520;
   for (const e of state.enemies) {
     const d = distance(p.pos.x, p.pos.y, e.pos.x, e.pos.y);
-    if (d < nearestD) {
-      nearest = e;
-      nearestD = d;
-    }
+    if (d < nearestD) { nearest = e; nearestD = d; }
   }
-  if (nearest) {
-    if (!playerFireCd.value || playerFireCd.value <= 0) {
-      const ang = Math.atan2(nearest.pos.y - p.pos.y, nearest.pos.x - p.pos.x);
-      fireProjectile("player", p.pos.x, p.pos.y, ang, damage, "#4ee2ff");
-      playerFireCd.value = Math.max(0.18, 0.55 - p.equipment.laserTier * 0.04);
-    }
+  if (nearest && playerFireCd.value <= 0) {
+    const ang = Math.atan2(nearest.pos.y - p.pos.y, nearest.pos.x - p.pos.x);
+    const color = LASER_TIER_COLOR(p.equipment.laserTier);
+    const size = p.equipment.laserTier >= 7 ? 4 : 3;
+    fireProjectile("player", p.pos.x, p.pos.y, ang, stats.damage, color, size);
+    playerFireCd.value = Math.max(0.18, 0.55 - p.equipment.laserTier * 0.04);
   }
   playerFireCd.value -= dt;
 
-  // Update projectiles
+  // ── Update drones (orbit + fire)
+  const droneCount = p.drones.length;
+  for (let i = 0; i < droneCount; i++) {
+    const d = p.drones[i];
+    const def = DRONE_DEFS[d.kind];
+    d.orbitPhase += dt * 1.5;
+    const radius = 38 + (i % 2) * 12;
+    const ang = d.orbitPhase + (i / Math.max(1, droneCount)) * Math.PI * 2;
+    // anchor pos used for rendering & firing source
+    (d as Drone & { anchor?: { x: number; y: number } }).anchor = {
+      x: p.pos.x + Math.cos(ang) * radius,
+      y: p.pos.y + Math.sin(ang) * radius,
+    };
+    if (def.fireRate > 0) {
+      d.fireCd -= dt;
+      if (d.fireCd <= 0 && nearest) {
+        const dpos = (d as Drone & { anchor: { x: number; y: number } }).anchor;
+        const dang = Math.atan2(nearest.pos.y - dpos.y, nearest.pos.x - dpos.x);
+        fireProjectile("drone", dpos.x, dpos.y, dang, def.damageBonus, def.color, 2);
+        d.fireCd = 1 / def.fireRate;
+      }
+    }
+  }
+
+  // ── Projectiles update + collisions
   state.projectiles = state.projectiles.filter((pr) => {
     pr.pos.x += pr.vel.x * dt;
     pr.pos.y += pr.vel.y * dt;
     pr.ttl -= dt;
     if (pr.ttl <= 0) return false;
     if (pr.fromPlayer) {
+      // hit enemies
       for (const e of state.enemies) {
         if (distance(pr.pos.x, pr.pos.y, e.pos.x, e.pos.y) < e.size + 4) {
           e.hull -= pr.damage;
-          emitParticles(pr.pos.x, pr.pos.y, e.color, 4, 80, 2);
-          if (e.hull <= 0) killEnemy(e);
+          emitSpark(pr.pos.x, pr.pos.y, e.color, 4, 80, 2);
+          emitRing(pr.pos.x, pr.pos.y, pr.color);
+          if (e.hull <= 0) applyKill(e);
+          return false;
+        }
+      }
+      // hit asteroids
+      for (const a of state.asteroids) {
+        if (a.zone !== state.player.zone) continue;
+        if (distance(pr.pos.x, pr.pos.y, a.pos.x, a.pos.y) < a.size + 2) {
+          a.hp -= pr.damage;
+          emitSpark(pr.pos.x, pr.pos.y, "#c69060", 3, 60, 2);
+          if (a.hp <= 0) destroyAsteroid(a.id);
           return false;
         }
       }
     } else {
+      // enemy projectile -> hit drones first, then player
+      for (const dr of p.drones) {
+        const anchor = (dr as Drone & { anchor?: { x: number; y: number } }).anchor;
+        if (!anchor) continue;
+        if (distance(pr.pos.x, pr.pos.y, anchor.x, anchor.y) < 10) {
+          const dead = damageDrone(dr, pr.damage);
+          emitSpark(pr.pos.x, pr.pos.y, DRONE_DEFS[dr.kind].color, 5, 80, 2);
+          if (dead) {
+            p.drones = p.drones.filter((x) => x.id !== dr.id);
+            pushNotification(`Drone destroyed: ${DRONE_DEFS[dr.kind].name}`, "bad");
+            emitDeath(anchor.x, anchor.y, DRONE_DEFS[dr.kind].color);
+          }
+          return false;
+        }
+      }
       if (distance(pr.pos.x, pr.pos.y, p.pos.x, p.pos.y) < 12) {
         damagePlayer(pr.damage);
-        emitParticles(pr.pos.x, pr.pos.y, "#ff5cf0", 6, 80, 2);
         return false;
       }
     }
@@ -326,7 +424,7 @@ function tickWorld(dt: number): void {
 
   state.enemies = state.enemies.filter((e) => e.hull > 0);
 
-  // Particles
+  // ── Particles update
   for (const pa of state.particles) {
     pa.pos.x += pa.vel.x * dt;
     pa.pos.y += pa.vel.y * dt;
@@ -335,11 +433,11 @@ function tickWorld(dt: number): void {
     pa.ttl -= dt;
   }
   state.particles = state.particles.filter((pa) => pa.ttl > 0);
-  if (state.particles.length > 220) {
-    state.particles.splice(0, state.particles.length - 220);
+  if (state.particles.length > 320) {
+    state.particles.splice(0, state.particles.length - 320);
   }
 
-  // AI other players drift
+  // ── AI other players drift
   aiUpdateTimer -= dt;
   if (aiUpdateTimer <= 0) {
     for (const o of state.others) {
@@ -356,25 +454,27 @@ function tickWorld(dt: number): void {
     o.pos.y += o.vel.y * dt;
   }
 
-  // Auto chat chatter
+  // ── Auto chat chatter
   chatTimer -= dt;
   if (chatTimer <= 0) {
     const o = state.others[Math.floor(Math.random() * state.others.length)];
-    if (o) {
-      const line = CHAT_LINES[Math.floor(Math.random() * CHAT_LINES.length)];
-      pushChat("local", o.name, line);
-    }
+    if (o) pushChat("local", o.name, CHAT_LINES[Math.floor(Math.random() * CHAT_LINES.length)]);
     chatTimer = 8 + Math.random() * 10;
   }
 
-  // Notification ttl
+  // ── Notification ttl
   for (const n of state.notifications) n.ttl -= dt;
   state.notifications = state.notifications.filter((n) => n.ttl > 0);
   if (state.notifications.length > 5) {
     state.notifications.splice(0, state.notifications.length - 5);
   }
+  for (const h of state.recentHonor) h.ttl -= dt;
+  state.recentHonor = state.recentHonor.filter((h) => h.ttl > 0);
 
-  // Save periodically
+  // ── Asteroid rotation
+  for (const a of state.asteroids) a.rotation += a.rotSpeed * dt;
+
+  // ── Save periodically
   saveTimer -= dt;
   if (saveTimer <= 0) {
     save();
@@ -384,7 +484,34 @@ function tickWorld(dt: number): void {
   bump();
 }
 
-const playerFireCd = { value: 0 };
+function destroyAsteroid(id: string): void {
+  const a = state.asteroids.find((x) => x.id === id);
+  if (!a) return;
+  emitSpark(a.pos.x, a.pos.y, "#c69060", 16, 120, 3);
+  emitSpark(a.pos.x, a.pos.y, "#7a5028", 8, 80, 2);
+  const qty = 2 + Math.floor(Math.random() * 3);
+  const got = addCargo(a.yields, qty);
+  if (got > 0) {
+    pushNotification(`Mined +${got}× ${a.yields === "iron" ? "Iron Ore" : "Lumenite"}`, "good");
+  } else {
+    pushNotification("Cargo full — ore lost", "bad");
+  }
+  state.asteroids = state.asteroids.filter((x) => x.id !== id);
+  // respawn a new asteroid somewhere far away after a while
+  setTimeout(() => {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 1200 + Math.random() * 1200;
+    const yieldsLumenite = Math.random() < 0.18;
+    state.asteroids.push({
+      id: `ast-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+      pos: { x: Math.cos(angle) * dist, y: Math.sin(angle) * dist },
+      hp: 80, hpMax: 80, size: 16 + Math.random() * 14,
+      rotation: 0, rotSpeed: (Math.random() - 0.5) * 0.4,
+      zone: state.player.zone,
+      yields: yieldsLumenite ? "lumenite" : "iron",
+    });
+  }, 6000);
+}
 
 export function checkPortal(): void {
   const p = state.player;
@@ -392,19 +519,17 @@ export function checkPortal(): void {
     (po) => po.fromZone === p.zone && distance(p.pos.x, p.pos.y, po.pos.x, po.pos.y) < 70
   );
   if (portal) {
-    // travel handled by store.travelToZone
-    travelByPortal(portal.toZone);
+    const z = ZONES[portal.toZone];
+    if (state.player.level < z.unlockLevel) {
+      pushNotification(`Need level ${z.unlockLevel} to enter ${z.name}`, "bad");
+      // bump player away from portal so we don't spam
+      const ang = Math.atan2(p.pos.y - portal.pos.y, p.pos.x - portal.pos.x);
+      p.pos.x += Math.cos(ang) * 80;
+      p.pos.y += Math.sin(ang) * 80;
+      return;
+    }
+    travelToZone(portal.toZone);
   }
-}
-
-import { travelToZone } from "./store";
-function travelByPortal(zone: ZoneId): void {
-  const z = ZONES[zone];
-  if (state.player.level < z.unlockLevel) {
-    pushNotification(`Need level ${z.unlockLevel} to enter ${z.name}`, "bad");
-    return;
-  }
-  travelToZone(zone);
 }
 
 export function checkStationDock(): string | null {
@@ -415,5 +540,5 @@ export function checkStationDock(): string | null {
   return station ? station.id : null;
 }
 
-// keep imports happy
-void refreshOthers;
+// silence unused export warning for ZoneId import
+export type _ZoneId = ZoneId;

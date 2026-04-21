@@ -2,9 +2,12 @@ import { useEffect, useRef } from "react";
 import { state, bump, useGame, save, pushNotification } from "./game/store";
 import { startLoop, stopLoop, checkPortal, checkStationDock } from "./game/loop";
 import { render } from "./game/render";
-import { HUD } from "./components/HUD";
+import { TopBar } from "./components/TopBar";
+import { MiniMap } from "./components/MiniMap";
 import { Hangar } from "./components/Hangar";
 import { SocialPanel, ClanPanel, GalaxyMap } from "./components/SocialPanel";
+import { STATIONS, PORTALS, ZONES } from "./game/types";
+import { travelToZone } from "./game/store";
 
 function GameCanvas() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -39,7 +42,6 @@ function GameCanvas() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  // Click to set move target
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (state.dockedAt) return;
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
@@ -49,17 +51,17 @@ function GameCanvas() {
     const wy = state.player.pos.y + (cy - rect.height / 2);
     state.cameraTarget = { x: wx, y: wy };
 
-    // Check station dock click
-    const stationId = nearestInteractable(wx, wy);
-    if (stationId) {
-      // pull toward station
-      const station = STATIONS_FOR.find((s) => s.id === stationId)!;
-      state.cameraTarget = { x: station.pos.x, y: station.pos.y };
+    // Pull toward nearest station if clicked nearby
+    for (const s of STATIONS) {
+      if (s.zone !== state.player.zone) continue;
+      if (Math.hypot(s.pos.x - wx, s.pos.y - wy) < 60) {
+        state.cameraTarget = { x: s.pos.x, y: s.pos.y };
+        break;
+      }
     }
     bump();
   };
 
-  // Mouse move target while right-button held? Simpler: support mousedown drag for continuous follow
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (e.buttons !== 1 || state.dockedAt) return;
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
@@ -81,18 +83,6 @@ function GameCanvas() {
       style={{ cursor: "crosshair", display: "block" }}
     />
   );
-}
-
-import { STATIONS as STATIONS_FOR, PORTALS as PORTALS_FOR, ZONES as ZONES_FOR } from "./game/types";
-import { travelToZone } from "./game/store";
-
-function nearestInteractable(x: number, y: number): string | null {
-  for (const s of STATIONS_FOR) {
-    if (s.zone !== state.player.zone) continue;
-    const d = Math.hypot(s.pos.x - x, s.pos.y - y);
-    if (d < 50) return s.id;
-  }
-  return null;
 }
 
 function Notifications() {
@@ -120,10 +110,10 @@ function DockPrompt() {
   const player = useGame((s) => s.player);
   useGame((s) => s.tick);
 
-  const station = STATIONS_FOR.find(
+  const station = STATIONS.find(
     (s) => s.zone === player.zone && Math.hypot(s.pos.x - player.pos.x, s.pos.y - player.pos.y) < 90
   );
-  const portal = PORTALS_FOR.find(
+  const portal = PORTALS.find(
     (po) => po.fromZone === player.zone && Math.hypot(po.pos.x - player.pos.x, po.pos.y - player.pos.y) < 70
   );
 
@@ -139,8 +129,7 @@ function DockPrompt() {
             state.dockedAt = station.id;
             state.player.vel = { x: 0, y: 0 };
             pushNotification(`Docking with ${station.name}`, "good");
-            save();
-            bump();
+            save(); bump();
           }}
         >
           [SPACE] DOCK AT {station.name.toUpperCase()}
@@ -151,7 +140,7 @@ function DockPrompt() {
           className="btn px-6 py-3"
           style={{ borderColor: "#ff5cf0", color: "#ff5cf0", animation: "pulse-glow 2s ease-in-out infinite" }}
           onClick={() => {
-            const z = ZONES_FOR[portal.toZone];
+            const z = ZONES[portal.toZone];
             if (player.level < z.unlockLevel) {
               pushNotification(`Need level ${z.unlockLevel} to enter ${z.name}`, "bad");
               return;
@@ -159,7 +148,7 @@ function DockPrompt() {
             travelToZone(portal.toZone);
           }}
         >
-          ▶ WARP TO {ZONES_FOR[portal.toZone].name.toUpperCase()}
+          ▶ WARP TO {ZONES[portal.toZone].name.toUpperCase()}
         </button>
       )}
     </div>
@@ -170,7 +159,9 @@ function Title() {
   return (
     <div className="absolute bottom-3 left-3 z-30 pointer-events-none">
       <div className="text-cyan glow-cyan text-[10px] tracking-[0.3em]">STELLAR FRONTIER</div>
-      <div className="text-mute text-[9px] tracking-widest">v 1.0 · CLICK to move · DOCK at stations · WARP via portals</div>
+      <div className="text-mute text-[9px] tracking-widest">
+        v 2.0 · CLICK to move · MINIMAP click warps · SPACE docks · SHOOT asteroids to mine
+      </div>
     </div>
   );
 }
@@ -188,15 +179,14 @@ export default function App() {
           state.dockedAt = sid;
           state.player.vel = { x: 0, y: 0 };
           pushNotification("Docking...", "good");
-          save();
-          bump();
+          save(); bump();
         }
       } else if (e.key === "m" || e.key === "M") {
-        state.showMap = !state.showMap;
-        bump();
+        state.showMap = !state.showMap; bump();
       } else if (e.key === "c" || e.key === "C") {
-        state.showClan = !state.showClan;
-        bump();
+        state.showClan = !state.showClan; bump();
+      } else if (e.key === "h" || e.key === "H") {
+        state.showSocial = !state.showSocial; bump();
       } else if (e.key === "Escape") {
         state.showMap = false;
         state.showClan = false;
@@ -217,14 +207,16 @@ export default function App() {
   }, []);
 
   const docked = useGame((s) => s.dockedAt);
+  const showSocial = useGame((s) => s.showSocial);
 
   return (
     <div className="relative w-full h-full overflow-hidden" style={{ background: "#02040c" }}>
       <GameCanvas />
-      <HUD />
+      <TopBar />
+      <MiniMap />
       <DockPrompt />
       <Notifications />
-      <SocialPanel />
+      {showSocial && <SocialPanel />}
       <ClanPanel />
       <GalaxyMap />
       <Title />
