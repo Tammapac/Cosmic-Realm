@@ -1,0 +1,182 @@
+@import "tailwindcss";
+
+:root {
+  --bg-deep: #05060f;
+  --bg-panel: rgba(8, 12, 28, 0.85);
+  --bg-panel-solid: #0a0f24;
+  --border-glow: #2a3a7a;
+  --border-soft: #1a2348;
+  --accent-cyan: #4ee2ff;
+  --accent-magenta: #ff5cf0;
+  --accent-amber: #ffd24a;
+  --accent-green: #5cff8a;
+  --accent-red: #ff5c6c;
+  --text-bright: #e8f0ff;
+  --text-dim: #8a9ac8;
+  --text-mute: #5a6a98;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: var(--bg-deep);
+  color: var(--text-bright);
+  font-family: "Courier New", "Lucida Console", monospace;
+  image-rendering: pixelated;
+  -webkit-font-smoothing: none;
+  font-smooth: never;
+  user-select: none;
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 6px var(--accent-cyan), inset 0 0 6px rgba(78, 226, 255, 0.2); }
+  50% { box-shadow: 0 0 14px var(--accent-cyan), inset 0 0 10px rgba(78, 226, 255, 0.3); }
+}
+
+@keyframes scan {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-glow);
+  backdrop-filter: blur(6px);
+  position: relative;
+}
+
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent 0%, transparent 49%, rgba(78, 226, 255, 0.04) 50%, transparent 51%, transparent 100%);
+  background-size: 100% 4px;
+}
+
+.btn {
+  background: linear-gradient(180deg, #1a2860 0%, #0c1638 100%);
+  color: var(--text-bright);
+  border: 1px solid var(--border-glow);
+  padding: 6px 12px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  transition: all 0.15s;
+  text-shadow: 0 0 4px rgba(78, 226, 255, 0.4);
+}
+
+.btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, #2a3a90 0%, #1a2860 100%);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 10px rgba(78, 226, 255, 0.5);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: linear-gradient(180deg, #2a8aff 0%, #0c4cb0 100%);
+  border-color: var(--accent-cyan);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #4ea4ff 0%, #1a6ed4 100%);
+}
+
+.btn-danger {
+  background: linear-gradient(180deg, #c03050 0%, #701020 100%);
+  border-color: var(--accent-red);
+}
+
+.btn-amber {
+  background: linear-gradient(180deg, #b08020 0%, #604010 100%);
+  border-color: var(--accent-amber);
+}
+
+.bar {
+  height: 8px;
+  background: #0a0f1f;
+  border: 1px solid var(--border-soft);
+  position: relative;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  transition: width 0.2s;
+}
+
+.text-cyan { color: var(--accent-cyan); }
+.text-magenta { color: var(--accent-magenta); }
+.text-amber { color: var(--accent-amber); }
+.text-green { color: var(--accent-green); }
+.text-red { color: var(--accent-red); }
+.text-dim { color: var(--text-dim); }
+.text-mute { color: var(--text-mute); }
+
+.scanline {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent 0%, rgba(78, 226, 255, 0.08) 50%, transparent 100%);
+  height: 4px;
+  animation: scan 8s linear infinite;
+}
+
+.crt-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.15) 0px, rgba(0, 0, 0, 0.15) 1px, transparent 1px, transparent 3px),
+    radial-gradient(ellipse at center, transparent 60%, rgba(0, 0, 0, 0.5) 100%);
+  z-index: 9999;
+  mix-blend-mode: multiply;
+}
+
+.glow-cyan {
+  text-shadow: 0 0 6px var(--accent-cyan), 0 0 12px rgba(78, 226, 255, 0.5);
+}
+
+.glow-amber {
+  text-shadow: 0 0 6px var(--accent-amber), 0 0 12px rgba(255, 210, 74, 0.5);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0a0f1f;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-glow);
+  border: 1px solid var(--bg-deep);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-cyan);
+}
