@@ -974,6 +974,9 @@ export const STATIONS: Station[] = [
   { id: "mist-dock",   name: "Mist Dock Outpost",  pos: { x: -800, y: -300 }, zone: "venus1",   kind: "mining",
     description: "Floating mining platform harvesting rare cloud minerals.", controlledBy: "aurora",
     prices: { iron: 0.6, lumenite: 0.65, scrap: 1.2, synth: 1.0, medpack: 1.1, "fuel-cell": 0.7, food: 0.65, medicine: 1.1 } },
+  { id: "halo-walk",  name: "Halo Walk Station",  pos: { x: 820, y: 540 },   zone: "venus1",   kind: "trade",
+    description: "A bright civilian waypoint for cloud travelers and merchants.", controlledBy: "aurora",
+    prices: { food: 0.7, medicine: 0.9, luxury: 1.1, scrap: 1.1, plasma: 1.05, lumenite: 0.9, synth: 1.0 } },
   // venus2
   { id: "sulphur-port", name: "Sulphur Port",      pos: { x: 200, y: -700 },  zone: "venus2",   kind: "outpost",
     description: "Corrosive atmosphere station. Raider-truce outpost with exotic supplies.", controlledBy: "syndicate",
@@ -981,6 +984,9 @@ export const STATIONS: Station[] = [
   { id: "wind-market", name: "Wind Market",        pos: { x: -700, y: -1100 }, zone: "venus2",  kind: "trade",
     description: "Chaotic trade station deep in the Sulphur Winds. Cheap quantum parts.", controlledBy: "syndicate",
     prices: { quantum: 0.65, lumenite: 0.8, dread: 0.95, void: 0.9, plasma: 1.2, warp: 1.3, iron: 1.1, luxury: 0.75, precursor: 1.4 } },
+  { id: "brass-spire", name: "Brass Spire",       pos: { x: 1200, y: -200 }, zone: "venus2",  kind: "outpost",
+    description: "A wind-battered relay with fuel, repairs, and hot gossip.", controlledBy: "syndicate",
+    prices: { plasma: 0.85, warp: 0.95, food: 1.2, medicine: 1.25, nanite: 0.9, luxury: 1.0, "fuel-cell": 0.8 } },
   // venus3
   { id: "acid-citadel", name: "Acid Citadel",      pos: { x: -500, y: 400 },  zone: "venus3",   kind: "military",
     description: "Fortified deep-atmosphere platform. Specialized war contracts available.", controlledBy: "crimson",
@@ -988,6 +994,9 @@ export const STATIONS: Station[] = [
   { id: "pressure-yard", name: "Pressure Yards",   pos: { x: 1000, y: 700 },  zone: "venus3",   kind: "trade",
     description: "High-pressure fabrication yards building deep-atmosphere hulls.", controlledBy: "crimson",
     prices: { iron: 1.4, scrap: 1.3, lumenite: 1.2, plasma: 1.1, dread: 0.9, nanite: 1.5, "fuel-cell": 1.2, luxury: 1.6 } },
+  { id: "acid-exchange", name: "Acid Exchange",   pos: { x: -1250, y: -650 }, zone: "venus3", kind: "mining",
+    description: "Strip-mining exchange for hulls, ore, and deep-atmosphere salvage.", controlledBy: "crimson",
+    prices: { iron: 0.55, scrap: 0.65, lumenite: 0.8, plasma: 1.0, synth: 1.1, food: 1.3, medicine: 1.2 } },
   // venus4
   { id: "core-refuge",  name: "Core Refuge",       pos: { x: 0, y: -300 },    zone: "venus4",   kind: "outpost",
     description: "Shielded station near the crushing core. Last refuge before the Eye.", controlledBy: "syndicate",
@@ -995,6 +1004,9 @@ export const STATIONS: Station[] = [
   { id: "pressure-port", name: "Pressure Point Port", pos: { x: 900, y: 600 }, zone: "venus4",  kind: "trade",
     description: "Shadow market near the core. Extreme rarity items surface here.", controlledBy: "syndicate",
     prices: { quantum: 0.5, void: 1.4, dread: 1.5, lumenite: 1.3, warp: 1.2, contraband: 0.4, luxury: 0.6, relic: 0.65, precursor: 0.7, exotic: 1.4 } },
+  { id: "cradle", name: "Cradle Station",          pos: { x: -1100, y: 250 }, zone: "venus4", kind: "outpost",
+    description: "A shielded refuge that services long-haul couriers and prospectors.", controlledBy: "syndicate",
+    prices: { food: 1.6, medicine: 1.4, medpack: 1.1, synth: 1.0, quantum: 0.9, relic: 0.8, exotic: 0.9 } },
   // venus5
   { id: "venus-bastion", name: "Venusian Bastion",  pos: { x: 0, y: 0 },      zone: "venus5",   kind: "military",
     description: "The ultimate Venusian military fortress. Sells the rarest gear in the solar system.", controlledBy: "crimson",
@@ -1002,6 +1014,9 @@ export const STATIONS: Station[] = [
   { id: "eye-bazaar",   name: "Eye Bazaar",         pos: { x: -800, y: 900 }, zone: "venus5",   kind: "trade",
     description: "Legendary trading post in the heart of Venus. Anything can be bought — at a price.", controlledBy: "syndicate",
     prices: { iron: 0.5, scrap: 0.55, lumenite: 0.7, quantum: 0.8, void: 1.5, dread: 2.0, exotic: 0.65, relic: 0.7 } },
+  { id: "singularity-dock", name: "Singularity Dock", pos: { x: 1250, y: -450 }, zone: "venus5", kind: "military",
+    description: "A blackglass dock for elite escorts and endgame merchants.", controlledBy: "crimson",
+    prices: { dread: 1.5, warp: 1.6, plasma: 1.8, quantum: 1.0, relic: 0.95, exotic: 0.9, lumenite: 1.1 } },
 ];
 
 export const PORTALS: Portal[] = [
@@ -1038,7 +1053,7 @@ export const PORTALS: Portal[] = [
   { id: "p-v1-ml",  pos: { x: 1700, y: -700 },   fromZone: "venus1",    toZone: "maelstrom" },
 ];
 
-export const MAP_RADIUS = 2400;
+export const MAP_RADIUS = 3200;
 
 export const FAKE_NAMES = [
   "Nyx_77","VoidPilot","StarbornAce","RogueComet","Hex.Drift","Aurora",
