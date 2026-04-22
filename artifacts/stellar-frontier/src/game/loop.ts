@@ -79,6 +79,7 @@ let chatTimer = 6;
 let aiUpdateTimer = 0;
 let trailTimer = 0;
 let bossActive = false;
+let queuedAttackTargetId: string | null = null;
 
 const CHAT_LINES = [
   "anyone selling void crystals?",
@@ -144,6 +145,10 @@ export function effectiveStats(): {
   shieldRegen *= (1 + skDefRegen * 0.15);
 
   return { damage, speed, hullMax, shieldMax, fireRate, critChance, aoeRadius, damageReduction, shieldRegen, lootBonus };
+}
+
+export function queueAttackTarget(enemyId: string): void {
+  queuedAttackTargetId = enemyId;
 }
 
 // ── SPAWN ──────────────────────────────────────────────────────────────────
@@ -938,6 +943,16 @@ function tickWorld(dt: number): void {
   }
 
   playerFireCd.value -= dt;
+  if (queuedAttackTargetId) {
+    const enemy = state.enemies.find((e) => e.id === queuedAttackTargetId);
+    if (enemy && playerFireCd.value <= 0) {
+      const ang = Math.atan2(enemy.pos.y - p.pos.y, enemy.pos.x - p.pos.x);
+      const stats = effectiveStats();
+      fireProjectile("player", p.pos.x, p.pos.y, ang, stats.damage, "#ff5c6c", 4);
+      playerFireCd.value = Math.max(0.10, 0.45 / stats.fireRate);
+    }
+    queuedAttackTargetId = null;
+  }
 
   // ── Update drones (mode-aware: orbit/forward/defensive)
   const droneCount = p.drones.length;

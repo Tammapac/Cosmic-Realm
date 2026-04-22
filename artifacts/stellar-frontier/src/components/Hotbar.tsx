@@ -1,5 +1,6 @@
-import { useGame, useConsumable } from "../game/store";
+import { useGame, useConsumable, state, bump, pushNotification } from "../game/store";
 import { CONSUMABLE_DEFS } from "../game/types";
+import { effectiveStats, queueAttackTarget } from "../game/loop";
 
 const SLOT_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8"];
 
@@ -11,8 +12,23 @@ export function Hotbar() {
   const repairBotUntil = useGame((s) => s.repairBotUntil);
   const tick = useGame((s) => s.tick);
   const docked = useGame((s) => s.dockedAt);
+  const selectedTarget = useGame((s) => s.selectedWorldTarget);
 
   if (docked) return null;
+
+  const attackSelectedTarget = () => {
+    if (!selectedTarget || selectedTarget.kind !== "enemy") {
+      pushNotification("Select an enemy first", "bad");
+      return;
+    }
+    const enemy = state.enemies.find((e) => e.id === selectedTarget.id);
+    if (!enemy) {
+      pushNotification("Target lost", "bad");
+      return;
+    }
+    queueAttackTarget(enemy.id);
+    bump();
+  };
 
   return (
     <div
@@ -27,6 +43,24 @@ export function Hotbar() {
         pointerEvents: "auto",
       }}
     >
+      <button
+        onClick={attackSelectedTarget}
+        title={selectedTarget?.kind === "enemy" ? `Attack ${selectedTarget.name}` : "Select an enemy first"}
+        style={{
+          width: 78,
+          height: 52,
+          border: "2px solid #ff3b4d",
+          background: "#24070b",
+          borderRadius: 4,
+          color: "#ffb3bb",
+          fontFamily: "'Courier New', monospace",
+          fontWeight: "bold",
+          cursor: "pointer",
+          boxShadow: "0 0 10px #ff3b4d55",
+        }}
+      >
+        ATTACK
+      </button>
       {hotbar.map((id, i) => {
         const def = id ? CONSUMABLE_DEFS[id] : null;
         const count = id ? (consumables[id] ?? 0) : 0;

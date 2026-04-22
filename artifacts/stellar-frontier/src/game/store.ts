@@ -100,6 +100,7 @@ export type GameState = {
     name: string;
     detail: string;
   } | null;
+  attackTargetId: string | null;
 };
 
 const STORAGE_KEY = "stellar-frontier-save-v5";
@@ -185,6 +186,7 @@ function makeInitialPlayer(): Player {
     dungeonClears: {},
     dungeonBestTimes: {},
     selectedWorldTarget: null,
+    attackTargetId: null,
   };
 }
 
