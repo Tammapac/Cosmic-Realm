@@ -133,7 +133,17 @@ export type ResourceId =
   | "fuel-cell"
   | "contraband"
   | "relic"
-  | "exotic";
+  | "exotic"
+  | "artifacts"
+  | "spice"
+  | "silk"
+  | "ore"
+  | "data-core"
+  | "cloning-gel"
+  | "medical-serum"
+  | "fusion-lattice"
+  | "star-map"
+  | "blackglass";
 
 export type Resource = {
   id: ResourceId;
@@ -886,6 +896,16 @@ export const RESOURCES: Record<ResourceId, Resource> = {
   contraband:  { id: "contraband",  name: "Contraband",       basePrice: 180, glyph: "☠", color: "#ff4466", description: "Illegal goods. Huge profit if you can dodge the law." },
   relic:       { id: "relic",       name: "Ancient Relic",    basePrice: 380, glyph: "⌘", color: "#ddcc00", description: "Priceless historical artifacts. Only the deepest vaults hold them." },
   exotic:      { id: "exotic",      name: "Exotic Matter",    basePrice: 500, glyph: "✧", color: "#ff44cc", description: "Unstable matter from beyond the Abyss. Worth fortunes." },
+  artifacts:   { id: "artifacts",   name: "Alien Artifacts",  basePrice: 260, glyph: "⟠", color: "#d4b0ff", description: "Recovered relics from dead civilizations. Dealers pay well." },
+  spice:       { id: "spice",       name: "Solar Spice",      basePrice: 34,  glyph: "⚘", color: "#ffb36b", description: "A luxury export prized by outer-rim markets and traders." },
+  silk:        { id: "silk",        name: "Void Silk",        basePrice: 88,  glyph: "≋", color: "#e4e7ff", description: "Rare woven fibers harvested from deep-space organisms." },
+  ore:         { id: "ore",         name: "Refined Ore",      basePrice: 22,  glyph: "▰", color: "#d8a26b", description: "Processed ore ready for shipyard fabrication." },
+  "data-core": { id: "data-core",   name: "Data Core",        basePrice: 155, glyph: "⌂", color: "#66ddff", description: "Encrypted navigation data and corporate secrets." },
+  "cloning-gel": { id: "cloning-gel", name: "Cloning Gel",     basePrice: 140, glyph: "◌", color: "#88ffcc", description: "Medical growth medium used by high-end clinics." },
+  "medical-serum": { id: "medical-serum", name: "Medical Serum", basePrice: 72, glyph: "✚", color: "#ff9da0", description: "Advanced field treatment for frontier hospitals." },
+  "fusion-lattice": { id: "fusion-lattice", name: "Fusion Lattice", basePrice: 210, glyph: "⧉", color: "#ffee88", description: "Precision reactor parts for elite shipyards." },
+  "star-map": { id: "star-map", name: "Star Map", basePrice: 120, glyph: "✦", color: "#7ad8ff", description: "Chart fragments that improve route planning." },
+  blackglass:  { id: "blackglass",  name: "Blackglass",       basePrice: 310, glyph: "▣", color: "#9a88ff", description: "Dark translucent material used in luxury hull design." },
 };
 
 export const STATIONS: Station[] = [
@@ -893,59 +913,59 @@ export const STATIONS: Station[] = [
   { id: "helix",   name: "Helix Station",  pos: { x: 0, y: 0 },     zone: "alpha",   kind: "hub",
     description: "Capital hub of the Alpha Frontier.", controlledBy: "aurora",
     prices: { scrap: 1.0, plasma: 1.0, iron: 0.95, synth: 0.9, medpack: 1.1, lumenite: 1.0, warp: 1.1, void: 1.2, dread: 1.1, quantum: 1.0,
-              food: 0.7, medicine: 0.8, luxury: 1.4, "fuel-cell": 0.8, "bio-matter": 1.2 } },
+              food: 0.7, medicine: 0.8, luxury: 1.4, "fuel-cell": 0.8, "bio-matter": 1.2, spice: 0.85, "data-core": 1.3 } },
   { id: "iron-belt", name: "Iron Belt Refinery", pos: { x: -1800, y: -400 }, zone: "alpha", kind: "mining",
     description: "Refinery sitting on a rich mineral belt.", controlledBy: "aurora",
     prices: { iron: 0.6, lumenite: 0.7, scrap: 1.2, synth: 1.0, medpack: 1.1, plasma: 1.05,
-              food: 0.6, "fuel-cell": 0.7, medicine: 1.2 } },
+              food: 0.6, "fuel-cell": 0.7, medicine: 1.2, ore: 0.65, "star-map": 1.25 } },
   // nebula
   { id: "veiled",   name: "Veiled Outpost", pos: { x: 400, y: -1600 }, zone: "nebula",  kind: "outpost",
     description: "A mining outpost run by a raider truce.", controlledBy: "syndicate",
     prices: { plasma: 0.7, warp: 0.85, scrap: 1.2, synth: 1.15, medpack: 1.2, void: 1.3,
-              food: 1.3, medicine: 1.4, nanite: 0.8, "bio-matter": 0.7, luxury: 1.6 } },
+              food: 1.3, medicine: 1.4, nanite: 0.8, "bio-matter": 0.7, luxury: 1.6, silk: 0.75, artifacts: 1.2 } },
   { id: "azure-port", name: "Azure Trade Port", pos: { x: -1200, y: -2400 }, zone: "nebula", kind: "trade",
     description: "Bustling free-port. Buys high, sells fair.", controlledBy: "syndicate",
     prices: { quantum: 0.7, lumenite: 0.85, dread: 0.9, void: 0.95, plasma: 1.2, warp: 1.25, iron: 1.15, scrap: 1.25,
-              luxury: 0.7, precursor: 1.5, relic: 1.6, food: 1.5, medicine: 1.3, nanite: 1.4 } },
+              luxury: 0.7, precursor: 1.5, relic: 1.6, food: 1.5, medicine: 1.3, nanite: 1.4, blackglass: 0.8, "data-core": 0.9 } },
   // crimson
   { id: "ember",    name: "Ember Citadel",  pos: { x: -1200, y: 800 },  zone: "crimson", kind: "military",
     description: "Crimson Reach naval citadel. Premium for war goods.", controlledBy: "crimson",
     prices: { dread: 1.3, warp: 1.3, plasma: 1.4, medpack: 0.85, synth: 0.95, quantum: 1.2,
-              food: 1.6, medicine: 0.7, "fuel-cell": 1.5, contraband: 0.6 } },
+              food: 1.6, medicine: 0.7, "fuel-cell": 1.5, contraband: 0.6, blackglass: 0.7, "fusion-lattice": 0.9 } },
   { id: "scarlet-yard", name: "Scarlet Shipyards", pos: { x: 2200, y: 1600 }, zone: "crimson", kind: "trade",
     description: "Capital ship construction yards.", controlledBy: "crimson",
     prices: { iron: 1.4, scrap: 1.35, lumenite: 1.2, plasma: 1.1, dread: 0.85,
-              nanite: 1.5, "fuel-cell": 1.3, food: 1.5, luxury: 1.7 } },
+              nanite: 1.5, "fuel-cell": 1.3, food: 1.5, luxury: 1.7, ore: 1.15, "fusion-lattice": 1.05 } },
   // void
   { id: "echo",     name: "Echo Anchorage", pos: { x: 0, y: -600 },    zone: "void",    kind: "outpost",
     description: "Last refuge in The Void.", controlledBy: "syndicate",
     prices: { void: 0.6, dread: 1.2, quantum: 1.4, medpack: 1.3, synth: 1.2,
-              contraband: 0.5, relic: 0.7, exotic: 0.8, food: 1.8, medicine: 1.6 } },
+              contraband: 0.5, relic: 0.7, exotic: 0.8, food: 1.8, medicine: 1.6, "medical-serum": 0.85, "cloning-gel": 0.75 } },
   { id: "obsidian-port", name: "Obsidian Free Port", pos: { x: 1800, y: 1200 }, zone: "void", kind: "trade",
     description: "A trade haven for ghosts and smugglers.", controlledBy: "syndicate",
     prices: { quantum: 0.55, void: 1.4, dread: 1.4, lumenite: 1.3, warp: 1.2,
-              contraband: 0.4, luxury: 0.6, relic: 0.65, precursor: 0.7, food: 1.9, exotic: 1.5 } },
+              contraband: 0.4, luxury: 0.6, relic: 0.65, precursor: 0.7, food: 1.9, exotic: 1.5, artifacts: 0.7, "data-core": 0.75 } },
   // forge
   { id: "ironclad",    name: "Ironclad Bastion",   pos: { x: 0, y: 0 },       zone: "forge",    kind: "military",
     description: "Heavily fortified military hub. Sells advanced weapons at a premium.", controlledBy: "crimson",
     prices: { dread: 1.5, warp: 1.4, plasma: 1.6, iron: 0.7, scrap: 0.8, lumenite: 1.0, quantum: 1.3 } },
   { id: "forge-gate",  name: "Forge Gate Depot",   pos: { x: -1600, y: 1800 },  zone: "forge",    kind: "trade",
     description: "Industrial depot trading raw ore and components.", controlledBy: "syndicate",
-    prices: { iron: 0.5, scrap: 0.6, lumenite: 0.75, quantum: 0.9, dread: 1.2, void: 1.3 } },
+    prices: { iron: 0.5, scrap: 0.6, lumenite: 0.75, quantum: 0.9, dread: 1.2, void: 1.3, blackglass: 0.6, ore: 0.55 } },
   // corona
   { id: "solar-haven", name: "Solar Haven",         pos: { x: 800, y: -1200 }, zone: "corona",   kind: "outpost",
     description: "Heat-shielded station orbiting the corona. Rare energy crystals for sale.", controlledBy: "aurora",
-    prices: { lumenite: 0.5, plasma: 0.6, warp: 0.8, void: 1.2, dread: 1.3, quantum: 1.0 } },
+    prices: { lumenite: 0.5, plasma: 0.6, warp: 0.8, void: 1.2, dread: 1.3, quantum: 1.0, "star-map": 0.7, "fusion-lattice": 0.75 } },
   { id: "corona-mkt",  name: "Corona Market",       pos: { x: 2000, y: 1200 }, zone: "corona",   kind: "trade",
     description: "Black-market hub. Strange goods at strange prices.", controlledBy: "syndicate",
-    prices: { quantum: 0.6, void: 0.7, dread: 1.1, plasma: 1.3, lumenite: 1.2, iron: 1.5 } },
+    prices: { quantum: 0.6, void: 0.7, dread: 1.1, plasma: 1.3, lumenite: 1.2, iron: 1.5, artifacts: 0.8, relic: 0.9 } },
   // fracture
   { id: "rift-base",   name: "Rift Base Omega",     pos: { x: -1000, y: 800 }, zone: "fracture", kind: "military",
     description: "Last militarized foothold before the Abyss. Legendary gear.", controlledBy: "crimson",
-    prices: { dread: 2.0, warp: 1.8, plasma: 2.0, medpack: 0.7, quantum: 1.5, void: 1.6 } },
+    prices: { dread: 2.0, warp: 1.8, plasma: 2.0, medpack: 0.7, quantum: 1.5, void: 1.6, blackglass: 0.55, precursor: 1.2 } },
   { id: "null-post",   name: "Null-Point Station",  pos: { x: 1400, y: -1800 }, zone: "fracture", kind: "outpost",
     description: "Barely functional outpost in folded space.", controlledBy: "syndicate",
-    prices: { void: 0.5, quantum: 0.7, dread: 1.4, lumenite: 1.5, synth: 1.3 } },
+    prices: { void: 0.5, quantum: 0.7, dread: 1.4, lumenite: 1.5, synth: 1.3, "data-core": 0.8, "medical-serum": 0.9 } },
   // abyss
   { id: "void-heart",  name: "Void Heart Station",  pos: { x: 0, y: 0 },      zone: "abyss",    kind: "outpost",
     description: "The deepest station in known space. No questions asked.", controlledBy: "syndicate",
