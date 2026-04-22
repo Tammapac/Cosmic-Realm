@@ -453,124 +453,302 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
     ctx.restore();
   }
   const c = e.color;
-  const dk = shadeHex(c, -0.45);
+  const dk = shadeHex(c, -0.5);
   const hi = "#ffffff";
   const s = e.size / 10;
-  const pulse = 1 + Math.sin(state.tick * 4 + e.size) * 0.06;
+  const t = state.tick;
+  const pulse = 1 + Math.sin(t * 3.5 + e.size * 0.7) * 0.07;
+
   if (e.type === "scout") {
+    // Wasp: narrow stinger body, swept delta wings, split tail fork
     ctx.fillStyle = c;
     ctx.beginPath();
-    ctx.moveTo(0, -10 * s * pulse);
-    ctx.quadraticCurveTo(6 * s, -5 * s, 5 * s, 2 * s);
-    ctx.quadraticCurveTo(0, 10 * s, -5 * s, 2 * s);
-    ctx.quadraticCurveTo(-6 * s, -5 * s, 0, -10 * s);
+    ctx.moveTo(0, -11 * s * pulse);        // nose tip
+    ctx.lineTo(2.5 * s, -2 * s);
+    ctx.lineTo(3 * s, 7 * s);             // body right
+    ctx.lineTo(0, 9 * s);                 // tail center
+    ctx.lineTo(-3 * s, 7 * s);            // body left
+    ctx.lineTo(-2.5 * s, -2 * s);
+    ctx.closePath();
     ctx.fill();
+    // swept delta wings
+    ctx.beginPath();
+    ctx.moveTo(2 * s, 2 * s);
+    ctx.lineTo(12 * s, -2 * s);
+    ctx.lineTo(9 * s, 5 * s);
+    ctx.lineTo(3 * s, 5 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-2 * s, 2 * s);
+    ctx.lineTo(-12 * s, -2 * s);
+    ctx.lineTo(-9 * s, 5 * s);
+    ctx.lineTo(-3 * s, 5 * s);
+    ctx.closePath();
+    ctx.fill();
+    // tail fork prongs
     ctx.fillStyle = dk;
     ctx.beginPath();
-    ctx.ellipse(0, 3 * s, 3.5 * s, 5 * s, 0, 0, Math.PI * 2);
+    ctx.moveTo(1.5 * s, 7 * s);
+    ctx.lineTo(4 * s, 13 * s);
+    ctx.lineTo(0, 11 * s);
+    ctx.closePath();
     ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-1.5 * s, 7 * s);
+    ctx.lineTo(-4 * s, 13 * s);
+    ctx.lineTo(0, 11 * s);
+    ctx.closePath();
+    ctx.fill();
+    // cockpit eye
     ctx.fillStyle = hi;
     ctx.beginPath();
-    ctx.arc(0, -1.5 * s, 1.4 * s, 0, Math.PI * 2);
+    ctx.ellipse(0, -4 * s, 1.2 * s, 1.8 * s, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = c;
-    ctx.lineWidth = 2;
+    // wing stripe
+    ctx.strokeStyle = hi;
+    ctx.lineWidth = 0.8;
+    ctx.globalAlpha = 0.35;
     ctx.beginPath();
-    ctx.moveTo(-4 * s, -1 * s);
-    ctx.quadraticCurveTo(-8 * s, -4 * s, -10 * s, 1 * s);
-    ctx.moveTo(4 * s, -1 * s);
-    ctx.quadraticCurveTo(8 * s, -4 * s, 10 * s, 1 * s);
+    ctx.moveTo(3 * s, 1 * s); ctx.lineTo(10 * s, -1 * s);
+    ctx.moveTo(-3 * s, 1 * s); ctx.lineTo(-10 * s, -1 * s);
     ctx.stroke();
+    ctx.globalAlpha = 1;
+
   } else if (e.type === "raider") {
+    // Hammerhead: wide flat crescent front, twin engine pods, swept top fin
+    const swing = Math.sin(t * 4 + e.size) * s * 0.4;
     ctx.fillStyle = c;
+    // main crescent body
     ctx.beginPath();
-    ctx.moveTo(0, -11 * s * pulse);
-    ctx.quadraticCurveTo(8 * s, -8 * s, 7 * s, 0);
-    ctx.quadraticCurveTo(5 * s, 10 * s, 0, 11 * s);
-    ctx.quadraticCurveTo(-5 * s, 10 * s, -7 * s, 0);
-    ctx.quadraticCurveTo(-8 * s, -8 * s, 0, -11 * s);
+    ctx.moveTo(0, -7 * s * pulse);
+    ctx.quadraticCurveTo(14 * s, -5 * s, 13 * s, 2 * s);
+    ctx.quadraticCurveTo(8 * s, 6 * s, 0, 5 * s);
+    ctx.quadraticCurveTo(-8 * s, 6 * s, -13 * s, 2 * s);
+    ctx.quadraticCurveTo(-14 * s, -5 * s, 0, -7 * s);
     ctx.fill();
+    // top dorsal fin
     ctx.fillStyle = dk;
     ctx.beginPath();
-    ctx.ellipse(-6 * s, 0, 2.4 * s, 5 * s, -0.25, 0, Math.PI * 2);
+    ctx.moveTo(0, -7 * s);
+    ctx.lineTo(2.5 * s, -13 * s + swing);
+    ctx.lineTo(-2.5 * s, -13 * s + swing);
+    ctx.closePath();
+    ctx.fill();
+    // engine pods
+    ctx.fillStyle = dk;
+    ctx.beginPath();
+    ctx.ellipse(9 * s, 3 * s, 3.5 * s, 2 * s, 0.3, 0, Math.PI * 2);
     ctx.fill();
     ctx.beginPath();
-    ctx.ellipse(6 * s, 0, 2.4 * s, 5 * s, 0.25, 0, Math.PI * 2);
+    ctx.ellipse(-9 * s, 3 * s, 3.5 * s, 2 * s, -0.3, 0, Math.PI * 2);
     ctx.fill();
+    // engine glows
+    ctx.fillStyle = c;
+    ctx.globalAlpha = 0.6 + 0.4 * Math.sin(t * 6 + e.size);
+    ctx.beginPath();
+    ctx.ellipse(9 * s, 5.5 * s, 1.5 * s, 1 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(-9 * s, 5.5 * s, 1.5 * s, 1 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    // sensor strip
     ctx.fillStyle = hi;
     ctx.beginPath();
-    ctx.arc(0, -2 * s, 1.6 * s, 0, Math.PI * 2);
+    ctx.rect(-5 * s, -8.5 * s, 10 * s, 1.2 * s);
     ctx.fill();
+    // bridge dome
+    ctx.fillStyle = hi;
+    ctx.beginPath();
+    ctx.ellipse(0, -3 * s, 1.5 * s, 1 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+
   } else if (e.type === "destroyer") {
+    // Armored crab: wide hexagonal shell, massive claw arms, armored plating
     ctx.fillStyle = c;
+    // main hex shell
     ctx.beginPath();
-    ctx.moveTo(0, -13 * s * pulse);
-    ctx.quadraticCurveTo(10 * s, -9 * s, 13 * s, -1 * s);
-    ctx.quadraticCurveTo(15 * s, 7 * s, 8 * s, 12 * s);
-    ctx.quadraticCurveTo(0, 14 * s, -8 * s, 12 * s);
-    ctx.quadraticCurveTo(-15 * s, 7 * s, -13 * s, -1 * s);
-    ctx.quadraticCurveTo(-10 * s, -9 * s, 0, -13 * s);
+    ctx.moveTo(0, -14 * s * pulse);
+    ctx.lineTo(10 * s, -9 * s);
+    ctx.lineTo(13 * s, 2 * s);
+    ctx.lineTo(7 * s, 11 * s);
+    ctx.lineTo(-7 * s, 11 * s);
+    ctx.lineTo(-13 * s, 2 * s);
+    ctx.lineTo(-10 * s, -9 * s);
+    ctx.closePath();
     ctx.fill();
+    // shoulder armor plates
     ctx.fillStyle = dk;
     ctx.beginPath();
-    ctx.ellipse(-10 * s, 2 * s, 4 * s, 6 * s, -0.35, 0, Math.PI * 2);
+    ctx.moveTo(10 * s, -9 * s);
+    ctx.lineTo(18 * s, -6 * s);
+    ctx.lineTo(16 * s, 2 * s);
+    ctx.lineTo(13 * s, 2 * s);
+    ctx.closePath();
     ctx.fill();
     ctx.beginPath();
-    ctx.ellipse(10 * s, 2 * s, 4 * s, 6 * s, 0.35, 0, Math.PI * 2);
+    ctx.moveTo(-10 * s, -9 * s);
+    ctx.lineTo(-18 * s, -6 * s);
+    ctx.lineTo(-16 * s, 2 * s);
+    ctx.lineTo(-13 * s, 2 * s);
+    ctx.closePath();
     ctx.fill();
+    // pincer tips
+    ctx.fillStyle = c;
+    ctx.beginPath();
+    ctx.moveTo(16 * s, -6 * s);
+    ctx.lineTo(21 * s, -10 * s);
+    ctx.lineTo(20 * s, -3 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-16 * s, -6 * s);
+    ctx.lineTo(-21 * s, -10 * s);
+    ctx.lineTo(-20 * s, -3 * s);
+    ctx.closePath();
+    ctx.fill();
+    // central armor ridge
+    ctx.fillStyle = dk;
+    ctx.beginPath();
+    ctx.ellipse(0, -2 * s, 4 * s, 8 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // command eye
     ctx.fillStyle = hi;
     ctx.beginPath();
-    ctx.ellipse(0, -2 * s, 2.3 * s, 3.5 * s, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, -4 * s, 2 * s, 3 * s, 0, 0, Math.PI * 2);
     ctx.fill();
+    ctx.fillStyle = c;
+    ctx.beginPath();
+    ctx.ellipse(0, -4 * s, 0.8 * s, 1.2 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+
   } else if (e.type === "voidling") {
+    // Jellyfish: translucent dome, glowing core, writhing tentacles
+    const wave = Math.sin(t * 3 + e.size);
+    // dome
     ctx.fillStyle = c;
+    ctx.globalAlpha = 0.75;
     ctx.beginPath();
-    ctx.moveTo(0, -12 * s * pulse);
-    ctx.quadraticCurveTo(9 * s, -10 * s, 11 * s, -2 * s);
-    ctx.quadraticCurveTo(13 * s, 6 * s, 5 * s, 10 * s);
-    ctx.quadraticCurveTo(0, 13 * s, -5 * s, 10 * s);
-    ctx.quadraticCurveTo(-13 * s, 6 * s, -11 * s, -2 * s);
-    ctx.quadraticCurveTo(-9 * s, -10 * s, 0, -12 * s);
+    ctx.arc(0, -2 * s, 9 * s * pulse, Math.PI, 0);
+    ctx.quadraticCurveTo(9 * s, 4 * s, 5 * s, 6 * s);
+    ctx.quadraticCurveTo(0, 8 * s, -5 * s, 6 * s);
+    ctx.quadraticCurveTo(-9 * s, 4 * s, -9 * s, -2 * s);
+    ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = dk;
+    ctx.globalAlpha = 1;
+    // inner ring highlight
+    ctx.strokeStyle = hi;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.3;
     ctx.beginPath();
-    ctx.ellipse(-4.5 * s, -1 * s, 2.5 * s, 4.5 * s, -0.2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(4.5 * s, -1 * s, 2.5 * s, 4.5 * s, 0.2, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.arc(0, -3 * s, 5.5 * s, Math.PI, 0);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    // glowing core nucleus
     ctx.fillStyle = hi;
     ctx.beginPath();
-    ctx.ellipse(0, -1 * s, 3 * s, 4.2 * s, 0, 0, Math.PI * 2);
+    ctx.arc(0, -2 * s, 2.5 * s, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "#000000";
+    ctx.fillStyle = c;
     ctx.beginPath();
-    ctx.arc(0, -1 * s, 0.9 * s, 0, Math.PI * 2);
+    ctx.arc(0, -2 * s, 1.4 * s, 0, Math.PI * 2);
     ctx.fill();
+    ctx.fillStyle = "#000";
+    ctx.beginPath();
+    ctx.arc(0, -2 * s, 0.6 * s, 0, Math.PI * 2);
+    ctx.fill();
+    // tentacles
+    ctx.strokeStyle = c;
+    ctx.lineWidth = 1.5;
+    const tenX = [-6, -3.5, -1, 1, 3.5, 6];
+    for (let i = 0; i < tenX.length; i++) {
+      const ox = tenX[i] * s;
+      const wv = Math.sin(t * 4 + i * 1.1) * 3 * s;
+      ctx.beginPath();
+      ctx.moveTo(ox, 6 * s);
+      ctx.quadraticCurveTo(ox + wv, 11 * s, ox + wv * 0.5, 16 * s);
+      ctx.stroke();
+    }
+
   } else {
+    // Dread — colossal leviathan: segmented multi-body, fin rows, massive glow reactor
+    const breathe = 1 + Math.sin(t * 2 + e.size * 0.3) * 0.04;
+    // main fuselage
     ctx.fillStyle = c;
     ctx.beginPath();
-    ctx.moveTo(0, -16 * s * pulse);
-    ctx.quadraticCurveTo(12 * s, -12 * s, 16 * s, -3 * s);
-    ctx.quadraticCurveTo(18 * s, 7 * s, 11 * s, 13 * s);
-    ctx.quadraticCurveTo(0, 15 * s, -11 * s, 13 * s);
-    ctx.quadraticCurveTo(-18 * s, 7 * s, -16 * s, -3 * s);
-    ctx.quadraticCurveTo(-12 * s, -12 * s, 0, -16 * s);
+    ctx.moveTo(0, -18 * s * breathe);
+    ctx.quadraticCurveTo(8 * s, -16 * s, 10 * s, -8 * s);
+    ctx.lineTo(12 * s, 2 * s);
+    ctx.lineTo(9 * s, 14 * s);
+    ctx.lineTo(0, 17 * s);
+    ctx.lineTo(-9 * s, 14 * s);
+    ctx.lineTo(-12 * s, 2 * s);
+    ctx.lineTo(-10 * s, -8 * s);
+    ctx.quadraticCurveTo(-8 * s, -16 * s, 0, -18 * s);
     ctx.fill();
+    // side wing slabs
     ctx.fillStyle = dk;
     ctx.beginPath();
-    ctx.ellipse(-11 * s, 2 * s, 5 * s, 7 * s, -0.2, 0, Math.PI * 2);
+    ctx.moveTo(10 * s, -8 * s);
+    ctx.lineTo(20 * s, -12 * s);
+    ctx.lineTo(22 * s, 4 * s);
+    ctx.lineTo(12 * s, 6 * s);
+    ctx.closePath();
     ctx.fill();
     ctx.beginPath();
-    ctx.ellipse(11 * s, 2 * s, 5 * s, 7 * s, 0.2, 0, Math.PI * 2);
+    ctx.moveTo(-10 * s, -8 * s);
+    ctx.lineTo(-20 * s, -12 * s);
+    ctx.lineTo(-22 * s, 4 * s);
+    ctx.lineTo(-12 * s, 6 * s);
+    ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = "#ff9a2d";
+    // mid spar fins
+    ctx.fillStyle = shadeHex(c, -0.25);
     ctx.beginPath();
-    ctx.ellipse(0, -3 * s, 4 * s, 7.5 * s, 0, 0, Math.PI * 2);
+    ctx.moveTo(12 * s, -3 * s);
+    ctx.lineTo(26 * s, -5 * s);
+    ctx.lineTo(24 * s, 2 * s);
+    ctx.lineTo(12 * s, 2 * s);
+    ctx.closePath();
     ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-12 * s, -3 * s);
+    ctx.lineTo(-26 * s, -5 * s);
+    ctx.lineTo(-24 * s, 2 * s);
+    ctx.lineTo(-12 * s, 2 * s);
+    ctx.closePath();
+    ctx.fill();
+    // rear tail fins
+    ctx.fillStyle = dk;
+    ctx.beginPath();
+    ctx.moveTo(7 * s, 12 * s);
+    ctx.lineTo(14 * s, 20 * s);
+    ctx.lineTo(2 * s, 17 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-7 * s, 12 * s);
+    ctx.lineTo(-14 * s, 20 * s);
+    ctx.lineTo(-2 * s, 17 * s);
+    ctx.closePath();
+    ctx.fill();
+    // pulsing reactor core
+    const reactorGlow = 0.7 + 0.3 * Math.sin(t * 5);
+    ctx.fillStyle = "#ffcc44";
+    ctx.globalAlpha = reactorGlow;
+    ctx.beginPath();
+    ctx.ellipse(0, -4 * s, 4.5 * s, 8 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
     ctx.fillStyle = hi;
     ctx.beginPath();
-    ctx.arc(0, -2.5 * s, 1.7 * s, 0, Math.PI * 2);
+    ctx.ellipse(0, -5 * s, 2.5 * s, 5 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // bridge slit
+    ctx.fillStyle = "#000";
+    ctx.beginPath();
+    ctx.rect(-3 * s, -12 * s, 6 * s, 1.5 * s);
     ctx.fill();
   }
   // hit flash overlay

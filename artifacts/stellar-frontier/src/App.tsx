@@ -10,6 +10,7 @@ import { FactionPicker } from "./components/FactionPicker";
 import { IdleRewardModal } from "./components/IdleRewardModal";
 import { EventBanners } from "./components/EventBanners";
 import { Hotbar } from "./components/Hotbar";
+import { QuestTracker } from "./components/QuestTracker";
 import { DUNGEONS, STATIONS, PORTALS, ZONES, MODULE_DEFS, ROCKET_AMMO_TYPE_DEFS, RocketAmmoType } from "./game/types";
 import { travelToZone } from "./game/store";
 
@@ -400,6 +401,7 @@ export default function App() {
       <DockPrompt />
       <Notifications />
       <DungeonHud />
+      <QuestTracker />
       <AmmoHud />
       {showSocial && <SocialPanel />}
       <ClanPanel />
