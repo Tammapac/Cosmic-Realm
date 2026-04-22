@@ -11,10 +11,14 @@ export function Hotbar() {
   const afterburnUntil = useGame((s) => s.afterburnUntil);
   const repairBotUntil = useGame((s) => s.repairBotUntil);
   const tick = useGame((s) => s.tick);
+  const attackCooldownUntil = useGame((s) => s.attackCooldownUntil);
+  const attackCooldownDuration = useGame((s) => s.attackCooldownDuration);
   const docked = useGame((s) => s.dockedAt);
   const selectedTarget = useGame((s) => s.selectedWorldTarget);
 
   if (docked) return null;
+
+  const attackOnCooldown = tick < attackCooldownUntil;
 
   const attackSelectedTarget = () => {
     if (!selectedTarget || selectedTarget.kind !== "enemy") {
@@ -47,18 +51,32 @@ export function Hotbar() {
         onClick={attackSelectedTarget}
         title={selectedTarget?.kind === "enemy" ? `Attack ${selectedTarget.name}` : "Select an enemy first"}
         style={{
+          position: "relative",
           width: 78,
           height: 52,
-          border: "2px solid #ff3b4d",
-          background: "#24070b",
+          border: `2px solid ${attackOnCooldown ? "#7a1a22" : "#ff3b4d"}`,
+          background: attackOnCooldown ? "#14040a" : "#24070b",
           borderRadius: 4,
-          color: "#ffb3bb",
+          color: attackOnCooldown ? "#7a3a44" : "#ffb3bb",
           fontFamily: "'Courier New', monospace",
           fontWeight: "bold",
-          cursor: "pointer",
-          boxShadow: "0 0 10px #ff3b4d55",
+          cursor: attackOnCooldown ? "not-allowed" : "pointer",
+          boxShadow: attackOnCooldown ? "none" : "0 0 10px #ff3b4d55",
+          overflow: "hidden",
+          transition: "border-color 0.07s, background 0.07s, color 0.07s",
         }}
       >
+        {attackOnCooldown && (
+          <div style={{
+            position: "absolute",
+            bottom: 0,
+            left: 0,
+            height: 3,
+            background: "#ff3b4d",
+            width: `${Math.max(0, Math.min(100, (1 - (attackCooldownUntil - tick) / Math.max(0.01, attackCooldownDuration)) * 100))}%`,
+            transition: "width 0.05s linear",
+          }} />
+        )}
         ATTACK
       </button>
       {hotbar.map((id, i) => {

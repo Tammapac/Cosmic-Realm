@@ -75,6 +75,7 @@ function GameCanvas() {
       };
       state.attackTargetId = enemy.id;
       state.cameraTarget = { x: enemy.pos.x, y: enemy.pos.y };
+      state.miningTargetId = null; // stop mining laser when locking onto an enemy
       bump();
       return;
     }

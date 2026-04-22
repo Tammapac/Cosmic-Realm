@@ -692,6 +692,10 @@ function tickWorld(dt: number): void {
   if (state.levelUpFlash > 0) state.levelUpFlash = Math.max(0, state.levelUpFlash - dt);
   if (state.playerDeathFlash > 0) state.playerDeathFlash = Math.max(0, state.playerDeathFlash - dt);
   if (state.cameraShake > 0) state.cameraShake = Math.max(0, state.cameraShake - dt * 1.6);
+  if (state.combatLaserFlash) {
+    state.combatLaserFlash.ttl -= dt;
+    if (state.combatLaserFlash.ttl <= 0) state.combatLaserFlash = null;
+  }
 
   // ── Respawn timer: fire actual respawn logic after explosion delay ────
   if (state.playerRespawnTimer > 0) {
@@ -954,7 +958,11 @@ function tickWorld(dt: number): void {
         if (weaponId && (p.ammo[weaponId] ?? 0) > 0) {
           p.ammo[weaponId] -= 1;
           fireProjectile("player", p.pos.x, p.pos.y, ang, stats.damage, "#4ee2ff", 4);
-          playerFireCd.value = Math.max(0.10, 0.45 / stats.fireRate);
+          const cd = Math.max(0.10, 0.45 / stats.fireRate);
+          playerFireCd.value = cd;
+          state.attackCooldownUntil = state.tick + cd;
+          state.attackCooldownDuration = cd;
+          state.combatLaserFlash = { enemyId: queuedAttackTargetId!, ttl: 0.14, maxTtl: 0.14 };
         } else {
           pushNotification("No X1 ammo loaded", "bad");
         }

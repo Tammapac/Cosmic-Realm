@@ -90,6 +90,9 @@ export type GameState = {
   repairBotUntil: number;        // gradual hull heal active until this game-time
   afterburnUntil: number;        // speed boost active until this game-time
   miningTargetId: string | null; // asteroid being mined (for beam visual)
+  combatLaserFlash: { enemyId: string; ttl: number; maxTtl: number } | null; // brief flash beam on attack fire
+  attackCooldownUntil: number;   // game-tick when attack cooldown expires
+  attackCooldownDuration: number; // total duration of last attack cooldown (for progress bar)
   hotbarCooldowns: number[];     // 8 slots, remaining cooldown seconds
   pendingRocketSalvo: number;    // rockets left to fire this tick
   pendingDronePod: boolean;      // spawn a temp combat drone
@@ -411,6 +414,9 @@ export const state: GameState = {
   repairBotUntil: 0,
   afterburnUntil: 0,
   miningTargetId: null,
+  combatLaserFlash: null,
+  attackCooldownUntil: 0,
+  attackCooldownDuration: 0.45,
   hotbarCooldowns: [0, 0, 0, 0, 0, 0, 0, 0],
   pendingRocketSalvo: 0,
   pendingDronePod: false,

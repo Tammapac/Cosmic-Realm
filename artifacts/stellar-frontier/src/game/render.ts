@@ -1654,6 +1654,36 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
     }
   }
 
+  // Combat laser flash (player → target enemy, brief on-shot beam)
+  if (state.combatLaserFlash) {
+    const clf = state.combatLaserFlash;
+    const te = state.enemies.find((e) => e.id === clf.enemyId);
+    if (te) {
+      const pp = state.player.pos;
+      const alpha = clf.ttl / clf.maxTtl;
+      ctx.save();
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.globalAlpha = alpha * 0.9;
+      ctx.shadowColor = "#4ee2ff";
+      ctx.shadowBlur = 20;
+      ctx.strokeStyle = "rgba(78,226,255,0.85)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(pp.x, pp.y);
+      ctx.lineTo(te.pos.x, te.pos.y);
+      ctx.stroke();
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 1.5;
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.moveTo(pp.x, pp.y);
+      ctx.lineTo(te.pos.x, te.pos.y);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   // Player ship
   const p = state.player;
   // shield ring when shield > 0
