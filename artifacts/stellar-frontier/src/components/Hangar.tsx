@@ -670,6 +670,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
                     </div>
                     <div className="text-mute text-[9px] leading-tight">{def.description}</div>
                     {modStatPills(def.stats)}
+                    {def.weaponKind === "rocket" && <RocketAmmoBadge />}
                   </div>
                   <div className="flex flex-col gap-1">
                     {!isEquipped && (
