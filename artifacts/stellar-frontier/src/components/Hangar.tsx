@@ -1,6 +1,6 @@
 import { state, bump, useGame, pushNotification, save, stationPrice, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, restockAmmo, rocketAmmoMax, getRocketWeaponIds, ROCKET_AMMO_BASE, ROCKET_AMMO_COST_PER, ensureAmmoInitialized } from "../game/store";
 import {
-  ActiveQuest, CONSUMABLE_DEFS, ConsumableId, DRONE_DEFS, DroneKind, DroneMode, DUNGEONS, DungeonId, FACTIONS, MODULE_DEFS, ModuleSlot, RARITY_COLOR,
+  ActiveQuest, CONSUMABLE_DEFS, ConsumableId, DRONE_DEFS, DroneKind, DroneMode, DUNGEONS, DungeonId, FACTIONS, MODULE_DEFS, ModuleDef, ModuleSlot, ModuleStats, RARITY_COLOR,
   Quest, RESOURCES, ResourceId, SHIP_CLASSES, SKILL_NODES, STATIONS, ShipClassId, SkillBranch,
   SkillId,
 } from "../game/types";
@@ -183,6 +183,50 @@ function statChip(label: string, value: string, color: string) {
   );
 }
 
+type StatDiffEntry = { label: string; delta: number; formatted: string; isPercent?: boolean };
+
+function computeStatDiff(equipped: ModuleStats, shop: ModuleStats): StatDiffEntry[] {
+  const diffs: StatDiffEntry[] = [];
+  const num = (a?: number, b?: number) => (b ?? 0) - (a ?? 0);
+
+  const dmg = num(equipped.damage, shop.damage);
+  if (dmg !== 0) diffs.push({ label: "DMG", delta: dmg, formatted: `${dmg > 0 ? "+" : ""}${dmg}` });
+
+  if ((equipped.fireRate ?? 1) !== 1 || (shop.fireRate ?? 1) !== 1) {
+    const rDelta = (shop.fireRate ?? 1) - (equipped.fireRate ?? 1);
+    if (Math.abs(rDelta) > 0.001) diffs.push({ label: "RATE", delta: rDelta, formatted: `${rDelta > 0 ? "+" : ""}${rDelta.toFixed(2)}×` });
+  }
+
+  const crit = num(equipped.critChance, shop.critChance);
+  if (Math.abs(crit) > 0.0001) diffs.push({ label: "CRIT", delta: crit, formatted: `${crit > 0 ? "+" : ""}${Math.round(crit * 100)}%` });
+
+  const shd = num(equipped.shieldMax, shop.shieldMax);
+  if (shd !== 0) diffs.push({ label: "SHD", delta: shd, formatted: `${shd > 0 ? "+" : ""}${shd}` });
+
+  const reg = num(equipped.shieldRegen, shop.shieldRegen);
+  if (reg !== 0) diffs.push({ label: "REG", delta: reg, formatted: `${reg > 0 ? "+" : ""}${reg.toFixed(1)}` });
+
+  const hul = num(equipped.hullMax, shop.hullMax);
+  if (hul !== 0) diffs.push({ label: "HUL", delta: hul, formatted: `${hul > 0 ? "+" : ""}${hul}` });
+
+  const spd = num(equipped.speed, shop.speed);
+  if (spd !== 0) diffs.push({ label: "SPD", delta: spd, formatted: `${spd > 0 ? "+" : ""}${spd}` });
+
+  const dr = num(equipped.damageReduction, shop.damageReduction);
+  if (Math.abs(dr) > 0.0001) diffs.push({ label: "DR", delta: dr, formatted: `${dr > 0 ? "+" : ""}${Math.round(dr * 100)}%` });
+
+  const aoe = num(equipped.aoeRadius, shop.aoeRadius);
+  if (aoe !== 0) diffs.push({ label: "AOE", delta: aoe, formatted: `${aoe > 0 ? "+" : ""}${aoe}` });
+
+  const ammo = num(equipped.ammoCapacity, shop.ammoCapacity);
+  if (ammo !== 0) diffs.push({ label: "AMMO", delta: ammo, formatted: `${ammo > 0 ? "+" : ""}${ammo}` });
+
+  const loot = num(equipped.lootBonus, shop.lootBonus);
+  if (loot !== 0) diffs.push({ label: "LOOT", delta: loot, formatted: `${loot > 0 ? "+" : ""}${loot}` });
+
+  return diffs;
+}
+
 function modStatPills(stats: typeof MODULE_DEFS[string]["stats"]) {
   const pills: { k: string; v: string; c: string }[] = [];
   if (stats.damage)          pills.push({ k: "DMG", v: `+${stats.damage}`, c: "#ff5c6c" });
@@ -205,9 +249,9 @@ function modStatPills(stats: typeof MODULE_DEFS[string]["stats"]) {
 }
 
 function SlotCell({
-  slot, index, instanceId,
+  slot, index, instanceId, compareWithDef,
 }: {
-  slot: ModuleSlot; index: number; instanceId: string | null;
+  slot: ModuleSlot; index: number; instanceId: string | null; compareWithDef?: ModuleDef | null;
 }) {
   const player = useGame((s) => s.player);
   const item = instanceId ? player.inventory.find((m) => m.instanceId === instanceId) : null;
@@ -217,12 +261,29 @@ function SlotCell({
   const ammoCount = isRocket && instanceId ? (player.ammo[instanceId] ?? 0) : null;
   const ammoMax = isRocket ? rocketAmmoMax() : 0;
   const ammoLow = ammoCount !== null && ammoCount <= 5;
+
+  const isComparing = !!compareWithDef;
+  const diffs = isComparing && def ? computeStatDiff(def.stats, compareWithDef!.stats) : [];
+  const borderColor = isComparing ? "#ffd24a" : (def ? color : "var(--border-soft)");
+  const bgColor = isComparing ? "#ffd24a0d" : (def ? `${color}10` : "transparent");
+
   return (
     <div
       className="panel p-2 flex flex-col"
-      style={{ minHeight: 76, borderColor: def ? color : "var(--border-soft)", background: def ? `${color}10` : "transparent" }}
+      style={{
+        minHeight: 76,
+        borderColor,
+        background: bgColor,
+        outline: isComparing ? "1px solid #ffd24a33" : undefined,
+        transition: "border-color 0.15s, outline 0.15s",
+      }}
     >
-      <div className="text-[9px] tracking-widest text-mute">{slot.toUpperCase()} #{index + 1}</div>
+      <div className="flex items-center justify-between">
+        <div className="text-[9px] tracking-widest text-mute">{slot.toUpperCase()} #{index + 1}</div>
+        {isComparing && (
+          <span className="text-[8px] tracking-widest" style={{ color: "#ffd24a" }}>▶ COMPARE</span>
+        )}
+      </div>
       {def ? (
         <>
           <div className="flex items-center gap-1.5 mt-0.5">
@@ -239,6 +300,30 @@ function SlotCell({
               {ammoCount === 0 && <span className="text-[8px] font-bold" style={{ color: "#ff5c6c" }}>EMPTY</span>}
             </div>
           )}
+          {isComparing && diffs.length > 0 && (
+            <div className="mt-1.5 pt-1" style={{ borderTop: "1px dashed #ffd24a33" }}>
+              <div className="text-[8px] tracking-widest mb-0.5" style={{ color: "#ffd24a99" }}>IF REPLACED:</div>
+              <div className="flex flex-wrap gap-0.5">
+                {diffs.map((d, i) => (
+                  <span
+                    key={i}
+                    className="text-[8px] px-1 tracking-widest"
+                    style={{
+                      color: d.delta > 0 ? "#5cff8a" : "#ff5c6c",
+                      border: `1px solid ${d.delta > 0 ? "#5cff8a44" : "#ff5c6c44"}`,
+                    }}
+                  >
+                    {d.label} {d.formatted}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {isComparing && diffs.length === 0 && def && (
+            <div className="mt-1.5 pt-1" style={{ borderTop: "1px dashed #ffd24a33" }}>
+              <div className="text-[8px] tracking-widest" style={{ color: "#ffd24a99" }}>≈ SIMILAR STATS</div>
+            </div>
+          )}
           <button
             className="btn mt-auto self-start"
             style={{ padding: "2px 6px", fontSize: 9 }}
@@ -246,7 +331,9 @@ function SlotCell({
           >Unequip</button>
         </>
       ) : (
-        <div className="text-mute text-[9px] mt-1 italic">— empty slot —</div>
+        <div className="text-mute text-[9px] mt-1 italic">
+          {isComparing ? "⬡ open slot — shop module fits here" : "— empty slot —"}
+        </div>
       )}
     </div>
   );
@@ -259,6 +346,8 @@ function LoadoutTab({ stationId }: { stationId: string }) {
   const stats = effectiveStats();
   const [filter, setFilter] = useState<ModuleSlot | "all">("all");
   const [showShop, setShowShop] = useState(false);
+  const [hoveredShopDefId, setHoveredShopDefId] = useState<string | null>(null);
+  const hoveredShopDef = hoveredShopDefId ? MODULE_DEFS[hoveredShopDefId] ?? null : null;
 
   // Shop offer: 4 random buyable modules, capped to ones unlocked by ship tier-ish
   const shopPool = Object.values(MODULE_DEFS).filter((d) => d.tier <= Math.min(5, Math.max(1, Math.ceil(player.level / 4))));
@@ -269,16 +358,19 @@ function LoadoutTab({ stationId }: { stationId: string }) {
     return MODULE_DEFS[it.defId]?.slot === filter;
   });
 
-  const renderSlotRow = (slot: ModuleSlot, label: string, color: string) => (
-    <div>
-      <div className="text-[10px] tracking-widest mb-1" style={{ color }}>▶ {label} ({player.equipped[slot].length})</div>
-      <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${player.equipped[slot].length}, minmax(0, 1fr))` }}>
-        {player.equipped[slot].map((id, i) => (
-          <SlotCell key={`${slot}-${i}`} slot={slot} index={i} instanceId={id} />
-        ))}
+  const renderSlotRow = (slot: ModuleSlot, label: string, color: string) => {
+    const compareDef = showShop && hoveredShopDef?.slot === slot ? hoveredShopDef : null;
+    return (
+      <div>
+        <div className="text-[10px] tracking-widest mb-1" style={{ color }}>▶ {label} ({player.equipped[slot].length})</div>
+        <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${player.equipped[slot].length}, minmax(0, 1fr))` }}>
+          {player.equipped[slot].map((id, i) => (
+            <SlotCell key={`${slot}-${i}`} slot={slot} index={i} instanceId={id} compareWithDef={compareDef} />
+          ))}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="grid gap-3 p-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
@@ -307,9 +399,12 @@ function LoadoutTab({ stationId }: { stationId: string }) {
       {/* RIGHT — inventory + shop toggle */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <div className="text-cyan tracking-widest text-xs">▶ {showShop ? "MODULE MARKET" : `INVENTORY (${player.inventory.length})`}</div>
+          <div className="flex items-center gap-2">
+            <div className="text-cyan tracking-widest text-xs">▶ {showShop ? "MODULE MARKET" : `INVENTORY (${player.inventory.length})`}</div>
+            {showShop && <span className="text-[8px] tracking-widest" style={{ color: "#ffd24a88" }}>hover to compare</span>}
+          </div>
           <div className="flex gap-1">
-            <button className="btn" style={{ padding: "2px 6px", fontSize: 9 }} onClick={() => setShowShop((v) => !v)}>
+            <button className="btn" style={{ padding: "2px 6px", fontSize: 9 }} onClick={() => { setShowShop((v) => !v); setHoveredShopDefId(null); }}>
               {showShop ? "Show Inventory" : `Shop @ ${station.name}`}
             </button>
           </div>
@@ -324,13 +419,19 @@ function LoadoutTab({ stationId }: { stationId: string }) {
           </div>
         )}
 
-        <div className="space-y-1.5 overflow-y-auto" style={{ maxHeight: 460 }}>
+        <div
+          className="space-y-1.5 overflow-y-auto"
+          style={{ maxHeight: 460 }}
+          onMouseLeave={() => setHoveredShopDefId(null)}
+        >
           {showShop ? (
             shopOffer.map((def) => {
               const canAfford = player.credits >= def.price;
+              const isHovered = hoveredShopDefId === def.id;
               return (
                 <div key={def.id} className="panel p-2 flex items-start gap-2"
-                  style={{ borderColor: RARITY_COLOR[def.rarity] }}>
+                  style={{ borderColor: isHovered ? "#ffd24a" : RARITY_COLOR[def.rarity], transition: "border-color 0.1s" }}
+                  onMouseEnter={() => setHoveredShopDefId(def.id)}>
                   <div className="flex items-center justify-center"
                     style={{ width: 28, height: 28, background: `${def.color}22`, border: `1px solid ${def.color}`, color: def.color, fontSize: 14 }}>
                     {def.glyph}
