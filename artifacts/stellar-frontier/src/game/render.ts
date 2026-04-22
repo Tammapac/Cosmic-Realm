@@ -439,6 +439,18 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
   ctx.save();
   ctx.translate(e.pos.x, e.pos.y);
   ctx.rotate(e.angle + Math.PI / 2);
+  if (state.selectedWorldTarget?.kind === "enemy" && state.selectedWorldTarget.id === e.id) {
+    ctx.save();
+    ctx.rotate(-(e.angle + Math.PI / 2));
+    ctx.strokeStyle = "#ff3b4d";
+    ctx.lineWidth = 3;
+    ctx.shadowColor = "#ff3b4d";
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.arc(0, 0, e.size + 14, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
   ctx.shadowColor = e.color;
   ctx.shadowBlur = e.isBoss ? 18 : 8;
   if (e.isBoss) {
