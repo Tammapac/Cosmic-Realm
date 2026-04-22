@@ -1,5 +1,5 @@
 import { useGame, state, bump } from "../game/store";
-import { STATIONS, PORTALS } from "../game/types";
+import { DUNGEONS, STATIONS, PORTALS } from "../game/types";
 
 const SIZE = 130;
 const RANGE = 1800;
@@ -82,6 +82,25 @@ export function MiniMap() {
           const cx = Math.max(6, Math.min(SIZE - 6, x));
           const cy = Math.max(6, Math.min(SIZE - 6, y));
           return <circle key={p.id} cx={cx} cy={cy} r={inside ? 3 : 2} fill="#ff5cf0" stroke={inside ? "#fff" : "none"} strokeWidth={0.5} />;
+        })}
+
+        {/* Dungeon rifts */}
+        {Object.values(DUNGEONS).filter((d) => d.zone === player.zone).map((d) => {
+          const x = SIZE / 2 + (d.pos.x - player.pos.x) * scale;
+          const y = SIZE / 2 + (d.pos.y - player.pos.y) * scale;
+          const cx = Math.max(6, Math.min(SIZE - 6, x));
+          const cy = Math.max(6, Math.min(SIZE - 6, y));
+          const inside = !(x < 0 || x > SIZE || y < 0 || y > SIZE);
+          return (
+            <polygon
+              key={d.id}
+              points={`${cx},${cy - 4} ${cx + 4},${cy} ${cx},${cy + 4} ${cx - 4},${cy}`}
+              fill={d.color}
+              stroke={inside ? "#fff" : "none"}
+              strokeWidth={0.5}
+              opacity={0.9}
+            />
+          );
         })}
 
         {/* Others */}

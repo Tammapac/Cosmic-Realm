@@ -945,7 +945,7 @@ export function moduleDef(idOrItem: string | ModuleItem): ModuleDef {
 }
 
 // ── DUNGEONS ──────────────────────────────────────────────────────────────
-export type DungeonId = "alpha-rift" | "nebula-rift" | "crimson-rift" | "void-rift";
+export type DungeonId = "alpha-rift" | "nebula-rift" | "crimson-rift" | "void-rift" | "forge-rift" | "corona-rift" | "fracture-rift" | "abyss-rift";
 
 export type DungeonDef = {
   id: DungeonId;
@@ -1006,6 +1006,46 @@ export const DUNGEONS: Record<DungeonId, DungeonDef> = {
     rewardModules: ["wp-singular", "wp-sniper", "wp-void-lance", "wp-hellfire", "md-voidframe", "md-singularity", "gn-quantum", "gn-phase-drive", "gn-leviathan", "wp-solar"],
     rewardMaterials: [{ resourceId: "void", qty: 8 }, { resourceId: "dread", qty: 5 }, { resourceId: "quantum", qty: 8 }],
     color: "#b06cff", unlockLevel: 15,
+  },
+  "forge-rift": {
+    id: "forge-rift", name: "Iron Crucible", zone: "forge", pos: { x: -1300, y: -900 },
+    description: "Ancient automated warships guard a scorching foundry. Bring heavy armor — they hit back hard.",
+    enemyTypes: ["destroyer", "dread"], enemyHpMul: 2.4, enemyDmgMul: 2.0,
+    waves: 5, enemiesPerWave: 6,
+    rewardCredits: 65000, rewardExp: 18000,
+    rewardModules: ["wp-void-lance", "wp-hellfire", "wp-torpedo", "wp-solar", "gn-phase-drive", "gn-leviathan", "gn-quantum", "md-heavy-armor", "md-overcharge", "md-voidframe", "md-singularity"],
+    rewardMaterials: [{ resourceId: "dread", qty: 6 }, { resourceId: "quantum", qty: 8 }, { resourceId: "void", qty: 5 }],
+    color: "#ff8a4e", unlockLevel: 18,
+  },
+  "corona-rift": {
+    id: "corona-rift", name: "Solar Pyre", zone: "corona", pos: { x: -1500, y: 800 },
+    description: "Reality-bent hunters swarming a dying star's corona. Voidlings and Dreads orbit the plasma jets.",
+    enemyTypes: ["voidling", "dread"], enemyHpMul: 2.7, enemyDmgMul: 2.3,
+    waves: 5, enemiesPerWave: 7,
+    rewardCredits: 100000, rewardExp: 28000,
+    rewardModules: ["wp-void-lance", "wp-singular", "wp-hellfire", "wp-sniper", "gn-leviathan", "gn-phase-drive", "md-singularity", "md-voidframe", "md-targeter-2", "md-overclock"],
+    rewardMaterials: [{ resourceId: "void", qty: 10 }, { resourceId: "dread", qty: 7 }, { resourceId: "quantum", qty: 10 }],
+    color: "#ffd24a", unlockLevel: 22,
+  },
+  "fracture-rift": {
+    id: "fracture-rift", name: "Fracture Void", zone: "fracture", pos: { x: 1200, y: 1000 },
+    description: "Spacetime tears unleash interdimensional horrors. Six waves of Dread-class threats await the reckless.",
+    enemyTypes: ["voidling", "dread"], enemyHpMul: 3.0, enemyDmgMul: 2.6,
+    waves: 6, enemiesPerWave: 7,
+    rewardCredits: 175000, rewardExp: 50000,
+    rewardModules: ["wp-singular", "wp-void-lance", "wp-hellfire", "gn-leviathan", "gn-phase-drive", "md-singularity", "md-voidframe", "md-heavy-armor", "md-loot-2"],
+    rewardMaterials: [{ resourceId: "void", qty: 14 }, { resourceId: "dread", qty: 10 }, { resourceId: "quantum", qty: 14 }],
+    color: "#b06cff", unlockLevel: 27,
+  },
+  "abyss-rift": {
+    id: "abyss-rift", name: "The Dread Abyss", zone: "abyss", pos: { x: 1300, y: -1000 },
+    description: "Pure endgame. Seven brutal waves of Dreadnoughts in the darkest reach of known space. Legendary drops only.",
+    enemyTypes: ["dread"], enemyHpMul: 3.6, enemyDmgMul: 3.0,
+    waves: 7, enemiesPerWave: 8,
+    rewardCredits: 300000, rewardExp: 85000,
+    rewardModules: ["wp-singular", "wp-void-lance", "wp-hellfire", "gn-leviathan", "gn-phase-drive", "md-singularity", "md-voidframe"],
+    rewardMaterials: [{ resourceId: "void", qty: 20 }, { resourceId: "dread", qty: 15 }, { resourceId: "quantum", qty: 18 }],
+    color: "#ff5c6c", unlockLevel: 32,
   },
 };
 
