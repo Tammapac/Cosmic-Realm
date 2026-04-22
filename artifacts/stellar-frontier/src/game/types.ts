@@ -14,6 +14,7 @@ export type Zone = {
 };
 
 export type EnemyType = "scout" | "raider" | "destroyer" | "voidling" | "dread";
+export type EnemyBehavior = "fast" | "chaser" | "tank" | "ranged";
 
 export type ShipClassId =
   | "skimmer"
@@ -92,6 +93,7 @@ export type CargoItem = {
 };
 
 export type DroneKind = "combat-i" | "combat-ii" | "shield-i" | "shield-ii" | "salvage";
+export type DroneMode = "orbit" | "forward" | "defensive";
 
 export type DroneDef = {
   id: DroneKind;
@@ -108,6 +110,7 @@ export type DroneDef = {
 export type Drone = {
   id: string;            // instance id
   kind: DroneKind;
+  mode: DroneMode;       // behavior mode
   hp: number;
   hpMax: number;
   orbitPhase: number;    // for animated orbit
@@ -144,11 +147,156 @@ export type Player = {
   clan: string | null;
   party: string[];
   drones: Drone[];
+  // Phase 2 additions
+  faction: FactionId | null;
+  skills: Partial<Record<SkillId, number>>;  // skillId → ranks
+  skillPoints: number;
+  milestones: Milestones;
+  dailyMissions: ActiveMission[];
+  lastDailyReset: number;       // ms timestamp
+  lastSeen: number;             // ms timestamp for idle calc
+};
+
+// ── FACTIONS ─────────────────────────────────────────────────────────────
+export type FactionId = "aurora" | "crimson" | "syndicate";
+
+export type Faction = {
+  id: FactionId;
+  name: string;
+  motto: string;
+  description: string;
+  color: string;
+  bonus: { damage?: number; speed?: number; shieldRegen?: number; tradeDiscount?: number; lootBonus?: number };
+  bonusText: string;
+};
+
+export const FACTIONS: Record<FactionId, Faction> = {
+  aurora: {
+    id: "aurora", name: "Aurora Concord", motto: "Vigil over the lanes.",
+    description: "Defenders of the trade routes. Renowned for shielding tech and disciplined cruisers.",
+    color: "#4ee2ff",
+    bonus: { shieldRegen: 1.5, tradeDiscount: 0.05 },
+    bonusText: "+50% shield regen · 5% trade discount at Concord stations",
+  },
+  crimson: {
+    id: "crimson", name: "Crimson Vanguard", motto: "Burn or be burned.",
+    description: "A military doctrine forged in the Crimson Reach. Heavy guns, heavier consequences.",
+    color: "#ff5c6c",
+    bonus: { damage: 0.10, lootBonus: 1 },
+    bonusText: "+10% laser damage · +1 bonus loot per kill",
+  },
+  syndicate: {
+    id: "syndicate", name: "Void Syndicate", motto: "Profit between the stars.",
+    description: "A smuggler-backed syndicate. Faster ships, deeper cargo, smarter deals.",
+    color: "#ff5cf0",
+    bonus: { speed: 0.10, tradeDiscount: 0.10 },
+    bonusText: "+10% speed · 10% better market prices",
+  },
+};
+
+// ── SKILLS ───────────────────────────────────────────────────────────────
+export type SkillBranch = "offense" | "defense" | "utility";
+export type SkillId =
+  | "off-power" | "off-rapid" | "off-crit" | "off-pierce"
+  | "def-shield" | "def-regen" | "def-armor" | "def-bulwark"
+  | "ut-cargo" | "ut-thrust" | "ut-salvage" | "ut-droneops";
+
+export type SkillNode = {
+  id: SkillId;
+  branch: SkillBranch;
+  name: string;
+  description: string;
+  maxRank: number;
+  cost: number;            // skill points per rank
+  requires?: SkillId;      // gate
+  pos: { row: number; col: number }; // grid layout per branch
+  icon: string;
+};
+
+export const SKILL_NODES: SkillNode[] = [
+  // OFFENSE
+  { id: "off-power",  branch: "offense", name: "Overcharge",       description: "+5% laser damage per rank.",                 maxRank: 5, cost: 1, pos: { row: 0, col: 0 }, icon: "⚡" },
+  { id: "off-rapid",  branch: "offense", name: "Rapid Fire",       description: "-5% laser cooldown per rank.",               maxRank: 5, cost: 1, pos: { row: 1, col: 0 }, icon: "≫", requires: "off-power" },
+  { id: "off-crit",   branch: "offense", name: "Critical Strikes", description: "+3% crit chance per rank.",                  maxRank: 5, cost: 1, pos: { row: 2, col: 0 }, icon: "✦", requires: "off-rapid" },
+  { id: "off-pierce", branch: "offense", name: "Phase Pierce",     description: "Lasers gain a small splash radius (rank x4 px).", maxRank: 3, cost: 2, pos: { row: 3, col: 0 }, icon: "✺", requires: "off-crit" },
+  // DEFENSE
+  { id: "def-shield", branch: "defense", name: "Shield Capacitors",description: "+8% max shield per rank.",                   maxRank: 5, cost: 1, pos: { row: 0, col: 0 }, icon: "◈" },
+  { id: "def-regen",  branch: "defense", name: "Recharge Matrix",  description: "+15% shield regen per rank.",                maxRank: 5, cost: 1, pos: { row: 1, col: 0 }, icon: "↺", requires: "def-shield" },
+  { id: "def-armor",  branch: "defense", name: "Reinforced Hull",  description: "+8% max hull per rank.",                     maxRank: 5, cost: 1, pos: { row: 2, col: 0 }, icon: "▣", requires: "def-regen" },
+  { id: "def-bulwark",branch: "defense", name: "Bulwark Protocol", description: "Reduce all damage by 4% per rank.",          maxRank: 3, cost: 2, pos: { row: 3, col: 0 }, icon: "⛨", requires: "def-armor" },
+  // UTILITY
+  { id: "ut-cargo",   branch: "utility", name: "Cargo Frame",      description: "+15% cargo capacity per rank.",              maxRank: 5, cost: 1, pos: { row: 0, col: 0 }, icon: "▤" },
+  { id: "ut-thrust",  branch: "utility", name: "Thruster Tuning",  description: "+5% top speed per rank.",                    maxRank: 5, cost: 1, pos: { row: 1, col: 0 }, icon: "➤", requires: "ut-cargo" },
+  { id: "ut-salvage", branch: "utility", name: "Scavenger",        description: "+1 bonus credits per rank from kills (multiplied by enemy honor).", maxRank: 5, cost: 1, pos: { row: 2, col: 0 }, icon: "$", requires: "ut-thrust" },
+  { id: "ut-droneops",branch: "utility", name: "Drone Ops",        description: "+1 drone slot per rank (max 3).",            maxRank: 3, cost: 2, pos: { row: 3, col: 0 }, icon: "✦", requires: "ut-salvage" },
+];
+
+// ── MISSIONS & MILESTONES ────────────────────────────────────────────────
+export type MissionKind =
+  | "kill-any" | "kill-zone" | "mine" | "earn-credits" | "spend-credits" | "warp-zones" | "level-up";
+
+export type Mission = {
+  id: string;
+  kind: MissionKind;
+  title: string;
+  description: string;
+  target: number;
+  rewardCredits: number;
+  rewardExp: number;
+  rewardHonor: number;
+  zoneFilter?: ZoneId;
+};
+
+export type ActiveMission = Mission & {
+  progress: number;
+  completed: boolean;
+  claimed: boolean;
+};
+
+export type Milestones = {
+  totalKills: number;
+  totalMined: number;
+  totalCreditsEarned: number;
+  totalWarps: number;
+  totalDeaths: number;
+  bossKills: number;
+};
+
+export const MILESTONE_TIERS: { kind: keyof Milestones; name: string; tiers: number[]; rewardPerTier: number; color: string; icon: string }[] = [
+  { kind: "totalKills",         name: "Combat Veteran",  tiers: [10, 50, 200, 1000, 5000], rewardPerTier: 500, color: "#ff5c6c", icon: "⚔" },
+  { kind: "totalMined",         name: "Belt Driller",    tiers: [10, 100, 500, 2500, 10000], rewardPerTier: 400, color: "#c69060", icon: "▰" },
+  { kind: "totalCreditsEarned", name: "Tycoon",          tiers: [1000, 10000, 100000, 1000000, 10000000], rewardPerTier: 600, color: "#ffd24a", icon: "$" },
+  { kind: "totalWarps",         name: "Pathfinder",      tiers: [5, 25, 100, 500, 2000], rewardPerTier: 300, color: "#ff5cf0", icon: "▶" },
+  { kind: "bossKills",          name: "Dread Hunter",    tiers: [1, 5, 20, 50, 200], rewardPerTier: 1500, color: "#ff8a4e", icon: "✪" },
+];
+
+export const DAILY_MISSION_POOL: Mission[] = [
+  { id: "d-kills-10",   kind: "kill-any", title: "Daily: Bug Sweep",      description: "Eliminate 10 hostiles anywhere.",          target: 10,    rewardCredits: 600,  rewardExp: 200, rewardHonor: 8 },
+  { id: "d-kills-25",   kind: "kill-any", title: "Daily: Patrol Duty",    description: "Eliminate 25 hostiles anywhere.",          target: 25,    rewardCredits: 1500, rewardExp: 500, rewardHonor: 18 },
+  { id: "d-mine-30",    kind: "mine",     title: "Daily: Belt Run",       description: "Mine 30 units of any ore.",                target: 30,    rewardCredits: 800,  rewardExp: 250, rewardHonor: 6 },
+  { id: "d-credits-5k", kind: "earn-credits", title: "Daily: Hustler",    description: "Earn 5,000 credits.",                       target: 5000,  rewardCredits: 1500, rewardExp: 300, rewardHonor: 10 },
+  { id: "d-warp-3",     kind: "warp-zones",  title: "Daily: Sector Rounds", description: "Warp between sectors 3 times.",         target: 3,     rewardCredits: 700,  rewardExp: 200, rewardHonor: 6 },
+  { id: "d-spend-3k",   kind: "spend-credits", title: "Daily: Resupply",  description: "Spend 3,000 credits at stations.",         target: 3000,  rewardCredits: 600,  rewardExp: 150, rewardHonor: 4 },
+  { id: "d-zone-alpha", kind: "kill-zone", title: "Daily: Alpha Sweep",   description: "Kill 8 hostiles in Alpha Sector.",         target: 8,     rewardCredits: 700,  rewardExp: 220, rewardHonor: 7,  zoneFilter: "alpha" },
+  { id: "d-zone-nebula",kind: "kill-zone", title: "Daily: Nebula Cleanup",description: "Kill 6 hostiles in Veil Nebula.",          target: 6,     rewardCredits: 1400, rewardExp: 400, rewardHonor: 14, zoneFilter: "nebula" },
+];
+
+// ── EVENTS ───────────────────────────────────────────────────────────────
+export type GameEvent = {
+  id: string;
+  title: string;
+  body: string;
+  startedAt: number;
+  ttl: number;
+  kind: "boss" | "global" | "info";
+  zone?: ZoneId;
+  color: string;
 };
 
 export type Enemy = {
   id: string;
   type: EnemyType;
+  behavior: EnemyBehavior;
   pos: Vec2;
   vel: Vec2;
   angle: number;
@@ -163,6 +311,13 @@ export type Enemy = {
   loot?: { resourceId: ResourceId; qty: number };
   color: string;
   size: number;
+  isBoss?: boolean;
+  bossPhase?: number;       // 0-2, segments
+  combo?: { stacks: number; ttl: number };  // player combo mark
+  hitFlash?: number;        // 0..1 brief white tint after hit
+  // ranged kiting helpers
+  burstCd?: number;
+  burstShots?: number;
 };
 
 export type Projectile = {
@@ -174,6 +329,21 @@ export type Projectile = {
   fromPlayer: boolean;
   color: string;
   size: number;
+  crit?: boolean;
+  aoeRadius?: number;       // splash radius if set
+  homing?: boolean;
+};
+
+export type Floater = {
+  id: string;
+  text: string;
+  color: string;
+  pos: Vec2;
+  vy: number;
+  ttl: number;
+  maxTtl: number;
+  scale: number;            // text scale (crits start big)
+  bold?: boolean;
 };
 
 export type Particle = {
@@ -198,6 +368,8 @@ export type Station = {
   description: string;
   /** Per-resource price modifiers vs basePrice (1.0 = base). */
   prices: Partial<Record<ResourceId, number>>;
+  /** Controlling faction (gives bonuses to aligned players). */
+  controlledBy: FactionId;
 };
 
 export type Asteroid = {
@@ -374,31 +546,31 @@ export const ENEMY_DEFS: Record<
   Omit<Enemy, "id" | "pos" | "vel" | "angle" | "hull" | "fireCd">
 > = {
   scout: {
-    type: "scout",
-    hullMax: 30, damage: 4, speed: 80, exp: 10, credits: 25, honor: 1,
+    type: "scout", behavior: "fast",
+    hullMax: 30, damage: 4, speed: 130, exp: 10, credits: 25, honor: 1,
     color: "#ff8866", size: 10,
     loot: { resourceId: "scrap", qty: 1 },
   },
   raider: {
-    type: "raider",
-    hullMax: 70, damage: 9, speed: 70, exp: 28, credits: 80, honor: 3,
+    type: "raider", behavior: "chaser",
+    hullMax: 70, damage: 9, speed: 75, exp: 28, credits: 80, honor: 3,
     color: "#ff4466", size: 13,
     loot: { resourceId: "plasma", qty: 1 },
   },
   destroyer: {
-    type: "destroyer",
-    hullMax: 180, damage: 18, speed: 55, exp: 70, credits: 220, honor: 8,
+    type: "destroyer", behavior: "tank",
+    hullMax: 220, damage: 18, speed: 50, exp: 70, credits: 220, honor: 8,
     color: "#aa44ff", size: 18,
     loot: { resourceId: "warp", qty: 1 },
   },
   voidling: {
-    type: "voidling",
-    hullMax: 140, damage: 14, speed: 110, exp: 90, credits: 280, honor: 12,
+    type: "voidling", behavior: "ranged",
+    hullMax: 110, damage: 16, speed: 90, exp: 90, credits: 280, honor: 12,
     color: "#44ffe2", size: 14,
     loot: { resourceId: "void", qty: 1 },
   },
   dread: {
-    type: "dread",
+    type: "dread", behavior: "tank",
     hullMax: 380, damage: 28, speed: 45, exp: 180, credits: 600, honor: 25,
     color: "#ffaa22", size: 24,
     loot: { resourceId: "dread", qty: 1 },
@@ -433,31 +605,31 @@ export const RESOURCES: Record<ResourceId, Resource> = {
 export const STATIONS: Station[] = [
   // alpha
   { id: "helix",   name: "Helix Station",  pos: { x: 0, y: 0 },     zone: "alpha",   kind: "hub",
-    description: "Capital hub of the Alpha Frontier.",
+    description: "Capital hub of the Alpha Frontier.", controlledBy: "aurora",
     prices: { scrap: 1.0, plasma: 1.0, iron: 0.95, synth: 0.9, medpack: 1.1, lumenite: 1.0, warp: 1.1, void: 1.2, dread: 1.1, quantum: 1.0 } },
   { id: "iron-belt", name: "Iron Belt Refinery", pos: { x: -900, y: -200 }, zone: "alpha", kind: "mining",
-    description: "Refinery sitting on a rich mineral belt.",
+    description: "Refinery sitting on a rich mineral belt.", controlledBy: "aurora",
     prices: { iron: 0.6, lumenite: 0.7, scrap: 1.2, synth: 1.0, medpack: 1.1, plasma: 1.05 } },
   // nebula
   { id: "veiled",   name: "Veiled Outpost", pos: { x: 200, y: -800 }, zone: "nebula",  kind: "outpost",
-    description: "A mining outpost run by a raider truce.",
+    description: "A mining outpost run by a raider truce.", controlledBy: "syndicate",
     prices: { plasma: 0.7, warp: 0.85, scrap: 1.2, synth: 1.15, medpack: 1.2, void: 1.3 } },
   { id: "azure-port", name: "Azure Trade Port", pos: { x: -600, y: -1200 }, zone: "nebula", kind: "trade",
-    description: "Bustling free-port. Buys high, sells fair.",
+    description: "Bustling free-port. Buys high, sells fair.", controlledBy: "syndicate",
     prices: { quantum: 0.7, lumenite: 0.85, dread: 0.9, void: 0.95, plasma: 1.2, warp: 1.25, iron: 1.15, scrap: 1.25 } },
   // crimson
   { id: "ember",    name: "Ember Citadel",  pos: { x: -600, y: 400 },  zone: "crimson", kind: "military",
-    description: "Crimson Reach naval citadel. Premium for war goods.",
+    description: "Crimson Reach naval citadel. Premium for war goods.", controlledBy: "crimson",
     prices: { dread: 1.3, warp: 1.3, plasma: 1.4, medpack: 0.85, synth: 0.95, quantum: 1.2 } },
   { id: "scarlet-yard", name: "Scarlet Shipyards", pos: { x: 1100, y: 800 }, zone: "crimson", kind: "trade",
-    description: "Capital ship construction yards.",
+    description: "Capital ship construction yards.", controlledBy: "crimson",
     prices: { iron: 1.4, scrap: 1.35, lumenite: 1.2, plasma: 1.1, dread: 0.85 } },
   // void
   { id: "echo",     name: "Echo Anchorage", pos: { x: 0, y: -300 },    zone: "void",    kind: "outpost",
-    description: "Last refuge in The Void.",
+    description: "Last refuge in The Void.", controlledBy: "syndicate",
     prices: { void: 0.6, dread: 1.2, quantum: 1.4, medpack: 1.3, synth: 1.2 } },
   { id: "obsidian-port", name: "Obsidian Free Port", pos: { x: 900, y: 600 }, zone: "void", kind: "trade",
-    description: "A trade haven for ghosts and smugglers.",
+    description: "A trade haven for ghosts and smugglers.", controlledBy: "syndicate",
     prices: { quantum: 0.55, void: 1.4, dread: 1.4, lumenite: 1.3, warp: 1.2 } },
 ];
 

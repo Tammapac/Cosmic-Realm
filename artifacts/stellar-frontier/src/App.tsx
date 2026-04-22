@@ -6,6 +6,9 @@ import { TopBar } from "./components/TopBar";
 import { MiniMap } from "./components/MiniMap";
 import { Hangar } from "./components/Hangar";
 import { SocialPanel, ClanPanel, GalaxyMap } from "./components/SocialPanel";
+import { FactionPicker } from "./components/FactionPicker";
+import { IdleRewardModal } from "./components/IdleRewardModal";
+import { EventBanners } from "./components/EventBanners";
 import { STATIONS, PORTALS, ZONES } from "./game/types";
 import { travelToZone } from "./game/store";
 
@@ -219,8 +222,11 @@ export default function App() {
       {showSocial && <SocialPanel />}
       <ClanPanel />
       <GalaxyMap />
+      <EventBanners />
       <Title />
       {docked && <Hangar stationId={docked} />}
+      <IdleRewardModal />
+      <FactionPicker />
       <div className="crt-overlay" />
     </div>
   );

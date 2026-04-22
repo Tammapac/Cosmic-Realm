@@ -1,5 +1,7 @@
-import { useGame, state, bump, save, pushNotification } from "../game/store";
-import { EXP_FOR_LEVEL, SHIP_CLASSES, ZONES, rankFor, HONOR_RANKS, DRONE_DEFS } from "../game/types";
+import { useGame, state, bump, save, pushNotification, maxDroneSlots, cargoCapacity } from "../game/store";
+import { EXP_FOR_LEVEL, FACTIONS, SHIP_CLASSES, ZONES, rankFor, HONOR_RANKS, DRONE_DEFS } from "../game/types";
+import { setMuted, getMuted, setVolume, getVolume } from "../game/sound";
+import { useState } from "react";
 
 export function TopBar() {
   const player = useGame((s) => s.player);
@@ -26,11 +28,27 @@ export function TopBar() {
           <div className="flex items-center gap-1.5">
             <span className="text-bright text-[11px] font-bold tracking-widest">{player.name}</span>
             <span className="text-amber font-bold text-[11px]">Lv {player.level}</span>
+            {player.skillPoints > 0 && (
+              <span
+                className="text-[9px] font-bold px-1"
+                style={{ color: "#ff5cf0", border: "1px solid #ff5cf0", boxShadow: "0 0 4px #ff5cf088", animation: "pulse-glow 1.5s ease-in-out infinite" }}
+              >
+                +{player.skillPoints} SP
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-1 text-[8px] text-mute tracking-widest">
             <span style={{ color: rank.color }}>{rank.name.toUpperCase()}</span>
             <span>·</span>
             <span>{cls.name}</span>
+            {player.faction && (
+              <>
+                <span>·</span>
+                <span style={{ color: FACTIONS[player.faction].color }}>
+                  ◆ {FACTIONS[player.faction].name.toUpperCase()}
+                </span>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -51,8 +69,8 @@ export function TopBar() {
       <div className="panel pointer-events-auto flex items-center gap-3 px-3 py-1.5 text-[10px] tracking-widest">
         <Stat label="CR" value={player.credits.toLocaleString()} color="#ffd24a" />
         <Stat label="HONOR" value={player.honor.toLocaleString()} color={rank.color} />
-        <Stat label="CARGO" value={`${cargoUsed}/${cls.cargoMax}`} color="#4ee2ff" />
-        <Stat label="DRONES" value={`${player.drones.length}/${cls.droneSlots}`} color="#aaff5c" />
+        <Stat label="CARGO" value={`${cargoUsed}/${cargoCapacity()}`} color="#4ee2ff" />
+        <Stat label="DRONES" value={`${player.drones.length}/${maxDroneSlots()}`} color="#aaff5c" />
       </div>
 
       {/* Sector chip */}
@@ -68,6 +86,7 @@ export function TopBar() {
 
       {/* Action buttons */}
       <div className="pointer-events-auto flex gap-1">
+        <AudioToggle />
         <button
           className="btn"
           style={{ padding: "5px 10px", fontSize: 10 }}
@@ -132,6 +151,27 @@ function Stat({ label, value, color }: { label: string; value: string; color: st
     <div className="text-center">
       <div className="text-mute text-[8px]">{label}</div>
       <div className="font-bold text-[11px] tabular-nums" style={{ color }}>{value}</div>
+    </div>
+  );
+}
+
+function AudioToggle() {
+  const [muted, setMutedState] = useState(getMuted());
+  const [vol, setVol] = useState(getVolume());
+  return (
+    <div className="panel pointer-events-auto flex items-center gap-1 px-2 py-1" title="Audio">
+      <button
+        className="btn"
+        style={{ padding: "2px 6px", fontSize: 10 }}
+        onClick={() => { const m = !muted; setMuted(m); setMutedState(m); }}
+      >
+        {muted ? "🔇" : "🔊"}
+      </button>
+      <input
+        type="range" min={0} max={1} step={0.05} value={vol}
+        onChange={(e) => { const v = +e.target.value; setVol(v); setVolume(v); }}
+        style={{ width: 50 }}
+      />
     </div>
   );
 }

@@ -1,13 +1,14 @@
 import {
-  bump, pushChat, pushNotification, pushHonor, save, addCargo,
-  state, travelToZone,
+  bump, pushChat, pushNotification, pushHonor, save, addCargo, pushFloater,
+  pushEvent, bumpMission, state, travelToZone,
 } from "./store";
 import {
   DRONE_DEFS, Drone, ENEMY_DEFS, EXP_FOR_LEVEL,
-  Enemy, EnemyType, LASER_TIER_COLOR, PORTALS,
+  Enemy, EnemyType, FACTIONS, LASER_TIER_COLOR, PORTALS,
   SHIP_CLASSES, STATIONS, ZONES, ZoneId,
   rankFor,
 } from "./types";
+import { sfx } from "./sound";
 
 let last = performance.now();
 let raf = 0;
@@ -16,6 +17,7 @@ let saveTimer = 0;
 let chatTimer = 6;
 let aiUpdateTimer = 0;
 let trailTimer = 0;
+let bossActive = false;
 
 const CHAT_LINES = [
   "anyone selling void crystals?",
@@ -30,31 +32,62 @@ const CHAT_LINES = [
   "scout swarm @ alpha sector",
   "anyone got spare scrap plating",
   "azure port buying quantum chips premium",
+  "boss event spawned, headed there now",
+  "syndicate just took echo anchorage lol",
 ];
 
-// ── PLAYER STATS (with drone bonuses) ────────────────────────────────────
+// ── PLAYER STATS (with drone bonuses + skills + faction) ─────────────────
 export function effectiveStats(): {
   damage: number; speed: number; hullMax: number; shieldMax: number;
+  fireRate: number; critChance: number; aoeRadius: number; damageReduction: number; shieldRegen: number; lootBonus: number;
 } {
   const p = state.player;
   const cls = SHIP_CLASSES[p.shipClass];
-  let damage = cls.baseDamage + p.equipment.laserTier * 6;
-  let hullMax = cls.hullMax;
-  let shieldMax = cls.shieldMax + p.equipment.shieldTier * 25;
-  const speed = cls.baseSpeed + p.equipment.thrusterTier * 30;
+
+  const skOffPower  = p.skills["off-power"]  ?? 0;
+  const skOffRapid  = p.skills["off-rapid"]  ?? 0;
+  const skOffCrit   = p.skills["off-crit"]   ?? 0;
+  const skOffPierce = p.skills["off-pierce"] ?? 0;
+  const skDefShield = p.skills["def-shield"] ?? 0;
+  const skDefRegen  = p.skills["def-regen"]  ?? 0;
+  const skDefArmor  = p.skills["def-armor"]  ?? 0;
+  const skDefBulw   = p.skills["def-bulwark"] ?? 0;
+  const skUtThrust  = p.skills["ut-thrust"]  ?? 0;
+
+  let damage = (cls.baseDamage + p.equipment.laserTier * 6) * (1 + skOffPower * 0.05);
+  let hullMax = cls.hullMax * (1 + skDefArmor * 0.08);
+  let shieldMax = (cls.shieldMax + p.equipment.shieldTier * 25) * (1 + skDefShield * 0.08);
+  let speed = (cls.baseSpeed + p.equipment.thrusterTier * 30) * (1 + skUtThrust * 0.05);
+  let shieldRegen = 5 + p.equipment.shieldTier * 2;
+  let damageReduction = skDefBulw * 0.04;
+  let aoeRadius = skOffPierce * 4;
+  let critChance = 0.05 + skOffCrit * 0.03 + p.equipment.laserTier * 0.01;
+  let fireRate = 1 + skOffRapid * 0.05; // multiplier on fire speed (lower cd)
+  let lootBonus = 0;
+
   for (const d of p.drones) {
     const def = DRONE_DEFS[d.kind];
     damage += def.damageBonus;
     hullMax += def.hullBonus;
     shieldMax += def.shieldBonus;
   }
-  return { damage, speed, hullMax, shieldMax };
+
+  if (p.faction) {
+    const f = FACTIONS[p.faction].bonus;
+    if (f.damage)      damage *= (1 + f.damage);
+    if (f.speed)       speed *= (1 + f.speed);
+    if (f.shieldRegen) shieldRegen *= f.shieldRegen;
+    if (f.lootBonus)   lootBonus += f.lootBonus;
+  }
+  shieldRegen *= (1 + skDefRegen * 0.15);
+
+  return { damage, speed, hullMax, shieldMax, fireRate, critChance, aoeRadius, damageReduction, shieldRegen, lootBonus };
 }
 
 // ── SPAWN ──────────────────────────────────────────────────────────────────
 function spawnEnemy(): void {
   const z = ZONES[state.player.zone];
-  if (state.enemies.length >= 8 + z.enemyTier * 2) return;
+  if (state.enemies.filter((e) => !e.isBoss).length >= 8 + z.enemyTier * 2) return;
   const type: EnemyType = z.enemyTypes[Math.floor(Math.random() * z.enemyTypes.length)];
   const def = ENEMY_DEFS[type];
   const angle = Math.random() * Math.PI * 2;
@@ -65,6 +98,7 @@ function spawnEnemy(): void {
   state.enemies.push({
     id: `e-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     type,
+    behavior: def.behavior,
     pos: { x: px, y: py },
     vel: { x: 0, y: 0 },
     angle: 0,
@@ -79,7 +113,53 @@ function spawnEnemy(): void {
     color: def.color,
     size: def.size,
     loot: def.loot,
+    burstCd: 0,
+    burstShots: 0,
   });
+}
+
+function spawnBoss(): void {
+  const z = ZONES[state.player.zone];
+  const tierMult = 1 + (z.enemyTier - 1) * 0.25;
+  const angle = Math.random() * Math.PI * 2;
+  const dist = 600;
+  const px = state.player.pos.x + Math.cos(angle) * dist;
+  const py = state.player.pos.y + Math.sin(angle) * dist;
+  const def = ENEMY_DEFS.dread;
+  const hullMax = def.hullMax * 4 * tierMult;
+  state.enemies.push({
+    id: `boss-${Date.now()}`,
+    type: "dread",
+    behavior: "tank",
+    pos: { x: px, y: py },
+    vel: { x: 0, y: 0 },
+    angle: 0,
+    hull: hullMax,
+    hullMax,
+    damage: def.damage * 1.5 * tierMult,
+    speed: 38,
+    fireCd: 1,
+    exp: Math.round(def.exp * 5 * tierMult),
+    credits: Math.round(def.credits * 5 * tierMult),
+    honor: Math.round(def.honor * 4 * tierMult),
+    color: "#ff8a4e",
+    size: def.size * 1.6,
+    loot: { resourceId: "dread", qty: 4 },
+    isBoss: true,
+    bossPhase: 0,
+    burstCd: 0,
+    burstShots: 0,
+  });
+  bossActive = true;
+  pushEvent({
+    title: "BOSS WARSHIP ARRIVES",
+    body: `A heavy dreadnought has materialized in ${z.name}. Engage with caution.`,
+    ttl: 10, kind: "boss", zone: state.player.zone, color: "#ff8a4e",
+  });
+  pushChat("system", "SYSTEM", `A boss dreadnought has spawned in ${z.name}.`);
+  pushNotification("BOSS SPAWNED — Engage!", "bad");
+  sfx.bossWarn();
+  state.cameraShake = Math.max(state.cameraShake, 0.6);
 }
 
 // ── PARTICLES & FX ────────────────────────────────────────────────────────
@@ -116,18 +196,25 @@ function emitTrail(x: number, y: number, color: string): void {
   });
 }
 
-function emitDeath(x: number, y: number, color: string): void {
-  emitSpark(x, y, color, 24, 160, 3);
-  emitSpark(x, y, "#ffd24a", 10, 120, 2);
+function emitDeath(x: number, y: number, color: string, big = false): void {
+  emitSpark(x, y, color, big ? 60 : 24, big ? 220 : 160, big ? 4 : 3);
+  emitSpark(x, y, "#ffd24a", big ? 30 : 10, big ? 160 : 120, big ? 3 : 2);
   emitRing(x, y, color);
+  if (big) {
+    emitRing(x, y, "#ffffff");
+    setTimeout(() => emitRing(x, y, color), 100);
+    setTimeout(() => emitRing(x, y, "#ffd24a"), 200);
+  }
 }
 
 // ── PROJECTILES ───────────────────────────────────────────────────────────
 function fireProjectile(
   from: "player" | "enemy" | "drone",
-  x: number, y: number, angle: number, damage: number, color: string, size = 3
+  x: number, y: number, angle: number, damage: number, color: string, size = 3,
+  opts?: { crit?: boolean; aoeRadius?: number; speedMul?: number },
 ): void {
-  const speed = from === "player" ? 560 : from === "drone" ? 480 : 320;
+  const speedBase = from === "player" ? 560 : from === "drone" ? 480 : 320;
+  const speed = speedBase * (opts?.speedMul ?? 1);
   state.projectiles.push({
     id: `pr-${Math.random().toString(36).slice(2, 8)}`,
     pos: { x, y },
@@ -136,7 +223,9 @@ function fireProjectile(
     ttl: 1.6,
     fromPlayer: from !== "enemy",
     color,
-    size,
+    size: opts?.crit ? size + 2 : size,
+    crit: opts?.crit,
+    aoeRadius: opts?.aoeRadius,
   });
 }
 
@@ -146,35 +235,96 @@ function tryLevelUp(): void {
   while (p.exp >= EXP_FOR_LEVEL(p.level)) {
     p.exp -= EXP_FOR_LEVEL(p.level);
     p.level++;
-    pushNotification(`LEVEL UP! Now level ${p.level}`, "good");
+    p.skillPoints += 1;
+    pushNotification(`LEVEL UP! Now level ${p.level} (+1 skill pt)`, "good");
     pushChat("system", "SYSTEM", `You reached level ${p.level}.`);
+    bumpMission("level-up", 1);
     const stats = effectiveStats();
     p.hull = stats.hullMax;
     p.shield = stats.shieldMax;
+    state.levelUpFlash = 1.6;
+    state.cameraShake = Math.max(state.cameraShake, 0.5);
+    sfx.levelUp();
+    // burst ring at player
+    for (let i = 0; i < 3; i++) {
+      setTimeout(() => emitRing(p.pos.x, p.pos.y, "#ffd24a"), i * 100);
+    }
   }
 }
 
-function applyKill(e: Enemy): void {
-  emitDeath(e.pos.x, e.pos.y, e.color);
-  state.player.exp += e.exp;
-  state.player.credits += e.credits;
-  // honor handled separately for floating numbers
+const MILESTONE_KEYS = ["totalKills", "totalMined", "totalCreditsEarned", "totalWarps", "bossKills"] as const;
+const MILESTONE_TIER_THRESHOLDS: Record<typeof MILESTONE_KEYS[number], number[]> = {
+  totalKills: [10, 50, 200, 1000, 5000],
+  totalMined: [10, 100, 500, 2500, 10000],
+  totalCreditsEarned: [1000, 10000, 100000, 1000000, 10000000],
+  totalWarps: [5, 25, 100, 500, 2000],
+  bossKills: [1, 5, 20, 50, 200],
+};
+const MILESTONE_REWARDS: Record<typeof MILESTONE_KEYS[number], number> = {
+  totalKills: 500, totalMined: 400, totalCreditsEarned: 600, totalWarps: 300, bossKills: 1500,
+};
+
+function checkMilestoneTier(kind: typeof MILESTONE_KEYS[number], previous: number, current: number): void {
+  const tiers = MILESTONE_TIER_THRESHOLDS[kind];
+  for (const t of tiers) {
+    if (previous < t && current >= t) {
+      const reward = MILESTONE_REWARDS[kind] * (tiers.indexOf(t) + 1);
+      state.player.credits += reward;
+      state.player.skillPoints += 1;
+      pushNotification(`MILESTONE: ${kind} ${t.toLocaleString()} (+${reward}cr +1pt)`, "good");
+      pushChat("system", "SYSTEM", `Milestone reached: ${kind} ${t.toLocaleString()}.`);
+    }
+  }
+}
+
+function applyKill(e: Enemy, killerCrit: boolean): void {
+  const stats = effectiveStats();
+  emitDeath(e.pos.x, e.pos.y, e.color, !!e.isBoss);
+  if (e.isBoss) {
+    sfx.bossKill();
+    state.cameraShake = Math.max(state.cameraShake, 1);
+  } else {
+    sfx.explosion(e.size > 16);
+    state.cameraShake = Math.max(state.cameraShake, e.size > 16 ? 0.4 : 0.18);
+  }
+
+  const expGain = e.exp;
+  const credGain = e.credits + (state.player.skills["ut-salvage"] ?? 0) * Math.max(1, Math.floor(e.honor));
+  const honorGain = e.honor;
+
+  state.player.exp += expGain;
+  state.player.credits += credGain;
+  const prevCredEarned = state.player.milestones.totalCreditsEarned;
+  state.player.milestones.totalCreditsEarned += credGain;
+  checkMilestoneTier("totalCreditsEarned", prevCredEarned, state.player.milestones.totalCreditsEarned);
+
   const prevRank = rankFor(state.player.honor).index;
-  state.player.honor += e.honor;
-  pushHonor(e.honor);
+  state.player.honor += honorGain;
+  pushHonor(honorGain);
   const newRank = rankFor(state.player.honor).index;
   if (newRank > prevRank) {
     pushNotification(`PROMOTED → ${rankFor(state.player.honor).name}`, "good");
     pushChat("system", "SYSTEM", `You earned the rank of ${rankFor(state.player.honor).name}.`);
   }
-  pushNotification(`+${e.exp} XP  +${e.credits}cr  +${e.honor} honor`, "good");
+
+  // Floating numbers at enemy pos
+  pushFloater({ text: `+${expGain} XP`, color: "#ff5cf0", x: e.pos.x, y: e.pos.y - 12, scale: 1.1, bold: true });
+  pushFloater({ text: `+${credGain}cr`, color: "#ffd24a", x: e.pos.x + 14, y: e.pos.y, scale: 1, ttl: 0.9 });
+  if (honorGain > 0) {
+    pushFloater({ text: `+${honorGain} ✪`, color: rankFor(state.player.honor).color, x: e.pos.x - 14, y: e.pos.y + 12, ttl: 1, scale: 0.9 });
+  }
 
   // Loot
   if (e.loot) {
     const hasSalvage = state.player.drones.some((d) => d.kind === "salvage");
-    const qty = e.loot.qty + (hasSalvage ? 1 : 0);
+    const qty = e.loot.qty + (hasSalvage ? 1 : 0) + stats.lootBonus;
     const got = addCargo(e.loot.resourceId, qty);
-    if (got < qty) pushNotification("Cargo bay full", "bad");
+    if (got > 0) {
+      pushFloater({ text: `+${got} loot`, color: "#5cff8a", x: e.pos.x, y: e.pos.y + 24, scale: 0.85, ttl: 0.9 });
+      sfx.pickup();
+    } else {
+      pushNotification("Cargo bay full", "bad");
+    }
   }
 
   // Quest progress
@@ -188,32 +338,69 @@ function applyKill(e: Enemy): void {
       }
     }
   }
+
+  // Milestones
+  const m = state.player.milestones;
+  const prevKills = m.totalKills;
+  m.totalKills++;
+  checkMilestoneTier("totalKills", prevKills, m.totalKills);
+  if (e.isBoss) {
+    const prevBoss = m.bossKills;
+    m.bossKills++;
+    checkMilestoneTier("bossKills", prevBoss, m.bossKills);
+    bossActive = false;
+    pushEvent({
+      title: "BOSS DEFEATED",
+      body: `Excellent shooting, Captain. Premium loot dropped.`,
+      ttl: 6, kind: "boss", color: "#5cff8a",
+    });
+  }
+
+  // Mission progress
+  bumpMission("kill-any", 1);
+  bumpMission("kill-zone", 1, state.player.zone);
+  bumpMission("earn-credits", credGain);
+
+  if (killerCrit) {
+    pushFloater({ text: "CRIT!", color: "#ffd24a", x: e.pos.x, y: e.pos.y - 28, scale: 1.4, bold: true, ttl: 0.7 });
+  }
+
   tryLevelUp();
 }
 
 function damagePlayer(amount: number): void {
   const p = state.player;
+  const stats = effectiveStats();
+  amount *= Math.max(0.2, 1 - stats.damageReduction);
+
   if (p.shield > 0) {
     const absorbed = Math.min(p.shield, amount);
     p.shield -= absorbed;
     amount -= absorbed;
     emitRing(p.pos.x, p.pos.y, "#4ee2ff");
+    sfx.shieldHit();
   }
   if (amount > 0) {
     p.hull -= amount;
     emitSpark(p.pos.x, p.pos.y, "#ff5c6c", 6, 70, 2);
+    sfx.hit();
+    state.cameraShake = Math.max(state.cameraShake, 0.15);
     if (p.hull <= 0) {
-      const stats = effectiveStats();
-      p.hull = stats.hullMax;
-      p.shield = stats.shieldMax;
+      const stats2 = effectiveStats();
+      p.hull = stats2.hullMax;
+      p.shield = stats2.shieldMax;
       const lostCr = Math.floor(p.credits * 0.1);
       p.credits = Math.max(0, p.credits - lostCr);
       p.pos = { x: 0, y: 80 };
       p.vel = { x: 0, y: 0 };
       state.cameraTarget = { ...p.pos };
       state.enemies = [];
+      state.player.milestones.totalDeaths++;
+      bossActive = false;
       pushNotification(`Ship destroyed. -${lostCr}cr. Respawned.`, "bad");
       pushChat("system", "SYSTEM", `Your ship was destroyed. -${lostCr} credits.`);
+      sfx.explosion(true);
+      state.cameraShake = 1;
     }
   }
 }
@@ -252,6 +439,8 @@ const playerFireCd = { value: 0 };
 
 function tickWorld(dt: number): void {
   state.tick += dt;
+  if (state.levelUpFlash > 0) state.levelUpFlash = Math.max(0, state.levelUpFlash - dt);
+  if (state.cameraShake > 0) state.cameraShake = Math.max(0, state.cameraShake - dt * 1.6);
   const p = state.player;
   const stats = effectiveStats();
 
@@ -298,7 +487,7 @@ function tickWorld(dt: number): void {
 
   // ── Shield regen
   if (p.shield < stats.shieldMax) {
-    p.shield = Math.min(stats.shieldMax, p.shield + (5 + p.equipment.shieldTier * 2) * dt);
+    p.shield = Math.min(stats.shieldMax, p.shield + stats.shieldRegen * dt);
   }
 
   // ── Enemies spawn
@@ -308,65 +497,173 @@ function tickWorld(dt: number): void {
     enemySpawnTimer = 1.6 + Math.random() * 1.4;
   }
 
-  // ── Update enemies (chase + fire)
+  // ── Boss event timer (only when no boss currently active)
+  if (!bossActive) {
+    state.bossSpawnTimer -= dt;
+    // pre-warning event 30s before
+    if (state.bossSpawnTimer < 30 && state.bossSpawnTimer > 28) {
+      const z = ZONES[state.player.zone];
+      pushEvent({
+        title: "INCOMING DREAD",
+        body: `Sensors detect a heavy warship inbound to ${z.name} in 30s.`,
+        ttl: 6, kind: "global", color: "#ff8a4e",
+      });
+    }
+    if (state.bossSpawnTimer <= 0) {
+      spawnBoss();
+      state.bossSpawnTimer = 300 + Math.random() * 120; // 5-7 min cycle
+    }
+  }
+
+  // ── Update enemies (varied AI per behavior)
   for (const e of state.enemies) {
     const exd = p.pos.x - e.pos.x;
     const eyd = p.pos.y - e.pos.y;
     const ed = Math.sqrt(exd * exd + eyd * eyd);
     e.angle = Math.atan2(eyd, exd);
-    if (ed > 80) {
-      e.vel.x = Math.cos(e.angle) * e.speed;
-      e.vel.y = Math.sin(e.angle) * e.speed;
+    if (e.hitFlash !== undefined && e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt * 4);
+    if (e.combo) {
+      e.combo.ttl -= dt;
+      if (e.combo.ttl <= 0) e.combo = undefined;
+    }
+
+    if (e.behavior === "fast") {
+      // zigzag fast pursuit
+      const wobble = Math.sin(state.tick * 5 + (e.pos.x + e.pos.y)) * 0.6;
+      const ang = e.angle + wobble;
+      e.vel.x = Math.cos(ang) * e.speed;
+      e.vel.y = Math.sin(ang) * e.speed;
+    } else if (e.behavior === "ranged") {
+      // kite at ~340px range
+      const ideal = 340;
+      const speed = e.speed * (ed < ideal - 40 ? -1 : ed > ideal + 40 ? 1 : 0.2);
+      e.vel.x = Math.cos(e.angle) * speed;
+      e.vel.y = Math.sin(e.angle) * speed;
+    } else if (e.behavior === "tank") {
+      // slow steady advance, hold at ~120
+      if (ed > 140) {
+        e.vel.x = Math.cos(e.angle) * e.speed;
+        e.vel.y = Math.sin(e.angle) * e.speed;
+      } else {
+        e.vel.x *= 0.85;
+        e.vel.y *= 0.85;
+      }
     } else {
-      e.vel.x *= 0.9;
-      e.vel.y *= 0.9;
+      // chaser default
+      if (ed > 80) {
+        e.vel.x = Math.cos(e.angle) * e.speed;
+        e.vel.y = Math.sin(e.angle) * e.speed;
+      } else {
+        e.vel.x *= 0.9;
+        e.vel.y *= 0.9;
+      }
     }
     e.pos.x += e.vel.x * dt;
     e.pos.y += e.vel.y * dt;
 
+    // Firing: ranged fires more, tanks fire bursts, bosses fire spread
     e.fireCd -= dt;
-    if (e.fireCd <= 0 && ed < 480) {
-      fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage, e.color);
-      e.fireCd = 1.4 + Math.random() * 1.2;
+    if (e.isBoss) {
+      if (e.fireCd <= 0 && ed < 600) {
+        // 5-shot spread
+        for (let i = -2; i <= 2; i++) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.18, e.damage, e.color, 4, { speedMul: 0.9 });
+        }
+        e.fireCd = 1.6;
+        // burst follow-up: 3 quick shots after a beat
+        e.burstShots = 3;
+        e.burstCd = 0.2;
+      }
+      if ((e.burstShots ?? 0) > 0) {
+        e.burstCd = (e.burstCd ?? 0) - dt;
+        if ((e.burstCd ?? 0) <= 0) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage * 0.7, e.color, 3);
+          e.burstShots = (e.burstShots ?? 0) - 1;
+          e.burstCd = 0.18;
+        }
+      }
+    } else if (e.behavior === "ranged") {
+      if (e.fireCd <= 0 && ed < 460) {
+        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage, e.color);
+        e.fireCd = 0.8 + Math.random() * 0.6;
+      }
+    } else if (e.behavior === "tank") {
+      if (e.fireCd <= 0 && ed < 420) {
+        // small burst of 2
+        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle - 0.08, e.damage * 0.9, e.color);
+        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + 0.08, e.damage * 0.9, e.color);
+        e.fireCd = 1.8 + Math.random() * 0.8;
+      }
+    } else if (e.behavior === "fast") {
+      if (e.fireCd <= 0 && ed < 220) {
+        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage, e.color, 2);
+        e.fireCd = 0.7 + Math.random() * 0.6;
+      }
+    } else {
+      if (e.fireCd <= 0 && ed < 480) {
+        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage, e.color);
+        e.fireCd = 1.4 + Math.random() * 1.2;
+      }
     }
   }
 
-  // ── Player auto-fire at nearest enemy
+  // ── Player auto-fire at nearest enemy (prefer boss if close)
   let nearest: Enemy | null = null;
-  let nearestD = 520;
+  let nearestD = 600;
   for (const e of state.enemies) {
     const d = distance(p.pos.x, p.pos.y, e.pos.x, e.pos.y);
-    if (d < nearestD) { nearest = e; nearestD = d; }
+    const adj = d * (e.isBoss ? 0.6 : 1);
+    if (adj < nearestD) { nearest = e; nearestD = adj; }
   }
   if (nearest && playerFireCd.value <= 0) {
     const ang = Math.atan2(nearest.pos.y - p.pos.y, nearest.pos.x - p.pos.x);
     const color = LASER_TIER_COLOR(p.equipment.laserTier);
     const size = p.equipment.laserTier >= 7 ? 4 : 3;
-    fireProjectile("player", p.pos.x, p.pos.y, ang, stats.damage, color, size);
-    playerFireCd.value = Math.max(0.18, 0.55 - p.equipment.laserTier * 0.04);
+    const isCrit = Math.random() < stats.critChance;
+    const dmg = stats.damage * (isCrit ? 2 : 1);
+    fireProjectile("player", p.pos.x, p.pos.y, ang, dmg, color, size, {
+      crit: isCrit, aoeRadius: stats.aoeRadius > 0 ? stats.aoeRadius : undefined,
+    });
+    sfx.shoot(p.equipment.laserTier);
+    if (isCrit) sfx.crit();
+    playerFireCd.value = Math.max(0.12, (0.55 - p.equipment.laserTier * 0.04) / stats.fireRate);
   }
   playerFireCd.value -= dt;
 
-  // ── Update drones (orbit + fire)
+  // ── Update drones (mode-aware: orbit/forward/defensive)
   const droneCount = p.drones.length;
   for (let i = 0; i < droneCount; i++) {
     const d = p.drones[i];
     const def = DRONE_DEFS[d.kind];
     d.orbitPhase += dt * 1.5;
-    const radius = 38 + (i % 2) * 12;
-    const ang = d.orbitPhase + (i / Math.max(1, droneCount)) * Math.PI * 2;
-    // anchor pos used for rendering & firing source
+
+    let radius = 38 + (i % 2) * 12;
+    let centerX = p.pos.x;
+    let centerY = p.pos.y;
+    let ang = d.orbitPhase + (i / Math.max(1, droneCount)) * Math.PI * 2;
+    if (d.mode === "forward" && nearest) {
+      // sit between player and target
+      const tx = (p.pos.x + nearest.pos.x) / 2;
+      const ty = (p.pos.y + nearest.pos.y) / 2;
+      centerX = tx; centerY = ty;
+      radius = 18;
+    } else if (d.mode === "defensive") {
+      radius = 24;
+    }
     (d as Drone & { anchor?: { x: number; y: number } }).anchor = {
-      x: p.pos.x + Math.cos(ang) * radius,
-      y: p.pos.y + Math.sin(ang) * radius,
+      x: centerX + Math.cos(ang) * radius,
+      y: centerY + Math.sin(ang) * radius,
     };
     if (def.fireRate > 0) {
       d.fireCd -= dt;
       if (d.fireCd <= 0 && nearest) {
         const dpos = (d as Drone & { anchor: { x: number; y: number } }).anchor;
-        const dang = Math.atan2(nearest.pos.y - dpos.y, nearest.pos.x - dpos.x);
-        fireProjectile("drone", dpos.x, dpos.y, dang, def.damageBonus, def.color, 2);
-        d.fireCd = 1 / def.fireRate;
+        const fireRange = d.mode === "defensive" ? 280 : 720;
+        if (distance(dpos.x, dpos.y, nearest.pos.x, nearest.pos.y) < fireRange) {
+          const dang = Math.atan2(nearest.pos.y - dpos.y, nearest.pos.x - dpos.x);
+          fireProjectile("drone", dpos.x, dpos.y, dang, def.damageBonus, def.color, 2);
+          d.fireCd = 1 / def.fireRate;
+        }
       }
     }
   }
@@ -381,10 +678,38 @@ function tickWorld(dt: number): void {
       // hit enemies
       for (const e of state.enemies) {
         if (distance(pr.pos.x, pr.pos.y, e.pos.x, e.pos.y) < e.size + 4) {
-          e.hull -= pr.damage;
-          emitSpark(pr.pos.x, pr.pos.y, e.color, 4, 80, 2);
+          // combo bonus
+          const stacks = e.combo ? Math.min(5, e.combo.stacks + 1) : 1;
+          e.combo = { stacks, ttl: 3 };
+          const comboMul = 1 + (stacks - 1) * 0.10;
+          const dmg = pr.damage * comboMul;
+          e.hull -= dmg;
+          e.hitFlash = 1;
+          emitSpark(pr.pos.x, pr.pos.y, e.color, pr.crit ? 8 : 4, pr.crit ? 140 : 80, 2);
           emitRing(pr.pos.x, pr.pos.y, pr.color);
-          if (e.hull <= 0) applyKill(e);
+          // damage floater
+          pushFloater({
+            text: pr.crit ? `${Math.round(dmg)}!` : `${Math.round(dmg)}`,
+            color: pr.crit ? "#ffd24a" : "#e8f0ff",
+            x: e.pos.x + (Math.random() - 0.5) * 14,
+            y: e.pos.y - e.size - 6,
+            scale: pr.crit ? 1.3 : 0.9, ttl: 0.6, bold: pr.crit,
+          });
+          if (stacks >= 3) {
+            pushFloater({ text: `x${stacks}`, color: "#ff5cf0", x: e.pos.x, y: e.pos.y + e.size + 8, scale: 0.9, ttl: 0.5 });
+          }
+          // splash
+          if (pr.aoeRadius && pr.aoeRadius > 0) {
+            for (const e2 of state.enemies) {
+              if (e2.id === e.id) continue;
+              if (distance(e.pos.x, e.pos.y, e2.pos.x, e2.pos.y) < pr.aoeRadius * 8) {
+                e2.hull -= dmg * 0.4;
+                e2.hitFlash = 1;
+              }
+            }
+            emitRing(pr.pos.x, pr.pos.y, "#ffaa44");
+          }
+          if (e.hull <= 0) applyKill(e, !!pr.crit);
           return false;
         }
       }
@@ -410,6 +735,7 @@ function tickWorld(dt: number): void {
             p.drones = p.drones.filter((x) => x.id !== dr.id);
             pushNotification(`Drone destroyed: ${DRONE_DEFS[dr.kind].name}`, "bad");
             emitDeath(anchor.x, anchor.y, DRONE_DEFS[dr.kind].color);
+            sfx.explosion();
           }
           return false;
         }
@@ -436,6 +762,18 @@ function tickWorld(dt: number): void {
   if (state.particles.length > 320) {
     state.particles.splice(0, state.particles.length - 320);
   }
+
+  // ── Floaters update
+  for (const f of state.floaters) {
+    f.pos.y += f.vy * dt;
+    f.vy *= 0.96;
+    f.ttl -= dt;
+  }
+  state.floaters = state.floaters.filter((f) => f.ttl > 0);
+
+  // ── Events ttl
+  for (const ev of state.events) ev.ttl -= dt;
+  state.events = state.events.filter((ev) => ev.ttl > 0);
 
   // ── AI other players drift
   aiUpdateTimer -= dt;
@@ -489,15 +827,20 @@ function destroyAsteroid(id: string): void {
   if (!a) return;
   emitSpark(a.pos.x, a.pos.y, "#c69060", 16, 120, 3);
   emitSpark(a.pos.x, a.pos.y, "#7a5028", 8, 80, 2);
+  sfx.explosion();
   const qty = 2 + Math.floor(Math.random() * 3);
   const got = addCargo(a.yields, qty);
   if (got > 0) {
-    pushNotification(`Mined +${got}× ${a.yields === "iron" ? "Iron Ore" : "Lumenite"}`, "good");
+    pushFloater({ text: `+${got} ${a.yields === "iron" ? "Iron" : "Lumenite"}`, color: "#5cff8a", x: a.pos.x, y: a.pos.y - 12, scale: 1, ttl: 0.9 });
+    sfx.pickup();
+    state.player.milestones.totalMined += got;
+    bumpMission("mine", got);
+    const prev = state.player.milestones.totalMined - got;
+    checkMilestoneTier("totalMined", prev, state.player.milestones.totalMined);
   } else {
     pushNotification("Cargo full — ore lost", "bad");
   }
   state.asteroids = state.asteroids.filter((x) => x.id !== id);
-  // respawn a new asteroid somewhere far away after a while
   setTimeout(() => {
     const angle = Math.random() * Math.PI * 2;
     const dist = 1200 + Math.random() * 1200;
@@ -522,7 +865,6 @@ export function checkPortal(): void {
     const z = ZONES[portal.toZone];
     if (state.player.level < z.unlockLevel) {
       pushNotification(`Need level ${z.unlockLevel} to enter ${z.name}`, "bad");
-      // bump player away from portal so we don't spam
       const ang = Math.atan2(p.pos.y - portal.pos.y, p.pos.x - portal.pos.x);
       p.pos.x += Math.cos(ang) * 80;
       p.pos.y += Math.sin(ang) * 80;

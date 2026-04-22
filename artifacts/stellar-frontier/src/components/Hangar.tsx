@@ -1,13 +1,17 @@
-import { state, bump, useGame, pushNotification, save, stationPrice, addCargo, removeCargo, cargoUsed } from "../game/store";
+import { state, bump, useGame, pushNotification, save, stationPrice, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily } from "../game/store";
 import {
-  ActiveQuest, DRONE_DEFS, DroneKind, LASER_TIER_COLOR, LASER_TIER_NAME,
-  Quest, RESOURCES, ResourceId, SHIP_CLASSES, STATIONS, ShipClassId, UPGRADE_COST,
+  ActiveQuest, DRONE_DEFS, DroneKind, DroneMode, FACTIONS, LASER_TIER_COLOR, LASER_TIER_NAME,
+  Quest, RESOURCES, ResourceId, SHIP_CLASSES, SKILL_NODES, STATIONS, ShipClassId, SkillBranch,
+  SkillId, UPGRADE_COST,
 } from "../game/types";
 import type { HangarTab } from "../game/store";
 import { effectiveStats } from "../game/loop";
+import { buySkillRank, resetSkills } from "../game/store";
 
 const TABS: { id: HangarTab; label: string; glyph: string }[] = [
   { id: "bounties", label: "Bounties", glyph: "★" },
+  { id: "missions", label: "Missions", glyph: "▣" },
+  { id: "skills",   label: "Skills",   glyph: "✦" },
   { id: "ships",    label: "Shipyard", glyph: "▲" },
   { id: "equip",    label: "Outfit",   glyph: "⚙" },
   { id: "drones",   label: "Drones",   glyph: "✦" },
@@ -66,12 +70,14 @@ export function Hangar({ stationId }: { stationId: string }) {
 
         <div className="overflow-y-auto" style={{ height: "calc(100% - 130px)" }}>
           {tab === "bounties" && <BountiesTab />}
+          {tab === "missions" && <MissionsTab />}
+          {tab === "skills" && <SkillsTab />}
           {tab === "equip" && <EquipTab />}
           {tab === "ships" && <ShipsTab />}
           {tab === "drones" && <DronesTab />}
           {tab === "market" && <MarketTab stationId={stationId} />}
           {tab === "cargo" && <CargoTab />}
-          {tab === "repair" && <RepairTab />}
+          {tab === "repair" && <RepairTab stationId={stationId} />}
         </div>
       </div>
     </div>
@@ -307,7 +313,8 @@ function Stat({ label, v }: { label: string; v: number }) {
 function DronesTab() {
   const player = useGame((s) => s.player);
   const cls = SHIP_CLASSES[player.shipClass];
-  const slotsLeft = cls.droneSlots - player.drones.length;
+  const totalSlots = maxDroneSlots();
+  const slotsLeft = totalSlots - player.drones.length;
 
   const buy = (kind: DroneKind) => {
     const def = DRONE_DEFS[kind];
@@ -317,12 +324,21 @@ function DronesTab() {
     player.drones.push({
       id: `dr-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
       kind,
+      mode: "orbit",
       hp: 60 + def.shieldBonus * 0.5,
       hpMax: 60 + def.shieldBonus * 0.5,
       orbitPhase: Math.random() * Math.PI * 2,
       fireCd: 0,
     });
     pushNotification(`Deployed ${def.name}`, "good");
+    save(); bump();
+  };
+
+  const setMode = (id: string, mode: DroneMode) => {
+    const d = player.drones.find((x) => x.id === id);
+    if (!d) return;
+    d.mode = mode;
+    pushNotification(`Drone set to ${mode.toUpperCase()}`, "info");
     save(); bump();
   };
 
@@ -341,7 +357,7 @@ function DronesTab() {
     <div className="p-4 grid grid-cols-2 gap-4">
       <div>
         <div className="text-cyan tracking-widest text-xs mb-3">
-          ▶ DRONE BAY — {player.drones.length}/{cls.droneSlots} SLOTS
+          ▶ DRONE BAY — {player.drones.length}/{totalSlots} SLOTS
         </div>
         <div className="space-y-2">
           {player.drones.length === 0 && (
@@ -365,12 +381,34 @@ function DronesTab() {
                     {def.hullBonus > 0 && `+${def.hullBonus} hp`}
                   </div>
                 </div>
-                <button className="btn btn-danger" style={{ padding: "4px 10px", fontSize: 10 }} onClick={() => scrap(d.id)}>
-                  Scrap
-                </button>
+                <div className="flex flex-col gap-1">
+                  <div className="flex gap-1">
+                    {(["orbit", "forward", "defensive"] as DroneMode[]).map((m) => (
+                      <button
+                        key={m}
+                        className="btn"
+                        style={{
+                          padding: "2px 6px", fontSize: 8,
+                          background: d.mode === m ? `${def.color}33` : "transparent",
+                          borderColor: d.mode === m ? def.color : "var(--border-glow)",
+                          color: d.mode === m ? def.color : "var(--text-dim)",
+                        }}
+                        onClick={() => setMode(d.id, m)}
+                      >
+                        {m === "orbit" ? "ORB" : m === "forward" ? "FWD" : "DEF"}
+                      </button>
+                    ))}
+                  </div>
+                  <button className="btn btn-danger" style={{ padding: "2px 6px", fontSize: 9 }} onClick={() => scrap(d.id)}>
+                    Scrap
+                  </button>
+                </div>
               </div>
             );
           })}
+        </div>
+        <div className="text-mute text-[9px] mt-2 italic">
+          Modes: ORBIT (default circle), FORWARD (advance to mid-target), DEFENSIVE (hold close, short range).
         </div>
       </div>
 
@@ -552,7 +590,7 @@ function CargoTab() {
 }
 
 // ── REPAIR / SERVICES ─────────────────────────────────────────────────────
-function RepairTab() {
+function RepairTab({ stationId: _stationId }: { stationId: string }) {
   const player = useGame((s) => s.player);
   const stats = effectiveStats();
   const hullDamage = stats.hullMax - player.hull;
@@ -631,6 +669,176 @@ function RepairTab() {
           Death penalty: <span className="text-red font-bold">10% credit loss</span> · Hull and shield refilled · Respawn at last station.
           Carry less cash and bank earnings between bounty runs.
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── SKILLS ────────────────────────────────────────────────────────────────
+function SkillsTab() {
+  const player = useGame((s) => s.player);
+  const branches: { id: SkillBranch; name: string; color: string }[] = [
+    { id: "offense",  name: "OFFENSE",  color: "#ff5c6c" },
+    { id: "defense",  name: "DEFENSE",  color: "#4ee2ff" },
+    { id: "utility",  name: "UTILITY",  color: "#5cff8a" },
+  ];
+
+  return (
+    <div className="p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-cyan tracking-widest text-xs">▶ SKILL TREE</div>
+          <div className="text-mute text-[10px] mt-1">Earn 1 skill point per level. Spend below.</div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="panel px-3 py-2">
+            <div className="text-mute text-[9px] tracking-widest">UNSPENT</div>
+            <div className="text-amber font-bold text-lg tabular-nums">{player.skillPoints}</div>
+          </div>
+          <button
+            className="btn btn-danger"
+            style={{ padding: "6px 12px", fontSize: 10 }}
+            onClick={() => { if (confirm("Reset skills for 2000cr?")) resetSkills(); }}
+          >
+            RESPEC · 2000cr
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3">
+        {branches.map((b) => (
+          <div key={b.id} className="panel p-3">
+            <div className="font-bold tracking-widest text-xs mb-2" style={{ color: b.color }}>
+              ◆ {b.name}
+            </div>
+            <div className="space-y-2">
+              {SKILL_NODES.filter((n) => n.branch === b.id).map((n) => {
+                const cur = player.skills[n.id] ?? 0;
+                const reqMet = !n.requires || (player.skills[n.requires] ?? 0) > 0;
+                const canBuy = cur < n.maxRank && reqMet && player.skillPoints >= n.cost;
+                return (
+                  <div
+                    key={n.id}
+                    className="p-2"
+                    style={{
+                      background: cur > 0 ? `${b.color}11` : "rgba(255,255,255,0.02)",
+                      border: `1px solid ${cur > 0 ? b.color + "66" : "rgba(255,255,255,0.08)"}`,
+                    }}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="font-bold text-[11px]" style={{ color: cur > 0 ? b.color : "var(--text-dim)" }}>
+                        {n.name}
+                      </div>
+                      <div className="text-[10px] tabular-nums" style={{ color: b.color }}>
+                        {cur}/{n.maxRank}
+                      </div>
+                    </div>
+                    <div className="text-dim text-[10px] mb-1">{n.description}</div>
+                    {n.requires && (
+                      <div className="text-mute text-[9px] mb-1">
+                        Requires: {SKILL_NODES.find((x) => x.id === n.requires)?.name}
+                      </div>
+                    )}
+                    <button
+                      className="btn"
+                      style={{
+                        padding: "3px 8px", fontSize: 9, width: "100%",
+                        borderColor: canBuy ? b.color : "var(--border-glow)",
+                        color: canBuy ? b.color : "var(--text-mute)",
+                        background: canBuy ? `${b.color}15` : "transparent",
+                      }}
+                      disabled={!canBuy}
+                      onClick={() => buySkillRank(n.id as SkillId)}
+                    >
+                      {cur >= n.maxRank ? "MAX" : !reqMet ? "LOCKED" : `Buy · ${n.cost} pt${n.cost > 1 ? "s" : ""}`}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── MISSIONS ──────────────────────────────────────────────────────────────
+function MissionsTab() {
+  const player = useGame((s) => s.player);
+  const next = new Date(player.lastDailyReset + 24 * 3600 * 1000);
+  const hrs = Math.max(0, Math.floor((next.getTime() - Date.now()) / 3600000));
+  const mins = Math.max(0, Math.floor(((next.getTime() - Date.now()) % 3600000) / 60000));
+
+  return (
+    <div className="p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-cyan tracking-widest text-xs">▶ DAILY MISSIONS</div>
+          <div className="text-mute text-[10px] mt-1">Resets in {hrs}h {mins}m</div>
+        </div>
+        <button
+          className="btn btn-amber"
+          style={{ padding: "6px 12px", fontSize: 10 }}
+          onClick={rerollDaily}
+          disabled={player.credits < 500}
+        >
+          REROLL · 500cr
+        </button>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        {player.dailyMissions.map((m) => {
+          const pct = Math.min(1, m.progress / m.target);
+          const claimed = m.claimed;
+          const ready = m.completed && !claimed;
+          return (
+            <div
+              key={m.id}
+              className="panel p-3"
+              style={{
+                opacity: claimed ? 0.5 : 1,
+                borderColor: ready ? "#5cff8a" : "var(--border-soft)",
+              }}
+            >
+              <div className="font-bold text-[11px] text-cyan mb-1">{m.title}</div>
+              <div className="text-dim text-[10px] mb-2">{m.description}</div>
+              <div className="text-mute text-[10px] tabular-nums mb-1">
+                {m.progress}/{m.target}
+              </div>
+              <div className="w-full h-1 mb-2" style={{ background: "rgba(255,255,255,0.08)" }}>
+                <div
+                  className="h-full"
+                  style={{
+                    width: `${pct * 100}%`,
+                    background: ready ? "#5cff8a" : "var(--accent-cyan)",
+                  }}
+                />
+              </div>
+              <div className="text-amber text-[10px] mb-2">
+                +{m.rewardCredits}cr · +{m.rewardExp}xp · +{m.rewardHonor}✪
+              </div>
+              <button
+                className="btn btn-primary w-full"
+                style={{ padding: "4px 8px", fontSize: 10 }}
+                disabled={!ready}
+                onClick={() => claimMission(m.id)}
+              >
+                {claimed ? "CLAIMED" : ready ? "CLAIM" : "IN PROGRESS"}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Milestones */}
+      <div className="text-cyan tracking-widest text-xs mt-4 mb-2">▶ LIFETIME MILESTONES</div>
+      <div className="grid grid-cols-3 gap-2">
+        {Object.entries(player.milestones).map(([k, v]) => (
+          <div key={k} className="panel p-2">
+            <div className="text-mute text-[9px] tracking-widest uppercase">{k}</div>
+            <div className="text-amber font-bold text-sm tabular-nums">{(v as number).toLocaleString()}</div>
+          </div>
+        ))}
       </div>
     </div>
   );

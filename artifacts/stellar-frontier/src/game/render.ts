@@ -1,6 +1,6 @@
 import {
-  Asteroid, DRONE_DEFS, Drone, Enemy, MAP_RADIUS, OtherPlayer, Particle,
-  PORTALS, Projectile, SHIP_CLASSES, STATIONS, ShipClassId, ZONES,
+  Asteroid, DRONE_DEFS, Drone, Enemy, FACTIONS, Floater, MAP_RADIUS, OtherPlayer, Particle,
+  PORTALS, Projectile, SHIP_CLASSES, STATIONS, ShipClassId, Station, ZONES,
 } from "./types";
 import { state } from "./store";
 
@@ -244,7 +244,18 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
   ctx.translate(e.pos.x, e.pos.y);
   ctx.rotate(e.angle + Math.PI / 2);
   ctx.shadowColor = e.color;
-  ctx.shadowBlur = 8;
+  ctx.shadowBlur = e.isBoss ? 18 : 8;
+  if (e.isBoss) {
+    // Telegraph circle
+    ctx.save();
+    ctx.rotate(-(e.angle + Math.PI / 2));
+    ctx.strokeStyle = `rgba(255,138,78,${0.4 + 0.3 * Math.sin(state.tick * 5)})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, e.size + 18, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
   const c = e.color;
   const dk = shadeHex(c, -0.5);
   const hi = "#ffffff";
@@ -296,10 +307,37 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
     px(ctx, -5*s, -6*s, 10*s, 8*s, "#ffaa22");
     px(ctx, -2*s, -4*s, 4*s, 4*s, hi);
   }
+  // hit flash overlay
+  if (e.hitFlash !== undefined && e.hitFlash > 0) {
+    ctx.globalAlpha = Math.min(0.55, e.hitFlash * 0.55);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(-e.size, -e.size, e.size * 2, e.size * 2);
+    ctx.globalAlpha = 1;
+  }
   ctx.restore();
 
   // health bar above
-  drawHealthBar(ctx, e.pos.x, e.pos.y - e.size - 10, 28, e.hull / e.hullMax);
+  const barW = e.isBoss ? 64 : 28;
+  drawHealthBar(ctx, e.pos.x, e.pos.y - e.size - 10, barW, e.hull / e.hullMax);
+  if (e.isBoss) {
+    ctx.fillStyle = "#ff8a4e";
+    ctx.font = "bold 9px 'Courier New', monospace";
+    ctx.textAlign = "center";
+    ctx.shadowColor = "#000";
+    ctx.shadowBlur = 4;
+    ctx.fillText("◆ DREADNOUGHT ◆", e.pos.x, e.pos.y - e.size - 18);
+    ctx.shadowBlur = 0;
+  }
+  // combo indicator
+  if (e.combo && e.combo.stacks > 1) {
+    ctx.fillStyle = "#ff5cf0";
+    ctx.font = "bold 9px 'Courier New', monospace";
+    ctx.textAlign = "center";
+    ctx.shadowColor = "#ff5cf0";
+    ctx.shadowBlur = 4;
+    ctx.fillText(`COMBO x${e.combo.stacks}`, e.pos.x, e.pos.y + e.size + 16);
+    ctx.shadowBlur = 0;
+  }
 }
 
 // Mini health/shield bars above ship
@@ -386,9 +424,23 @@ const STATION_COLOR: Record<string, string> = {
 
 function drawStation(
   ctx: CanvasRenderingContext2D, x: number, y: number, name: string,
-  kind: string, t: number,
+  kind: string, t: number, station?: Station,
 ): void {
   const accent = STATION_COLOR[kind] || "#4ee2ff";
+  const factionColor = station ? FACTIONS[station.controlledBy].color : null;
+  if (factionColor) {
+    // outer faction ring
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.shadowColor = factionColor;
+    ctx.shadowBlur = 24;
+    ctx.strokeStyle = `${factionColor}aa`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(0, 0, 64, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
   ctx.save();
   ctx.translate(x, y);
 
@@ -465,7 +517,31 @@ function drawStation(
   ctx.font = "9px 'Courier New', monospace";
   ctx.fillText(`${STATION_GLYPH[kind] || "□"} ${kind.toUpperCase()}`, x, y - 52);
   ctx.fillText("[ DOCK ]", x, y + 70);
+  if (station) {
+    const fc = FACTIONS[station.controlledBy];
+    ctx.fillStyle = fc.color;
+    ctx.font = "8px 'Courier New', monospace";
+    ctx.fillText(`◆ ${fc.name.toUpperCase()}`, x, y + 82);
+  }
   ctx.shadowBlur = 0;
+}
+
+// ── FLOATERS ──────────────────────────────────────────────────────────────
+function drawFloater(ctx: CanvasRenderingContext2D, f: Floater): void {
+  const a = Math.max(0, Math.min(1, f.ttl / f.maxTtl));
+  const sz = Math.round(11 * f.scale);
+  ctx.save();
+  ctx.globalAlpha = a;
+  ctx.font = `${f.bold ? "bold " : ""}${sz}px 'Courier New', monospace`;
+  ctx.textAlign = "center";
+  ctx.shadowColor = "#000";
+  ctx.shadowBlur = 4;
+  ctx.fillStyle = "#000";
+  ctx.fillText(f.text, f.pos.x + 1, f.pos.y + 1);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = f.color;
+  ctx.fillText(f.text, f.pos.x, f.pos.y);
+  ctx.restore();
 }
 
 function drawPortal(ctx: CanvasRenderingContext2D, x: number, y: number, toName: string, t: number): void {
@@ -612,9 +688,15 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
     }
   }
 
-  // World transform
+  // World transform (with camera shake)
   ctx.save();
-  ctx.translate(w / 2 - cam.x, h / 2 - cam.y);
+  let sx = 0, sy = 0;
+  if (state.cameraShake > 0) {
+    const m = state.cameraShake * 12;
+    sx = (Math.random() - 0.5) * m;
+    sy = (Math.random() - 0.5) * m;
+  }
+  ctx.translate(w / 2 - cam.x + sx, h / 2 - cam.y + sy);
 
   // Map boundary
   ctx.strokeStyle = "rgba(78, 226, 255, 0.15)";
@@ -637,7 +719,7 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
   // Stations
   for (const st of STATIONS) {
     if (st.zone !== state.player.zone) continue;
-    drawStation(ctx, st.pos.x, st.pos.y, st.name, st.kind, state.tick);
+    drawStation(ctx, st.pos.x, st.pos.y, st.name, st.kind, state.tick, st);
   }
 
   // Portals
@@ -723,5 +805,42 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
   ctx.globalAlpha = 1;
   ctx.shadowBlur = 0;
 
+  // Floaters (damage/xp/credits text)
+  for (const f of state.floaters) drawFloater(ctx, f);
+
   ctx.restore();
+
+  // ── Level-up flourish overlay (screen space) ────────────────────────
+  if (state.levelUpFlash > 0) {
+    const t = state.levelUpFlash / 1.6;
+    ctx.save();
+    // shockwave ring centered on player
+    const cx = w / 2 + sx;
+    const cy = h / 2 + sy;
+    const ringR = (1 - t) * 280;
+    ctx.globalAlpha = t;
+    ctx.strokeStyle = "#ffd24a";
+    ctx.lineWidth = 4;
+    ctx.shadowColor = "#ffd24a";
+    ctx.shadowBlur = 30;
+    ctx.beginPath();
+    ctx.arc(cx, cy, ringR, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = "#ff5cf0";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, ringR * 0.7, 0, Math.PI * 2);
+    ctx.stroke();
+    // banner
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = "#000";
+    ctx.fillStyle = `rgba(255, 210, 74, ${t})`;
+    ctx.font = `bold ${Math.round(34 + (1 - t) * 14)}px 'Courier New', monospace`;
+    ctx.textAlign = "center";
+    ctx.fillText("LEVEL UP", cx, cy - 80);
+    ctx.fillStyle = `rgba(255, 92, 240, ${t})`;
+    ctx.font = "bold 12px 'Courier New', monospace";
+    ctx.fillText(`+1 SKILL POINT`, cx, cy - 56);
+    ctx.restore();
+  }
 }
