@@ -7,7 +7,7 @@ import {
 import type { HangarTab } from "../game/store";
 import { effectiveStats } from "../game/loop";
 import { buySkillRank, resetSkills } from "../game/store";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 
 const TABS: { id: HangarTab; label: string; glyph: string }[] = [
   { id: "bounties", label: "Bounties", glyph: "★" },
@@ -227,6 +227,25 @@ function computeStatDiff(equipped: ModuleStats, shop: ModuleStats): StatDiffEntr
   return diffs;
 }
 
+function normalizedUpgradeScore(equipped: ModuleStats, shop: ModuleStats): number {
+  // `base` is the neutral value when the stat is absent (additive stats default 0, multiplicative to 1)
+  const n = (a: number | undefined, b: number | undefined, w: number, base = 0) =>
+    ((b ?? base) - (a ?? base)) * w;
+  return (
+    n(equipped.damage,          shop.damage,          0.5)       +
+    n(equipped.fireRate,        shop.fireRate,        50,  1)    + // neutral fireRate = 1×
+    n(equipped.critChance,      shop.critChance,      200)       +
+    n(equipped.shieldMax,       shop.shieldMax,       0.5)       +
+    n(equipped.shieldRegen,     shop.shieldRegen,     5)         +
+    n(equipped.hullMax,         shop.hullMax,         0.5)       +
+    n(equipped.speed,           shop.speed,           1)         +
+    n(equipped.damageReduction, shop.damageReduction, 200)       +
+    n(equipped.aoeRadius,       shop.aoeRadius,       1)         +
+    n(equipped.ammoCapacity,    shop.ammoCapacity,    1)         +
+    n(equipped.lootBonus,       shop.lootBonus,       1)
+  );
+}
+
 function modStatPills(stats: typeof MODULE_DEFS[string]["stats"]) {
   const pills: { k: string; v: string; c: string }[] = [];
   if (stats.damage)          pills.push({ k: "DMG", v: `+${stats.damage}`, c: "#ff5c6c" });
@@ -388,6 +407,36 @@ function LoadoutTab({ stationId }: { stationId: string }) {
   const shopPool = Object.values(MODULE_DEFS).filter((d) => d.tier <= Math.min(5, Math.max(1, Math.ceil(player.level / 4))));
   const shopOffer = shopPool.slice(0, 8); // simple: show first 8 affordable ones
 
+  // Determine which shop module is the single best upgrade for the player's current build
+  const bestUpgradeDefId = useMemo(() => {
+    if (!showShop) return null;
+    let bestId: string | null = null;
+    let bestScore = 0; // must beat 0 to be considered a net upgrade
+    for (const def of shopOffer) {
+      const equippedIds = player.equipped[def.slot];
+      // Score against each equipped slot; keep the best slot comparison
+      let slotBestScore = equippedIds.length === 0
+        ? normalizedUpgradeScore({}, def.stats)
+        : -Infinity;
+      for (const instanceId of equippedIds) {
+        let equippedStats: ModuleStats = {};
+        if (instanceId !== null) {
+          const item = player.inventory.find((m) => m.instanceId === instanceId);
+          if (item) {
+            const equippedDef = MODULE_DEFS[item.defId];
+            if (equippedDef) equippedStats = equippedDef.stats;
+          }
+        }
+        slotBestScore = Math.max(slotBestScore, normalizedUpgradeScore(equippedStats, def.stats));
+      }
+      if (slotBestScore > bestScore) {
+        bestScore = slotBestScore;
+        bestId = def.id;
+      }
+    }
+    return bestId;
+  }, [showShop, shopOffer, player.equipped, player.inventory]);
+
   const visibleInv = player.inventory.filter((it) => {
     if (filter === "all") return true;
     return MODULE_DEFS[it.defId]?.slot === filter;
@@ -467,18 +516,27 @@ function LoadoutTab({ stationId }: { stationId: string }) {
             shopOffer.map((def) => {
               const canAfford = player.credits >= def.price;
               const isHovered = hoveredShopDefId === def.id;
+              const isBestUpgrade = bestUpgradeDefId === def.id;
               return (
                 <div key={def.id} className="panel p-2 flex items-start gap-2"
-                  style={{ borderColor: isHovered ? "#ffd24a" : RARITY_COLOR[def.rarity], transition: "border-color 0.1s" }}
+                  style={{ borderColor: isBestUpgrade ? "#ffd24a" : isHovered ? "#ffd24a" : RARITY_COLOR[def.rarity], transition: "border-color 0.1s" }}
                   onMouseEnter={() => setHoveredShopDefId(def.id)}>
                   <div className="flex items-center justify-center"
                     style={{ width: 28, height: 28, background: `${def.color}22`, border: `1px solid ${def.color}`, color: def.color, fontSize: 14 }}>
                     {def.glyph}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <div className="text-[11px] font-bold tracking-widest" style={{ color: RARITY_COLOR[def.rarity] }}>{def.name}</div>
                       <span className="text-[8px] uppercase" style={{ color: RARITY_COLOR[def.rarity] }}>· {def.rarity}</span>
+                      {isBestUpgrade && (
+                        <span
+                          className="text-[8px] font-bold tracking-widest px-1.5 py-0.5"
+                          style={{ color: "#ffd24a", background: "#ffd24a18", border: "1px solid #ffd24a88", borderRadius: 2 }}
+                        >
+                          ★ BEST UPGRADE
+                        </span>
+                      )}
                     </div>
                     <div className="text-mute text-[9px] leading-tight">{def.description}</div>
                     {modStatPills(def.stats)}
