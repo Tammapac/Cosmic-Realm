@@ -1,14 +1,70 @@
 import {
   bump, pushChat, pushNotification, pushHonor, save, addCargo, pushFloater,
-  pushEvent, bumpMission, state, travelToZone,
+  pushEvent, bumpMission, state, travelToZone, completeDungeon,
 } from "./store";
 import {
-  DRONE_DEFS, Drone, ENEMY_DEFS, EXP_FOR_LEVEL,
-  Enemy, EnemyType, FACTIONS, LASER_TIER_COLOR, PORTALS,
+  DRONE_DEFS, Drone, DUNGEONS, ENEMY_DEFS, EXP_FOR_LEVEL,
+  Enemy, EnemyType, FACTIONS, MODULE_DEFS, ModuleStats, PORTALS,
   SHIP_CLASSES, STATIONS, ZONES, ZoneId,
   rankFor,
 } from "./types";
 import { sfx } from "./sound";
+
+// Returns the equipped weapon's color (used for laser projectiles)
+function equippedWeaponColor(): string {
+  const p = state.player;
+  for (const id of p.equipped.weapon) {
+    if (!id) continue;
+    const item = p.inventory.find((m) => m.instanceId === id);
+    if (item && MODULE_DEFS[item.defId]) return MODULE_DEFS[item.defId].color;
+  }
+  return "#4ee2ff";
+}
+
+function sumEquippedStats(): ModuleStats {
+  const p = state.player;
+  const acc: Required<ModuleStats> = {
+    damage: 0, fireRate: 1, critChance: 0, shieldMax: 0, shieldRegen: 0,
+    hullMax: 0, speed: 0, damageReduction: 0, cargoBonus: 0, lootBonus: 0, aoeRadius: 0,
+  };
+  let weaponDmg = 0, weaponFireRate = 1, weaponCrit = 0, weaponAoe = 0, weaponCount = 0;
+  for (const id of p.equipped.weapon) {
+    if (!id) continue;
+    const item = p.inventory.find((m) => m.instanceId === id);
+    const def = item ? MODULE_DEFS[item.defId] : null;
+    if (!def) continue;
+    weaponCount++;
+    weaponDmg += def.stats.damage ?? 0;
+    weaponFireRate *= def.stats.fireRate ?? 1;
+    weaponCrit += def.stats.critChance ?? 0;
+    weaponAoe = Math.max(weaponAoe, def.stats.aoeRadius ?? 0);
+  }
+  // Weapons stack damage; fire rate averaged so dual-equip doesn't 2× the rate
+  acc.damage += weaponDmg;
+  acc.fireRate = weaponCount > 0 ? Math.pow(weaponFireRate, 1 / weaponCount) : 1;
+  acc.critChance += weaponCrit;
+  acc.aoeRadius = Math.max(acc.aoeRadius, weaponAoe);
+
+  for (const id of [...p.equipped.generator, ...p.equipped.module]) {
+    if (!id) continue;
+    const item = p.inventory.find((m) => m.instanceId === id);
+    const def = item ? MODULE_DEFS[item.defId] : null;
+    if (!def) continue;
+    const s = def.stats;
+    acc.damage          += s.damage ?? 0;
+    if (s.fireRate)     acc.fireRate *= s.fireRate;
+    acc.critChance      += s.critChance ?? 0;
+    acc.shieldMax       += s.shieldMax ?? 0;
+    acc.shieldRegen     += s.shieldRegen ?? 0;
+    acc.hullMax         += s.hullMax ?? 0;
+    acc.speed           += s.speed ?? 0;
+    acc.damageReduction += s.damageReduction ?? 0;
+    acc.cargoBonus      += s.cargoBonus ?? 0;
+    acc.lootBonus       += s.lootBonus ?? 0;
+    acc.aoeRadius       = Math.max(acc.aoeRadius, s.aoeRadius ?? 0);
+  }
+  return acc;
+}
 
 let last = performance.now();
 let raf = 0;
@@ -54,16 +110,17 @@ export function effectiveStats(): {
   const skDefBulw   = p.skills["def-bulwark"] ?? 0;
   const skUtThrust  = p.skills["ut-thrust"]  ?? 0;
 
-  let damage = (cls.baseDamage + p.equipment.laserTier * 6) * (1 + skOffPower * 0.05);
-  let hullMax = cls.hullMax * (1 + skDefArmor * 0.08);
-  let shieldMax = (cls.shieldMax + p.equipment.shieldTier * 25) * (1 + skDefShield * 0.08);
-  let speed = (cls.baseSpeed + p.equipment.thrusterTier * 30) * (1 + skUtThrust * 0.05);
-  let shieldRegen = 5 + p.equipment.shieldTier * 2;
-  let damageReduction = skDefBulw * 0.04;
-  let aoeRadius = skOffPierce * 4;
-  let critChance = 0.05 + skOffCrit * 0.03 + p.equipment.laserTier * 0.01;
-  let fireRate = 1 + skOffRapid * 0.05; // multiplier on fire speed (lower cd)
-  let lootBonus = 0;
+  const mod = sumEquippedStats() as Required<ModuleStats>;
+  let damage = (cls.baseDamage + mod.damage) * (1 + skOffPower * 0.05);
+  let hullMax = (cls.hullMax + (mod.hullMax ?? 0)) * (1 + skDefArmor * 0.08);
+  let shieldMax = (cls.shieldMax + (mod.shieldMax ?? 0)) * (1 + skDefShield * 0.08);
+  let speed = (cls.baseSpeed + (mod.speed ?? 0)) * (1 + skUtThrust * 0.05);
+  let shieldRegen = 5 + (mod.shieldRegen ?? 0);
+  let damageReduction = (skDefBulw * 0.04) + (mod.damageReduction ?? 0);
+  let aoeRadius = (skOffPierce * 4) + (mod.aoeRadius ?? 0);
+  let critChance = 0.05 + skOffCrit * 0.03 + (mod.critChance ?? 0);
+  let fireRate = (1 + skOffRapid * 0.05) * (mod.fireRate ?? 1);
+  let lootBonus = mod.lootBonus ?? 0;
 
   for (const d of p.drones) {
     const def = DRONE_DEFS[d.kind];
@@ -116,6 +173,67 @@ function spawnEnemy(): void {
     burstCd: 0,
     burstShots: 0,
   });
+}
+
+// ── DUNGEON ───────────────────────────────────────────────────────────────
+let dungeonSpawnCd = 0;
+
+function spawnDungeonEnemy(type: EnemyType, hpMul: number, dmgMul: number): void {
+  const def = ENEMY_DEFS[type];
+  const angle = Math.random() * Math.PI * 2;
+  const dist = 480 + Math.random() * 220;
+  const px = state.player.pos.x + Math.cos(angle) * dist;
+  const py = state.player.pos.y + Math.sin(angle) * dist;
+  const hullMax = def.hullMax * hpMul;
+  state.enemies.push({
+    id: `dg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    type, behavior: def.behavior,
+    pos: { x: px, y: py }, vel: { x: 0, y: 0 }, angle: 0,
+    hull: hullMax, hullMax,
+    damage: def.damage * dmgMul,
+    speed: def.speed,
+    fireCd: Math.random() * 1.5,
+    exp: Math.round(def.exp * 1.4),
+    credits: Math.round(def.credits * 1.4),
+    honor: Math.round(def.honor * 1.4),
+    color: def.color, size: def.size,
+    loot: def.loot, burstCd: 0, burstShots: 0,
+  });
+}
+
+function updateDungeon(dt: number): void {
+  const run = state.dungeon;
+  if (!run) return;
+  const def = DUNGEONS[run.id];
+  const aliveCount = state.enemies.length;
+  // Spawn the wave's enemies (staggered)
+  if (!run.spawnedThisWave) {
+    dungeonSpawnCd -= dt;
+    if (dungeonSpawnCd <= 0) {
+      const spawned = aliveCount;
+      const target = def.enemiesPerWave;
+      if (spawned < target) {
+        const t: EnemyType = def.enemyTypes[Math.floor(Math.random() * def.enemyTypes.length)];
+        spawnDungeonEnemy(t, def.enemyHpMul, def.enemyDmgMul);
+        dungeonSpawnCd = 0.45;
+      } else {
+        run.spawnedThisWave = true;
+      }
+    }
+  } else if (aliveCount === 0) {
+    // Wave clear
+    if (run.wave >= run.totalWaves) {
+      pushEvent({ title: "✦ ALL WAVES CLEAR", body: `${def.name} subdued.`, ttl: 4, kind: "global", color: def.color });
+      completeDungeon();
+      return;
+    }
+    run.wave++;
+    run.spawnedThisWave = false;
+    run.enemiesLeft = def.enemiesPerWave;
+    dungeonSpawnCd = 1.2;
+    pushEvent({ title: `▼ WAVE ${run.wave} / ${run.totalWaves}`, body: `Hostiles re-engaging.`, ttl: 3.5, kind: "info", color: def.color });
+    sfx.bossWarn();
+  }
 }
 
 function spawnBoss(): void {
@@ -490,15 +608,19 @@ function tickWorld(dt: number): void {
     p.shield = Math.min(stats.shieldMax, p.shield + stats.shieldRegen * dt);
   }
 
-  // ── Enemies spawn
-  enemySpawnTimer -= dt;
-  if (enemySpawnTimer <= 0) {
-    spawnEnemy();
-    enemySpawnTimer = 1.6 + Math.random() * 1.4;
+  // ── Enemies spawn (dungeon mode replaces ambient spawning)
+  if (state.dungeon) {
+    updateDungeon(dt);
+  } else {
+    enemySpawnTimer -= dt;
+    if (enemySpawnTimer <= 0) {
+      spawnEnemy();
+      enemySpawnTimer = 1.6 + Math.random() * 1.4;
+    }
   }
 
-  // ── Boss event timer (only when no boss currently active)
-  if (!bossActive) {
+  // ── Boss event timer (only when no boss currently active and not in dungeon)
+  if (!bossActive && !state.dungeon) {
     state.bossSpawnTimer -= dt;
     // pre-warning event 30s before
     if (state.bossSpawnTimer < 30 && state.bossSpawnTimer > 28) {
@@ -617,16 +739,17 @@ function tickWorld(dt: number): void {
   }
   if (nearest && playerFireCd.value <= 0) {
     const ang = Math.atan2(nearest.pos.y - p.pos.y, nearest.pos.x - p.pos.x);
-    const color = LASER_TIER_COLOR(p.equipment.laserTier);
-    const size = p.equipment.laserTier >= 7 ? 4 : 3;
+    const color = equippedWeaponColor();
+    const tierGuess = Math.min(8, Math.max(1, Math.round(stats.damage / 8)));
+    const size = tierGuess >= 6 ? 4 : 3;
     const isCrit = Math.random() < stats.critChance;
     const dmg = stats.damage * (isCrit ? 2 : 1);
     fireProjectile("player", p.pos.x, p.pos.y, ang, dmg, color, size, {
       crit: isCrit, aoeRadius: stats.aoeRadius > 0 ? stats.aoeRadius : undefined,
     });
-    sfx.shoot(p.equipment.laserTier);
+    sfx.shoot(tierGuess);
     if (isCrit) sfx.crit();
-    playerFireCd.value = Math.max(0.12, (0.55 - p.equipment.laserTier * 0.04) / stats.fireRate);
+    playerFireCd.value = Math.max(0.10, 0.45 / stats.fireRate);
   }
   playerFireCd.value -= dt;
 

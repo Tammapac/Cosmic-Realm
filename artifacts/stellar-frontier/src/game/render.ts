@@ -1,5 +1,5 @@
 import {
-  Asteroid, DRONE_DEFS, Drone, Enemy, FACTIONS, Floater, MAP_RADIUS, OtherPlayer, Particle,
+  Asteroid, DRONE_DEFS, Drone, DUNGEONS, Enemy, FACTIONS, Floater, MAP_RADIUS, OtherPlayer, Particle,
   PORTALS, Projectile, SHIP_CLASSES, STATIONS, ShipClassId, Station, ZONES,
 } from "./types";
 import { state } from "./store";
@@ -544,6 +544,49 @@ function drawFloater(ctx: CanvasRenderingContext2D, f: Floater): void {
   ctx.restore();
 }
 
+function drawRift(ctx: CanvasRenderingContext2D, x: number, y: number, color: string, name: string, t: number, active: boolean): void {
+  ctx.save();
+  ctx.translate(x, y);
+  const r = 36;
+  // outer halo
+  for (let i = 4; i > 0; i--) {
+    ctx.strokeStyle = `${color}${active ? "44" : "22"}`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(0, 0, r + i * 4, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  // swirling triangles
+  const arms = 5;
+  for (let i = 0; i < arms; i++) {
+    const a = (t * 1.4) + (Math.PI * 2 * i) / arms;
+    const px = Math.cos(a) * r;
+    const py = Math.sin(a) * r;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(px, py, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // core
+  ctx.fillStyle = `${color}aa`;
+  ctx.beginPath();
+  ctx.arc(0, 0, 18 + Math.sin(t * 3) * 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#000";
+  ctx.beginPath();
+  ctx.arc(0, 0, 12, 0, Math.PI * 2);
+  ctx.fill();
+  // label
+  ctx.font = "bold 10px 'Courier New', monospace";
+  ctx.fillStyle = color;
+  ctx.textAlign = "center";
+  ctx.fillText("▼ " + name.toUpperCase(), 0, -r - 14);
+  ctx.font = "8px 'Courier New', monospace";
+  ctx.fillStyle = "#aab";
+  ctx.fillText(active ? "ACTIVE" : "DUNGEON RIFT", 0, r + 18);
+  ctx.restore();
+}
+
 function drawPortal(ctx: CanvasRenderingContext2D, x: number, y: number, toName: string, t: number): void {
   ctx.save();
   ctx.translate(x, y);
@@ -728,6 +771,12 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
     drawPortal(ctx, po.pos.x, po.pos.y, ZONES[po.toZone].name, state.tick);
   }
 
+  // Dungeon rifts
+  for (const d of Object.values(DUNGEONS)) {
+    if (d.zone !== state.player.zone) continue;
+    drawRift(ctx, d.pos.x, d.pos.y, d.color, d.name, state.tick, state.dungeon?.id === d.id);
+  }
+
   // Other players
   for (const o of state.others) drawOtherPlayer(ctx, o);
 
@@ -759,7 +808,7 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
   // mini hull/shield bars over player ship
   const cls = SHIP_CLASSES[p.shipClass];
   // include drone bonuses
-  let hullMax = cls.hullMax, shieldMax = cls.shieldMax + p.equipment.shieldTier * 25;
+  let hullMax = cls.hullMax, shieldMax = cls.shieldMax;
   for (const dr of p.drones) {
     hullMax += DRONE_DEFS[dr.kind].hullBonus;
     shieldMax += DRONE_DEFS[dr.kind].shieldBonus;

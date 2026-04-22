@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { state, bump, useGame, save, pushNotification } from "./game/store";
+import { state, bump, useGame, save, pushNotification, abandonDungeon } from "./game/store";
 import { startLoop, stopLoop, checkPortal, checkStationDock } from "./game/loop";
 import { render } from "./game/render";
 import { TopBar } from "./components/TopBar";
@@ -9,7 +9,7 @@ import { SocialPanel, ClanPanel, GalaxyMap } from "./components/SocialPanel";
 import { FactionPicker } from "./components/FactionPicker";
 import { IdleRewardModal } from "./components/IdleRewardModal";
 import { EventBanners } from "./components/EventBanners";
-import { STATIONS, PORTALS, ZONES } from "./game/types";
+import { DUNGEONS, STATIONS, PORTALS, ZONES } from "./game/types";
 import { travelToZone } from "./game/store";
 
 function GameCanvas() {
@@ -91,11 +91,11 @@ function GameCanvas() {
 function Notifications() {
   const items = useGame((s) => s.notifications);
   return (
-    <div className="absolute top-1/3 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 pointer-events-none z-40">
-      {items.map((n) => (
+    <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 pointer-events-none z-40" style={{ bottom: 96 }}>
+      {items.slice(-4).map((n) => (
         <div
           key={n.id}
-          className="panel px-4 py-2 text-sm font-bold tracking-widest"
+          className="panel px-2.5 py-1 text-[10px] font-bold tracking-widest"
           style={{
             opacity: Math.min(1, n.ttl),
             color: n.kind === "good" ? "#5cff8a" : n.kind === "bad" ? "#ff5c6c" : "#4ee2ff",
@@ -106,6 +106,30 @@ function Notifications() {
         </div>
       ))}
     </div>
+  );
+}
+
+function DungeonHud() {
+  const dungeon = useGame((s) => s.dungeon);
+  if (!dungeon) return null;
+  const def = DUNGEONS[dungeon.id];
+  return (
+    <>
+      {/* corner tint to signal instance mode */}
+      <div className="absolute inset-0 pointer-events-none z-[5]" style={{
+        boxShadow: `inset 0 0 220px ${def.color}33`,
+      }} />
+      <div className="absolute z-30 pointer-events-auto" style={{ top: 64, left: "50%", transform: "translateX(-50%)" }}>
+        <div className="panel px-3 py-1.5 flex items-center gap-3" style={{ borderColor: def.color, boxShadow: `0 0 14px ${def.color}55` }}>
+          <div className="text-[10px] tracking-[0.25em] font-bold" style={{ color: def.color }}>▼ {def.name.toUpperCase()}</div>
+          <div className="text-[10px] text-mute tabular-nums">WAVE {dungeon.wave}/{dungeon.totalWaves}</div>
+          <div className="text-[10px] text-amber tabular-nums">ENEMIES: {state.enemies.length}</div>
+          <button className="btn btn-danger" style={{ padding: "1px 6px", fontSize: 9 }} onClick={abandonDungeon}>
+            Abandon
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -219,6 +243,7 @@ export default function App() {
       <MiniMap />
       <DockPrompt />
       <Notifications />
+      <DungeonHud />
       {showSocial && <SocialPanel />}
       <ClanPanel />
       <GalaxyMap />

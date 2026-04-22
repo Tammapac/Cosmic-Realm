@@ -6,7 +6,11 @@ import {
   ChatMessage,
   DAILY_MISSION_POOL,
   Drone,
+  DUNGEONS,
+  DungeonId,
+  DungeonRun,
   Enemy,
+  EquippedSlots,
   FACTIONS,
   FAKE_CLANS,
   FAKE_NAMES,
@@ -14,6 +18,9 @@ import {
   Floater,
   GameEvent,
   Milestones,
+  MODULE_DEFS,
+  ModuleItem,
+  ModuleSlot,
   OtherPlayer,
   Particle,
   Player,
@@ -34,7 +41,7 @@ import {
 import { sfx } from "./sound";
 
 export type HangarTab =
-  | "bounties" | "equip" | "ships" | "drones" | "market" | "cargo" | "repair" | "skills" | "missions";
+  | "bounties" | "loadout" | "ships" | "drones" | "market" | "cargo" | "repair" | "skills" | "missions" | "dungeons";
 
 export type GameState = {
   player: Player;
@@ -64,9 +71,10 @@ export type GameState = {
   levelUpFlash: number;          // seconds remaining of level-up overlay
   bossSpawnTimer: number;        // countdown to next boss event
   pendingIdleReward: { credits: number; exp: number; secondsAway: number } | null;
+  dungeon: DungeonRun | null;
 };
 
-const STORAGE_KEY = "stellar-frontier-save-v3";
+const STORAGE_KEY = "stellar-frontier-save-v4";
 
 function newMilestones(): Milestones {
   return { totalKills: 0, totalMined: 0, totalCreditsEarned: 0, totalWarps: 0, totalDeaths: 0, bossKills: 0 };
@@ -83,11 +91,37 @@ function rollDailyMissions(): ActiveMission[] {
   return out;
 }
 
+let _instanceSeq = 1;
+export function newInstanceId(): string {
+  return `mi-${Date.now().toString(36)}-${(_instanceSeq++).toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
+}
+
+export function newModuleItem(defId: string): ModuleItem {
+  return { instanceId: newInstanceId(), defId };
+}
+
+function emptyEquipped(shipId: ShipClassId): EquippedSlots {
+  const cls = SHIP_CLASSES[shipId];
+  return {
+    weapon:    new Array(cls.slots.weapon).fill(null),
+    generator: new Array(cls.slots.generator).fill(null),
+    module:    new Array(cls.slots.module).fill(null),
+  };
+}
+
 function makeInitialPlayer(): Player {
+  const starterWeapon = newModuleItem("wp-pulse-1");
+  const starterCore   = newModuleItem("gn-core-1");
+  const starterMod    = newModuleItem("md-thrust-1");
+  const equipped = emptyEquipped("skimmer");
+  equipped.weapon[0]    = starterWeapon.instanceId;
+  equipped.generator[0] = starterCore.instanceId;
+  equipped.module[0]    = starterMod.instanceId;
   return {
     name: "Captain",
     shipClass: "skimmer",
-    equipment: { laserTier: 1, thrusterTier: 1, shieldTier: 1 },
+    inventory: [starterWeapon, starterCore, starterMod],
+    equipped,
     pos: { x: 0, y: 80 },
     vel: { x: 0, y: 0 },
     angle: -Math.PI / 2,
@@ -204,6 +238,52 @@ if (initialPlayer.faction !== "aurora" && initialPlayer.faction !== "crimson" &&
   initialPlayer.faction = null;
 }
 
+// ── Module/equip migration: ensure inventory + equipped exist ─────────────
+function reconcileEquippedToShip(p: Player): void {
+  const cls = SHIP_CLASSES[p.shipClass];
+  const ids = new Set(p.inventory.map((m) => m.instanceId));
+  const fix = (slot: ModuleSlot) => {
+    const cur = (p.equipped as any)[slot] as (string | null)[] | undefined;
+    const want = cls.slots[slot];
+    const arr: (string | null)[] = new Array(want).fill(null);
+    if (Array.isArray(cur)) {
+      // Move existing into the new array (truncate if shrinking)
+      let written = 0;
+      for (const id of cur) {
+        if (written >= want) break;
+        if (id && ids.has(id)) { arr[written++] = id; }
+      }
+    }
+    (p.equipped as any)[slot] = arr;
+  };
+  fix("weapon"); fix("generator"); fix("module");
+}
+
+if (!Array.isArray(initialPlayer.inventory)) initialPlayer.inventory = [];
+// strip orphan defIds
+initialPlayer.inventory = initialPlayer.inventory.filter(
+  (m) => m && typeof m.defId === "string" && MODULE_DEFS[m.defId] && typeof m.instanceId === "string"
+);
+const legacy = initialPlayer as any;
+if (!initialPlayer.equipped || typeof initialPlayer.equipped !== "object") {
+  initialPlayer.equipped = emptyEquipped(initialPlayer.shipClass);
+}
+// If migrating from v3 (no inventory), seed starters
+if (initialPlayer.inventory.length === 0) {
+  const starters = [
+    newModuleItem(legacy.equipment?.laserTier >= 4 ? "wp-pulse-2" : "wp-pulse-1"),
+    newModuleItem(legacy.equipment?.shieldTier >= 4 ? "gn-core-2" : "gn-core-1"),
+    newModuleItem(legacy.equipment?.thrusterTier >= 4 ? "md-thrust-2" : "md-thrust-1"),
+  ];
+  initialPlayer.inventory.push(...starters);
+  initialPlayer.equipped = emptyEquipped(initialPlayer.shipClass);
+  initialPlayer.equipped.weapon[0]    = starters[0].instanceId;
+  initialPlayer.equipped.generator[0] = starters[1].instanceId;
+  initialPlayer.equipped.module[0]    = starters[2].instanceId;
+}
+delete legacy.equipment;
+reconcileEquippedToShip(initialPlayer);
+
 // Daily reset: if >24h since last reset, refresh missions
 const dayMs = 24 * 60 * 60 * 1000;
 if (Date.now() - initialPlayer.lastDailyReset > dayMs) {
@@ -264,6 +344,7 @@ export const state: GameState = {
   levelUpFlash: 0,
   bossSpawnTimer: 240, // first boss event ~4 minutes in
   pendingIdleReward,
+  dungeon: null,
 };
 
 const listeners = new Set<() => void>();
@@ -299,7 +380,8 @@ export function save(): void {
     const toSave: Partial<Player> = {
       name: p.name,
       shipClass: p.shipClass,
-      equipment: p.equipment,
+      inventory: p.inventory,
+      equipped: p.equipped,
       hull: p.hull,
       level: p.level,
       exp: p.exp,
@@ -424,8 +506,16 @@ export function cargoUsed(): number {
 
 export function cargoCapacity(): number {
   const cls = SHIP_CLASSES[state.player.shipClass];
-  const cargoSkill = state.player.skills["ut-cargo"] ?? 0;
-  return Math.floor(cls.cargoMax * (1 + cargoSkill * 0.15));
+  const p = state.player;
+  const cargoSkill = p.skills["ut-cargo"] ?? 0;
+  let modBonus = 0;
+  for (const id of [...p.equipped.weapon, ...p.equipped.generator, ...p.equipped.module]) {
+    if (!id) continue;
+    const item = p.inventory.find((m) => m.instanceId === id);
+    const def = item ? MODULE_DEFS[item.defId] : null;
+    if (def?.stats.cargoBonus) modBonus += def.stats.cargoBonus;
+  }
+  return Math.floor(cls.cargoMax * (1 + cargoSkill * 0.15 + modBonus));
 }
 
 export function addCargo(resourceId: ResourceId, qty: number): number {
@@ -561,6 +651,139 @@ export function claimIdleReward(): void {
 
 export function dismissIdleReward(): void {
   state.pendingIdleReward = null;
+  bump();
+}
+
+// ── MODULES / LOADOUT ─────────────────────────────────────────────────────
+export function addInventoryItem(defId: string): ModuleItem | null {
+  if (!MODULE_DEFS[defId]) return null;
+  const item = newModuleItem(defId);
+  state.player.inventory.push(item);
+  return item;
+}
+
+export function equipModule(instanceId: string, slot: ModuleSlot, slotIndex: number): boolean {
+  const p = state.player;
+  const item = p.inventory.find((m) => m.instanceId === instanceId);
+  if (!item) return false;
+  const def = MODULE_DEFS[item.defId];
+  if (!def || def.slot !== slot) { pushNotification("Wrong slot", "bad"); return false; }
+  const arr = p.equipped[slot];
+  if (slotIndex < 0 || slotIndex >= arr.length) return false;
+  // Unequip from any other slot first to avoid double-equip
+  unequipInstance(instanceId);
+  p.equipped[slot][slotIndex] = instanceId;
+  // Reclamp hull/shield to (possibly new) max
+  // (caller-side recompute happens via effectiveStats at render time)
+  pushNotification(`Equipped ${def.name}`, "good");
+  save(); bump();
+  return true;
+}
+
+export function unequipInstance(instanceId: string): void {
+  const p = state.player;
+  for (const slot of ["weapon", "generator", "module"] as ModuleSlot[]) {
+    const arr = p.equipped[slot];
+    for (let i = 0; i < arr.length; i++) {
+      if (arr[i] === instanceId) arr[i] = null;
+    }
+  }
+}
+
+export function unequipSlot(slot: ModuleSlot, slotIndex: number): void {
+  const p = state.player;
+  if (slotIndex < 0 || slotIndex >= p.equipped[slot].length) return;
+  p.equipped[slot][slotIndex] = null;
+  save(); bump();
+}
+
+export function sellInventoryItem(instanceId: string): void {
+  const p = state.player;
+  const item = p.inventory.find((m) => m.instanceId === instanceId);
+  if (!item) return;
+  const def = MODULE_DEFS[item.defId];
+  if (!def) return;
+  const price = Math.floor(def.price * 0.4);
+  unequipInstance(instanceId);
+  p.inventory = p.inventory.filter((m) => m.instanceId !== instanceId);
+  p.credits += price;
+  p.milestones.totalCreditsEarned += price;
+  pushNotification(`Sold ${def.name} · +${price}cr`, "good");
+  save(); bump();
+}
+
+export function reconcileShipSlots(): void {
+  const p = state.player;
+  const cls = SHIP_CLASSES[p.shipClass];
+  for (const slot of ["weapon", "generator", "module"] as ModuleSlot[]) {
+    const want = cls.slots[slot];
+    const cur = p.equipped[slot] ?? [];
+    const next: (string | null)[] = new Array(want).fill(null);
+    let written = 0;
+    for (const id of cur) {
+      if (written >= want) break;
+      if (id) next[written++] = id;
+    }
+    p.equipped[slot] = next;
+  }
+}
+
+// ── DUNGEONS ──────────────────────────────────────────────────────────────
+export function enterDungeon(id: DungeonId): void {
+  const def = DUNGEONS[id];
+  if (!def) return;
+  if (state.dungeon) { pushNotification("Already in a dungeon", "bad"); return; }
+  if (state.player.level < def.unlockLevel) {
+    pushNotification(`Requires Lv ${def.unlockLevel}`, "bad"); return;
+  }
+  // Travel to dungeon zone if needed
+  if (state.player.zone !== def.zone) travelToZone(def.zone);
+  state.dungeon = {
+    id, wave: 1, totalWaves: def.waves,
+    enemiesLeft: def.enemiesPerWave, spawnedThisWave: false,
+    startedAt: Date.now(),
+  };
+  // Clear ambient enemies for a clean instance feel
+  state.enemies = [];
+  state.projectiles = [];
+  pushEvent({ title: `▼ ${def.name.toUpperCase()}`, body: `Wave 1 / ${def.waves} incoming.`, ttl: 5, kind: "info", color: def.color });
+  pushNotification(`Entered ${def.name}`, "good");
+  state.dockedAt = null;
+  state.hangarTab = "bounties";
+  save(); bump();
+}
+
+export function completeDungeon(): void {
+  const run = state.dungeon;
+  if (!run) return;
+  const def = DUNGEONS[run.id];
+  state.dungeon = null;
+  // Rewards
+  const p = state.player;
+  p.credits += def.rewardCredits;
+  p.exp += def.rewardExp;
+  p.milestones.totalCreditsEarned += def.rewardCredits;
+  for (const m of def.rewardMaterials) {
+    const taken = addCargo(m.resourceId, m.qty);
+    if (taken < m.qty) pushNotification(`Cargo overflow: lost ${m.qty - taken} ${RESOURCES[m.resourceId].name}`, "bad");
+  }
+  // Pick a random module from the pool
+  const pickId = def.rewardModules[Math.floor(Math.random() * def.rewardModules.length)];
+  const item = addInventoryItem(pickId);
+  if (item) {
+    pushNotification(`Module acquired: ${MODULE_DEFS[pickId].name}`, "good");
+    pushEvent({ title: "✦ DUNGEON CLEARED", body: `+${def.rewardCredits}cr · +${def.rewardExp}xp · ${MODULE_DEFS[pickId].name}`, ttl: 6, kind: "global", color: def.color });
+  }
+  state.enemies = [];
+  state.projectiles = [];
+  save(); bump();
+}
+
+export function abandonDungeon(): void {
+  if (!state.dungeon) return;
+  state.dungeon = null;
+  state.enemies = [];
+  pushNotification("Abandoned dungeon", "bad");
   bump();
 }
 

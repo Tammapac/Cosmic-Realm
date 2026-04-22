@@ -1,22 +1,24 @@
-import { state, bump, useGame, pushNotification, save, stationPrice, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily } from "../game/store";
+import { state, bump, useGame, pushNotification, save, stationPrice, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots } from "../game/store";
 import {
-  ActiveQuest, DRONE_DEFS, DroneKind, DroneMode, FACTIONS, LASER_TIER_COLOR, LASER_TIER_NAME,
+  ActiveQuest, DRONE_DEFS, DroneKind, DroneMode, DUNGEONS, DungeonId, FACTIONS, MODULE_DEFS, ModuleSlot, RARITY_COLOR,
   Quest, RESOURCES, ResourceId, SHIP_CLASSES, SKILL_NODES, STATIONS, ShipClassId, SkillBranch,
-  SkillId, UPGRADE_COST,
+  SkillId,
 } from "../game/types";
 import type { HangarTab } from "../game/store";
 import { effectiveStats } from "../game/loop";
 import { buySkillRank, resetSkills } from "../game/store";
+import { useState } from "react";
 
 const TABS: { id: HangarTab; label: string; glyph: string }[] = [
   { id: "bounties", label: "Bounties", glyph: "★" },
   { id: "missions", label: "Missions", glyph: "▣" },
   { id: "skills",   label: "Skills",   glyph: "✦" },
   { id: "ships",    label: "Shipyard", glyph: "▲" },
-  { id: "equip",    label: "Outfit",   glyph: "⚙" },
+  { id: "loadout",  label: "Loadout",  glyph: "⚙" },
+  { id: "dungeons", label: "Dungeons", glyph: "▼" },
   { id: "drones",   label: "Drones",   glyph: "✦" },
   { id: "market",   label: "Market",   glyph: "$" },
-  { id: "cargo",    label: "Cargo",    glyph: "▼" },
+  { id: "cargo",    label: "Cargo",    glyph: "▤" },
   { id: "repair",   label: "Services", glyph: "✚" },
 ];
 
@@ -72,7 +74,8 @@ export function Hangar({ stationId }: { stationId: string }) {
           {tab === "bounties" && <BountiesTab />}
           {tab === "missions" && <MissionsTab />}
           {tab === "skills" && <SkillsTab />}
-          {tab === "equip" && <EquipTab />}
+          {tab === "loadout" && <LoadoutTab stationId={stationId} />}
+          {tab === "dungeons" && <DungeonsTab />}
           {tab === "ships" && <ShipsTab />}
           {tab === "drones" && <DronesTab />}
           {tab === "market" && <MarketTab stationId={stationId} />}
@@ -171,65 +174,284 @@ function BountiesTab() {
   );
 }
 
-// ── EQUIP ─────────────────────────────────────────────────────────────────
-function EquipTab() {
+// ── LOADOUT (modular ship gear) ───────────────────────────────────────────
+function statChip(label: string, value: string, color: string) {
+  return (
+    <span className="text-[9px] tracking-widest px-1" style={{ color, border: `1px solid ${color}55` }}>
+      {label}:{value}
+    </span>
+  );
+}
+
+function modStatPills(stats: typeof MODULE_DEFS[string]["stats"]) {
+  const pills: { k: string; v: string; c: string }[] = [];
+  if (stats.damage)          pills.push({ k: "DMG", v: `+${stats.damage}`, c: "#ff5c6c" });
+  if (stats.fireRate && stats.fireRate !== 1) pills.push({ k: "RATE", v: `×${stats.fireRate.toFixed(2)}`, c: "#ffd24a" });
+  if (stats.critChance)      pills.push({ k: "CRIT", v: `+${Math.round(stats.critChance * 100)}%`, c: "#ff5cf0" });
+  if (stats.aoeRadius)       pills.push({ k: "AOE", v: `${stats.aoeRadius}`, c: "#ff8a4e" });
+  if (stats.shieldMax)       pills.push({ k: "SHD", v: `+${stats.shieldMax}`, c: "#4ee2ff" });
+  if (stats.shieldRegen)     pills.push({ k: "REG", v: `+${stats.shieldRegen}`, c: "#4ee2ff" });
+  if (stats.hullMax)         pills.push({ k: "HUL", v: `+${stats.hullMax}`, c: "#5cff8a" });
+  if (stats.speed)           pills.push({ k: "SPD", v: `+${stats.speed}`, c: "#aaff5c" });
+  if (stats.damageReduction) pills.push({ k: "DR",  v: `${Math.round(stats.damageReduction * 100)}%`, c: "#ff8a4e" });
+  if (stats.cargoBonus)      pills.push({ k: "CRG", v: `+${Math.round(stats.cargoBonus * 100)}%`, c: "#c69060" });
+  if (stats.lootBonus)       pills.push({ k: "LOOT", v: `+${stats.lootBonus}`, c: "#ffd24a" });
+  return (
+    <div className="flex flex-wrap gap-1 mt-1">
+      {pills.map((p, i) => statChip(p.k, p.v, p.c))}
+    </div>
+  );
+}
+
+function SlotCell({
+  slot, index, instanceId,
+}: {
+  slot: ModuleSlot; index: number; instanceId: string | null;
+}) {
   const player = useGame((s) => s.player);
+  const item = instanceId ? player.inventory.find((m) => m.instanceId === instanceId) : null;
+  const def = item ? MODULE_DEFS[item.defId] : null;
+  const color = def ? RARITY_COLOR[def.rarity] : "#36406a";
+  return (
+    <div
+      className="panel p-2 flex flex-col"
+      style={{ minHeight: 76, borderColor: def ? color : "var(--border-soft)", background: def ? `${color}10` : "transparent" }}
+    >
+      <div className="text-[9px] tracking-widest text-mute">{slot.toUpperCase()} #{index + 1}</div>
+      {def ? (
+        <>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <span style={{ color: def.color, fontSize: 14 }}>{def.glyph}</span>
+            <span className="text-[10px] font-bold tracking-widest" style={{ color }}>{def.name}</span>
+          </div>
+          <div className="text-mute text-[9px] mt-0.5 leading-tight">{def.description}</div>
+          <button
+            className="btn mt-auto self-start"
+            style={{ padding: "2px 6px", fontSize: 9 }}
+            onClick={() => unequipSlot(slot, index)}
+          >Unequip</button>
+        </>
+      ) : (
+        <div className="text-mute text-[9px] mt-1 italic">— empty slot —</div>
+      )}
+    </div>
+  );
+}
 
-  const upgrade = (which: "laserTier" | "thrusterTier" | "shieldTier") => {
-    const cost = UPGRADE_COST(player.equipment[which]);
-    if (player.credits < cost) { pushNotification("Not enough credits", "bad"); return; }
-    if (player.equipment[which] >= 8) { pushNotification("Already maxed", "bad"); return; }
-    player.credits -= cost;
-    player.equipment[which]++;
-    pushNotification(`Upgraded ${which.replace("Tier", "")} → T${player.equipment[which]}`, "good");
-    save(); bump();
-  };
+function LoadoutTab({ stationId }: { stationId: string }) {
+  const player = useGame((s) => s.player);
+  const station = STATIONS.find((s) => s.id === stationId)!;
+  const cls = SHIP_CLASSES[player.shipClass];
+  const stats = effectiveStats();
+  const [filter, setFilter] = useState<ModuleSlot | "all">("all");
+  const [showShop, setShowShop] = useState(false);
 
-  const items: { key: "laserTier" | "thrusterTier" | "shieldTier"; name: string; effect: string; getColor: (t: number) => string; nameTier?: (t: number) => string }[] = [
-    { key: "laserTier",    name: "Laser Array",       effect: "+6 damage / tier · faster fire rate · color shifts at elite tiers", getColor: (t) => LASER_TIER_COLOR(t), nameTier: (t) => LASER_TIER_NAME(t) },
-    { key: "thrusterTier", name: "Ion Thrusters",     effect: "+30 max speed / tier",                                                getColor: () => "#5cff8a" },
-    { key: "shieldTier",   name: "Shield Generator",  effect: "+25 shield max / tier · faster regen",                                getColor: () => "#ff5cf0" },
-  ];
+  // Shop offer: 4 random buyable modules, capped to ones unlocked by ship tier-ish
+  const shopPool = Object.values(MODULE_DEFS).filter((d) => d.tier <= Math.min(5, Math.max(1, Math.ceil(player.level / 4))));
+  const shopOffer = shopPool.slice(0, 8); // simple: show first 8 affordable ones
+
+  const visibleInv = player.inventory.filter((it) => {
+    if (filter === "all") return true;
+    return MODULE_DEFS[it.defId]?.slot === filter;
+  });
+
+  const renderSlotRow = (slot: ModuleSlot, label: string, color: string) => (
+    <div>
+      <div className="text-[10px] tracking-widest mb-1" style={{ color }}>▶ {label} ({player.equipped[slot].length})</div>
+      <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${player.equipped[slot].length}, minmax(0, 1fr))` }}>
+        {player.equipped[slot].map((id, i) => (
+          <SlotCell key={`${slot}-${i}`} slot={slot} index={i} instanceId={id} />
+        ))}
+      </div>
+    </div>
+  );
 
   return (
-    <div className="p-5 space-y-4">
-      <div className="text-cyan tracking-widest text-xs mb-2">
-        ▶ SHIP SYSTEMS · {SHIP_CLASSES[player.shipClass].name.toUpperCase()}
+    <div className="grid gap-3 p-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
+      {/* LEFT — equipped slots + stats summary */}
+      <div className="space-y-3">
+        <div className="text-cyan tracking-widest text-xs">▶ LOADOUT · {cls.name.toUpperCase()}</div>
+        {renderSlotRow("weapon",    "WEAPONS",    "#ff5c6c")}
+        {renderSlotRow("generator", "GENERATORS", "#4ee2ff")}
+        {renderSlotRow("module",    "MODULES",    "#ff5cf0")}
+        <div className="panel p-2">
+          <div className="text-[10px] tracking-widest text-cyan mb-1">▶ ACTIVE STATS</div>
+          <div className="grid grid-cols-3 gap-1 text-[10px]">
+            <Stat label="DMG"  v={Math.round(stats.damage)} />
+            <Stat label="RATE" v={+stats.fireRate.toFixed(2)} />
+            <Stat label="CRIT" v={`${Math.round(stats.critChance * 100)}%`} />
+            <Stat label="HUL"  v={Math.round(stats.hullMax)} />
+            <Stat label="SHD"  v={Math.round(stats.shieldMax)} />
+            <Stat label="REG"  v={`${stats.shieldRegen.toFixed(1)}/s`} />
+            <Stat label="SPD"  v={Math.round(stats.speed)} />
+            <Stat label="DR"   v={`${Math.round(stats.damageReduction * 100)}%`} />
+            <Stat label="AOE"  v={Math.round(stats.aoeRadius)} />
+          </div>
+        </div>
       </div>
-      {items.map((it) => {
-        const tier = player.equipment[it.key];
-        const cost = UPGRADE_COST(tier);
-        const maxed = tier >= 8;
-        const color = it.getColor(tier);
-        return (
-          <div key={it.key} className="panel p-4 flex items-center gap-4">
-            <div
-              className="flex flex-col items-center justify-center"
-              style={{ width: 56, height: 56, background: `${color}22`, border: `1px solid ${color}`, color }}
-            >
-              <div className="text-xl font-bold leading-none">T{tier}</div>
-              {it.nameTier && <div className="text-[8px] tracking-widest mt-0.5">{it.nameTier(tier).toUpperCase()}</div>}
-            </div>
-            <div className="flex-1">
-              <div className="font-bold tracking-widest" style={{ color }}>
-                {it.name.toUpperCase()}
-              </div>
-              <div className="text-dim text-[11px]">{it.effect}</div>
-              <div className="flex gap-1 mt-2">
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <div key={i} className="h-2 flex-1" style={{
-                    background: i < tier ? color : "#1a2348",
-                    boxShadow: i < tier ? `0 0 4px ${color}` : "none",
-                  }} />
-                ))}
-              </div>
-            </div>
-            <button className="btn btn-primary" disabled={maxed || player.credits < cost} onClick={() => upgrade(it.key)}>
-              {maxed ? "MAXED" : `Upgrade · ${cost}cr`}
+
+      {/* RIGHT — inventory + shop toggle */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="text-cyan tracking-widest text-xs">▶ {showShop ? "MODULE MARKET" : `INVENTORY (${player.inventory.length})`}</div>
+          <div className="flex gap-1">
+            <button className="btn" style={{ padding: "2px 6px", fontSize: 9 }} onClick={() => setShowShop((v) => !v)}>
+              {showShop ? "Show Inventory" : `Shop @ ${station.name}`}
             </button>
           </div>
-        );
-      })}
+        </div>
+        {!showShop && (
+          <div className="flex gap-1">
+            {(["all", "weapon", "generator", "module"] as const).map((f) => (
+              <button key={f} className="btn"
+                style={{ padding: "2px 6px", fontSize: 9, background: filter === f ? "rgba(78,226,255,0.18)" : undefined }}
+                onClick={() => setFilter(f)}>{f.toUpperCase()}</button>
+            ))}
+          </div>
+        )}
+
+        <div className="space-y-1.5 overflow-y-auto" style={{ maxHeight: 460 }}>
+          {showShop ? (
+            shopOffer.map((def) => {
+              const canAfford = player.credits >= def.price;
+              return (
+                <div key={def.id} className="panel p-2 flex items-start gap-2"
+                  style={{ borderColor: RARITY_COLOR[def.rarity] }}>
+                  <div className="flex items-center justify-center"
+                    style={{ width: 28, height: 28, background: `${def.color}22`, border: `1px solid ${def.color}`, color: def.color, fontSize: 14 }}>
+                    {def.glyph}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <div className="text-[11px] font-bold tracking-widest" style={{ color: RARITY_COLOR[def.rarity] }}>{def.name}</div>
+                      <span className="text-[8px] uppercase" style={{ color: RARITY_COLOR[def.rarity] }}>· {def.rarity}</span>
+                    </div>
+                    <div className="text-mute text-[9px] leading-tight">{def.description}</div>
+                    {modStatPills(def.stats)}
+                  </div>
+                  <button className="btn btn-primary"
+                    style={{ padding: "2px 8px", fontSize: 10 }}
+                    disabled={!canAfford}
+                    onClick={() => {
+                      if (!canAfford) return;
+                      state.player.credits -= def.price;
+                      addInventoryItem(def.id);
+                      pushNotification(`Bought ${def.name}`, "good");
+                      save(); bump();
+                    }}>
+                    {def.price.toLocaleString()}cr
+                  </button>
+                </div>
+              );
+            })
+          ) : (
+            visibleInv.length === 0 ? (
+              <div className="text-mute text-xs italic">No modules. Buy from the shop or run a dungeon.</div>
+            ) : visibleInv.map((it) => {
+              const def = MODULE_DEFS[it.defId];
+              const isEquipped =
+                player.equipped.weapon.includes(it.instanceId) ||
+                player.equipped.generator.includes(it.instanceId) ||
+                player.equipped.module.includes(it.instanceId);
+              const slotArr = player.equipped[def.slot];
+              const targetIdx = slotArr.findIndex((x) => x === null);
+              return (
+                <div key={it.instanceId} className="panel p-2 flex items-start gap-2"
+                  style={{ borderColor: RARITY_COLOR[def.rarity] }}>
+                  <div className="flex items-center justify-center"
+                    style={{ width: 28, height: 28, background: `${def.color}22`, border: `1px solid ${def.color}`, color: def.color, fontSize: 14 }}>
+                    {def.glyph}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <div className="text-[11px] font-bold tracking-widest" style={{ color: RARITY_COLOR[def.rarity] }}>{def.name}</div>
+                      <span className="text-[8px] uppercase text-mute">· {def.slot}</span>
+                      {isEquipped && <span className="text-[8px] uppercase" style={{ color: "#5cff8a" }}>· equipped</span>}
+                    </div>
+                    <div className="text-mute text-[9px] leading-tight">{def.description}</div>
+                    {modStatPills(def.stats)}
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    {!isEquipped && (
+                      <button className="btn btn-primary"
+                        style={{ padding: "2px 6px", fontSize: 9 }}
+                        disabled={targetIdx < 0}
+                        onClick={() => {
+                          const slotArr2 = state.player.equipped[def.slot];
+                          let idx = slotArr2.findIndex((x) => x === null);
+                          if (idx < 0) idx = 0; // overwrite first slot if all full
+                          equipModule(it.instanceId, def.slot, idx);
+                        }}>
+                        {targetIdx >= 0 ? `Equip → #${targetIdx + 1}` : "Replace #1"}
+                      </button>
+                    )}
+                    <button className="btn btn-amber"
+                      style={{ padding: "2px 6px", fontSize: 9 }}
+                      onClick={() => sellInventoryItem(it.instanceId)}>
+                      Sell {Math.floor(def.price * 0.4)}cr
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── DUNGEONS ──────────────────────────────────────────────────────────────
+function DungeonsTab() {
+  const player = useGame((s) => s.player);
+  const dungeon = useGame((s) => s.dungeon);
+  const list = Object.values(DUNGEONS);
+  return (
+    <div className="p-4 space-y-3">
+      <div className="text-cyan tracking-widest text-xs">▶ INSTANCED DUNGEONS</div>
+      <div className="text-dim text-[11px]">
+        Each dungeon is a wave-based instance. Clear all waves for credits, materials and a guaranteed module drop.
+      </div>
+      {dungeon && (
+        <div className="panel p-2" style={{ borderColor: "#ffd24a" }}>
+          <div className="text-amber text-[11px] font-bold tracking-widest">⚠ DUNGEON IN PROGRESS — {DUNGEONS[dungeon.id].name.toUpperCase()}</div>
+          <div className="text-mute text-[10px]">Wave {dungeon.wave}/{dungeon.totalWaves}. Undock to fight.</div>
+        </div>
+      )}
+      <div className="grid grid-cols-2 gap-2">
+        {list.map((d) => {
+          const locked = player.level < d.unlockLevel;
+          return (
+            <div key={d.id} className="panel p-2.5" style={{ borderColor: d.color }}>
+              <div className="flex items-center justify-between">
+                <div className="text-[12px] font-bold tracking-widest" style={{ color: d.color }}>{d.name.toUpperCase()}</div>
+                <div className="text-[9px] tracking-widest text-mute">{d.zone.toUpperCase()}</div>
+              </div>
+              <div className="text-dim text-[10px] mt-0.5">{d.description}</div>
+              <div className="grid grid-cols-3 gap-1 text-[9px] mt-2">
+                <Stat label="WAVES" v={d.waves} />
+                <Stat label="ENEMIES" v={`${d.enemiesPerWave}×`} />
+                <Stat label="REQ" v={`Lv ${d.unlockLevel}`} />
+              </div>
+              <div className="text-[9px] text-amber mt-1">+{d.rewardCredits.toLocaleString()}cr · +{d.rewardExp}xp · 1 module</div>
+              <div className="text-[9px] text-mute mt-0.5">
+                Materials: {d.rewardMaterials.map((m) => `${m.qty}× ${RESOURCES[m.resourceId].name}`).join(" · ")}
+              </div>
+              <button
+                className="btn btn-primary w-full mt-2"
+                style={{ padding: "3px 6px", fontSize: 10 }}
+                disabled={locked || !!dungeon}
+                onClick={() => {
+                  state.dockedAt = null;
+                  enterDungeon(d.id as DungeonId);
+                }}
+              >
+                {locked ? `Locked · Lv ${d.unlockLevel}` : dungeon ? "In a dungeon" : "Launch run"}
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -242,9 +464,9 @@ function ShipsTab() {
     const cls = SHIP_CLASSES[id];
     if (player.ownedShips.includes(id)) {
       player.shipClass = id;
+      reconcileShipSlots();
       const stats = effectiveStats();
       player.hull = stats.hullMax; player.shield = stats.shieldMax;
-      // drone slots may shrink — drop overflow
       player.drones = player.drones.slice(0, cls.droneSlots);
       pushNotification(`Boarded ${cls.name}`, "good");
       save(); bump();
@@ -254,6 +476,7 @@ function ShipsTab() {
     player.credits -= cls.price;
     player.ownedShips.push(id);
     player.shipClass = id;
+    reconcileShipSlots();
     const stats = effectiveStats();
     player.hull = stats.hullMax; player.shield = stats.shieldMax;
     player.drones = player.drones.slice(0, cls.droneSlots);
@@ -300,7 +523,7 @@ function ShipsTab() {
   );
 }
 
-function Stat({ label, v }: { label: string; v: number }) {
+function Stat({ label, v }: { label: string; v: number | string }) {
   return (
     <div>
       <div className="text-mute">{label}</div>

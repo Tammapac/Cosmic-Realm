@@ -6,7 +6,7 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 
 ## Artifacts
 
-- **stellar-frontier** (web, `/`) — 2D 16-bit space MMORPG. Canvas-based ship combat, click-to-fly controls, 4 zones connected by portals, 4 stations (dock to access hangar with quests/equipment/ships/cargo), NPC pilot AI, party invites, clan system (founding + joining), live chat. Game state is in-browser only and persisted to localStorage under `stellar-frontier-save-v1`. Multiplayer is simulated via NPC pilots — wire to a real server later via the api-server artifact if desired.
+- **stellar-frontier** (web, `/`) — 2D 16-bit space MMORPG. Canvas-based ship combat, click-to-fly controls, 4 zones connected by portals, 4 stations (dock to access hangar with bounties/missions/skills/loadout/dungeons/ships/drones/market/cargo/services), NPC pilot AI, party/clan/chat. **Modular loadout** — each ship has weapon/generator/module slots; modules (5 rarities) are obtained from the in-station Module Market or as guaranteed drops from **instanced dungeons** (4 rifts: Alpha/Nebula/Crimson/Void, wave-based, scaled enemies). Save key `stellar-frontier-save-v4` (auto-migrates older saves and seeds starter modules). Compact bottom-anchored popups for faction picker, idle reward, event banners and notifications. Multiplayer is simulated via NPC pilots.
 
 ## Stack
 

@@ -7,27 +7,27 @@ export function IdleRewardModal() {
   const mins = Math.floor((r.secondsAway % 3600) / 60);
 
   return (
-    <div className="absolute inset-0 z-[58] flex items-center justify-center" style={{ background: "rgba(2,4,12,0.85)" }}>
-      <div className="panel p-5 text-center" style={{ width: "min(420px, 92vw)", borderColor: "#ffd24a" }}>
+    <div className="absolute z-[58] pointer-events-auto" style={{ right: 16, bottom: 96 }}>
+      <div className="panel p-2.5" style={{ width: 260, borderColor: "#ffd24a", boxShadow: "0 0 16px #ffd24a55" }}>
         <div className="scanline" />
-        <div className="text-amber glow-amber tracking-[0.3em] text-lg font-bold mb-2">⌬ IDLE REWARD</div>
-        <div className="text-dim text-[11px] mb-4">
-          You were away for {hours > 0 ? `${hours}h ` : ""}{mins}m. Your station handlers ran courier ops in your absence.
+        <div className="flex items-center justify-between mb-1">
+          <div className="text-amber tracking-[0.2em] text-[10px] font-bold">⌬ IDLE REWARD</div>
+          <button className="text-mute text-[10px] hover:text-white" onClick={dismissIdleReward}>✕</button>
         </div>
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <div className="panel p-3">
-            <div className="text-mute text-[9px] tracking-widest">CREDITS</div>
-            <div className="text-amber font-bold text-xl tabular-nums">+{r.credits.toLocaleString()}</div>
+        <div className="text-dim text-[9px] mb-1.5">
+          Away {hours > 0 ? `${hours}h ` : ""}{mins}m · couriers ran ops.
+        </div>
+        <div className="flex gap-2 mb-2">
+          <div className="flex-1">
+            <div className="text-mute text-[8px] tracking-widest">CR</div>
+            <div className="text-amber font-bold text-sm tabular-nums">+{r.credits.toLocaleString()}</div>
           </div>
-          <div className="panel p-3">
-            <div className="text-mute text-[9px] tracking-widest">EXPERIENCE</div>
-            <div className="text-magenta font-bold text-xl tabular-nums">+{r.exp.toLocaleString()}</div>
+          <div className="flex-1">
+            <div className="text-mute text-[8px] tracking-widest">XP</div>
+            <div className="text-magenta font-bold text-sm tabular-nums">+{r.exp.toLocaleString()}</div>
           </div>
         </div>
-        <div className="flex gap-2 justify-center">
-          <button className="btn btn-primary px-5" onClick={claimIdleReward}>CLAIM</button>
-          <button className="btn" onClick={dismissIdleReward}>Dismiss</button>
-        </div>
+        <button className="btn btn-primary w-full" style={{ padding: "3px", fontSize: 10 }} onClick={claimIdleReward}>CLAIM</button>
       </div>
     </div>
   );

@@ -37,16 +37,53 @@ export type ShipClass = {
   baseDamage: number;
   cargoMax: number;
   droneSlots: number;
+  slots: { weapon: number; generator: number; module: number };
   price: number;
   description: string;
   color: string;
   accent: string;
 };
 
-export type Equipment = {
-  laserTier: number;
-  thrusterTier: number;
-  shieldTier: number;
+// ── MODULES (replaces tier upgrade system) ────────────────────────────────
+export type ModuleSlot = "weapon" | "generator" | "module";
+export type ModuleRarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
+
+export type ModuleStats = {
+  damage?: number;
+  fireRate?: number;        // multiplier (1.2 = +20% rate)
+  critChance?: number;      // additive (0.05 = +5%)
+  shieldMax?: number;
+  shieldRegen?: number;
+  hullMax?: number;
+  speed?: number;
+  damageReduction?: number; // 0..1
+  cargoBonus?: number;
+  lootBonus?: number;
+  aoeRadius?: number;
+};
+
+export type ModuleDef = {
+  id: string;
+  slot: ModuleSlot;
+  name: string;
+  description: string;
+  rarity: ModuleRarity;
+  color: string;
+  glyph: string;
+  stats: ModuleStats;
+  price: number;
+  tier: number; // 1..5 power level
+};
+
+export type ModuleItem = {
+  instanceId: string;
+  defId: string;
+};
+
+export type EquippedSlots = {
+  weapon: (string | null)[];
+  generator: (string | null)[];
+  module: (string | null)[];
 };
 
 export type Quest = {
@@ -129,7 +166,8 @@ export type HonorRank = {
 export type Player = {
   name: string;
   shipClass: ShipClassId;
-  equipment: Equipment;
+  inventory: ModuleItem[];
+  equipped: EquippedSlots;
   pos: Vec2;
   vel: Vec2;
   angle: number;
@@ -461,6 +499,7 @@ export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
     name: "Skimmer Mk-I",
     hullMax: 100, shieldMax: 50, baseSpeed: 180, baseDamage: 8,
     cargoMax: 20, droneSlots: 1, price: 0,
+    slots: { weapon: 1, generator: 1, module: 1 },
     description: "Cheap, nimble, easy to lose.",
     color: "#7ad8ff", accent: "#0a1230",
   },
@@ -469,6 +508,7 @@ export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
     name: "Wasp Interceptor",
     hullMax: 90, shieldMax: 70, baseSpeed: 240, baseDamage: 10,
     cargoMax: 14, droneSlots: 1, price: 4500,
+    slots: { weapon: 2, generator: 1, module: 1 },
     description: "Glass cannon. Fastest hull in the sector.",
     color: "#ffe25c", accent: "#3a2a08",
   },
@@ -477,6 +517,7 @@ export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
     name: "Vanguard",
     hullMax: 180, shieldMax: 120, baseSpeed: 160, baseDamage: 14,
     cargoMax: 40, droneSlots: 2, price: 12000,
+    slots: { weapon: 2, generator: 2, module: 2 },
     description: "All-rounder hull. Solid in any zone.",
     color: "#5cff8a", accent: "#0a2a14",
   },
@@ -485,6 +526,7 @@ export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
     name: "Reaver Mk-II",
     hullMax: 160, shieldMax: 140, baseSpeed: 200, baseDamage: 18,
     cargoMax: 30, droneSlots: 2, price: 24000,
+    slots: { weapon: 2, generator: 2, module: 2 },
     description: "Swift hunter. Built for raids.",
     color: "#ff8a4e", accent: "#3a1a08",
   },
@@ -493,6 +535,7 @@ export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
     name: "Obsidian Reaver",
     hullMax: 220, shieldMax: 180, baseSpeed: 200, baseDamage: 22,
     cargoMax: 30, droneSlots: 3, price: 48000,
+    slots: { weapon: 3, generator: 2, module: 3 },
     description: "Predator of the deep lanes.",
     color: "#ff5cf0", accent: "#2a0a30",
   },
@@ -501,6 +544,7 @@ export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
     name: "Marauder",
     hullMax: 280, shieldMax: 200, baseSpeed: 170, baseDamage: 26,
     cargoMax: 60, droneSlots: 3, price: 78000,
+    slots: { weapon: 3, generator: 3, module: 3 },
     description: "Heavy gunship with cargo to spare.",
     color: "#aaff5c", accent: "#1a3008",
   },
@@ -509,6 +553,7 @@ export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
     name: "Phalanx Cruiser",
     hullMax: 340, shieldMax: 280, baseSpeed: 150, baseDamage: 24,
     cargoMax: 70, droneSlots: 4, price: 110000,
+    slots: { weapon: 3, generator: 3, module: 4 },
     description: "Drone-carrier cruiser. Project power through the swarm.",
     color: "#4ee2ff", accent: "#08203a",
   },
@@ -517,6 +562,7 @@ export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
     name: "Titan Bulwark",
     hullMax: 400, shieldMax: 300, baseSpeed: 130, baseDamage: 30,
     cargoMax: 80, droneSlots: 3, price: 140000,
+    slots: { weapon: 4, generator: 3, module: 4 },
     description: "Walking fortress. Slow but devastating.",
     color: "#ffd24a", accent: "#3a2a08",
   },
@@ -525,6 +571,7 @@ export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
     name: "Leviathan Dreadnought",
     hullMax: 600, shieldMax: 480, baseSpeed: 110, baseDamage: 42,
     cargoMax: 120, droneSlots: 5, price: 320000,
+    slots: { weapon: 4, generator: 4, module: 5 },
     description: "Capital-class warship. Sectors part before it.",
     color: "#ff5c6c", accent: "#3a0810",
   },
@@ -533,12 +580,12 @@ export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
     name: "Specter Phaseframe",
     hullMax: 220, shieldMax: 360, baseSpeed: 220, baseDamage: 34,
     cargoMax: 40, droneSlots: 4, price: 480000,
+    slots: { weapon: 4, generator: 4, module: 5 },
     description: "Phase-shifted void hull. The endgame chassis.",
     color: "#b06cff", accent: "#15083a",
   },
 };
 
-export const UPGRADE_COST = (tier: number) => 500 * tier * tier;
 export const EXP_FOR_LEVEL = (level: number) => 100 * level * level;
 
 export const ENEMY_DEFS: Record<
@@ -683,19 +730,113 @@ export function rankFor(honor: number): HonorRank {
   return r;
 }
 
-// ── LASERS BY TIER ────────────────────────────────────────────────────────
-export const LASER_TIER_COLOR = (tier: number): string => {
-  if (tier <= 2) return "#4ee2ff";
-  if (tier <= 4) return "#5cff8a";
-  if (tier <= 6) return "#ff5cf0";
-  if (tier === 7) return "#ffd24a";
-  return "#ff5c6c"; // tier 8 elite
+// ── MODULE CATALOG ────────────────────────────────────────────────────────
+export const RARITY_COLOR: Record<ModuleRarity, string> = {
+  common: "#8aa0c0", uncommon: "#5cff8a", rare: "#4ee2ff", epic: "#ff5cf0", legendary: "#ffd24a",
 };
 
-export const LASER_TIER_NAME = (tier: number): string => {
-  if (tier <= 2) return "Pulse";
-  if (tier <= 4) return "Plasma";
-  if (tier <= 6) return "Phase";
-  if (tier === 7) return "Solar";
-  return "Singularity";
+export const MODULE_DEFS: Record<string, ModuleDef> = {
+  // ── WEAPONS ─────────────────────────────────────────────────────────────
+  "wp-pulse-1":   { id: "wp-pulse-1",   slot: "weapon", name: "Pulse Laser Mk-I",     description: "Basic laser. Reliable starter weapon.",                rarity: "common",    color: "#4ee2ff", glyph: "▶", tier: 1, price: 500,  stats: { damage: 6, fireRate: 1.0 } },
+  "wp-pulse-2":   { id: "wp-pulse-2",   slot: "weapon", name: "Pulse Laser Mk-II",    description: "Tuned pulse array. +damage, faster fire.",             rarity: "uncommon",  color: "#5cff8a", glyph: "▶", tier: 2, price: 2200, stats: { damage: 12, fireRate: 1.15 } },
+  "wp-plasma":    { id: "wp-plasma",    slot: "weapon", name: "Plasma Cannon",        description: "Heavy plasma slug. High damage, slower cycle.",        rarity: "rare",      color: "#ff5cf0", glyph: "◆", tier: 3, price: 7800, stats: { damage: 22, fireRate: 0.85, critChance: 0.04 } },
+  "wp-phase":     { id: "wp-phase",     slot: "weapon", name: "Phase Repeater",       description: "Rapid-fire phase array. Crit-leaning.",                rarity: "rare",      color: "#ff5cf0", glyph: "≫", tier: 3, price: 9000, stats: { damage: 14, fireRate: 1.5, critChance: 0.08 } },
+  "wp-solar":     { id: "wp-solar",     slot: "weapon", name: "Solar Lance",          description: "Star-grade lance. Splash damage, brutal output.",      rarity: "epic",      color: "#ffd24a", glyph: "✺", tier: 4, price: 24000,stats: { damage: 34, fireRate: 1.0, aoeRadius: 18, critChance: 0.06 } },
+  "wp-singular":  { id: "wp-singular",  slot: "weapon", name: "Singularity Driver",   description: "Endgame weapon. Massive splash + crit.",               rarity: "legendary", color: "#ff5c6c", glyph: "✸", tier: 5, price: 80000,stats: { damage: 52, fireRate: 1.1, aoeRadius: 28, critChance: 0.12 } },
+
+  // ── GENERATORS (power core: shield/regen/hull) ───────────────────────────
+  "gn-core-1":    { id: "gn-core-1",    slot: "generator", name: "Core Generator Mk-I",  description: "Stock reactor. Modest shield + regen.",            rarity: "common",    color: "#8aa0c0", glyph: "◈", tier: 1, price: 500,  stats: { shieldMax: 30, shieldRegen: 2 } },
+  "gn-core-2":    { id: "gn-core-2",    slot: "generator", name: "Core Generator Mk-II", description: "Improved reactor.",                                  rarity: "uncommon",  color: "#5cff8a", glyph: "◈", tier: 2, price: 2400, stats: { shieldMax: 70, shieldRegen: 4, hullMax: 20 } },
+  "gn-aegis":     { id: "gn-aegis",     slot: "generator", name: "Aegis Reactor",        description: "Shield-focused core. Big shield bonus.",             rarity: "rare",      color: "#4ee2ff", glyph: "◇", tier: 3, price: 9000, stats: { shieldMax: 140, shieldRegen: 7 } },
+  "gn-fortify":   { id: "gn-fortify",   slot: "generator", name: "Fortify Reactor",      description: "Hull-focused core. Tanky.",                          rarity: "rare",      color: "#ff8a4e", glyph: "▣", tier: 3, price: 9000, stats: { hullMax: 90, shieldMax: 60, damageReduction: 0.05 } },
+  "gn-quantum":   { id: "gn-quantum",   slot: "generator", name: "Quantum Reactor",      description: "Endgame core. Massive shield & regen.",              rarity: "epic",      color: "#ff5cf0", glyph: "⌬", tier: 4, price: 26000,stats: { shieldMax: 240, shieldRegen: 12, hullMax: 80 } },
+
+  // ── MODULES (utility: speed, cargo, loot, crit, AoE) ─────────────────────
+  "md-thrust-1":  { id: "md-thrust-1",  slot: "module", name: "Ion Thruster Mk-I",     description: "Boosts top speed.",                                     rarity: "common",    color: "#5cff8a", glyph: "➤", tier: 1, price: 600,  stats: { speed: 30 } },
+  "md-thrust-2":  { id: "md-thrust-2",  slot: "module", name: "Ion Thruster Mk-II",    description: "Boosts speed substantially.",                           rarity: "uncommon",  color: "#5cff8a", glyph: "➤", tier: 2, price: 2800, stats: { speed: 70 } },
+  "md-cargo":     { id: "md-cargo",     slot: "module", name: "Expanded Cargo Bay",    description: "+25% cargo capacity.",                                  rarity: "uncommon",  color: "#c69060", glyph: "▤", tier: 2, price: 3200, stats: { cargoBonus: 0.25 } },
+  "md-targeter":  { id: "md-targeter",  slot: "module", name: "Targeter Array",        description: "+10% crit chance.",                                     rarity: "rare",      color: "#ff5cf0", glyph: "✦", tier: 3, price: 8000, stats: { critChance: 0.10 } },
+  "md-plating":   { id: "md-plating",   slot: "module", name: "Reactive Plating",      description: "-8% incoming damage.",                                  rarity: "rare",      color: "#ff8a4e", glyph: "⛨", tier: 3, price: 9500, stats: { damageReduction: 0.08, hullMax: 40 } },
+  "md-scavenger": { id: "md-scavenger", slot: "module", name: "Scavenger Module",      description: "+1 loot per kill.",                                     rarity: "rare",      color: "#ffd24a", glyph: "$", tier: 3, price: 7500, stats: { lootBonus: 1 } },
+  "md-overcharge":{ id: "md-overcharge",slot: "module", name: "Overcharge Capacitor",  description: "Massive damage bonus to all weapons.",                  rarity: "epic",      color: "#ff5c6c", glyph: "⚡", tier: 4, price: 28000,stats: { damage: 14, fireRate: 1.1 } },
+  "md-voidframe": { id: "md-voidframe", slot: "module", name: "Voidframe Stabilizer",  description: "Endgame module. Speed + damage reduction + shield.",   rarity: "legendary", color: "#b06cff", glyph: "✺", tier: 5, price: 90000,stats: { speed: 60, damageReduction: 0.12, shieldMax: 120, critChance: 0.05 } },
+};
+
+export function moduleDef(idOrItem: string | ModuleItem): ModuleDef {
+  const id = typeof idOrItem === "string" ? idOrItem : idOrItem.defId;
+  return MODULE_DEFS[id];
+}
+
+// ── DUNGEONS ──────────────────────────────────────────────────────────────
+export type DungeonId = "alpha-rift" | "nebula-rift" | "crimson-rift" | "void-rift";
+
+export type DungeonDef = {
+  id: DungeonId;
+  name: string;
+  zone: ZoneId;
+  pos: Vec2;
+  description: string;
+  enemyTypes: EnemyType[];
+  enemyHpMul: number;
+  enemyDmgMul: number;
+  waves: number;
+  enemiesPerWave: number;
+  rewardCredits: number;
+  rewardExp: number;
+  rewardModules: string[];      // pool of defIds (1 random drops)
+  rewardMaterials: { resourceId: ResourceId; qty: number }[];
+  color: string;
+  unlockLevel: number;
+};
+
+export const DUNGEONS: Record<DungeonId, DungeonDef> = {
+  "alpha-rift": {
+    id: "alpha-rift", name: "Alpha Anomaly", zone: "alpha", pos: { x: -1400, y: 1100 },
+    description: "A pirate fleet hideout. Good place to learn the ropes and earn alloy.",
+    enemyTypes: ["scout", "raider"], enemyHpMul: 1.4, enemyDmgMul: 1.2,
+    waves: 3, enemiesPerWave: 4,
+    rewardCredits: 1500, rewardExp: 400,
+    rewardModules: ["wp-pulse-2", "gn-core-2", "md-thrust-2", "md-cargo"],
+    rewardMaterials: [{ resourceId: "iron", qty: 6 }, { resourceId: "scrap", qty: 8 }],
+    color: "#7ad8ff", unlockLevel: 1,
+  },
+  "nebula-rift": {
+    id: "nebula-rift", name: "Veil Vortex", zone: "nebula", pos: { x: -1100, y: 600 },
+    description: "Raider stronghold inside a nebula tear. Drops plasma cores and rare modules.",
+    enemyTypes: ["raider", "destroyer"], enemyHpMul: 1.6, enemyDmgMul: 1.4,
+    waves: 4, enemiesPerWave: 5,
+    rewardCredits: 4500, rewardExp: 1200,
+    rewardModules: ["wp-plasma", "wp-phase", "gn-aegis", "gn-fortify", "md-targeter", "md-plating", "md-scavenger"],
+    rewardMaterials: [{ resourceId: "plasma", qty: 8 }, { resourceId: "warp", qty: 4 }, { resourceId: "lumenite", qty: 5 }],
+    color: "#ff5cf0", unlockLevel: 5,
+  },
+  "crimson-rift": {
+    id: "crimson-rift", name: "Crimson Furnace", zone: "crimson", pos: { x: 1300, y: -900 },
+    description: "Dread incursion site. High risk, epic-grade module drops.",
+    enemyTypes: ["destroyer", "dread"], enemyHpMul: 1.8, enemyDmgMul: 1.5,
+    waves: 4, enemiesPerWave: 5,
+    rewardCredits: 12000, rewardExp: 3200,
+    rewardModules: ["wp-solar", "gn-quantum", "md-overcharge", "md-plating"],
+    rewardMaterials: [{ resourceId: "dread", qty: 3 }, { resourceId: "warp", qty: 8 }, { resourceId: "quantum", qty: 4 }],
+    color: "#ff5c6c", unlockLevel: 10,
+  },
+  "void-rift": {
+    id: "void-rift", name: "Void Maw", zone: "void", pos: { x: -800, y: 1200 },
+    description: "A wound in spacetime. Legendary modules drop here.",
+    enemyTypes: ["voidling", "dread"], enemyHpMul: 2.2, enemyDmgMul: 1.8,
+    waves: 5, enemiesPerWave: 6,
+    rewardCredits: 30000, rewardExp: 8000,
+    rewardModules: ["wp-singular", "md-voidframe", "gn-quantum", "wp-solar"],
+    rewardMaterials: [{ resourceId: "void", qty: 8 }, { resourceId: "dread", qty: 5 }, { resourceId: "quantum", qty: 8 }],
+    color: "#b06cff", unlockLevel: 15,
+  },
+};
+
+export type DungeonRun = {
+  id: DungeonId;
+  wave: number;          // 1-indexed
+  totalWaves: number;
+  enemiesLeft: number;
+  spawnedThisWave: boolean;
+  startedAt: number;
 };
