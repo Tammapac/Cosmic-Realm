@@ -1077,11 +1077,12 @@ function drawHullShieldBars(
   hullPct: number, shieldPct: number,
 ): void {
   const w = 36;
+  const hull = Math.max(0, Math.min(1, hullPct));
   const shield = Math.max(0, Math.min(1, shieldPct));
   ctx.fillStyle = "rgba(0,0,0,0.7)";
   ctx.fillRect(x - w / 2, y, w, 3);
   ctx.fillStyle = hullPct > 0.5 ? "#5cff8a" : hullPct > 0.25 ? "#ffd24a" : "#ff5c6c";
-  ctx.fillRect(x - w / 2, y, Math.max(0, w * hullPct), 3);
+  ctx.fillRect(x - w / 2, y, w * hull, 3);
   ctx.fillStyle = "rgba(0,0,0,0.7)";
   ctx.fillRect(x - w / 2, y + 4, w, 2);
   ctx.fillStyle = "#4ee2ff";
