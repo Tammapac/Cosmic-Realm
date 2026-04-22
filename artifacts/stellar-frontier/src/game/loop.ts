@@ -30,6 +30,7 @@ function sumEquippedStats(): ModuleStats {
   const acc: Required<ModuleStats> = {
     damage: 0, fireRate: 1, critChance: 0, shieldMax: 0, shieldRegen: 0,
     hullMax: 0, speed: 0, damageReduction: 0, cargoBonus: 0, lootBonus: 0, aoeRadius: 0,
+    ammoCapacity: 0,
   };
   let weaponDmg = 0, weaponFireRate = 1, weaponCrit = 0, weaponAoe = 0, weaponCount = 0;
   for (const id of p.equipped.weapon) {

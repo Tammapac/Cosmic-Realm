@@ -66,7 +66,7 @@ function GameCanvas() {
       }
     }
 
-    const enemy = state.enemies.find((en) => en.zone === state.player.zone && Math.hypot(en.pos.x - wx, en.pos.y - wy) < Math.max(18, en.size + 10));
+    const enemy = state.enemies.find((en) => Math.hypot(en.pos.x - wx, en.pos.y - wy) < Math.max(24, en.size + 14));
     if (enemy) {
       state.selectedWorldTarget = {
         kind: "enemy",
@@ -74,6 +74,7 @@ function GameCanvas() {
         name: enemy.name ?? enemy.type.toUpperCase(),
         detail: `${enemy.type.toUpperCase()} · ${Math.max(0, Math.round(enemy.hull))}/${Math.round(enemy.hullMax)} HP`,
       };
+      state.cameraTarget = { x: enemy.pos.x, y: enemy.pos.y };
       bump();
       return;
     }
