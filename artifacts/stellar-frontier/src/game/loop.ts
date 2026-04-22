@@ -1010,7 +1010,7 @@ function tickWorld(dt: number): void {
     }
     sfx.shoot(tierGuess);
     if (isCrit) sfx.crit();
-    playerFireCd.value = Math.max(0.10, 0.45 / stats.fireRate);
+    playerFireCd.value = isRocket ? 3 : Math.max(0.10, 0.45 / stats.fireRate);
   }
   playerFireCd.value -= dt;
 
