@@ -74,7 +74,7 @@ export type GameState = {
   dungeon: DungeonRun | null;
 };
 
-const STORAGE_KEY = "stellar-frontier-save-v4";
+const STORAGE_KEY = "stellar-frontier-save-v5";
 
 function newMilestones(): Milestones {
   return { totalKills: 0, totalMined: 0, totalCreditsEarned: 0, totalWarps: 0, totalDeaths: 0, bossKills: 0 };
@@ -187,7 +187,11 @@ function makeOthers(zone: ZoneId): OtherPlayer[] {
 }
 
 function makeAsteroids(zone: ZoneId): Asteroid[] {
-  const count = zone === "alpha" ? 14 : zone === "nebula" ? 12 : zone === "crimson" ? 10 : 6;
+  const countMap: Partial<Record<ZoneId, number>> = {
+    alpha: 14, nebula: 12, crimson: 10, void: 8,
+    forge: 7, corona: 6, fracture: 5, abyss: 4,
+  };
+  const count = countMap[zone] ?? 6;
   const out: Asteroid[] = [];
   for (let i = 0; i < count; i++) {
     const angle = Math.random() * Math.PI * 2;

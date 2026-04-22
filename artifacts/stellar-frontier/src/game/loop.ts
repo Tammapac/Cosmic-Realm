@@ -3,7 +3,7 @@ import {
   pushEvent, bumpMission, state, travelToZone, completeDungeon,
 } from "./store";
 import {
-  DRONE_DEFS, Drone, DUNGEONS, ENEMY_DEFS, EXP_FOR_LEVEL,
+  DRONE_DEFS, Drone, DUNGEONS, ENEMY_DEFS, ENEMY_NAMES, EXP_FOR_LEVEL,
   Enemy, EnemyType, FACTIONS, MODULE_DEFS, ModuleStats, PORTALS,
   SHIP_CLASSES, STATIONS, ZONES, ZoneId,
   rankFor,
@@ -152,9 +152,12 @@ function spawnEnemy(): void {
   const px = state.player.pos.x + Math.cos(angle) * dist;
   const py = state.player.pos.y + Math.sin(angle) * dist;
   const tierMult = 1 + (z.enemyTier - 1) * 0.25;
+  const namePool = ENEMY_NAMES[type];
+  const eName = namePool[Math.floor(Math.random() * namePool.length)];
   state.enemies.push({
     id: `e-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     type,
+    name: eName,
     behavior: def.behavior,
     pos: { x: px, y: py },
     vel: { x: 0, y: 0 },
@@ -189,6 +192,7 @@ function spawnDungeonEnemy(type: EnemyType, hpMul: number, dmgMul: number): void
     id: `dg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     type, behavior: def.behavior,
     pos: { x: px, y: py }, vel: { x: 0, y: 0 }, angle: 0,
+    name: ENEMY_NAMES[type]?.[Math.floor(Math.random() * (ENEMY_NAMES[type]?.length ?? 1))],
     hull: hullMax, hullMax,
     damage: def.damage * dmgMul,
     speed: def.speed,
@@ -329,7 +333,7 @@ function emitDeath(x: number, y: number, color: string, big = false): void {
 function fireProjectile(
   from: "player" | "enemy" | "drone",
   x: number, y: number, angle: number, damage: number, color: string, size = 3,
-  opts?: { crit?: boolean; aoeRadius?: number; speedMul?: number },
+  opts?: { crit?: boolean; aoeRadius?: number; speedMul?: number; homing?: boolean },
 ): void {
   const speedBase = from === "player" ? 560 : from === "drone" ? 480 : 320;
   const speed = speedBase * (opts?.speedMul ?? 1);
@@ -338,13 +342,24 @@ function fireProjectile(
     pos: { x, y },
     vel: { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed },
     damage,
-    ttl: 1.6,
+    ttl: opts?.homing ? 4.0 : 1.6,
     fromPlayer: from !== "enemy",
     color,
     size: opts?.crit ? size + 2 : size,
     crit: opts?.crit,
     aoeRadius: opts?.aoeRadius,
+    homing: opts?.homing,
   });
+}
+
+function hasRocketWeapon(): boolean {
+  const p = state.player;
+  for (const id of p.equipped.weapon) {
+    if (!id) continue;
+    const item = p.inventory.find((m) => m.instanceId === id);
+    if (item && MODULE_DEFS[item.defId]?.weaponKind === "rocket") return true;
+  }
+  return false;
 }
 
 // ── XP / LEVEL ────────────────────────────────────────────────────────────
@@ -741,12 +756,24 @@ function tickWorld(dt: number): void {
     const ang = Math.atan2(nearest.pos.y - p.pos.y, nearest.pos.x - p.pos.x);
     const color = equippedWeaponColor();
     const tierGuess = Math.min(8, Math.max(1, Math.round(stats.damage / 8)));
-    const size = tierGuess >= 6 ? 4 : 3;
     const isCrit = Math.random() < stats.critChance;
     const dmg = stats.damage * (isCrit ? 2 : 1);
-    fireProjectile("player", p.pos.x, p.pos.y, ang, dmg, color, size, {
-      crit: isCrit, aoeRadius: stats.aoeRadius > 0 ? stats.aoeRadius : undefined,
-    });
+    const isRocket = hasRocketWeapon();
+    if (isRocket) {
+      // Rockets: slow, homing, big splash
+      const spread = (Math.random() - 0.5) * 0.3;
+      fireProjectile("player", p.pos.x, p.pos.y, ang + spread, dmg, color, 5, {
+        crit: isCrit,
+        aoeRadius: Math.max(stats.aoeRadius, 22),
+        homing: true,
+        speedMul: 0.35,
+      });
+    } else {
+      const size = tierGuess >= 6 ? 4 : 3;
+      fireProjectile("player", p.pos.x, p.pos.y, ang, dmg, color, size, {
+        crit: isCrit, aoeRadius: stats.aoeRadius > 0 ? stats.aoeRadius : undefined,
+      });
+    }
     sfx.shoot(tierGuess);
     if (isCrit) sfx.crit();
     playerFireCd.value = Math.max(0.10, 0.45 / stats.fireRate);
@@ -793,6 +820,27 @@ function tickWorld(dt: number): void {
 
   // ── Projectiles update + collisions
   state.projectiles = state.projectiles.filter((pr) => {
+    // Homing steering (rockets)
+    if (pr.homing && pr.fromPlayer && state.enemies.length > 0) {
+      let target: Enemy | null = null;
+      let bestD = 9999;
+      for (const e of state.enemies) {
+        const d = distance(pr.pos.x, pr.pos.y, e.pos.x, e.pos.y);
+        if (d < bestD) { bestD = d; target = e; }
+      }
+      if (target) {
+        const desiredAng = Math.atan2(target.pos.y - pr.pos.y, target.pos.x - pr.pos.x);
+        const curAng = Math.atan2(pr.vel.y, pr.vel.x);
+        let diff = desiredAng - curAng;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        const turnRate = 3.5 * dt;
+        const newAng = curAng + Math.sign(diff) * Math.min(Math.abs(diff), turnRate);
+        const spd = Math.sqrt(pr.vel.x * pr.vel.x + pr.vel.y * pr.vel.y);
+        pr.vel.x = Math.cos(newAng) * spd;
+        pr.vel.y = Math.sin(newAng) * spd;
+      }
+    }
     pr.pos.x += pr.vel.x * dt;
     pr.pos.y += pr.vel.y * dt;
     pr.ttl -= dt;

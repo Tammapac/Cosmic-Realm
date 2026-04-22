@@ -548,8 +548,8 @@ function DronesTab() {
       id: `dr-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
       kind,
       mode: "orbit",
-      hp: 60 + def.shieldBonus * 0.5,
-      hpMax: 60 + def.shieldBonus * 0.5,
+      hp: 300 + def.shieldBonus * 2 + def.hullBonus * 2,
+      hpMax: 300 + def.shieldBonus * 2 + def.hullBonus * 2,
       orbitPhase: Math.random() * Math.PI * 2,
       fireCd: 0,
     });
@@ -901,9 +901,10 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
 function SkillsTab() {
   const player = useGame((s) => s.player);
   const branches: { id: SkillBranch; name: string; color: string }[] = [
-    { id: "offense",  name: "OFFENSE",  color: "#ff5c6c" },
-    { id: "defense",  name: "DEFENSE",  color: "#4ee2ff" },
-    { id: "utility",  name: "UTILITY",  color: "#5cff8a" },
+    { id: "offense",     name: "OFFENSE",     color: "#ff5c6c" },
+    { id: "defense",     name: "DEFENSE",     color: "#4ee2ff" },
+    { id: "utility",     name: "UTILITY",     color: "#5cff8a" },
+    { id: "engineering", name: "ENGINEERING", color: "#ffd24a" },
   ];
 
   return (
@@ -928,7 +929,7 @@ function SkillsTab() {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3" style={{ gridTemplateColumns: "repeat(4,1fr)" }}>
         {branches.map((b) => (
           <div key={b.id} className="panel p-3">
             <div className="font-bold tracking-widest text-xs mb-2" style={{ color: b.color }}>
