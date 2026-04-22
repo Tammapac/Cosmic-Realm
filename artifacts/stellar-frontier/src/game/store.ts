@@ -8,9 +8,11 @@ import {
   ConsumableId,
   DAILY_MISSION_POOL,
   Drone,
+  DAILY_DUNGEON_BONUS,
   DUNGEONS,
   DungeonId,
   DungeonRun,
+  getDailyFeaturedDungeon,
   Enemy,
   EquippedSlots,
   FACTIONS,
@@ -964,6 +966,7 @@ export function enterDungeon(id: DungeonId): void {
     id, wave: 1, totalWaves: def.waves,
     enemiesLeft: def.enemiesPerWave, spawnedThisWave: false,
     startedAt: Date.now(),
+    isFeatured: id === getDailyFeaturedDungeon(),
   };
   // Clear ambient enemies for a clean instance feel
   state.enemies = [];
@@ -988,20 +991,35 @@ export function completeDungeon(): void {
     p.dungeonBestTimes[run.id] = elapsed;
   }
   state.dungeon = null;
+  // Use the featured flag captured at entry time (so runs crossing UTC midnight don't change payout mid-run)
+  const isFeatured = run.isFeatured;
+  const creditReward = isFeatured ? Math.round(def.rewardCredits * DAILY_DUNGEON_BONUS.creditsMul) : def.rewardCredits;
   // Rewards
-  p.credits += def.rewardCredits;
+  p.credits += creditReward;
   p.exp += def.rewardExp;
-  p.milestones.totalCreditsEarned += def.rewardCredits;
+  p.milestones.totalCreditsEarned += creditReward;
   for (const m of def.rewardMaterials) {
     const taken = addCargo(m.resourceId, m.qty);
     if (taken < m.qty) pushNotification(`Cargo overflow: lost ${m.qty - taken} ${RESOURCES[m.resourceId].name}`, "bad");
   }
-  // Pick a random module from the pool
-  const pickId = def.rewardModules[Math.floor(Math.random() * def.rewardModules.length)];
-  const item = addInventoryItem(pickId);
-  if (item) {
-    pushNotification(`Module acquired: ${MODULE_DEFS[pickId].name}`, "good");
-    pushEvent({ title: "✦ DUNGEON CLEARED", body: `+${def.rewardCredits}cr · +${def.rewardExp}xp · ${MODULE_DEFS[pickId].name}`, ttl: 6, kind: "global", color: def.color });
+  // Pick random module(s) from the pool (2 if featured, 1 normally)
+  const modulesToDrop = isFeatured ? 1 + DAILY_DUNGEON_BONUS.extraModules : 1;
+  const droppedModuleNames: string[] = [];
+  const pool = [...def.rewardModules];
+  for (let i = 0; i < modulesToDrop; i++) {
+    const pickId = pool[Math.floor(Math.random() * pool.length)];
+    const item = addInventoryItem(pickId);
+    if (item) droppedModuleNames.push(MODULE_DEFS[pickId].name);
+  }
+  if (droppedModuleNames.length > 0) {
+    const modList = droppedModuleNames.join(" · ");
+    const bonusTag = isFeatured ? " ⭐ DAILY BONUS" : "";
+    pushNotification(`Module${droppedModuleNames.length > 1 ? "s" : ""} acquired: ${modList}${bonusTag}`, "good");
+    pushEvent({
+      title: `✦ DUNGEON CLEARED${isFeatured ? " ⭐" : ""}`,
+      body: `+${creditReward.toLocaleString()}cr · +${def.rewardExp}xp · ${modList}${isFeatured ? " (Daily Bonus!)" : ""}`,
+      ttl: 6, kind: "global", color: isFeatured ? "#ffd24a" : def.color,
+    });
   }
   state.enemies = [];
   state.projectiles = [];

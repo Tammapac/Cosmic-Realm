@@ -1,8 +1,8 @@
 import { state, bump, useGame, pushNotification, save, stationPrice, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, rocketAmmoMax, getRocketWeaponIds, ensureAmmoInitialized, setAutoRestock, getActiveAmmoType, switchRocketAmmoType, purchaseTypedAmmo, getAmmoCountForType, ROCKET_AMMO_COST_PER } from "../game/store";
 import {
-  ActiveQuest, CONSUMABLE_DEFS, ConsumableId, DRONE_DEFS, DroneKind, DroneMode, DUNGEONS, DungeonId, FACTIONS, MODULE_DEFS, ModuleDef, ModuleSlot, ModuleStats, RARITY_COLOR,
+  ActiveQuest, CONSUMABLE_DEFS, ConsumableId, DAILY_DUNGEON_BONUS, DRONE_DEFS, DroneKind, DroneMode, DUNGEONS, DungeonId, FACTIONS, MODULE_DEFS, ModuleDef, ModuleSlot, ModuleStats, RARITY_COLOR,
   Quest, RESOURCES, ResourceId, ROCKET_AMMO_TYPE_DEFS, RocketAmmoType, SHIP_CLASSES, SKILL_NODES, STATIONS, ShipClassId, SkillBranch,
-  SkillId,
+  SkillId, getDailyFeaturedDungeon,
 } from "../game/types";
 import type { HangarTab } from "../game/store";
 import { effectiveStats } from "../game/loop";
@@ -557,12 +557,37 @@ function fmtClearTime(ms: number): string {
 function DungeonsTab() {
   const player = useGame((s) => s.player);
   const dungeon = useGame((s) => s.dungeon);
-  const list = Object.values(DUNGEONS);
+  const featuredId = getDailyFeaturedDungeon();
+  // Featured dungeon first, rest in original order
+  const allDungeons = Object.values(DUNGEONS);
+  const list = [
+    ...allDungeons.filter((d) => d.id === featuredId),
+    ...allDungeons.filter((d) => d.id !== featuredId),
+  ];
+  // Display the UTC date to match the canonical featured dungeon rotation (resets at UTC midnight)
+  const now = new Date();
+  const utcDateStr = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+    .toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric", timeZone: "UTC" });
+  const dateLabel = utcDateStr;
   return (
     <div className="p-4 space-y-3">
       <div className="text-cyan tracking-widest text-xs">▶ INSTANCED DUNGEONS</div>
       <div className="text-dim text-[11px]">
         Each dungeon is a wave-based instance. Clear all waves for credits, materials and a guaranteed module drop.
+      </div>
+      {/* Daily featured banner */}
+      <div className="panel p-2.5" style={{ borderColor: "#ffd24a", background: "rgba(255,210,74,0.06)" }}>
+        <div className="flex items-center gap-2">
+          <span className="text-[14px]">⭐</span>
+          <div>
+            <div className="text-[11px] font-bold tracking-widest text-amber">DAILY FEATURED RIFT — {dateLabel.toUpperCase()}</div>
+            <div className="text-[10px] text-dim mt-0.5">
+              <span className="font-bold" style={{ color: DUNGEONS[featuredId].color }}>{DUNGEONS[featuredId].name}</span>
+              <span className="text-mute"> · </span>
+              <span className="text-amber">{DAILY_DUNGEON_BONUS.label}</span>
+            </div>
+          </div>
+        </div>
       </div>
       {dungeon && (
         <div className="panel p-2" style={{ borderColor: "#ffd24a" }}>
@@ -575,10 +600,25 @@ function DungeonsTab() {
           const locked = player.level < d.unlockLevel;
           const clears = player.dungeonClears?.[d.id] ?? 0;
           const bestMs = player.dungeonBestTimes?.[d.id];
+          const isFeatured = d.id === featuredId;
+          const featuredCredits = Math.round(d.rewardCredits * DAILY_DUNGEON_BONUS.creditsMul);
           return (
-            <div key={d.id} className="panel p-2.5" style={{ borderColor: d.color }}>
+            <div
+              key={d.id}
+              className="panel p-2.5"
+              style={{
+                borderColor: isFeatured ? "#ffd24a" : d.color,
+                background: isFeatured ? "rgba(255,210,74,0.05)" : undefined,
+              }}
+            >
+              {isFeatured && (
+                <div className="flex items-center gap-1 mb-1.5 -mt-0.5">
+                  <span className="text-[10px]">⭐</span>
+                  <span className="text-[9px] font-bold tracking-widest text-amber">DAILY FEATURED</span>
+                </div>
+              )}
               <div className="flex items-center justify-between">
-                <div className="text-[12px] font-bold tracking-widest" style={{ color: d.color }}>{d.name.toUpperCase()}</div>
+                <div className="text-[12px] font-bold tracking-widest" style={{ color: isFeatured ? "#ffd24a" : d.color }}>{d.name.toUpperCase()}</div>
                 <div className="text-[9px] tracking-widest text-mute">{d.zone.toUpperCase()}</div>
               </div>
               <div className="text-dim text-[10px] mt-0.5">{d.description}</div>
@@ -587,7 +627,14 @@ function DungeonsTab() {
                 <Stat label="ENEMIES" v={`${d.enemiesPerWave}×`} />
                 <Stat label="REQ" v={`Lv ${d.unlockLevel}`} />
               </div>
-              <div className="text-[9px] text-amber mt-1">+{d.rewardCredits.toLocaleString()}cr · +{d.rewardExp}xp · 1 module</div>
+              {isFeatured ? (
+                <div className="mt-1 space-y-0.5">
+                  <div className="text-[9px] text-amber line-through opacity-50">+{d.rewardCredits.toLocaleString()}cr · +{d.rewardExp}xp · 1 module</div>
+                  <div className="text-[9px] font-bold text-amber">⭐ +{featuredCredits.toLocaleString()}cr · +{d.rewardExp}xp · 2 modules</div>
+                </div>
+              ) : (
+                <div className="text-[9px] text-amber mt-1">+{d.rewardCredits.toLocaleString()}cr · +{d.rewardExp}xp · 1 module</div>
+              )}
               <div className="text-[9px] text-mute mt-0.5">
                 Materials: {d.rewardMaterials.map((m) => `${m.qty}× ${RESOURCES[m.resourceId].name}`).join(" · ")}
               </div>
@@ -601,14 +648,14 @@ function DungeonsTab() {
               </div>
               <button
                 className="btn btn-primary w-full mt-2"
-                style={{ padding: "3px 6px", fontSize: 10 }}
+                style={{ padding: "3px 6px", fontSize: 10, ...(isFeatured && !locked && !dungeon ? { background: "#ffd24a", color: "#000" } : {}) }}
                 disabled={locked || !!dungeon}
                 onClick={() => {
                   state.dockedAt = null;
                   enterDungeon(d.id as DungeonId);
                 }}
               >
-                {locked ? `Locked · Lv ${d.unlockLevel}` : dungeon ? "In a dungeon" : "Launch run"}
+                {locked ? `Locked · Lv ${d.unlockLevel}` : dungeon ? "In a dungeon" : isFeatured ? "⭐ Launch Featured Run" : "Launch run"}
               </button>
             </div>
           );

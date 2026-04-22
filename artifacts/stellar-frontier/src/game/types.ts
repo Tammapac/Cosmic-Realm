@@ -1315,4 +1315,26 @@ export type DungeonRun = {
   enemiesLeft: number;
   spawnedThisWave: boolean;
   startedAt: number;
+  isFeatured: boolean;   // snapshotted at entry so runs crossing UTC midnight use correct bonus
 };
+
+// ── DAILY FEATURED DUNGEON ────────────────────────────────────────────────
+export const DAILY_DUNGEON_BONUS = {
+  creditsMul: 1.5,        // +50% credits
+  extraModules: 1,        // 1 extra module drop (total 2)
+  label: "+50% Credits · Double Module Drop",
+};
+
+/** Returns the featured DungeonId for today, seeded by UTC date so all players worldwide share the same one. */
+export function getDailyFeaturedDungeon(): DungeonId {
+  const now = new Date();
+  // Use UTC date components so all players — regardless of timezone — resolve the same dungeon
+  const dateKey = `${now.getUTCFullYear()}-${now.getUTCMonth()}-${now.getUTCDate()}`;
+  // Simple djb2-style hash of the date string
+  let hash = 5381;
+  for (let i = 0; i < dateKey.length; i++) {
+    hash = (hash * 33) ^ dateKey.charCodeAt(i);
+  }
+  const ids = Object.keys(DUNGEONS) as DungeonId[];
+  return ids[Math.abs(hash) % ids.length];
+}
