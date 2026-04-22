@@ -205,8 +205,9 @@ function makeOthers(zone: ZoneId): OtherPlayer[] {
 
 function makeAsteroids(zone: ZoneId): Asteroid[] {
   const countMap: Partial<Record<ZoneId, number>> = {
-    alpha: 14, nebula: 12, crimson: 10, void: 8,
-    forge: 7, corona: 6, fracture: 5, abyss: 4,
+    alpha: 14, nebula: 12, crimson: 10, void: 8, forge: 7,
+    corona: 14, fracture: 12, abyss: 10, marsdepth: 8, maelstrom: 7,
+    venus1: 14, venus2: 12, venus3: 10, venus4: 8, venus5: 7,
   };
   const count = countMap[zone] ?? 6;
   const out: Asteroid[] = [];

@@ -1,10 +1,15 @@
 export type Vec2 = { x: number; y: number };
 
-export type ZoneId = "alpha" | "nebula" | "crimson" | "void" | "forge" | "corona" | "fracture" | "abyss";
+export type ZoneId =
+  | "alpha" | "nebula" | "crimson" | "void" | "forge"
+  | "corona" | "fracture" | "abyss" | "marsdepth" | "maelstrom"
+  | "venus1" | "venus2" | "venus3" | "venus4" | "venus5";
 
 export type Zone = {
   id: ZoneId;
   name: string;
+  label: string;
+  faction: "earth" | "mars" | "venus";
   bgHueA: string;
   bgHueB: string;
   enemyTier: number;
@@ -569,53 +574,98 @@ export type ChatMessage = {
 };
 
 export const ZONES: Record<ZoneId, Zone> = {
+  // ── EARTH FACTION (1-1 → 1-5) ────────────────────────────────────────────
   alpha: {
-    id: "alpha", name: "Alpha Sector",
+    id: "alpha", name: "Alpha Sector", label: "1-1", faction: "earth",
     bgHueA: "#0a1240", bgHueB: "#020414", enemyTier: 1,
     enemyTypes: ["scout", "raider"],
     description: "Frontier territory. Pirates and scouts patrol the lanes.", unlockLevel: 1,
   },
   nebula: {
-    id: "nebula", name: "Veil Nebula",
+    id: "nebula", name: "Veil Nebula", label: "1-2", faction: "earth",
     bgHueA: "#3a0a4a", bgHueB: "#0a0220", enemyTier: 2,
     enemyTypes: ["raider", "destroyer"],
     description: "Glowing dust clouds hide raider strongholds.", unlockLevel: 4,
   },
   crimson: {
-    id: "crimson", name: "Crimson Reach",
+    id: "crimson", name: "Crimson Reach", label: "1-3", faction: "earth",
     bgHueA: "#4a0a18", bgHueB: "#1a0208", enemyTier: 3,
     enemyTypes: ["destroyer", "dread"],
     description: "Blood-red expanse. Destroyers hunt in packs.", unlockLevel: 8,
   },
   void: {
-    id: "void", name: "The Void",
+    id: "void", name: "The Void", label: "1-4", faction: "earth",
     bgHueA: "#001a1a", bgHueB: "#000508", enemyTier: 4,
     enemyTypes: ["voidling", "dread"],
     description: "An empty stretch where reality bends. Voidlings dwell here.", unlockLevel: 12,
   },
   forge: {
-    id: "forge", name: "Iron Forge",
+    id: "forge", name: "Iron Forge", label: "1-5", faction: "earth",
     bgHueA: "#3a2210", bgHueB: "#1a0c04", enemyTier: 5,
     enemyTypes: ["destroyer", "dread"],
     description: "Industrial hellscape. Ancient automated warships guard the furnaces.", unlockLevel: 16,
   },
+  // ── MARS FACTION (2-1 → 2-5) ─────────────────────────────────────────────
   corona: {
-    id: "corona", name: "Solar Corona",
-    bgHueA: "#3a2800", bgHueB: "#1a1000", enemyTier: 6,
-    enemyTypes: ["voidling", "dread"],
-    description: "Searing stellar winds. Reality-bent hunters near a dying star.", unlockLevel: 20,
+    id: "corona", name: "Mars Frontier", label: "2-1", faction: "mars",
+    bgHueA: "#3a1800", bgHueB: "#1a0800", enemyTier: 1,
+    enemyTypes: ["scout", "raider"],
+    description: "The outer Martian reaches. Raiders rule the rust-colored lanes.", unlockLevel: 1,
   },
   fracture: {
-    id: "fracture", name: "Fracture Zone",
-    bgHueA: "#200a40", bgHueB: "#080020", enemyTier: 7,
-    enemyTypes: ["voidling", "dread"],
-    description: "Spacetime tears leak interdimensional threats. Survive if you can.", unlockLevel: 25,
+    id: "fracture", name: "Dust Expanse", label: "2-2", faction: "mars",
+    bgHueA: "#4a1a0a", bgHueB: "#1e0804", enemyTier: 2,
+    enemyTypes: ["raider", "destroyer"],
+    description: "Swirling iron dust storms hide outlaw strongholds.", unlockLevel: 4,
   },
   abyss: {
-    id: "abyss", name: "The Abyss",
-    bgHueA: "#000000", bgHueB: "#02000a", enemyTier: 8,
+    id: "abyss", name: "Red Reaches", label: "2-3", faction: "mars",
+    bgHueA: "#5a0a0a", bgHueB: "#220404", enemyTier: 3,
+    enemyTypes: ["destroyer", "dread"],
+    description: "Combat-torn Martian space. Destroyer fleets fight for control.", unlockLevel: 8,
+  },
+  marsdepth: {
+    id: "marsdepth", name: "Mars Deep Field", label: "2-4", faction: "mars",
+    bgHueA: "#400010", bgHueB: "#180006", enemyTier: 4,
+    enemyTypes: ["voidling", "dread"],
+    description: "The deep unknown of Martian space. Void entities breach the hull lines.", unlockLevel: 12,
+  },
+  maelstrom: {
+    id: "maelstrom", name: "The Maelstrom", label: "2-5", faction: "mars",
+    bgHueA: "#2a0020", bgHueB: "#0e0008", enemyTier: 5,
     enemyTypes: ["dread"],
-    description: "The edge of known space. Only Dreadnoughts remain here. True endgame.", unlockLevel: 30,
+    description: "A perpetual storm of wreckage and dread. The ultimate Martian challenge.", unlockLevel: 16,
+  },
+  // ── VENUS FACTION (3-1 → 3-5) ────────────────────────────────────────────
+  venus1: {
+    id: "venus1", name: "Venus Cloud Gate", label: "3-1", faction: "venus",
+    bgHueA: "#2a1a00", bgHueB: "#0e0800", enemyTier: 1,
+    enemyTypes: ["scout", "raider"],
+    description: "The upper cloud layers. Strange energy-based pirates lurk in the mist.", unlockLevel: 1,
+  },
+  venus2: {
+    id: "venus2", name: "Sulphur Winds", label: "3-2", faction: "venus",
+    bgHueA: "#3a2800", bgHueB: "#160e00", enemyTier: 2,
+    enemyTypes: ["raider", "destroyer"],
+    description: "Corrosive winds and raider fleets adapted to Venus's brutal atmosphere.", unlockLevel: 4,
+  },
+  venus3: {
+    id: "venus3", name: "Acidic Deep", label: "3-3", faction: "venus",
+    bgHueA: "#400a30", bgHueB: "#1a0418", enemyTier: 3,
+    enemyTypes: ["destroyer", "dread"],
+    description: "The pressure increases. Heavy destroyer fleets guard Venusian secrets.", unlockLevel: 8,
+  },
+  venus4: {
+    id: "venus4", name: "Pressure Core", label: "3-4", faction: "venus",
+    bgHueA: "#2a003a", bgHueB: "#0e0018", enemyTier: 4,
+    enemyTypes: ["voidling", "dread"],
+    description: "Near the crushing core of Venus. Reality warps under immense force.", unlockLevel: 12,
+  },
+  venus5: {
+    id: "venus5", name: "Eye of Venus", label: "3-5", faction: "venus",
+    bgHueA: "#1a0030", bgHueB: "#080010", enemyTier: 5,
+    enemyTypes: ["dread"],
+    description: "The heart of Venusian mystery. Legendary endgame territory.", unlockLevel: 16,
   },
 };
 
@@ -874,8 +924,22 @@ export const PORTALS: Portal[] = [
   { id: "p-co-f", pos: { x: 1500, y: -1400 }, fromZone: "corona",   toZone: "forge"    },
   { id: "p-co-fr",pos: { x: -1700, y: -1400 }, fromZone: "corona",  toZone: "fracture" },
   { id: "p-fr-co",pos: { x: 1600, y: 1300 },  fromZone: "fracture", toZone: "corona"   },
-  { id: "p-fr-ab",pos: { x: -1500, y: 1500 }, fromZone: "fracture", toZone: "abyss"    },
-  { id: "p-ab-fr",pos: { x: 1400, y: -1500 }, fromZone: "abyss",    toZone: "fracture" },
+  { id: "p-fr-ab",  pos: { x: -1500, y: 1500 },  fromZone: "fracture",  toZone: "abyss"     },
+  { id: "p-ab-fr",  pos: { x: 1400, y: -1500 },  fromZone: "abyss",     toZone: "fracture"  },
+  // Mars continuation: abyss → marsdepth → maelstrom
+  { id: "p-ab-md",  pos: { x: -1400, y: 1300 },  fromZone: "abyss",     toZone: "marsdepth" },
+  { id: "p-md-ab",  pos: { x: 1300, y: -1400 },  fromZone: "marsdepth", toZone: "abyss"     },
+  { id: "p-md-ml",  pos: { x: -1600, y: -1500 }, fromZone: "marsdepth", toZone: "maelstrom" },
+  { id: "p-ml-md",  pos: { x: 1400, y: 1400 },   fromZone: "maelstrom", toZone: "marsdepth" },
+  // Venus chain: venus1 ↔ venus2 ↔ venus3 ↔ venus4 ↔ venus5
+  { id: "p-v1-v2",  pos: { x: 1400, y: -1200 },  fromZone: "venus1", toZone: "venus2" },
+  { id: "p-v2-v1",  pos: { x: -1200, y: 1100 },  fromZone: "venus2", toZone: "venus1" },
+  { id: "p-v2-v3",  pos: { x: -1600, y: 1500 },  fromZone: "venus2", toZone: "venus3" },
+  { id: "p-v3-v2",  pos: { x: 1500, y: -1300 },  fromZone: "venus3", toZone: "venus2" },
+  { id: "p-v3-v4",  pos: { x: -1700, y: -1500 }, fromZone: "venus3", toZone: "venus4" },
+  { id: "p-v4-v3",  pos: { x: 1600, y: 1400 },   fromZone: "venus4", toZone: "venus3" },
+  { id: "p-v4-v5",  pos: { x: -1500, y: 1500 },  fromZone: "venus4", toZone: "venus5" },
+  { id: "p-v5-v4",  pos: { x: 1400, y: -1500 },  fromZone: "venus5", toZone: "venus4" },
 ];
 
 export const MAP_RADIUS = 2400;

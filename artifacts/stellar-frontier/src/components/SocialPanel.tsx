@@ -281,80 +281,95 @@ export function ClanPanel() {
   );
 }
 
+import { ZONES as ZONES_LOCAL, ZoneId as ZoneIdType } from "../game/types";
+import { travelToZone } from "../game/store";
+
+const FACTION_GROUPS: {
+  key: string;
+  label: string;
+  color: string;
+  zones: ZoneIdType[];
+}[] = [
+  { key: "earth", label: "★ EARTH FACTION", color: "#4ee2ff",
+    zones: ["alpha", "nebula", "crimson", "void", "forge"] },
+  { key: "mars",  label: "★ MARS FACTION",  color: "#ff8a4e",
+    zones: ["corona", "fracture", "abyss", "marsdepth", "maelstrom"] },
+  { key: "venus", label: "★ VENUS FACTION", color: "#c86cff",
+    zones: ["venus1", "venus2", "venus3", "venus4", "venus5"] },
+];
+
 export function GalaxyMap() {
   const player = useGame((s) => s.player);
 
   if (!useGame((s) => s.showMap)) return null;
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(2,4,12,0.9)" }}>
-      <div className="panel" style={{ width: 640 }}>
-        <div className="flex items-center justify-between p-3 border-b" style={{ borderColor: "var(--border-soft)" }}>
+    <div className="absolute inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(2,4,12,0.92)" }}>
+      <div className="panel" style={{ width: "min(96vw, 980px)", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+        <div className="flex items-center justify-between p-3 border-b" style={{ borderColor: "var(--border-soft)", flexShrink: 0 }}>
           <div className="text-cyan glow-cyan tracking-widest font-bold">★ GALAXY MAP</div>
-          <button
-            className="btn btn-danger"
-            onClick={() => {
-              state.showMap = false;
-              bump();
-            }}
-          >
-            ✕
-          </button>
+          <button className="btn btn-danger" onClick={() => { state.showMap = false; bump(); }}>✕</button>
         </div>
-        <div className="p-4 grid grid-cols-2 gap-3">
-          {(["alpha", "nebula", "crimson", "void"] as const).map((zid) => {
-            const z = ZONES_LOCAL[zid];
-            const locked = player.level < z.unlockLevel;
-            const current = player.zone === zid;
-            return (
-              <div
-                key={zid}
-                className="panel p-3"
-                style={{ borderColor: current ? "var(--accent-cyan)" : "var(--border-glow)" }}
-              >
-                <div
-                  className="h-20 mb-2 relative overflow-hidden"
-                  style={{
-                    background: `linear-gradient(135deg, ${z.bgHueA}, ${z.bgHueB})`,
-                    border: "1px solid var(--border-soft)",
-                  }}
-                >
-                  <div className="absolute inset-0" style={{
-                    background: `radial-gradient(circle at 30% 40%, ${z.bgHueA}88, transparent 60%), radial-gradient(circle at 70% 60%, ${z.bgHueB}88, transparent 60%)`
-                  }} />
+
+        <div style={{ overflowY: "auto", flex: 1 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", padding: "12px" }}>
+            {FACTION_GROUPS.map((group) => (
+              <div key={group.key}>
+                <div className="tracking-widest font-bold text-[12px] mb-2 text-center pb-1"
+                  style={{ color: group.color, borderBottom: `1px solid ${group.color}44` }}>
+                  {group.label}
                 </div>
-                <div className="font-bold tracking-widest text-cyan">{z.name.toUpperCase()}</div>
-                <div className="text-dim text-[11px] mb-2">{z.description}</div>
-                <div className="text-mute text-[10px] mb-2">
-                  Tier {z.enemyTier} · Min Lv {z.unlockLevel}
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  {group.zones.map((zid) => {
+                    const z = ZONES_LOCAL[zid];
+                    const locked = player.level < z.unlockLevel;
+                    const current = player.zone === zid;
+                    return (
+                      <div key={zid} className="panel" style={{
+                        borderColor: current ? group.color : "var(--border-glow)",
+                        padding: "8px",
+                        borderLeft: `3px solid ${group.color}${locked ? "44" : "cc"}`,
+                      }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "3px" }}>
+                          <span style={{
+                            background: group.color + "22", color: group.color,
+                            borderRadius: "3px", padding: "1px 5px", fontSize: "10px",
+                            fontWeight: "bold", flexShrink: 0,
+                          }}>{z.label}</span>
+                          <span className="font-bold tracking-wide text-[11px]" style={{ color: locked ? "var(--text-mute)" : "var(--text-dim)" }}>
+                            {z.name.toUpperCase()}
+                          </span>
+                        </div>
+                        <div className="text-[10px] mb-2" style={{ color: "var(--text-mute)", lineHeight: 1.3 }}>{z.description}</div>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "4px" }}>
+                          <span className="text-[10px]" style={{ color: "var(--text-mute)" }}>
+                            Tier {z.enemyTier} · Lv {z.unlockLevel}+
+                          </span>
+                          {current ? (
+                            <button className="btn text-[10px]" style={{ padding: "2px 8px" }} disabled>Here</button>
+                          ) : (
+                            <button
+                              className="btn btn-primary text-[10px]"
+                              style={{ padding: "2px 8px" }}
+                              disabled={locked}
+                              onClick={() => { travelToZone(zid); state.showMap = false; bump(); }}
+                            >
+                              {locked ? `Lv ${z.unlockLevel}` : "Warp"}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-                <div className="text-mute text-[10px] mb-2">Threats: {z.enemyTypes.join(", ")}</div>
-                {current ? (
-                  <button className="btn w-full" disabled>You are here</button>
-                ) : (
-                  <button
-                    className="btn btn-primary w-full"
-                    disabled={locked}
-                    onClick={() => {
-                      travelToZone(zid);
-                      state.showMap = false;
-                      bump();
-                    }}
-                  >
-                    {locked ? `Requires Lv ${z.unlockLevel}` : "Warp Here"}
-                  </button>
-                )}
               </div>
-            );
-          })}
-        </div>
-        <div className="px-4 pb-3 text-mute text-[10px] italic">
-          Tip: You can also travel by flying through magenta portals scattered across each sector.
+            ))}
+          </div>
+          <div className="px-4 pb-3 text-mute text-[10px] italic">
+            Tip: Fly through magenta portals in each sector to travel between zones.
+          </div>
         </div>
       </div>
     </div>
   );
 }
-
-import { ZONES as ZONES_LOCAL } from "../game/types";
-import { travelToZone } from "../game/store";
