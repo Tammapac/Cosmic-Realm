@@ -15,6 +15,7 @@ const TABS: { id: HangarTab; label: string; glyph: string }[] = [
   { id: "skills",   label: "Skills",   glyph: "✦" },
   { id: "ships",    label: "Shipyard", glyph: "▲" },
   { id: "loadout",  label: "Loadout",  glyph: "⚙" },
+  { id: "ammo",     label: "Ammo",     glyph: "⟁" },
   { id: "dungeons", label: "Dungeons", glyph: "▼" },
   { id: "drones",   label: "Drones",   glyph: "✦" },
   { id: "market",   label: "Market",   glyph: "$" },
@@ -75,6 +76,7 @@ export function Hangar({ stationId }: { stationId: string }) {
           {tab === "missions" && <MissionsTab />}
           {tab === "skills" && <SkillsTab />}
           {tab === "loadout" && <LoadoutTab stationId={stationId} />}
+          {tab === "ammo" && <AmmoTab />}
           {tab === "dungeons" && <DungeonsTab />}
           {tab === "ships" && <ShipsTab />}
           {tab === "drones" && <DronesTab />}
@@ -1337,11 +1339,6 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
 
   const droneRepairCost = player.drones.reduce((a, d) => a + Math.ceil((d.hpMax - d.hp) * 1.5), 0);
 
-  // Ammo restock
-  const rocketIds = getRocketWeaponIds();
-  const ammoMax = rocketAmmoMax();
-  const hasRockets = rocketIds.length > 0;
-
   return (
     <div className="p-5 space-y-4 max-w-2xl">
       <div className="text-cyan tracking-widest text-xs mb-2">▶ STATION SERVICES</div>
@@ -1380,8 +1377,6 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
           {droneRepairCost <= 0 ? "ALL OK" : `Repair · ${droneRepairCost}cr`}
         </button>
       </div>
-
-      <AmmoTab />
 
       <div className="panel p-4 flex items-center gap-4">
         <div className="text-3xl" style={{ color: "#ff8a4e" }}>⟳</div>
@@ -1667,50 +1662,50 @@ function MissionsTab() {
 
 function AmmoTab() {
   const player = useGame((s) => s.player);
-  const rocketIds = getRocketWeaponIds();
+  const weaponIds = getRocketWeaponIds();
   useGame((s) => s.tick);
   const ammoMax = rocketAmmoMax();
   const ammoTypes = ["x1", "x2", "x3", "x4"] as RocketAmmoType[];
-  const activeWeaponId = rocketIds[0] ?? null;
-  const activeWeapon = activeWeaponId ? player.inventory.find((m) => m.instanceId === activeWeaponId) : null;
-  const activeWeaponDef = activeWeapon ? MODULE_DEFS[activeWeapon.defId] : null;
-
-  const equipAmmo = (weaponId: string, type: RocketAmmoType) => {
-    switchRocketAmmoType(weaponId, type);
-    pushNotification(`Equipped ${ROCKET_AMMO_TYPE_DEFS[type].shortName} ammo`, "good");
-  };
-
-  const buyAmmo = (weaponId: string, type: RocketAmmoType) => {
-    purchaseTypedAmmo(weaponId, type);
-  };
 
   return (
-    <div className="p-4 space-y-4">
-      <div className="text-cyan tracking-widest text-xs">▶ AMMO</div>
-      <div className="text-dim text-[11px]">
-        Buy and equip laser ammo for your equipped weapons.
+    <div className="p-5 space-y-4 max-w-2xl">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-cyan tracking-widest text-xs">▶ LASER AMMO</div>
+          <div className="text-dim text-[11px] mt-1">
+            Select and purchase charge cells for each equipped weapon. Active type is used in combat.
+          </div>
+        </div>
+        <div className="panel px-3 py-2 text-right">
+          <div className="text-mute text-[9px] tracking-widest">MAX CAPACITY</div>
+          <div className="text-amber font-bold tabular-nums">{ammoMax} rounds</div>
+        </div>
       </div>
-      {rocketIds.length === 0 ? (
-        <div className="panel p-4 text-mute text-[11px]">
-          No laser weapons equipped.
+
+      {weaponIds.length === 0 ? (
+        <div className="panel p-6 text-center">
+          <div className="text-3xl mb-2 text-mute">⟁</div>
+          <div className="text-dim text-[11px]">No weapons equipped. Visit the Loadout tab to equip a weapon.</div>
         </div>
       ) : (
-        rocketIds.map((id) => {
+        weaponIds.map((id) => {
           const item = player.inventory.find((m) => m.instanceId === id);
           const wDef = item ? MODULE_DEFS[item.defId] : null;
           const activeType = getActiveAmmoType(id);
           return (
-            <div key={id} className="panel p-3">
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <div className="text-[10px] tracking-widest" style={{ color: wDef?.color ?? "#4ee2ff" }}>
-                    {wDef?.name ?? "Laser Weapon"}
+            <div key={id} className="panel p-4">
+              <div className="flex items-center gap-3 mb-3 pb-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
+                <div className="text-xl" style={{ color: wDef?.color ?? "#4ee2ff" }}>{wDef?.glyph ?? "▶"}</div>
+                <div className="flex-1">
+                  <div className="font-bold tracking-widest text-[11px]" style={{ color: wDef?.color ?? "#4ee2ff" }}>
+                    {wDef?.name ?? "Weapon"}
                   </div>
-                  <div className="text-dim text-[10px]">{activeType.toUpperCase()} equipped</div>
+                  <div className="text-dim text-[9px] mt-0.5">
+                    Active ammo: <span style={{ color: ROCKET_AMMO_TYPE_DEFS[activeType].color }}>{ROCKET_AMMO_TYPE_DEFS[activeType].name}</span>
+                  </div>
                 </div>
-                <div className="text-[10px] text-mute">MAX {ammoMax}</div>
               </div>
-              <div className="grid gap-2">
+              <div className="space-y-2">
                 {ammoTypes.map((type) => {
                   const tDef = ROCKET_AMMO_TYPE_DEFS[type];
                   const cur = getAmmoCountForType(id, type);
@@ -1718,26 +1713,51 @@ function AmmoTab() {
                   const cost = missing * tDef.costPerRound;
                   const isActive = activeType === type;
                   return (
-                    <div key={type} className="flex items-center gap-2 rounded p-2" style={{ border: `1px solid ${tDef.color}55`, background: isActive ? `${tDef.color}11` : "rgba(255,255,255,0.03)" }}>
-                      <button
-                        className="btn"
-                        style={{ padding: "3px 8px", fontSize: 9, borderColor: tDef.color, color: tDef.color }}
-                        onClick={() => equipAmmo(id, type)}
-                      >
-                        {isActive ? "▶ " : ""}{tDef.shortName}
-                      </button>
-                      <div className="flex-1">
-                        <div className="text-[10px] font-bold" style={{ color: tDef.color }}>{tDef.name}</div>
-                        <div className="text-dim text-[9px]">{cur}/{ammoMax} · {tDef.description}</div>
+                    <div
+                      key={type}
+                      className="flex items-center gap-3 rounded p-2"
+                      style={{
+                        border: `1px solid ${isActive ? tDef.color + "99" : tDef.color + "33"}`,
+                        background: isActive ? `${tDef.color}15` : "rgba(255,255,255,0.02)",
+                      }}
+                    >
+                      <div className="text-lg font-bold" style={{ color: tDef.color, minWidth: 20, textAlign: "center" }}>
+                        {tDef.glyph}
                       </div>
-                      <button
-                        className="btn btn-amber"
-                        style={{ padding: "3px 8px", fontSize: 9 }}
-                        disabled={missing === 0 || player.credits < cost}
-                        onClick={() => buyAmmo(id, type)}
-                      >
-                        {missing === 0 ? "FULL" : `BUY ${cost}cr`}
-                      </button>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-bold" style={{ color: tDef.color }}>{tDef.name}</span>
+                          {isActive && (
+                            <span className="text-[8px] tracking-widest px-1 rounded" style={{ background: tDef.color + "33", color: tDef.color }}>
+                              ACTIVE
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-mute text-[9px]">{tDef.description} · {tDef.costPerRound}cr/round</div>
+                        <div className="text-dim text-[9px] tabular-nums">{cur} / {ammoMax} rounds</div>
+                      </div>
+                      <div className="flex flex-col gap-1 items-end">
+                        <button
+                          className="btn btn-amber"
+                          style={{ padding: "3px 10px", fontSize: 9, minWidth: 80 }}
+                          disabled={missing === 0 || player.credits < cost}
+                          onClick={() => purchaseTypedAmmo(id, type)}
+                        >
+                          {missing === 0 ? "FULL" : `BUY · ${cost}cr`}
+                        </button>
+                        <button
+                          className="btn"
+                          style={{
+                            padding: "3px 10px", fontSize: 9, minWidth: 80,
+                            borderColor: isActive ? tDef.color : "rgba(255,255,255,0.15)",
+                            color: isActive ? tDef.color : "var(--text-dim)",
+                            background: isActive ? `${tDef.color}15` : "transparent",
+                          }}
+                          onClick={() => switchRocketAmmoType(id, type)}
+                        >
+                          {isActive ? "▶ EQUIPPED" : "EQUIP"}
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -1745,11 +1765,6 @@ function AmmoTab() {
             </div>
           );
         })
-      )}
-      {activeWeaponDef && (
-        <div className="panel p-3 text-[10px] text-dim">
-          Active weapon: {activeWeaponDef.name}
-        </div>
       )}
     </div>
   );

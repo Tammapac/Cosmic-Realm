@@ -47,7 +47,7 @@ import {
 import { sfx } from "./sound";
 
 export type HangarTab =
-  | "bounties" | "loadout" | "ships" | "drones" | "market" | "cargo" | "repair" | "skills" | "missions" | "dungeons";
+  | "bounties" | "loadout" | "ships" | "drones" | "market" | "cargo" | "repair" | "skills" | "missions" | "dungeons" | "ammo";
 
 export type DockServiceEntry = {
   kind: "repair" | "shield" | "ammo" | "failed";
@@ -648,12 +648,17 @@ export function rocketAmmoMax(): number {
 }
 
 export function getRocketWeaponIds(): string[] {
+  return getAmmoWeaponIds();
+}
+
+export function getAmmoWeaponIds(): string[] {
   const p = state.player;
   const ids: string[] = [];
   for (const id of p.equipped.weapon) {
     if (!id) continue;
     const item = p.inventory.find((m) => m.instanceId === id);
-    if (item && MODULE_DEFS[item.defId]?.weaponKind === "rocket") ids.push(id);
+    const kind = item ? MODULE_DEFS[item.defId]?.weaponKind : undefined;
+    if (kind === "laser" || kind === "rocket") ids.push(id);
   }
   return ids;
 }
