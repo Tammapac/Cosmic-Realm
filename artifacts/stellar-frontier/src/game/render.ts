@@ -81,251 +81,354 @@ function drawShipPixels(
   c: string, a: string, hi: string, dk: string, s: number,
 ): void {
   // origin: ship nose pointing UP (Y-) in local coords
+  // Polygon fill helper
+  function poly(color: string, pts: [number, number][]): void {
+    if (!pts.length) return;
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0] * s, pts[0][1] * s);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0] * s, pts[i][1] * s);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+  // Ellipse helper
+  function ell(color: string, cx: number, cy: number, rx: number, ry: number): void {
+    ctx.beginPath();
+    ctx.ellipse(cx * s, cy * s, Math.max(0.5, Math.abs(rx * s)), Math.max(0.5, Math.abs(ry * s)), 0, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+  // Stroked line helper (for panel detail)
+  function seg(color: string, x1: number, y1: number, x2: number, y2: number, w = 0.7): void {
+    ctx.beginPath();
+    ctx.moveTo(x1 * s, y1 * s);
+    ctx.lineTo(x2 * s, y2 * s);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = w * s;
+    ctx.stroke();
+  }
+
   switch (id) {
     case "skimmer": {
-      // Lightweight fighter — slim needle nose, swept delta wings, twin engines
-      px(ctx,  -1*s,-13*s,  2*s, 3*s, c);      // nose tip
-      px(ctx,  -1*s,-10*s,  2*s, 2*s, hi);     // cockpit glass
-      px(ctx,  -2*s, -8*s,  4*s, 3*s, c);      // upper fuselage
-      px(ctx,  -2*s, -8*s,  4*s, 5*s, a);      // cockpit base
-      px(ctx,  -5*s, -5*s, 10*s, 2*s, c);      // wing root
-      px(ctx,  -8*s, -3*s,  3*s, 2*s, c);      // left wing leading
-      px(ctx,   5*s, -3*s,  3*s, 2*s, c);      // right wing leading
-      px(ctx,  -7*s, -1*s, 14*s, 3*s, c);      // main wing sweep
-      px(ctx,  -4*s,  2*s,  8*s, 2*s, dk);     // wing taper rear
-      px(ctx,  -2*s,  4*s,  4*s, 2*s, dk);     // rear hull
-      px(ctx,  -7*s,  2*s,  2*s, 3*s, dk);     // left wingtip
-      px(ctx,   5*s,  2*s,  2*s, 3*s, dk);     // right wingtip
-      px(ctx,  -3*s,  6*s,  2*s, 3*s, a);      // left engine pod
-      px(ctx,   1*s,  6*s,  2*s, 3*s, a);      // right engine pod
-      px(ctx,  -3*s,  9*s,  2*s, 2*s, "#4ee2ff"); // L exhaust
-      px(ctx,   1*s,  9*s,  2*s, 2*s, "#4ee2ff"); // R exhaust
+      // F-16 Falcon style: cranked delta wing, slim fuselage, single engine
+      // Wings: large delta with cranked leading edge
+      poly(c,  [[-2,-4],[-12,2],[-10,8],[-3,7]]);        // L main wing
+      poly(c,  [[ 2,-4],[ 12,2],[ 10,8],[ 3,7]]);        // R main wing
+      poly(dk, [[-5, 2],[-10,8],[-3, 7]]);               // L wing shadow
+      poly(dk, [[ 5, 2],[ 10,8],[ 3, 7]]);               // R wing shadow
+      // Tail stabilisers
+      poly(dk, [[-2, 6],[-6,11],[-3,12],[-2, 9]]);       // L stabiliser
+      poly(dk, [[ 2, 6],[ 6,11],[ 3,12],[ 2, 9]]);       // R stabiliser
+      // Fuselage: slim cylinder shape pointed at nose
+      poly(c,  [[0,-14],[2,-9],[2.5,5],[1.5,10],[0,12],[-1.5,10],[-2.5,5],[-2,-9]]);
+      // Intake bulge each side
+      poly(a,  [[-2.5,-3],[-5,-1],[-4,4],[-2,4]]);       // L intake
+      poly(a,  [[ 2.5,-3],[ 5,-1],[ 4,4],[ 2,4]]);       // R intake
+      // Cockpit canopy
+      poly(a,  [[-1.5,-12],[1.5,-12],[2,-7],[-2,-7]]);
+      ell(hi,  0,-10, 1, 2);                              // glass
+      // Nose spike
+      poly(c,  [[-0.5,-14],[0.5,-14],[0,-17]]);
+      // Engine nozzle
+      ell(a,   0, 11, 2, 1.2);
+      ell("#4ee2ff", 0, 12.5, 1.2, 0.8);                 // exhaust glow
+      // Panel line
+      seg(dk,  0,-9, 0, 9, 0.5);
       break;
     }
     case "wasp": {
-      // Interceptor — ultra-thin needle, extreme delta wing, side intake pods
-      px(ctx,  -1*s,-14*s,  2*s, 4*s, c);      // needle tip
-      px(ctx,  -1*s,-14*s,  2*s, 2*s, hi);     // sensor tip highlight
-      px(ctx,  -1*s,-10*s,  2*s, 3*s, c);      // narrow body
-      px(ctx,  -2*s, -7*s,  4*s, 3*s, a);      // cockpit
-      px(ctx,  -1*s, -8*s,  2*s, 2*s, hi);     // cockpit glass
-      px(ctx, -10*s, -4*s, 20*s, 2*s, c);      // extreme delta wing
-      px(ctx,  -8*s, -2*s,  4*s, 2*s, c);      // left wing body
-      px(ctx,   4*s, -2*s,  4*s, 2*s, c);      // right wing body
-      px(ctx,  -5*s,  0*s, 10*s, 3*s, c);      // body center
-      px(ctx, -10*s, -2*s,  3*s, 2*s, dk);     // L wingtip
-      px(ctx,   7*s, -2*s,  3*s, 2*s, dk);     // R wingtip
-      px(ctx,  -3*s,  3*s,  6*s, 2*s, dk);     // rear hull
-      px(ctx,  -3*s,  5*s,  2*s, 3*s, a);      // L engine
-      px(ctx,   1*s,  5*s,  2*s, 3*s, a);      // R engine
-      px(ctx,  -3*s,  8*s,  1*s, 2*s, "#ffd24a"); // L exhaust
-      px(ctx,   2*s,  8*s,  1*s, 2*s, "#ffd24a"); // R exhaust
+      // F-22 Raptor: trapezoidal wings, canards, twin engine nozzles
+      // Main trapezoidal wings
+      poly(c,  [[-2,-5],[-13,1],[-11,7],[-2, 4]]);       // L wing
+      poly(c,  [[ 2,-5],[ 13,1],[ 11,7],[ 2, 4]]);       // R wing
+      poly(dk, [[-6, 1],[-11,7],[-2, 4]]);               // L shadow
+      poly(dk, [[ 6, 1],[ 11,7],[ 2, 4]]);               // R shadow
+      // Canards (small front fins)
+      poly(c,  [[-1.5,-9],[-6,-7],[-5,-5],[-1.5,-6]]);  // L canard
+      poly(c,  [[ 1.5,-9],[ 6,-7],[ 5,-5],[ 1.5,-6]]); // R canard
+      // Tail fins (canted outward)
+      poly(dk, [[-2,5],[-5,10],[-3,11],[-2, 8]]);        // L fin
+      poly(dk, [[ 2,5],[ 5,10],[ 3,11],[ 2, 8]]);        // R fin
+      // Fuselage: very slim
+      poly(c,  [[0,-16],[1.5,-10],[2,4],[1,10],[0,12],[-1,10],[-2,4],[-1.5,-10]]);
+      // Cockpit
+      poly(a,  [[-1.5,-14],[1.5,-14],[2,-9],[-2,-9]]);
+      ell(hi,  0,-12, 1, 2);
+      // Nose spike
+      poly(c,  [[-0.5,-16],[0.5,-16],[0,-19]]);
+      // Twin engines
+      ell(a,   -2, 11, 1.8, 1.2);
+      ell(a,    2, 11, 1.8, 1.2);
+      ell("#ffd24a", -2, 12.5, 1, 0.7);
+      ell("#ffd24a",  2, 12.5, 1, 0.7);
+      // Weapon hardpoints on wings
+      poly(dk, [[-8,1],[-7,1],[-7,4],[-8,4]]);
+      poly(dk, [[ 7,1],[ 8,1],[ 8,4],[ 7,4]]);
       break;
     }
     case "vanguard": {
-      // All-rounder cruiser — solid bow, swept wings, twin nacelles
-      px(ctx,  -1*s,-14*s,  2*s, 3*s, c);      // nose spike
-      px(ctx,  -2*s,-11*s,  4*s, 3*s, c);      // nose body
-      px(ctx,  -4*s, -8*s,  8*s, 4*s, c);      // forward hull
-      px(ctx,  -2*s, -9*s,  4*s, 3*s, a);      // cockpit
-      px(ctx,  -1*s,-10*s,  2*s, 2*s, hi);     // cockpit glass
-      px(ctx,  -7*s, -4*s, 14*s, 3*s, c);      // wing root
-      px(ctx, -10*s, -1*s,  4*s, 3*s, c);      // L nacelle
-      px(ctx,   6*s, -1*s,  4*s, 3*s, c);      // R nacelle
-      px(ctx,  -7*s,  2*s, 14*s, 3*s, dk);     // main wing
-      px(ctx,  -4*s,  5*s,  8*s, 2*s, dk);     // rear hull
-      px(ctx, -10*s,  2*s,  2*s, 4*s, a);      // L engine pod
-      px(ctx,   8*s,  2*s,  2*s, 4*s, a);      // R engine pod
-      px(ctx,  -3*s,  7*s,  2*s, 2*s, "#5cff8a"); // center L exhaust
-      px(ctx,   1*s,  7*s,  2*s, 2*s, "#5cff8a"); // center R exhaust
-      px(ctx, -11*s,  6*s,  2*s, 2*s, "#5cff8a"); // L nacelle exhaust
-      px(ctx,   9*s,  6*s,  2*s, 2*s, "#5cff8a"); // R nacelle exhaust
+      // X-wing style: swept wings + 4 engine nacelles on wingtips
+      // Main swept wings
+      poly(c,  [[-3,-3],[-15,4],[-12,9],[-3, 6]]);       // L wing
+      poly(c,  [[ 3,-3],[ 15,4],[ 12,9],[ 3, 6]]);       // R wing
+      poly(dk, [[-7, 3],[-12,9],[-3, 6]]);               // L shadow
+      poly(dk, [[ 7, 3],[ 12,9],[ 3, 6]]);               // R shadow
+      // Rear stabilisers
+      poly(c,  [[-3, 7],[-7,12],[-5,13],[-3,10]]);       // L stab
+      poly(c,  [[ 3, 7],[ 7,12],[ 5,13],[ 3,10]]);       // R stab
+      // Fuselage: medium width
+      poly(c,  [[0,-15],[3,-9],[4,3],[3,10],[0,13],[-3,10],[-4,3],[-3,-9]]);
+      // Cockpit
+      poly(a,  [[-2,-13],[2,-13],[3,-8],[-3,-8]]);
+      ell(hi,  0,-11, 1.2, 2);
+      // Nose spike
+      poly(c,  [[-0.8,-15],[0.8,-15],[0,-18]]);
+      // 4 engine nacelles on wingtips
+      ell(a,  -12.5, 7.5, 2.2, 1.2);                    // L outer nacelle
+      ell(a,   12.5, 7.5, 2.2, 1.2);                    // R outer nacelle
+      ell(a,   -3.5, 12,  1.6, 1);                      // L inner
+      ell(a,    3.5, 12,  1.6, 1);                      // R inner
+      ell("#5cff8a", -12.5, 9,  1.3, 0.8);
+      ell("#5cff8a",  12.5, 9,  1.3, 0.8);
+      ell("#5cff8a",  -3.5, 13.5, 1, 0.6);
+      ell("#5cff8a",   3.5, 13.5, 1, 0.6);
+      // Panel lines
+      seg(dk, -3,-9,-3, 9, 0.5);
+      seg(dk,  3,-9, 3, 9, 0.5);
       break;
     }
     case "reaver": {
-      // Hunter gunship — sharp V-nose, forward-swept wings, dual guns
-      px(ctx,  -1*s,-15*s,  2*s, 5*s, c);      // long needle
-      px(ctx,  -2*s,-10*s,  4*s, 3*s, c);      // forward hull
-      px(ctx,  -1*s,-13*s,  2*s, 3*s, hi);     // sensor strip
-      px(ctx,  -3*s, -7*s,  6*s, 3*s, a);      // cockpit body
-      px(ctx,  -1*s, -8*s,  2*s, 2*s, hi);     // cockpit glass
-      px(ctx, -11*s, -4*s,  5*s, 2*s, c);      // L forward wing
-      px(ctx,   6*s, -4*s,  5*s, 2*s, c);      // R forward wing
-      px(ctx,  -9*s, -2*s, 18*s, 3*s, c);      // main wing sweep
-      px(ctx,  -5*s,  1*s, 10*s, 3*s, dk);     // body center
-      px(ctx,  -3*s,  4*s,  6*s, 2*s, dk);     // rear hull
-      px(ctx, -11*s,  0*s,  2*s, 3*s, dk);     // L wingtip
-      px(ctx,   9*s,  0*s,  2*s, 3*s, dk);     // R wingtip
-      px(ctx,  -5*s, -4*s,  2*s, 4*s, dk);     // L gun mount
-      px(ctx,   3*s, -4*s,  2*s, 4*s, dk);     // R gun mount
-      px(ctx,  -4*s,  6*s,  3*s, 3*s, a);      // L engine pod
-      px(ctx,   1*s,  6*s,  3*s, 3*s, a);      // R engine pod
-      px(ctx,  -4*s,  9*s,  2*s, 2*s, "#ff5c6c"); // L exhaust
-      px(ctx,   2*s,  9*s,  2*s, 2*s, "#ff5c6c"); // R exhaust
+      // Su-47 Berkut: forward-swept wings, twin guns, aggressive hunter
+      // Forward-swept wings (sweep FORWARD from root to tip)
+      poly(c,  [[-2, 1],[-13,-5],[-11, 2],[-2, 6]]);    // L fwd-sweep wing
+      poly(c,  [[ 2, 1],[ 13,-5],[ 11, 2],[ 2, 6]]);    // R fwd-sweep wing
+      poly(dk, [[-6, 0],[-11, 2],[-2, 6]]);              // L shadow
+      poly(dk, [[ 6, 0],[ 11, 2],[ 2, 6]]);              // R shadow
+      // Rear delta stabilisers
+      poly(c,  [[-3, 6],[-9,11],[-6,13],[-3,10]]);       // L rear fin
+      poly(c,  [[ 3, 6],[ 9,11],[ 6,13],[ 3,10]]);       // R rear fin
+      // Fuselage
+      poly(c,  [[0,-16],[2.5,-10],[3.5,3],[2,11],[0,13],[-2,11],[-3.5,3],[-2.5,-10]]);
+      // Cockpit
+      poly(a,  [[-2,-14],[2,-14],[3,-9],[-3,-9]]);
+      ell(hi,  0,-12, 1.2, 2);
+      // Twin gun barrels (forward under fuselage)
+      poly(dk, [[-2.5,-16],[-1.5,-16],[-1.5,-9],[-2.5,-9]]);  // L gun
+      poly(dk, [[ 1.5,-16],[ 2.5,-16],[ 2.5,-9],[ 1.5,-9]]); // R gun
+      // Nose
+      poly(c,  [[-0.8,-16],[0.8,-16],[0,-19]]);
+      // Twin engines
+      ell(a,   -2.5, 12, 2, 1.3);
+      ell(a,    2.5, 12, 2, 1.3);
+      ell("#ff5c6c", -2.5, 13.5, 1.2, 0.8);
+      ell("#ff5c6c",  2.5, 13.5, 1.2, 0.8);
+      // Engine intakes (side, bulge)
+      poly(a,  [[-3.5,-5],[-6,-3],[-5.5, 4],[-3, 4]]);  // L intake
+      poly(a,  [[ 3.5,-5],[ 6,-3],[ 5.5, 4],[ 3, 4]]); // R intake
       break;
     }
     case "obsidian": {
-      // Predator — multi-layered angular hull, weapons everywhere
-      px(ctx,  -1*s,-15*s,  2*s, 4*s, c);      // needle
-      px(ctx,  -3*s,-11*s,  6*s, 3*s, c);      // prow
-      px(ctx,  -1*s,-13*s,  2*s, 4*s, hi);     // sensor line
-      px(ctx,  -5*s, -8*s, 10*s, 4*s, c);      // forward hull
-      px(ctx,  -3*s, -8*s,  6*s, 4*s, a);      // cockpit bay
-      px(ctx,  -1*s, -9*s,  2*s, 3*s, hi);     // glass
-      px(ctx, -11*s, -4*s,  5*s, 3*s, c);      // L wing root
-      px(ctx,   6*s, -4*s,  5*s, 3*s, c);      // R wing root
-      px(ctx, -12*s, -1*s, 24*s, 4*s, c);      // main wings
-      px(ctx, -12*s,  3*s,  4*s, 2*s, dk);     // L wing rear
-      px(ctx,   8*s,  3*s,  4*s, 2*s, dk);     // R wing rear
-      px(ctx,  -6*s,  3*s, 12*s, 3*s, dk);     // main body rear
-      px(ctx,  -3*s,  6*s,  6*s, 2*s, dk);     // tail section
-      px(ctx,  -5*s, -2*s,  2*s, 4*s, c);      // L gun pod
-      px(ctx,   3*s, -2*s,  2*s, 4*s, c);      // R gun pod
-      px(ctx,  -4*s,  8*s,  3*s, 3*s, a);      // L engine cluster
-      px(ctx,   1*s,  8*s,  3*s, 3*s, a);      // R engine cluster
-      px(ctx,  -4*s, 11*s,  2*s, 2*s, "#ff5cf0"); // L exhaust
-      px(ctx,   2*s, 11*s,  2*s, 2*s, "#ff5cf0"); // R exhaust
+      // B-2 Spirit stealth: pure flying wing, angular, no fuselage bump
+      // Full flying wing — flat angular shape
+      poly(c,  [
+        [ 0,-10],[ 7,-7],[17, 3],[14, 7],[7, 9],
+        [ 0, 12],[-7, 9],[-14, 7],[-17, 3],[-7,-7],
+      ]);
+      // Raised center spine
+      poly(a,  [[-3,-8],[3,-8],[5, 2],[3, 9],[-3, 9],[-5, 2]]);
+      // Cockpit strip
+      poly(hi, [[-2,-8],[2,-8],[2,-5],[-2,-5]]);
+      // Wing undersurface shadow panels
+      poly(dk, [[ 0, 7],[14, 7],[7, 9],[ 0,12]]);
+      poly(dk, [[ 0, 7],[-14, 7],[-7, 9],[ 0,12]]);
+      // Sawtooth trailing edge (stealth)
+      poly(c,  [[ 0,10],[4,12],[0,14]]);
+      poly(c,  [[ 0,10],[-4,12],[0,14]]);
+      // Triple engine exhausts at rear
+      ell(a,   -5,  9, 1.8, 1.1);
+      ell(a,    0, 10, 1.8, 1.1);
+      ell(a,    5,  9, 1.8, 1.1);
+      ell("#ff5cf0", -5,10.8, 1.1, 0.7);
+      ell("#ff5cf0",  0,11.8, 1.1, 0.7);
+      ell("#ff5cf0",  5,10.8, 1.1, 0.7);
+      // Panel edge lines
+      seg(dk, -17, 3, -7,-7, 0.5);
+      seg(dk,  17, 3,  7,-7, 0.5);
       break;
     }
     case "marauder": {
-      // Heavy gunship — wide boxy hull, quad guns, oversized engines
-      px(ctx,  -4*s,-13*s,  8*s, 4*s, c);      // wide prow
-      px(ctx,  -2*s,-15*s,  4*s, 2*s, c);      // prow tip
-      px(ctx,  -2*s,-12*s,  4*s, 3*s, hi);     // bridge glass
-      px(ctx,  -6*s, -9*s, 12*s, 4*s, c);      // forward hull
-      px(ctx, -10*s, -5*s, 20*s, 4*s, c);      // main hull
-      px(ctx, -12*s, -1*s, 24*s, 5*s, c);      // wing section
-      px(ctx, -10*s,  4*s, 20*s, 4*s, dk);     // wing taper
-      px(ctx,  -5*s,  8*s, 10*s, 3*s, dk);     // tail hull
-      px(ctx, -13*s, -3*s,  3*s, 5*s, dk);     // L gun pod
-      px(ctx,  10*s, -3*s,  3*s, 5*s, dk);     // R gun pod
-      px(ctx,  -5*s, -7*s,  2*s, 5*s, dk);     // L chin gun
-      px(ctx,   3*s, -7*s,  2*s, 5*s, dk);     // R chin gun
-      px(ctx,  -5*s, 11*s,  3*s, 3*s, a);      // L engine cluster
-      px(ctx,   2*s, 11*s,  3*s, 3*s, a);      // R engine cluster
-      px(ctx, -10*s,  8*s,  2*s, 3*s, a);      // L side engine
-      px(ctx,   8*s,  8*s,  2*s, 3*s, a);      // R side engine
-      px(ctx,  -5*s, 14*s,  2*s, 2*s, "#aaff5c"); // L center exhaust
-      px(ctx,   3*s, 14*s,  2*s, 2*s, "#aaff5c"); // R center exhaust
-      px(ctx, -11*s, 11*s,  2*s, 2*s, "#aaff5c"); // L side exhaust
-      px(ctx,   9*s, 11*s,  2*s, 2*s, "#aaff5c"); // R side exhaust
+      // A-10 Warthog style: straight wings, twin turbofan pods, quad weapons
+      // Straight shoulder wings (high-mounted)
+      poly(c,  [[-4,-4],[-16,0],[-14, 6],[-4, 4]]);     // L wing
+      poly(c,  [[ 4,-4],[ 16,0],[ 14, 6],[ 4, 4]]);     // R wing
+      poly(dk, [[-8, 2],[-14, 6],[-4, 4]]);             // L shadow
+      poly(dk, [[ 8, 2],[ 14, 6],[ 4, 4]]);             // R shadow
+      // Small rear stabilisers
+      poly(dk, [[-3, 9],[-7,14],[-4,15],[-3,12]]);
+      poly(dk, [[ 3, 9],[ 7,14],[ 4,15],[ 3,12]]);
+      // Boxy fuselage
+      poly(c,  [[-4,-14],[4,-14],[5, 7],[4,14],[0,15],[-4,14],[-5, 7]]);
+      // Wide cockpit (A-10 has big bubble canopy)
+      poly(a,  [[-3,-14],[3,-14],[4,-8],[-4,-8]]);
+      poly(hi, [[-2,-13],[2,-13],[3,-9],[-3,-9]]);
+      // Twin engine pods mounted on rear fuselage sides (like A-10)
+      poly(a,  [[-6,-2],[-8,-2],[-8, 8],[-6, 8]]);      // L engine pod
+      poly(a,  [[ 6,-2],[ 8,-2],[ 8, 8],[ 6, 8]]);      // R engine pod
+      ell("#aaff5c", -7, 9, 1.8, 1.2);                  // L exhaust
+      ell("#aaff5c",  7, 9, 1.8, 1.2);                  // R exhaust
+      // Center cannon (GAU-8 style)
+      poly(dk, [[-1,-14],[1,-14],[1,-19],[-1,-19]]);
+      // Wing weapon hardpoints
+      poly(dk, [[-12,0],[-11,0],[-11, 5],[-12, 5]]);
+      poly(dk, [[ 11,0],[ 12,0],[ 12, 5],[ 11, 5]]);
+      poly(dk, [[-9, 0],[-8, 0],[-8, 4],[-9, 4]]);
+      poly(dk, [[ 8, 0],[ 9, 0],[ 9, 4],[ 8, 4]]);
+      // Center tail engine
+      ell(a,   0, 14, 2.5, 1.5);
+      ell("#aaff5c", 0, 15.5, 1.5, 1);
       break;
     }
     case "phalanx": {
-      // Drone carrier — ultra-wide flat carrier hull, hangar bays, 4 engines
-      px(ctx,  -3*s,-14*s,  6*s, 4*s, c);      // prow tower
-      px(ctx,  -1*s,-15*s,  2*s, 2*s, hi);     // command glass
-      px(ctx,  -6*s,-10*s, 12*s, 4*s, c);      // forward section
-      px(ctx, -14*s, -6*s, 28*s, 4*s, c);      // main carrier deck
-      px(ctx, -16*s, -2*s, 32*s, 5*s, c);      // widest section
-      px(ctx, -14*s,  3*s, 28*s, 4*s, dk);     // aft deck
-      px(ctx,  -6*s,  7*s, 12*s, 3*s, dk);     // tail section
-      px(ctx,  -5*s, -4*s, 10*s, 5*s, a);      // bridge module
-      px(ctx,  -2*s, -5*s,  4*s, 3*s, hi);     // bridge glass
-      // hangar bays on sides
-      px(ctx, -16*s,  1*s,  2*s, 5*s, "#4ee2ff"); // L outer bay
-      px(ctx,  14*s,  1*s,  2*s, 5*s, "#4ee2ff"); // R outer bay
-      px(ctx, -10*s,  1*s,  2*s, 4*s, "#4ee2ff"); // L inner bay
-      px(ctx,   8*s,  1*s,  2*s, 4*s, "#4ee2ff"); // R inner bay
-      // quad engines
-      px(ctx,  -8*s, 10*s,  3*s, 3*s, a);
-      px(ctx,  -3*s, 10*s,  3*s, 3*s, a);
-      px(ctx,   0*s, 10*s,  3*s, 3*s, a);
-      px(ctx,   5*s, 10*s,  3*s, 3*s, a);
-      px(ctx,  -8*s, 13*s,  2*s, 2*s, "#4ee2ff");
-      px(ctx,  -3*s, 13*s,  2*s, 2*s, "#4ee2ff");
-      px(ctx,   1*s, 13*s,  2*s, 2*s, "#4ee2ff");
-      px(ctx,   5*s, 13*s,  2*s, 2*s, "#4ee2ff");
+      // Space carrier: wide flat deck, island superstructure, quad engines
+      // Wide carrier hull
+      poly(c,  [
+        [ 0,-14],[ 8,-11],[ 18,-2],[ 18, 8],
+        [ 8, 12],[ 0, 14],[-8, 12],[-18, 8],
+        [-18,-2],[-8,-11],
+      ]);
+      // Deck shadow on aft halves
+      poly(dk, [[ 0, 8],[18, 8],[8,12],[0,14]]);
+      poly(dk, [[ 0, 8],[-18, 8],[-8,12],[0,14]]);
+      // Island superstructure (command bridge — offset to starboard)
+      poly(a,  [[-4,-12],[4,-12],[5, 4],[4, 9],[-4, 9],[-5, 4]]);
+      poly(hi, [[-3,-11],[3,-11],[3,-7],[-3,-7]]);       // bridge glass
+      // Antenna mast
+      poly(c,  [[-0.5,-12],[0.5,-12],[0,-15]]);
+      // Hangar bays (cyan openings on both sides)
+      poly("#4ee2ff", [[-18, 1],[-16, 1],[-16, 7],[-18, 7]]);
+      poly("#4ee2ff", [[ 16, 1],[ 18, 1],[ 18, 7],[ 16, 7]]);
+      poly("#4ee2ff", [[-12, 2],[-10, 2],[-10, 6],[-12, 6]]);
+      poly("#4ee2ff", [[ 10, 2],[ 12, 2],[ 12, 6],[ 10, 6]]);
+      // Flight deck markings
+      seg(dk, -6,-10, 6,-10, 0.6);
+      seg(dk, -10, 2, 10, 2, 0.6);
+      // Quad engine nacelles at stern
+      ell(a,  -10, 12, 2.5, 1.5);
+      ell(a,   -4, 13, 2.5, 1.5);
+      ell(a,    4, 13, 2.5, 1.5);
+      ell(a,   10, 12, 2.5, 1.5);
+      ell("#4ee2ff", -10,13.8, 1.5, 0.9);
+      ell("#4ee2ff",  -4,14.8, 1.5, 0.9);
+      ell("#4ee2ff",   4,14.8, 1.5, 0.9);
+      ell("#4ee2ff",  10,13.8, 1.5, 0.9);
       break;
     }
     case "titan": {
-      // Fortress — massive block ship, turret towers, triple engine banks
-      px(ctx,  -5*s,-15*s, 10*s, 4*s, c);      // prow block
-      px(ctx,  -2*s,-16*s,  4*s, 2*s, c);      // command spike
-      px(ctx,  -2*s,-14*s,  4*s, 3*s, hi);     // command glass
-      px(ctx,  -9*s,-11*s, 18*s, 4*s, c);      // forward section
-      px(ctx, -12*s, -7*s, 24*s, 5*s, c);      // mid hull
-      px(ctx, -14*s, -2*s, 28*s, 6*s, c);      // main hull
-      px(ctx, -12*s,  4*s, 24*s, 4*s, dk);     // aft section
-      px(ctx,  -7*s,  8*s, 14*s, 3*s, dk);     // tail
-      // turret towers
-      px(ctx, -14*s, -4*s,  3*s, 4*s, dk);     // L outer turret
-      px(ctx,  11*s, -4*s,  3*s, 4*s, dk);     // R outer turret
-      px(ctx,  -9*s, -6*s,  3*s, 4*s, dk);     // L inner turret
-      px(ctx,   6*s, -6*s,  3*s, 4*s, dk);     // R inner turret
-      px(ctx,  -6*s,-10*s,  2*s, 4*s, dk);     // L prow gun
-      px(ctx,   4*s,-10*s,  2*s, 4*s, dk);     // R prow gun
-      // triple engine banks
-      px(ctx, -11*s,  8*s,  3*s, 4*s, a);
-      px(ctx,  -5*s,  8*s,  3*s, 4*s, a);
-      px(ctx,   2*s,  8*s,  3*s, 4*s, a);
-      px(ctx,   8*s,  8*s,  3*s, 4*s, a);
-      px(ctx, -11*s, 12*s,  2*s, 2*s, "#ffd24a");
-      px(ctx,  -5*s, 12*s,  2*s, 2*s, "#ffd24a");
-      px(ctx,   3*s, 12*s,  2*s, 2*s, "#ffd24a");
-      px(ctx,   9*s, 12*s,  2*s, 2*s, "#ffd24a");
+      // Star Destroyer style: massive axe-head wedge, layered armour, many turrets
+      // Main wedge hull
+      poly(c,  [
+        [ 0,-18],[10,-13],[15,-4],[16, 6],
+        [14, 14],[ 0, 18],[-14,14],[-16, 6],
+        [-15,-4],[-10,-13],
+      ]);
+      // Upper hull armour plate (raised centre)
+      poly(a,  [[-6,-15],[6,-15],[9, 4],[6,13],[-6,13],[-9, 4]]);
+      // Command bridge glass
+      poly(hi, [[-3,-14],[3,-14],[3,-10],[-3,-10]]);
+      // Antenna spire
+      poly(c,  [[-0.5,-18],[0.5,-18],[0,-21]]);
+      // Aft hull shadow
+      poly(dk, [[ 0,11],[14,14],[ 0,18],[-14,14]]);
+      // Outer armour strakes
+      poly(dk, [[ 9,-10],[15,-4],[16, 6],[12, 6],[11,-4],[9,-10]]);
+      poly(dk, [[-9,-10],[-15,-4],[-16, 6],[-12, 6],[-11,-4],[-9,-10]]);
+      // Turret emplacements (4 + 2 prow guns)
+      poly(dk, [[-15, 0],[-12, 0],[-12, 5],[-15, 5]]);  // L outer turret
+      poly(dk, [[ 12, 0],[ 15, 0],[ 15, 5],[ 12, 5]]);  // R outer turret
+      poly(dk, [[-10,-7],[ -7,-7],[ -7,-2],[-10,-2]]);  // L inner turret
+      poly(dk, [[  7,-7],[10,-7],[10,-2],[  7,-2]]);     // R inner turret
+      poly(dk, [[-2,-18],[-1,-18],[-1,-13],[-2,-13]]);   // L prow gun
+      poly(dk, [[ 1,-18],[ 2,-18],[ 2,-13],[ 1,-13]]);   // R prow gun
+      // Quad engine banks
+      ell(a,  -10, 16, 2.8, 1.6);
+      ell(a,   -4, 17, 2.8, 1.6);
+      ell(a,    4, 17, 2.8, 1.6);
+      ell(a,   10, 16, 2.8, 1.6);
+      ell("#ffd24a", -10,18, 1.6, 1);
+      ell("#ffd24a",  -4,19, 1.6, 1);
+      ell("#ffd24a",   4,19, 1.6, 1);
+      ell("#ffd24a",  10,18, 1.6, 1);
+      // Hull panel lines
+      seg(dk,  0,-15, 0, 13, 0.5);
+      seg(dk, -9,-10, 9,-10, 0.5);
+      seg(dk, -14, 5, 14,  5, 0.5);
       break;
     }
     case "leviathan": {
-      // Colossal dreadnought — capital ship with 6 engines, multiple turrets
-      px(ctx,  -3*s,-17*s,  6*s, 4*s, c);      // command tower top
-      px(ctx,  -2*s,-18*s,  4*s, 2*s, c);      // antenna spike
-      px(ctx,  -2*s,-16*s,  4*s, 4*s, hi);     // command glass
-      px(ctx,  -6*s,-13*s, 12*s, 4*s, c);      // prow section
-      px(ctx, -10*s, -9*s, 20*s, 4*s, c);      // forward hull
-      px(ctx, -14*s, -5*s, 28*s, 5*s, c);      // mid hull
-      px(ctx, -17*s,  0*s, 34*s, 6*s, c);      // widest section
-      px(ctx, -15*s,  6*s, 30*s, 4*s, dk);     // aft hull
-      px(ctx,  -8*s, 10*s, 16*s, 3*s, dk);     // tail section
-      px(ctx,  -5*s,-11*s, 10*s, 8*s, a);      // bridge housing
-      // turret emplacements
-      px(ctx, -17*s, -2*s,  3*s, 5*s, dk);     // L outer turret
-      px(ctx,  14*s, -2*s,  3*s, 5*s, dk);     // R outer turret
-      px(ctx, -12*s, -7*s,  3*s, 4*s, dk);     // L mid turret
-      px(ctx,   9*s, -7*s,  3*s, 4*s, dk);     // R mid turret
-      px(ctx,  -7*s,-13*s,  2*s, 5*s, dk);     // L prow gun
-      px(ctx,   5*s,-13*s,  2*s, 5*s, dk);     // R prow gun
-      // hex engine cluster
-      px(ctx, -13*s, 10*s,  3*s, 4*s, a);
-      px(ctx,  -8*s, 10*s,  3*s, 4*s, a);
-      px(ctx,  -3*s, 10*s,  3*s, 4*s, a);
-      px(ctx,   2*s, 10*s,  3*s, 4*s, a);
-      px(ctx,   7*s, 10*s,  3*s, 4*s, a);
-      px(ctx,  12*s, 10*s,  3*s, 4*s, a);
-      px(ctx, -13*s, 14*s,  2*s, 2*s, "#ff5c6c");
-      px(ctx,  -8*s, 14*s,  2*s, 2*s, "#ff5c6c");
-      px(ctx,  -3*s, 14*s,  2*s, 2*s, "#ff5c6c");
-      px(ctx,   3*s, 14*s,  2*s, 2*s, "#ff5c6c");
-      px(ctx,   7*s, 14*s,  2*s, 2*s, "#ff5c6c");
-      px(ctx,  13*s, 14*s,  2*s, 2*s, "#ff5c6c");
+      // Mega dreadnought: widest ship, 6 engines, command tower, 5 turrets
+      poly(c,  [
+        [ 0,-20],[8,-16],[14,-8],[18, 0],[18, 8],
+        [12, 15],[0, 20],[-12,15],[-18, 8],[-18, 0],
+        [-14,-8],[-8,-16],
+      ]);
+      poly(a,  [[-6,-17],[6,-17],[10, 4],[6,14],[-6,14],[-10, 4]]);
+      poly(hi, [[-3,-16],[3,-16],[3,-11],[-3,-11]]);
+      poly(c,  [[-0.5,-20],[0.5,-20],[0,-23]]);          // antenna
+      poly(dk, [[0,12],[12,15],[0,20],[-12,15]]);        // aft shadow
+      poly(dk, [[-5,-11],[5,-11],[6,-7],[-6,-7]]);       // forward deck
+      // 5 turrets
+      poly(dk, [[-17,-1],[-14,-1],[-14,5],[-17,5]]);
+      poly(dk, [[ 14,-1],[ 17,-1],[ 17,5],[ 14,5]]);
+      poly(dk, [[-12,-9],[-9,-9],[-9,-4],[-12,-4]]);
+      poly(dk, [[  9,-9],[ 12,-9],[ 12,-4],[  9,-4]]);
+      poly(dk, [[-3,-17],[-1,-17],[-1,-12],[-3,-12]]);
+      poly(dk, [[ 1,-17],[ 3,-17],[ 3,-12],[ 1,-12]]);
+      // 6 engine nacelles
+      ell(a,  -12, 17, 2.5, 1.4);
+      ell(a,   -6, 18, 2.5, 1.4);
+      ell(a,    0, 19, 2.5, 1.4);
+      ell(a,    6, 18, 2.5, 1.4);
+      ell(a,   12, 17, 2.5, 1.4);
+      ell("#ff5c6c", -12,19, 1.4, 0.9);
+      ell("#ff5c6c",  -6,20, 1.4, 0.9);
+      ell("#ff5c6c",   0,21, 1.4, 0.9);
+      ell("#ff5c6c",   6,20, 1.4, 0.9);
+      ell("#ff5c6c",  12,19, 1.4, 0.9);
+      seg(dk, 0,-16, 0, 15, 0.5);
+      seg(dk,-14, 5, 14, 5, 0.5);
       break;
     }
     case "specter": {
-      // Phase-shifted — ethereal layered wings, pulsing phase core
-      px(ctx,  -1*s,-15*s,  2*s, 5*s, c);      // needle nose
-      px(ctx,  -1*s,-15*s,  2*s, 3*s, "#b06cff"); // phase needle tint
-      px(ctx,  -2*s,-10*s,  4*s, 4*s, c);      // forward hull
-      px(ctx,  -2*s, -9*s,  4*s, 3*s, a);      // cockpit
-      px(ctx,  -1*s,-10*s,  2*s, 2*s, hi);     // cockpit glass
-      // layered phase wings — wide swept
-      px(ctx, -12*s, -6*s, 24*s, 2*s, c);      // outer wing layer
-      px(ctx,  -9*s, -4*s, 18*s, 2*s, c);      // mid wing layer
-      px(ctx,  -7*s, -2*s, 14*s, 3*s, c);      // inner wing
-      px(ctx,  -5*s,  1*s, 10*s, 3*s, dk);     // body
-      px(ctx,  -2*s,  4*s,  4*s, 2*s, dk);     // rear hull
-      // phase glow accents on wing tips
-      px(ctx, -12*s, -4*s,  2*s, 2*s, "#b06cff");
-      px(ctx,  10*s, -4*s,  2*s, 2*s, "#b06cff");
-      px(ctx,  -9*s, -2*s,  2*s, 2*s, "#b06cff");
-      px(ctx,   7*s, -2*s,  2*s, 2*s, "#b06cff");
-      // phase core (center glow)
-      px(ctx,  -2*s, -3*s,  4*s, 4*s, "#b06cff");
-      px(ctx,  -1*s, -2*s,  2*s, 2*s, "#ffffff");
-      // twin phase engines
-      px(ctx,  -3*s,  6*s,  2*s, 3*s, a);
-      px(ctx,   1*s,  6*s,  2*s, 3*s, a);
-      px(ctx,  -3*s,  9*s,  2*s, 2*s, "#b06cff");
-      px(ctx,   1*s,  9*s,  2*s, 2*s, "#b06cff");
+      // Phase ship: multi-layer swept wings, phase core, ghost silhouette
+      // Outer ghosted wing layer
+      poly(c,  [[-2,-4],[-14,-1],[-12, 6],[-2, 5]]);    // L outer
+      poly(c,  [[ 2,-4],[ 14,-1],[ 12, 6],[ 2, 5]]);    // R outer
+      // Mid wing layer (phase tinted)
+      poly("#b06cff", [[-2,-2],[-10, 1],[-8, 7],[-2, 5]]); // L mid
+      poly("#b06cff", [[ 2,-2],[ 10, 1],[ 8, 7],[ 2, 5]]); // R mid
+      // Rear stabilisers
+      poly(dk, [[-2, 6],[-6,11],[-3,12],[-2, 9]]);
+      poly(dk, [[ 2, 6],[ 6,11],[ 3,12],[ 2, 9]]);
+      // Fuselage
+      poly(c,  [[0,-15],[1.8,-9],[2.5, 4],[1.5,10],[0,12],[-1.5,10],[-2.5,4],[-1.8,-9]]);
+      // Phase core orb
+      ell("#b06cff", 0, -2, 2.5, 2.5);
+      ell("#ffffff",  0, -2, 1,   1);
+      // Cockpit
+      poly(a,  [[-1.5,-13],[1.5,-13],[2,-8],[-2,-8]]);
+      ell(hi,  0,-11, 1, 2);
+      // Phase needle nose
+      poly("#b06cff", [[-0.8,-15],[0.8,-15],[0,-19]]);
+      // Wing tip phase glow dots
+      ell("#b06cff", -14,-0.5, 1.5, 1);
+      ell("#b06cff",  14,-0.5, 1.5, 1);
+      ell("#b06cff", -10, 0.5, 1.2, 0.8);
+      ell("#b06cff",  10, 0.5, 1.2, 0.8);
+      // Twin phase engines
+      ell(a,   -2.5, 11, 1.8, 1.1);
+      ell(a,    2.5, 11, 1.8, 1.1);
+      ell("#b06cff", -2.5,12.5, 1, 0.7);
+      ell("#b06cff",  2.5,12.5, 1, 0.7);
       break;
     }
   }
