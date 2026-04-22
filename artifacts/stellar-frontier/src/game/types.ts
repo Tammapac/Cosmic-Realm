@@ -1053,7 +1053,7 @@ export const PORTALS: Portal[] = [
   { id: "p-v1-ml",  pos: { x: 1700, y: -700 },   fromZone: "venus1",    toZone: "maelstrom" },
 ];
 
-export const MAP_RADIUS = 3200;
+export const MAP_RADIUS = 5200;
 
 export const FAKE_NAMES = [
   "Nyx_77","VoidPilot","StarbornAce","RogueComet","Hex.Drift","Aurora",
