@@ -1381,100 +1381,7 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
         </button>
       </div>
 
-      {/* Tiered Ammo Types */}
-      {hasRockets ? (
-        <div className="panel p-4">
-          <div className="font-bold tracking-widest mb-3" style={{ color: "#ff8a4e" }}>⟁ LASER RESUPPLY · AMMO TYPES</div>
-          <div className="text-dim text-[11px] mb-3">
-            Each weapon can carry a full load of any ammo type. Click an ammo type to make it active, then purchase to restock it.
-          </div>
-          {rocketIds.map((id) => {
-            const item = player.inventory.find((m) => m.instanceId === id);
-            const wDef = item ? MODULE_DEFS[item.defId] : null;
-            const activeType = getActiveAmmoType(id);
-            return (
-              <div key={id} className="mb-4 last:mb-0">
-                <div className="text-[10px] tracking-widest mb-2" style={{ color: wDef?.color ?? "#ff8a4e" }}>
-                  {wDef?.name ?? "Rocket Launcher"}
-                </div>
-                <div className="space-y-2">
-                  {(["x1", "x2", "x3", "x4"] as RocketAmmoType[]).map((type) => {
-                    const tDef = ROCKET_AMMO_TYPE_DEFS[type];
-                    const cur = getAmmoCountForType(id, type);
-                    const missing = Math.max(0, ammoMax - cur);
-                    const cost = missing * tDef.costPerRound;
-                    const isActive = activeType === type;
-                    const pct = ammoMax > 0 ? cur / ammoMax : 0;
-                    return (
-                      <div
-                        key={type}
-                        className="rounded p-2"
-                        style={{
-                          background: isActive ? tDef.color + "15" : "rgba(255,255,255,0.03)",
-                          border: `1px solid ${isActive ? tDef.color + "80" : "rgba(255,255,255,0.08)"}`,
-                        }}
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <button
-                            className="text-[9px] font-bold px-1.5 py-0.5 rounded tracking-widest"
-                            style={{
-                              background: isActive ? tDef.color + "30" : "transparent",
-                              color: isActive ? tDef.color : "#666",
-                              border: `1px solid ${isActive ? tDef.color : "#444"}`,
-                              cursor: "pointer",
-                            }}
-                            onClick={() => switchRocketAmmoType(id, type)}
-                          >
-                            {isActive ? "▶ " : ""}{tDef.shortName}
-                          </button>
-                          <div className="flex-1">
-                            <div className="text-[10px] font-bold" style={{ color: tDef.color }}>{tDef.name}</div>
-                            <div className="text-dim text-[9px]">{tDef.description}</div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-[9px] tabular-nums" style={{ color: cur === 0 ? "#ff5c6c" : tDef.color }}>
-                              {cur}/{ammoMax}
-                            </div>
-                            <div className="text-dim text-[8px]">{tDef.costPerRound}cr/rd</div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="flex-1 h-1" style={{ background: "rgba(255,255,255,0.08)" }}>
-                            <div className="h-full" style={{ width: `${pct * 100}%`, background: cur === 0 ? "#ff5c6c" : tDef.color, transition: "width 0.3s" }} />
-                          </div>
-                      <button
-                            className="text-[9px] px-2 py-0.5"
-                            style={{
-                              borderRadius: 3,
-                              border: `1px solid ${missing === 0 ? "#444" : tDef.color}`,
-                              color: missing === 0 ? "#555" : tDef.color,
-                              background: "transparent",
-                              cursor: missing === 0 || player.credits < cost ? "not-allowed" : "pointer",
-                              opacity: missing === 0 || player.credits < cost ? 0.5 : 1,
-                            }}
-                            disabled={missing === 0 || player.credits < cost}
-                            onClick={() => purchaseTypedAmmo(id, type)}
-                          >
-                            {missing === 0 ? "FULL" : `Buy ${missing} · ${cost}cr`}
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="panel p-4 flex items-start gap-4">
-          <div className="text-3xl" style={{ color: "#ff8a4e" }}>⟁</div>
-          <div className="flex-1">
-            <div className="font-bold tracking-widest" style={{ color: "#ff8a4e" }}>ROCKET RESUPPLY</div>
-            <div className="text-dim text-[11px]">No rocket weapons equipped. Equip a rocket launcher to use this service.</div>
-          </div>
-        </div>
-      )}
+      <AmmoTab />
 
       <div className="panel p-4 flex items-center gap-4">
         <div className="text-3xl" style={{ color: "#ff8a4e" }}>⟳</div>
@@ -1754,6 +1661,96 @@ function MissionsTab() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function AmmoTab() {
+  const player = useGame((s) => s.player);
+  const rocketIds = getRocketWeaponIds();
+  useGame((s) => s.tick);
+  const ammoMax = rocketAmmoMax();
+  const ammoTypes = ["x1", "x2", "x3", "x4"] as RocketAmmoType[];
+  const activeWeaponId = rocketIds[0] ?? null;
+  const activeWeapon = activeWeaponId ? player.inventory.find((m) => m.instanceId === activeWeaponId) : null;
+  const activeWeaponDef = activeWeapon ? MODULE_DEFS[activeWeapon.defId] : null;
+
+  const equipAmmo = (weaponId: string, type: RocketAmmoType) => {
+    switchRocketAmmoType(weaponId, type);
+    pushNotification(`Equipped ${ROCKET_AMMO_TYPE_DEFS[type].shortName} ammo`, "good");
+  };
+
+  const buyAmmo = (weaponId: string, type: RocketAmmoType) => {
+    purchaseTypedAmmo(weaponId, type);
+  };
+
+  return (
+    <div className="p-4 space-y-4">
+      <div className="text-cyan tracking-widest text-xs">▶ AMMO</div>
+      <div className="text-dim text-[11px]">
+        Buy and equip laser ammo for your equipped weapons.
+      </div>
+      {rocketIds.length === 0 ? (
+        <div className="panel p-4 text-mute text-[11px]">
+          No laser weapons equipped.
+        </div>
+      ) : (
+        rocketIds.map((id) => {
+          const item = player.inventory.find((m) => m.instanceId === id);
+          const wDef = item ? MODULE_DEFS[item.defId] : null;
+          const activeType = getActiveAmmoType(id);
+          return (
+            <div key={id} className="panel p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <div className="text-[10px] tracking-widest" style={{ color: wDef?.color ?? "#4ee2ff" }}>
+                    {wDef?.name ?? "Laser Weapon"}
+                  </div>
+                  <div className="text-dim text-[10px]">{activeType.toUpperCase()} equipped</div>
+                </div>
+                <div className="text-[10px] text-mute">MAX {ammoMax}</div>
+              </div>
+              <div className="grid gap-2">
+                {ammoTypes.map((type) => {
+                  const tDef = ROCKET_AMMO_TYPE_DEFS[type];
+                  const cur = getAmmoCountForType(id, type);
+                  const missing = Math.max(0, ammoMax - cur);
+                  const cost = missing * tDef.costPerRound;
+                  const isActive = activeType === type;
+                  return (
+                    <div key={type} className="flex items-center gap-2 rounded p-2" style={{ border: `1px solid ${tDef.color}55`, background: isActive ? `${tDef.color}11` : "rgba(255,255,255,0.03)" }}>
+                      <button
+                        className="btn"
+                        style={{ padding: "3px 8px", fontSize: 9, borderColor: tDef.color, color: tDef.color }}
+                        onClick={() => equipAmmo(id, type)}
+                      >
+                        {isActive ? "▶ " : ""}{tDef.shortName}
+                      </button>
+                      <div className="flex-1">
+                        <div className="text-[10px] font-bold" style={{ color: tDef.color }}>{tDef.name}</div>
+                        <div className="text-dim text-[9px]">{cur}/{ammoMax} · {tDef.description}</div>
+                      </div>
+                      <button
+                        className="btn btn-amber"
+                        style={{ padding: "3px 8px", fontSize: 9 }}
+                        disabled={missing === 0 || player.credits < cost}
+                        onClick={() => buyAmmo(id, type)}
+                      >
+                        {missing === 0 ? "FULL" : `BUY ${cost}cr`}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })
+      )}
+      {activeWeaponDef && (
+        <div className="panel p-3 text-[10px] text-dim">
+          Active weapon: {activeWeaponDef.name}
+        </div>
+      )}
     </div>
   );
 }
