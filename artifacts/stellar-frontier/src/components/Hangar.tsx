@@ -377,6 +377,12 @@ function LoadoutTab({ stationId }: { stationId: string }) {
   const [showShop, setShowShop] = useState(false);
   const [hoveredShopDefId, setHoveredShopDefId] = useState<string | null>(null);
   const hoveredShopDef = hoveredShopDefId ? MODULE_DEFS[hoveredShopDefId] ?? null : null;
+  const [hoveredInvInstanceId, setHoveredInvInstanceId] = useState<string | null>(null);
+  const hoveredInvDef = (() => {
+    if (!hoveredInvInstanceId) return null;
+    const it = player.inventory.find((m) => m.instanceId === hoveredInvInstanceId);
+    return it ? MODULE_DEFS[it.defId] ?? null : null;
+  })();
 
   // Shop offer: 4 random buyable modules, capped to ones unlocked by ship tier-ish
   const shopPool = Object.values(MODULE_DEFS).filter((d) => d.tier <= Math.min(5, Math.max(1, Math.ceil(player.level / 4))));
@@ -388,7 +394,10 @@ function LoadoutTab({ stationId }: { stationId: string }) {
   });
 
   const renderSlotRow = (slot: ModuleSlot, label: string, color: string) => {
-    const compareDef = showShop && hoveredShopDef?.slot === slot ? hoveredShopDef : null;
+    const compareDef =
+      showShop && hoveredShopDef?.slot === slot ? hoveredShopDef
+      : !showShop && hoveredInvDef?.slot === slot ? hoveredInvDef
+      : null;
     return (
       <div>
         <div className="text-[10px] tracking-widest mb-1" style={{ color }}>▶ {label} ({player.equipped[slot].length})</div>
@@ -431,9 +440,10 @@ function LoadoutTab({ stationId }: { stationId: string }) {
           <div className="flex items-center gap-2">
             <div className="text-cyan tracking-widest text-xs">▶ {showShop ? "MODULE MARKET" : `INVENTORY (${player.inventory.length})`}</div>
             {showShop && <span className="text-[8px] tracking-widest" style={{ color: "#ffd24a88" }}>hover to compare</span>}
+            {!showShop && <span className="text-[8px] tracking-widest" style={{ color: "#ffd24a88" }}>hover unequipped to compare</span>}
           </div>
           <div className="flex gap-1">
-            <button className="btn" style={{ padding: "2px 6px", fontSize: 9 }} onClick={() => { setShowShop((v) => !v); setHoveredShopDefId(null); }}>
+            <button className="btn" style={{ padding: "2px 6px", fontSize: 9 }} onClick={() => { setShowShop((v) => !v); setHoveredShopDefId(null); setHoveredInvInstanceId(null); }}>
               {showShop ? "Show Inventory" : `Shop @ ${station.name}`}
             </button>
           </div>
@@ -451,7 +461,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
         <div
           className="space-y-1.5 overflow-y-auto"
           style={{ maxHeight: 460 }}
-          onMouseLeave={() => setHoveredShopDefId(null)}
+          onMouseLeave={() => { setHoveredShopDefId(null); setHoveredInvInstanceId(null); }}
         >
           {showShop ? (
             shopOffer.map((def) => {
@@ -502,7 +512,8 @@ function LoadoutTab({ stationId }: { stationId: string }) {
               const targetIdx = slotArr.findIndex((x) => x === null);
               return (
                 <div key={it.instanceId} className="panel p-2 flex items-start gap-2"
-                  style={{ borderColor: RARITY_COLOR[def.rarity] }}>
+                  style={{ borderColor: hoveredInvInstanceId === it.instanceId ? "#ffd24a" : RARITY_COLOR[def.rarity], transition: "border-color 0.1s" }}
+                  onMouseEnter={() => setHoveredInvInstanceId(!isEquipped ? it.instanceId : null)}>
                   <div className="flex items-center justify-center"
                     style={{ width: 28, height: 28, background: `${def.color}22`, border: `1px solid ${def.color}`, color: def.color, fontSize: 14 }}>
                     {def.glyph}
