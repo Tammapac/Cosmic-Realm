@@ -409,7 +409,18 @@ export default function App() {
       <Title />
       {docked && <Hangar stationId={docked} />}
       <DockingSummary />
-      <DockPrompt />
+      <div
+        style={{
+          position: "fixed",
+          left: "50%",
+          bottom: 74,
+          transform: "translateX(-50%)",
+          zIndex: 51,
+          pointerEvents: "auto",
+        }}
+      >
+        <DockPrompt />
+      </div>
       <Hotbar />
       <IdleRewardModal />
       <FactionPicker />
