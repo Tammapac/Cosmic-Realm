@@ -1381,7 +1381,7 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
       {/* Tiered Ammo Types */}
       {hasRockets ? (
         <div className="panel p-4">
-          <div className="font-bold tracking-widest mb-3" style={{ color: "#ff8a4e" }}>⟁ ROCKET RESUPPLY · AMMO TYPES</div>
+          <div className="font-bold tracking-widest mb-3" style={{ color: "#ff8a4e" }}>⟁ LASER RESUPPLY · AMMO TYPES</div>
           <div className="text-dim text-[11px] mb-3">
             Each weapon can carry a full load of any ammo type. Click an ammo type to make it active, then purchase to restock it.
           </div>
@@ -1439,7 +1439,7 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
                           <div className="flex-1 h-1" style={{ background: "rgba(255,255,255,0.08)" }}>
                             <div className="h-full" style={{ width: `${pct * 100}%`, background: cur === 0 ? "#ff5c6c" : tDef.color, transition: "width 0.3s" }} />
                           </div>
-                          <button
+                      <button
                             className="text-[9px] px-2 py-0.5"
                             style={{
                               borderRadius: 3,
