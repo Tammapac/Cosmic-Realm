@@ -74,6 +74,7 @@ function GameCanvas() {
         name: enemy.name ?? enemy.type.toUpperCase(),
         detail: `${enemy.type.toUpperCase()} · ${Math.max(0, Math.round(enemy.hull))}/${Math.round(enemy.hullMax)} HP`,
       };
+      state.attackTargetId = enemy.id;
       state.cameraTarget = { x: enemy.pos.x, y: enemy.pos.y };
       bump();
       return;
@@ -92,6 +93,10 @@ function GameCanvas() {
       return;
     }
 
+    if (state.selectedWorldTarget?.kind === "enemy") {
+      bump();
+      return;
+    }
     bump();
   };
 
