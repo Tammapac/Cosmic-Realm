@@ -606,6 +606,9 @@ function LoadoutTab({ stationId }: { stationId: string }) {
             <button className="btn" style={{ padding: "2px 6px", fontSize: 9 }} onClick={() => { setShowShop((v) => !v); setHoveredShopDefId(null); setHoveredInvInstanceId(null); }}>
               {showShop ? "Show Inventory" : `Shop @ ${station.name}`}
             </button>
+            <button className="btn btn-amber" style={{ padding: "2px 6px", fontSize: 9 }}>
+              Ammo
+            </button>
           </div>
         </div>
         {!showShop && (
