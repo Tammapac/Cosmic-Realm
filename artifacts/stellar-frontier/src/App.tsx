@@ -152,8 +152,8 @@ function DockPrompt() {
     <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-40">
       {station && !state.dockedAt && (
         <button
-          className="btn btn-primary text-base px-6 py-3"
-          style={{ animation: "pulse-glow 2s ease-in-out infinite" }}
+          className="btn btn-primary text-base px-8 py-3"
+          style={{ animation: "pulse-glow 2s ease-in-out infinite", whiteSpace: "nowrap", minWidth: "fit-content" }}
           onClick={() => {
             state.dockedAt = station.id;
             state.player.vel = { x: 0, y: 0 };
