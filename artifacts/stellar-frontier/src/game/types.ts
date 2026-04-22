@@ -241,6 +241,7 @@ export type Player = {
   consumables: Partial<Record<ConsumableId, number>>;
   hotbar: (ConsumableId | null)[];   // 8 slots
   ammo: Record<string, number>; // instanceId → current ammo count (rocket weapons)
+  autoRestock: boolean;              // auto-restock rockets on docking
 };
 
 // ── FACTIONS ─────────────────────────────────────────────────────────────

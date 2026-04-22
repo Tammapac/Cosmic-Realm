@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { state, bump, useGame, save, pushNotification, abandonDungeon, useConsumable, getRocketWeaponIds, rocketAmmoMax } from "./game/store";
+import { state, bump, useGame, save, pushNotification, abandonDungeon, useConsumable, getRocketWeaponIds, rocketAmmoMax, autoRestockIfEnabled } from "./game/store";
 import { startLoop, stopLoop, checkPortal, checkStationDock } from "./game/loop";
 import { render } from "./game/render";
 import { TopBar } from "./components/TopBar";
@@ -158,6 +158,7 @@ function DockPrompt() {
             state.player.vel = { x: 0, y: 0 };
             pushNotification(`Docking with ${station.name}`, "good");
             save(); bump();
+            autoRestockIfEnabled();
           }}
         >
           [SPACE] DOCK AT {station.name.toUpperCase()}
@@ -260,6 +261,7 @@ export default function App() {
           state.player.vel = { x: 0, y: 0 };
           pushNotification("Docking...", "good");
           save(); bump();
+          autoRestockIfEnabled();
         }
       } else if (e.key === "m" || e.key === "M") {
         state.showMap = !state.showMap; bump();

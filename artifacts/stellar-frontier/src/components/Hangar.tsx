@@ -1,4 +1,4 @@
-import { state, bump, useGame, pushNotification, save, stationPrice, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, restockAmmo, rocketAmmoMax, getRocketWeaponIds, ROCKET_AMMO_BASE, ROCKET_AMMO_COST_PER, ensureAmmoInitialized } from "../game/store";
+import { state, bump, useGame, pushNotification, save, stationPrice, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, restockAmmo, rocketAmmoMax, getRocketWeaponIds, ROCKET_AMMO_BASE, ROCKET_AMMO_COST_PER, ensureAmmoInitialized, setAutoRestock } from "../game/store";
 import {
   ActiveQuest, CONSUMABLE_DEFS, ConsumableId, DRONE_DEFS, DroneKind, DroneMode, DUNGEONS, DungeonId, FACTIONS, MODULE_DEFS, ModuleDef, ModuleSlot, ModuleStats, RARITY_COLOR,
   Quest, RESOURCES, ResourceId, SHIP_CLASSES, SKILL_NODES, STATIONS, ShipClassId, SkillBranch,
@@ -1112,6 +1112,29 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
           onClick={restockAmmo}
         >
           {!hasRockets ? "N/A" : ammoMissing === 0 ? "FULL" : `Restock · ${ammoCost}cr`}
+        </button>
+      </div>
+
+      <div className="panel p-4 flex items-center gap-4">
+        <div className="text-3xl" style={{ color: "#ff8a4e" }}>⟳</div>
+        <div className="flex-1">
+          <div className="font-bold tracking-widest" style={{ color: "#ff8a4e" }}>AUTO-RESTOCK AMMO</div>
+          <div className="text-dim text-[11px]">
+            Automatically top up rocket ammo when docking, if you have enough credits.
+          </div>
+        </div>
+        <button
+          className="btn"
+          style={{
+            padding: "6px 18px",
+            borderColor: player.autoRestock ? "#ff8a4e" : "rgba(255,255,255,0.15)",
+            color: player.autoRestock ? "#ff8a4e" : "#888",
+            background: player.autoRestock ? "rgba(255,138,78,0.12)" : "transparent",
+            minWidth: 64,
+          }}
+          onClick={() => setAutoRestock(!player.autoRestock)}
+        >
+          {player.autoRestock ? "ON" : "OFF"}
         </button>
       </div>
 

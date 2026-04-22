@@ -158,6 +158,7 @@ function makeInitialPlayer(): Player {
     consumables: { "repair-bot": 2, "shield-charge": 1 },
     hotbar: ["repair-bot", "shield-charge", null, null, null, null, null, null],
     ammo: {},
+    autoRestock: false,
   };
 }
 
@@ -307,6 +308,7 @@ if (!initialPlayer.consumables || typeof initialPlayer.consumables !== "object")
 if (!Array.isArray(initialPlayer.hotbar) || initialPlayer.hotbar.length !== 8) {
   initialPlayer.hotbar = ["repair-bot", "shield-charge", null, null, null, null, null, null];
 }
+if (typeof initialPlayer.autoRestock !== "boolean") initialPlayer.autoRestock = false;
 
 // Daily reset: if >24h since last reset, refresh missions
 const dayMs = 24 * 60 * 60 * 1000;
@@ -432,6 +434,7 @@ export function save(): void {
       lastDailyReset: p.lastDailyReset,
       lastSeen: p.lastSeen,
       ammo: p.ammo,
+      autoRestock: p.autoRestock,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
   } catch {
@@ -654,6 +657,36 @@ export function restockAmmo(): void {
   for (const id of rocketIds) p.ammo[id] = max;
   bumpMission("spend-credits", cost);
   pushNotification(`Ammo restocked · -${cost}cr`, "good");
+  save(); bump();
+}
+
+export function setAutoRestock(enabled: boolean): void {
+  state.player.autoRestock = enabled;
+  pushNotification(enabled ? "Auto-Restock enabled" : "Auto-Restock disabled", "info");
+  save(); bump();
+}
+
+export function autoRestockIfEnabled(): void {
+  const p = state.player;
+  if (!p.autoRestock) return;
+  const rocketIds = getRocketWeaponIds();
+  if (rocketIds.length === 0) return;
+  const max = rocketAmmoMax();
+  ensureAmmoInitialized();
+  let totalMissing = 0;
+  for (const id of rocketIds) {
+    totalMissing += Math.max(0, max - (p.ammo[id] ?? 0));
+  }
+  if (totalMissing === 0) return;
+  const cost = totalMissing * ROCKET_AMMO_COST_PER;
+  if (p.credits < cost) {
+    pushNotification(`Auto-Restock: need ${cost}cr to restock ammo`, "bad");
+    return;
+  }
+  p.credits -= cost;
+  for (const id of rocketIds) p.ammo[id] = max;
+  bumpMission("spend-credits", cost);
+  pushNotification(`Auto-Restock: ammo topped up · -${cost}cr`, "good");
   save(); bump();
 }
 
