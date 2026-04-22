@@ -60,6 +60,7 @@ export type ModuleStats = {
   cargoBonus?: number;
   lootBonus?: number;
   aoeRadius?: number;
+  ammoCapacity?: number;    // additive bonus to max ammo per rocket weapon
 };
 
 export type WeaponKind = "laser" | "rocket";
@@ -239,6 +240,7 @@ export type Player = {
   // Consumables & hotbar
   consumables: Partial<Record<ConsumableId, number>>;
   hotbar: (ConsumableId | null)[];   // 8 slots
+  ammo: Record<string, number>; // instanceId → current ammo count (rocket weapons)
 };
 
 // ── FACTIONS ─────────────────────────────────────────────────────────────
@@ -921,6 +923,8 @@ export const MODULE_DEFS: Record<string, ModuleDef> = {
   "md-afterburn": { id: "md-afterburn", slot: "module", name: "Afterburner",             description: "Speed +110, no other bonuses. Pure velocity.",          rarity: "rare",      color: "#aaff5c", glyph: "⇒", tier: 3, price: 9500,  stats: { speed: 110 } },
   "md-cargo":     { id: "md-cargo",     slot: "module", name: "Expanded Cargo Bay",     description: "+25% cargo capacity.",                                  rarity: "uncommon",  color: "#c69060", glyph: "▤", tier: 2, price: 3200,  stats: { cargoBonus: 0.25 } },
   "md-cargo-2":   { id: "md-cargo-2",   slot: "module", name: "Bulk Cargo Bay",         description: "+50% cargo capacity.",                                  rarity: "rare",      color: "#c69060", glyph: "▤", tier: 3, price: 8000,  stats: { cargoBonus: 0.50 } },
+  "md-ammo-bay":  { id: "md-ammo-bay",  slot: "module", name: "Munitions Bay",          description: "+10 max ammo capacity for rocket weapons.",             rarity: "uncommon",  color: "#ff8a4e", glyph: "⟁", tier: 2, price: 3500,  stats: { ammoCapacity: 10 } },
+  "md-ammo-bay-2":{ id: "md-ammo-bay-2",slot: "module", name: "Expanded Munitions Bay", description: "+25 max ammo capacity for rocket weapons.",             rarity: "rare",      color: "#ff5c6c", glyph: "⟁", tier: 3, price: 9500,  stats: { ammoCapacity: 25 } },
   "md-targeter":  { id: "md-targeter",  slot: "module", name: "Targeter Array",         description: "+10% crit chance.",                                     rarity: "rare",      color: "#ff5cf0", glyph: "✦", tier: 3, price: 8000,  stats: { critChance: 0.10 } },
   "md-targeter-2":{ id: "md-targeter-2",slot: "module", name: "Advanced Targeter",      description: "+18% crit chance.",                                     rarity: "epic",      color: "#ff5cf0", glyph: "⊕", tier: 4, price: 22000, stats: { critChance: 0.18 } },
   "md-plating":   { id: "md-plating",   slot: "module", name: "Reactive Plating",       description: "-8% incoming damage, +40 hull.",                        rarity: "rare",      color: "#ff8a4e", glyph: "⛨", tier: 3, price: 9500,  stats: { damageReduction: 0.08, hullMax: 40 } },

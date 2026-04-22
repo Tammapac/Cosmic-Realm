@@ -2,6 +2,7 @@ import {
   bump, pushChat, pushNotification, pushHonor, save, addCargo, pushFloater,
   pushEvent, bumpMission, state, travelToZone, completeDungeon,
   tickHotbarCooldowns,
+  ensureAmmoInitialized, getRocketWeaponIds, rocketAmmoMax,
 } from "./store";
 import {
   DRONE_DEFS, Drone, DUNGEONS, ENEMY_DEFS, ENEMY_NAMES, EXP_FOR_LEVEL,
@@ -461,6 +462,25 @@ function applyKill(e: Enemy, killerCrit: boolean): void {
     }
   }
 
+  // Ammo scavenge: ~18% chance to recover 1 rocket round from debris
+  if (Math.random() < 0.18) {
+    const rocketIds = getRocketWeaponIds();
+    if (rocketIds.length > 0) {
+      const max = rocketAmmoMax();
+      // Give ammo to the weapon with the lowest current count
+      let lowestId = rocketIds[0];
+      let lowestCur = p.ammo[lowestId] ?? 0;
+      for (const rid of rocketIds) {
+        const c = p.ammo[rid] ?? 0;
+        if (c < lowestCur) { lowestId = rid; lowestCur = c; }
+      }
+      if (lowestCur < max) {
+        p.ammo[lowestId] = Math.min(max, lowestCur + 1);
+        pushFloater({ text: "+1 ammo", color: "#ff8a4e", x: e.pos.x + 20, y: e.pos.y - 18, scale: 0.8, ttl: 0.7 });
+      }
+    }
+  }
+
   // Quest progress
   for (const q of state.player.activeQuests) {
     if (!q.completed && q.killType === e.type && q.zone === state.player.zone) {
@@ -554,6 +574,7 @@ function distance(ax: number, ay: number, bx: number, by: number): number {
 // ── MAIN LOOP ─────────────────────────────────────────────────────────────
 export function startLoop(): void {
   if (raf) return;
+  ensureAmmoInitialized();
   last = performance.now();
   const step = (now: number) => {
     const dt = Math.min(0.05, (now - last) / 1000);
@@ -807,14 +828,33 @@ function tickWorld(dt: number): void {
     const dmg = stats.damage * (isCrit ? 2 : 1);
     const isRocket = hasRocketWeapon();
     if (isRocket) {
-      // Rockets: slow, homing, big splash
-      const spread = (Math.random() - 0.5) * 0.3;
-      fireProjectile("player", p.pos.x, p.pos.y, ang + spread, dmg, color, 5, {
-        crit: isCrit,
-        aoeRadius: Math.max(stats.aoeRadius, 22),
-        homing: true,
-        speedMul: 0.35,
-      });
+      // Check if any rocket weapon has ammo
+      const rocketIds = getRocketWeaponIds();
+      const availableId = rocketIds.find((id) => (p.ammo[id] ?? 0) > 0);
+      if (availableId) {
+        // Consume ammo and fire rocket
+        p.ammo[availableId] = Math.max(0, (p.ammo[availableId] ?? 0) - 1);
+        const spread = (Math.random() - 0.5) * 0.3;
+        fireProjectile("player", p.pos.x, p.pos.y, ang + spread, dmg, color, 5, {
+          crit: isCrit,
+          aoeRadius: Math.max(stats.aoeRadius, 22),
+          homing: true,
+          speedMul: 0.35,
+        });
+        // Warn when ammo is low
+        const remaining = p.ammo[availableId];
+        if (remaining === 5) {
+          pushNotification("⚠ Rocket ammo low!", "bad");
+        } else if (remaining === 0) {
+          pushNotification("Rocket ammo depleted! Dock to restock.", "bad");
+        }
+      } else {
+        // No ammo — fall back to laser shot
+        const size = tierGuess >= 6 ? 4 : 3;
+        fireProjectile("player", p.pos.x, p.pos.y, ang, dmg * 0.6, "#4ee2ff", size, {
+          crit: isCrit,
+        });
+      }
     } else {
       const size = tierGuess >= 6 ? 4 : 3;
       fireProjectile("player", p.pos.x, p.pos.y, ang, dmg, color, size, {

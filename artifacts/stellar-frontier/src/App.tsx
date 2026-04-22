@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { state, bump, useGame, save, pushNotification, abandonDungeon, useConsumable } from "./game/store";
+import { state, bump, useGame, save, pushNotification, abandonDungeon, useConsumable, getRocketWeaponIds, rocketAmmoMax } from "./game/store";
 import { startLoop, stopLoop, checkPortal, checkStationDock } from "./game/loop";
 import { render } from "./game/render";
 import { TopBar } from "./components/TopBar";
@@ -10,7 +10,7 @@ import { FactionPicker } from "./components/FactionPicker";
 import { IdleRewardModal } from "./components/IdleRewardModal";
 import { EventBanners } from "./components/EventBanners";
 import { Hotbar } from "./components/Hotbar";
-import { DUNGEONS, STATIONS, PORTALS, ZONES } from "./game/types";
+import { DUNGEONS, STATIONS, PORTALS, ZONES, MODULE_DEFS } from "./game/types";
 import { travelToZone } from "./game/store";
 
 function GameCanvas() {
@@ -183,6 +183,58 @@ function DockPrompt() {
   );
 }
 
+function AmmoHud() {
+  const player = useGame((s) => s.player);
+  useGame((s) => s.tick);
+  const rocketIds = getRocketWeaponIds();
+  if (rocketIds.length === 0) return null;
+  const ammoMax = rocketAmmoMax();
+  return (
+    <div className="absolute pointer-events-none z-30" style={{ bottom: 56, right: 12, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+      {rocketIds.map((id) => {
+        const item = player.inventory.find((m) => m.instanceId === id);
+        const def = item ? MODULE_DEFS[item.defId] : null;
+        const cur = player.ammo[id] ?? 0;
+        const pct = ammoMax > 0 ? cur / ammoMax : 0;
+        const isEmpty = cur === 0;
+        const isLow = cur > 0 && cur <= 5;
+        const color = isEmpty ? "#ff5c6c" : isLow ? "#ffd24a" : "#ff8a4e";
+        return (
+          <div
+            key={id}
+            className="panel px-2 py-1"
+            style={{
+              borderColor: color,
+              boxShadow: (isEmpty || isLow) ? `0 0 8px ${color}66` : undefined,
+              minWidth: 130,
+            }}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[9px] tracking-widest truncate" style={{ color: def?.color ?? color }}>
+                ⟁ {def?.name ?? "Rocket"}
+              </div>
+              <div className="text-[10px] font-bold tabular-nums" style={{ color }}>
+                {isEmpty ? "EMPTY" : isLow ? `${cur} LOW` : cur}
+                <span className="text-mute text-[8px]">/{ammoMax}</span>
+              </div>
+            </div>
+            <div className="mt-0.5 h-1" style={{ background: "rgba(255,255,255,0.08)" }}>
+              <div
+                className="h-full"
+                style={{
+                  width: `${pct * 100}%`,
+                  background: color,
+                  transition: "width 0.2s",
+                }}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Title() {
   return (
     <div className="absolute bottom-3 left-3 z-30 pointer-events-none">
@@ -247,6 +299,7 @@ export default function App() {
       <DockPrompt />
       <Notifications />
       <DungeonHud />
+      <AmmoHud />
       {showSocial && <SocialPanel />}
       <ClanPanel />
       <GalaxyMap />

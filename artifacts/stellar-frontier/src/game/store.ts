@@ -157,6 +157,7 @@ function makeInitialPlayer(): Player {
     lastSeen: Date.now(),
     consumables: { "repair-bot": 2, "shield-charge": 1 },
     hotbar: ["repair-bot", "shield-charge", null, null, null, null, null, null],
+    ammo: {},
   };
 }
 
@@ -242,6 +243,7 @@ if (Array.isArray(initialPlayer.cargo)) {
 }
 if (!Array.isArray(initialPlayer.drones)) initialPlayer.drones = [];
 for (const d of initialPlayer.drones) if (!d.mode) d.mode = "orbit";
+if (!initialPlayer.ammo || typeof initialPlayer.ammo !== "object") initialPlayer.ammo = {};
 if (!initialPlayer.milestones) initialPlayer.milestones = newMilestones();
 if (!initialPlayer.skills) initialPlayer.skills = {};
 if (typeof initialPlayer.skillPoints !== "number") initialPlayer.skillPoints = Math.max(0, (initialPlayer.level ?? 1) - 1);
@@ -429,6 +431,7 @@ export function save(): void {
       dailyMissions: p.dailyMissions,
       lastDailyReset: p.lastDailyReset,
       lastSeen: p.lastSeen,
+      ammo: p.ammo,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
   } catch {
@@ -581,6 +584,79 @@ export function maxDroneSlots(): number {
   return cls.droneSlots + (state.player.skills["ut-droneops"] ?? 0);
 }
 
+// ── AMMO ──────────────────────────────────────────────────────────────────
+export const ROCKET_AMMO_BASE = 20;
+export const ROCKET_AMMO_COST_PER = 8; // credits per rocket round when restocking
+
+export function rocketAmmoMax(): number {
+  const p = state.player;
+  let bonus = 0;
+  for (const id of [...p.equipped.generator, ...p.equipped.module]) {
+    if (!id) continue;
+    const item = p.inventory.find((m) => m.instanceId === id);
+    const def = item ? MODULE_DEFS[item.defId] : null;
+    if (def?.stats.ammoCapacity) bonus += def.stats.ammoCapacity;
+  }
+  return ROCKET_AMMO_BASE + bonus;
+}
+
+export function getRocketWeaponIds(): string[] {
+  const p = state.player;
+  const ids: string[] = [];
+  for (const id of p.equipped.weapon) {
+    if (!id) continue;
+    const item = p.inventory.find((m) => m.instanceId === id);
+    if (item && MODULE_DEFS[item.defId]?.weaponKind === "rocket") ids.push(id);
+  }
+  return ids;
+}
+
+export function ensureAmmoInitialized(): void {
+  const p = state.player;
+  const max = rocketAmmoMax();
+  for (const id of getRocketWeaponIds()) {
+    if (typeof p.ammo[id] !== "number") {
+      p.ammo[id] = max;
+    } else {
+      // Clamp down if capacity was reduced (e.g. ammo-bay module removed)
+      p.ammo[id] = Math.min(p.ammo[id], max);
+    }
+  }
+  // Clean up ammo entries for unequipped weapons
+  for (const key of Object.keys(p.ammo)) {
+    if (!p.equipped.weapon.includes(key)) delete p.ammo[key];
+  }
+}
+
+export function restockAmmo(): void {
+  const p = state.player;
+  const max = rocketAmmoMax();
+  ensureAmmoInitialized();
+  const rocketIds = getRocketWeaponIds();
+  if (rocketIds.length === 0) {
+    pushNotification("No rocket weapons equipped", "info");
+    return;
+  }
+  let totalMissing = 0;
+  for (const id of rocketIds) {
+    totalMissing += Math.max(0, max - (p.ammo[id] ?? 0));
+  }
+  if (totalMissing === 0) {
+    pushNotification("Ammo already full", "info");
+    return;
+  }
+  const cost = totalMissing * ROCKET_AMMO_COST_PER;
+  if (p.credits < cost) {
+    pushNotification(`Need ${cost}cr to restock ammo`, "bad");
+    return;
+  }
+  p.credits -= cost;
+  for (const id of rocketIds) p.ammo[id] = max;
+  bumpMission("spend-credits", cost);
+  pushNotification(`Ammo restocked · -${cost}cr`, "good");
+  save(); bump();
+}
+
 // ── FACTIONS ──────────────────────────────────────────────────────────────
 export function chooseFaction(id: FactionId): void {
   state.player.faction = id;
@@ -703,6 +779,7 @@ export function equipModule(instanceId: string, slot: ModuleSlot, slotIndex: num
   p.equipped[slot][slotIndex] = instanceId;
   // Reclamp hull/shield to (possibly new) max
   // (caller-side recompute happens via effectiveStats at render time)
+  ensureAmmoInitialized();
   pushNotification(`Equipped ${def.name}`, "good");
   save(); bump();
   return true;

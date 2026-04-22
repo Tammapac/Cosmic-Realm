@@ -1,4 +1,4 @@
-import { state, bump, useGame, pushNotification, save, stationPrice, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable } from "../game/store";
+import { state, bump, useGame, pushNotification, save, stationPrice, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, restockAmmo, rocketAmmoMax, getRocketWeaponIds, ROCKET_AMMO_BASE, ROCKET_AMMO_COST_PER, ensureAmmoInitialized } from "../game/store";
 import {
   ActiveQuest, CONSUMABLE_DEFS, ConsumableId, DRONE_DEFS, DroneKind, DroneMode, DUNGEONS, DungeonId, FACTIONS, MODULE_DEFS, ModuleSlot, RARITY_COLOR,
   Quest, RESOURCES, ResourceId, SHIP_CLASSES, SKILL_NODES, STATIONS, ShipClassId, SkillBranch,
@@ -196,6 +196,7 @@ function modStatPills(stats: typeof MODULE_DEFS[string]["stats"]) {
   if (stats.damageReduction) pills.push({ k: "DR",  v: `${Math.round(stats.damageReduction * 100)}%`, c: "#ff8a4e" });
   if (stats.cargoBonus)      pills.push({ k: "CRG", v: `+${Math.round(stats.cargoBonus * 100)}%`, c: "#c69060" });
   if (stats.lootBonus)       pills.push({ k: "LOOT", v: `+${stats.lootBonus}`, c: "#ffd24a" });
+  if (stats.ammoCapacity)    pills.push({ k: "AMMO", v: `+${stats.ammoCapacity}`, c: "#ff8a4e" });
   return (
     <div className="flex flex-wrap gap-1 mt-1">
       {pills.map((p, i) => statChip(p.k, p.v, p.c))}
@@ -212,6 +213,10 @@ function SlotCell({
   const item = instanceId ? player.inventory.find((m) => m.instanceId === instanceId) : null;
   const def = item ? MODULE_DEFS[item.defId] : null;
   const color = def ? RARITY_COLOR[def.rarity] : "#36406a";
+  const isRocket = def?.weaponKind === "rocket";
+  const ammoCount = isRocket && instanceId ? (player.ammo[instanceId] ?? 0) : null;
+  const ammoMax = isRocket ? rocketAmmoMax() : 0;
+  const ammoLow = ammoCount !== null && ammoCount <= 5;
   return (
     <div
       className="panel p-2 flex flex-col"
@@ -225,6 +230,15 @@ function SlotCell({
             <span className="text-[10px] font-bold tracking-widest" style={{ color }}>{def.name}</span>
           </div>
           <div className="text-mute text-[9px] mt-0.5 leading-tight">{def.description}</div>
+          {ammoCount !== null && (
+            <div className="flex items-center gap-1 mt-1">
+              <span className="text-[9px] tracking-widest" style={{ color: ammoLow ? "#ff5c6c" : "#ff8a4e" }}>
+                ⟁ AMMO: {ammoCount}/{ammoMax}
+              </span>
+              {ammoLow && ammoCount > 0 && <span className="text-[8px] text-red font-bold">LOW</span>}
+              {ammoCount === 0 && <span className="text-[8px] font-bold" style={{ color: "#ff5c6c" }}>EMPTY</span>}
+            </div>
+          )}
           <button
             className="btn mt-auto self-start"
             style={{ padding: "2px 6px", fontSize: 9 }}
@@ -465,6 +479,7 @@ function ShipsTab() {
     if (player.ownedShips.includes(id)) {
       player.shipClass = id;
       reconcileShipSlots();
+      ensureAmmoInitialized();
       const stats = effectiveStats();
       player.hull = stats.hullMax; player.shield = stats.shieldMax;
       player.drones = player.drones.slice(0, cls.droneSlots);
@@ -477,6 +492,7 @@ function ShipsTab() {
     player.ownedShips.push(id);
     player.shipClass = id;
     reconcileShipSlots();
+    ensureAmmoInitialized();
     const stats = effectiveStats();
     player.hull = stats.hullMax; player.shield = stats.shieldMax;
     player.drones = player.drones.slice(0, cls.droneSlots);
@@ -900,6 +916,13 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
 
   const droneRepairCost = player.drones.reduce((a, d) => a + Math.ceil((d.hpMax - d.hp) * 1.5), 0);
 
+  // Ammo restock
+  const rocketIds = getRocketWeaponIds();
+  const ammoMax = rocketAmmoMax();
+  const ammoMissing = rocketIds.reduce((acc, id) => acc + Math.max(0, ammoMax - (player.ammo[id] ?? 0)), 0);
+  const ammoCost = ammoMissing * ROCKET_AMMO_COST_PER;
+  const hasRockets = rocketIds.length > 0;
+
   return (
     <div className="p-5 space-y-4 max-w-2xl">
       <div className="text-cyan tracking-widest text-xs mb-2">▶ STATION SERVICES</div>
@@ -936,6 +959,58 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
         </div>
         <button className="btn btn-amber" disabled={droneRepairCost <= 0 || player.credits < droneRepairCost} onClick={repairDrones}>
           {droneRepairCost <= 0 ? "ALL OK" : `Repair · ${droneRepairCost}cr`}
+        </button>
+      </div>
+
+      <div className="panel p-4 flex items-start gap-4">
+        <div className="text-3xl" style={{ color: "#ff8a4e" }}>⟁</div>
+        <div className="flex-1">
+          <div className="font-bold tracking-widest" style={{ color: "#ff8a4e" }}>ROCKET RESUPPLY</div>
+          {hasRockets ? (
+            <>
+              <div className="text-dim text-[11px] mb-2">
+                {ROCKET_AMMO_COST_PER}cr per round · {ammoMissing} rounds needed to reach full capacity
+              </div>
+              <div className="space-y-1">
+                {rocketIds.map((id) => {
+                  const item = player.inventory.find((m) => m.instanceId === id);
+                  const def = item ? MODULE_DEFS[item.defId] : null;
+                  const cur = player.ammo[id] ?? 0;
+                  const pct = ammoMax > 0 ? cur / ammoMax : 0;
+                  return (
+                    <div key={id} className="flex items-center gap-2">
+                      <span className="text-[9px] tracking-widest truncate" style={{ color: def?.color ?? "#ff8a4e", minWidth: 100 }}>
+                        {def?.name ?? "Rocket"}
+                      </span>
+                      <div className="flex-1 h-1.5" style={{ background: "rgba(255,255,255,0.08)" }}>
+                        <div
+                          className="h-full"
+                          style={{
+                            width: `${pct * 100}%`,
+                            background: cur <= 5 ? "#ff5c6c" : "#ff8a4e",
+                            transition: "width 0.3s",
+                          }}
+                        />
+                      </div>
+                      <span className="text-[9px] tabular-nums" style={{ color: cur <= 5 ? "#ff5c6c" : "#ff8a4e", minWidth: 48 }}>
+                        {cur}/{ammoMax}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <div className="text-dim text-[11px]">No rocket weapons equipped. Equip a rocket launcher to use this service.</div>
+          )}
+        </div>
+        <button
+          className="btn"
+          style={{ padding: "6px 14px", borderColor: "#ff8a4e", color: "#ff8a4e" }}
+          disabled={!hasRockets || ammoMissing === 0 || player.credits < ammoCost}
+          onClick={restockAmmo}
+        >
+          {!hasRockets ? "N/A" : ammoMissing === 0 ? "FULL" : `Restock · ${ammoCost}cr`}
         </button>
       </div>
 
