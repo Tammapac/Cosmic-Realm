@@ -802,6 +802,30 @@ export const ENEMY_DEFS: Record<
   },
 };
 
+// Faction-specific stat/color overrides applied at enemy spawn time.
+// Earth faction uses the default ENEMY_DEFS values (no entry needed).
+// Mars enemies: faster scouts, tougher hulls, orange/rust palette.
+// Venus enemies: higher damage, slower where appropriate, purple/gold palette.
+export const FACTION_ENEMY_MODS: Partial<Record<
+  "earth" | "mars" | "venus",
+  Partial<Record<EnemyType, { color: string; hullMul?: number; damageMul?: number; speedMul?: number }>>
+>> = {
+  mars: {
+    scout:     { color: "#ff5500", speedMul: 1.18 },
+    raider:    { color: "#ff3300", hullMul: 1.22 },
+    destroyer: { color: "#cc2200", hullMul: 1.12, damageMul: 1.18 },
+    voidling:  { color: "#ff6600", speedMul: 1.20 },
+    dread:     { color: "#ff8800", hullMul: 1.15, damageMul: 1.10 },
+  },
+  venus: {
+    scout:     { color: "#ffee22", damageMul: 1.22 },
+    raider:    { color: "#cc44ff", hullMul: 1.22 },
+    destroyer: { color: "#9911cc", hullMul: 1.12, damageMul: 1.12 },
+    voidling:  { color: "#ff44cc", damageMul: 1.28, speedMul: 0.88 },
+    dread:     { color: "#aa00ff", hullMul: 1.20, damageMul: 1.12 },
+  },
+};
+
 export const QUEST_POOL: Quest[] = [
   { id: "q-alpha-scouts", title: "Sweep the Lanes", description: "Pirate scouts have been raiding traders in Alpha Sector. Eliminate them.", zone: "alpha", killType: "scout", killCount: 5, rewardCredits: 350, rewardExp: 80, rewardHonor: 5 },
   { id: "q-alpha-raiders", title: "Raider Bounty", description: "A raider crew is harassing the Helix Station. Take them down.", zone: "alpha", killType: "raider", killCount: 3, rewardCredits: 600, rewardExp: 140, rewardHonor: 10 },

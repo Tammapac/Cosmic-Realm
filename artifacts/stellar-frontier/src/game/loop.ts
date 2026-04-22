@@ -7,8 +7,8 @@ import {
 } from "./store";
 import {
   DRONE_DEFS, Drone, DUNGEONS, ENEMY_DEFS, ENEMY_NAMES, EXP_FOR_LEVEL,
-  Enemy, EnemyType, FACTIONS, MODULE_DEFS, ModuleStats, PORTALS,
-  ROCKET_AMMO_TYPE_DEFS,
+  Enemy, EnemyType, FACTION_ENEMY_MODS, FACTIONS, MODULE_DEFS, ModuleStats,
+  PORTALS, ROCKET_AMMO_TYPE_DEFS,
   SHIP_CLASSES, STATIONS, ZONES, ZoneId,
   rankFor,
 } from "./types";
@@ -158,6 +158,12 @@ function spawnEnemy(): void {
   const tierMult = 1 + (z.enemyTier - 1) * 0.25;
   const namePool = ENEMY_NAMES[type];
   const eName = namePool[Math.floor(Math.random() * namePool.length)];
+  // Apply faction-specific stat/color overrides
+  const fMod = FACTION_ENEMY_MODS[z.faction]?.[type];
+  const hullFac  = fMod?.hullMul  ?? 1;
+  const dmgFac   = fMod?.damageMul ?? 1;
+  const spdFac   = fMod?.speedMul  ?? 1;
+  const color    = fMod?.color     ?? def.color;
   state.enemies.push({
     id: `e-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     type,
@@ -166,15 +172,15 @@ function spawnEnemy(): void {
     pos: { x: px, y: py },
     vel: { x: 0, y: 0 },
     angle: 0,
-    hull: def.hullMax * tierMult,
-    hullMax: def.hullMax * tierMult,
-    damage: def.damage * tierMult,
-    speed: def.speed,
+    hull: def.hullMax * tierMult * hullFac,
+    hullMax: def.hullMax * tierMult * hullFac,
+    damage: def.damage * tierMult * dmgFac,
+    speed: def.speed * spdFac,
     fireCd: Math.random() * 2,
     exp: Math.round(def.exp * tierMult),
     credits: Math.round(def.credits * tierMult),
     honor: Math.round(def.honor * tierMult),
-    color: def.color,
+    color,
     size: def.size,
     loot: def.loot,
     burstCd: 0,
