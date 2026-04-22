@@ -32,6 +32,8 @@ import {
   QUEST_POOL,
   RESOURCES,
   ResourceId,
+  ROCKET_AMMO_TYPE_DEFS,
+  RocketAmmoType,
   SHIP_CLASSES,
   SKILL_NODES,
   STATIONS,
@@ -159,6 +161,8 @@ function makeInitialPlayer(): Player {
     hotbar: ["repair-bot", "shield-charge", null, null, null, null, null, null],
     ammo: {},
     autoRestock: false,
+    rocketAmmoType: {},
+    ammoByType: {},
   };
 }
 
@@ -309,6 +313,8 @@ if (!Array.isArray(initialPlayer.hotbar) || initialPlayer.hotbar.length !== 8) {
   initialPlayer.hotbar = ["repair-bot", "shield-charge", null, null, null, null, null, null];
 }
 if (typeof initialPlayer.autoRestock !== "boolean") initialPlayer.autoRestock = false;
+if (!initialPlayer.rocketAmmoType || typeof initialPlayer.rocketAmmoType !== "object") initialPlayer.rocketAmmoType = {};
+if (!initialPlayer.ammoByType || typeof initialPlayer.ammoByType !== "object") initialPlayer.ammoByType = {};
 
 // Daily reset: if >24h since last reset, refresh missions
 const dayMs = 24 * 60 * 60 * 1000;
@@ -435,6 +441,8 @@ export function save(): void {
       lastSeen: p.lastSeen,
       ammo: p.ammo,
       autoRestock: p.autoRestock,
+      rocketAmmoType: p.rocketAmmoType,
+      ammoByType: p.ammoByType,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
   } catch {
@@ -617,17 +625,26 @@ export function getRocketWeaponIds(): string[] {
 export function ensureAmmoInitialized(): void {
   const p = state.player;
   const max = rocketAmmoMax();
+  if (!p.rocketAmmoType) p.rocketAmmoType = {};
+  if (!p.ammoByType) p.ammoByType = {};
   for (const id of getRocketWeaponIds()) {
     if (typeof p.ammo[id] !== "number") {
       p.ammo[id] = max;
     } else {
-      // Clamp down if capacity was reduced (e.g. ammo-bay module removed)
       p.ammo[id] = Math.min(p.ammo[id], max);
     }
+    if (!p.rocketAmmoType[id]) p.rocketAmmoType[id] = "standard";
+    if (!p.ammoByType[id]) p.ammoByType[id] = {};
   }
   // Clean up ammo entries for unequipped weapons
   for (const key of Object.keys(p.ammo)) {
     if (!p.equipped.weapon.includes(key)) delete p.ammo[key];
+  }
+  for (const key of Object.keys(p.rocketAmmoType)) {
+    if (!p.equipped.weapon.includes(key)) delete p.rocketAmmoType[key];
+  }
+  for (const key of Object.keys(p.ammoByType)) {
+    if (!p.equipped.weapon.includes(key)) delete p.ammoByType[key];
   }
 }
 
@@ -663,6 +680,66 @@ export function restockAmmo(): void {
 export function setAutoRestock(enabled: boolean): void {
   state.player.autoRestock = enabled;
   pushNotification(enabled ? "Auto-Restock enabled" : "Auto-Restock disabled", "info");
+  save(); bump();
+}
+
+// ── AMMO TYPE HELPERS ──────────────────────────────────────────────────────
+
+/** Get the active ammo type for a given rocket weapon instance. */
+export function getActiveAmmoType(weaponId: string): RocketAmmoType {
+  return state.player.rocketAmmoType?.[weaponId] ?? "standard";
+}
+
+/** Get the current ammo count for the active type of a weapon. */
+export function getAmmoCountForType(weaponId: string, type: RocketAmmoType): number {
+  if (type === "standard") return state.player.ammo[weaponId] ?? 0;
+  return state.player.ammoByType?.[weaponId]?.[type] ?? 0;
+}
+
+/** Switch the active ammo type for a rocket weapon. */
+export function switchRocketAmmoType(weaponId: string, type: RocketAmmoType): void {
+  ensureAmmoInitialized();
+  const p = state.player;
+  if (!p.rocketAmmoType) p.rocketAmmoType = {};
+  p.rocketAmmoType[weaponId] = type;
+  const def = ROCKET_AMMO_TYPE_DEFS[type];
+  pushNotification(`Ammo switched to ${def.name}`, "good");
+  save(); bump();
+}
+
+/** Purchase a batch of typed ammo (fills up to max for the given type). */
+export function purchaseTypedAmmo(weaponId: string, type: RocketAmmoType): void {
+  ensureAmmoInitialized();
+  const p = state.player;
+  const def = ROCKET_AMMO_TYPE_DEFS[type];
+  const max = rocketAmmoMax();
+  if (!p.ammoByType) p.ammoByType = {};
+  if (!p.ammoByType[weaponId]) p.ammoByType[weaponId] = {};
+
+  if (type === "standard") {
+    // Delegate to regular restockAmmo for a single weapon
+    const cur = p.ammo[weaponId] ?? 0;
+    const missing = Math.max(0, max - cur);
+    if (missing === 0) { pushNotification("Ammo already full", "info"); return; }
+    const cost = missing * def.costPerRound;
+    if (p.credits < cost) { pushNotification(`Need ${cost}cr to restock ammo`, "bad"); return; }
+    p.credits -= cost;
+    p.ammo[weaponId] = max;
+    bumpMission("spend-credits", cost);
+    pushNotification(`Restocked ${missing} STD · -${cost}cr`, "good");
+    save(); bump();
+    return;
+  }
+
+  const cur = p.ammoByType[weaponId][type] ?? 0;
+  const missing = Math.max(0, max - cur);
+  if (missing === 0) { pushNotification("Ammo already full", "info"); return; }
+  const cost = missing * def.costPerRound;
+  if (p.credits < cost) { pushNotification(`Need ${cost}cr for ${def.shortName} ammo`, "bad"); return; }
+  p.credits -= cost;
+  p.ammoByType[weaponId][type] = max;
+  bumpMission("spend-credits", cost);
+  pushNotification(`Restocked ${missing} ${def.shortName} · -${cost}cr`, "good");
   save(); bump();
 }
 

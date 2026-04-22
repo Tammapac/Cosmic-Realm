@@ -3,10 +3,12 @@ import {
   pushEvent, bumpMission, state, travelToZone, completeDungeon,
   tickHotbarCooldowns,
   ensureAmmoInitialized, getRocketWeaponIds, rocketAmmoMax,
+  getActiveAmmoType,
 } from "./store";
 import {
   DRONE_DEFS, Drone, DUNGEONS, ENEMY_DEFS, ENEMY_NAMES, EXP_FOR_LEVEL,
   Enemy, EnemyType, FACTIONS, MODULE_DEFS, ModuleStats, PORTALS,
+  ROCKET_AMMO_TYPE_DEFS,
   SHIP_CLASSES, STATIONS, ZONES, ZoneId,
   rankFor,
 } from "./types";
@@ -379,7 +381,7 @@ function emitDeath(x: number, y: number, color: string, big = false): void {
 function fireProjectile(
   from: "player" | "enemy" | "drone",
   x: number, y: number, angle: number, damage: number, color: string, size = 3,
-  opts?: { crit?: boolean; aoeRadius?: number; speedMul?: number; homing?: boolean },
+  opts?: { crit?: boolean; aoeRadius?: number; speedMul?: number; homing?: boolean; empStun?: number; armorPiercing?: boolean },
 ): void {
   const speedBase = from === "player" ? 560 : from === "drone" ? 480 : 320;
   const speed = speedBase * (opts?.speedMul ?? 1);
@@ -395,6 +397,8 @@ function fireProjectile(
     crit: opts?.crit,
     aoeRadius: opts?.aoeRadius,
     homing: opts?.homing,
+    empStun: opts?.empStun,
+    armorPiercing: opts?.armorPiercing,
   });
 }
 
@@ -872,25 +876,48 @@ function tickWorld(dt: number): void {
     const dmg = stats.damage * (isCrit ? 2 : 1);
     const isRocket = hasRocketWeapon();
     if (isRocket) {
-      // Check if any rocket weapon has ammo
+      // Check if any rocket weapon has ammo (prioritize active type)
       const rocketIds = getRocketWeaponIds();
-      const availableId = rocketIds.find((id) => (p.ammo[id] ?? 0) > 0);
+      let availableId: string | undefined;
+      let activeType = "standard" as import("./types").RocketAmmoType;
+      for (const id of rocketIds) {
+        const t = getActiveAmmoType(id);
+        let count = 0;
+        if (t === "standard") {
+          count = p.ammo[id] ?? 0;
+        } else {
+          count = p.ammoByType?.[id]?.[t] ?? 0;
+        }
+        if (count > 0) { availableId = id; activeType = t; break; }
+      }
       if (availableId) {
-        // Consume ammo and fire rocket
-        p.ammo[availableId] = Math.max(0, (p.ammo[availableId] ?? 0) - 1);
+        const typeDef = ROCKET_AMMO_TYPE_DEFS[activeType];
+        // Consume ammo from correct pool
+        if (activeType === "standard") {
+          p.ammo[availableId] = Math.max(0, (p.ammo[availableId] ?? 0) - 1);
+        } else {
+          if (!p.ammoByType) p.ammoByType = {};
+          if (!p.ammoByType[availableId]) p.ammoByType[availableId] = {};
+          p.ammoByType[availableId][activeType] = Math.max(0, (p.ammoByType[availableId][activeType] ?? 0) - 1);
+        }
+        const typedDmg = dmg * typeDef.damageMul;
         const spread = (Math.random() - 0.5) * 0.3;
-        fireProjectile("player", p.pos.x, p.pos.y, ang + spread, dmg, color, 5, {
+        fireProjectile("player", p.pos.x, p.pos.y, ang + spread, typedDmg, typeDef.color, 5, {
           crit: isCrit,
-          aoeRadius: Math.max(stats.aoeRadius, 22),
+          aoeRadius: typeDef.hasAoe ? Math.max(stats.aoeRadius, 22) : undefined,
           homing: true,
           speedMul: 0.35,
+          empStun: typeDef.stunDuration > 0 ? typeDef.stunDuration : undefined,
+          armorPiercing: activeType === "armor-piercing" ? true : undefined,
         });
         // Warn when ammo is low
-        const remaining = p.ammo[availableId];
+        const remaining = activeType === "standard"
+          ? p.ammo[availableId]
+          : (p.ammoByType?.[availableId]?.[activeType] ?? 0);
         if (remaining === 5) {
-          pushNotification("⚠ Rocket ammo low!", "bad");
+          pushNotification(`⚠ ${typeDef.shortName} ammo low!`, "bad");
         } else if (remaining === 0) {
-          pushNotification("Rocket ammo depleted! Dock to restock.", "bad");
+          pushNotification(`${typeDef.shortName} ammo depleted! Dock to restock.`, "bad");
         }
       } else {
         // No ammo — fall back to laser shot
@@ -999,6 +1026,16 @@ function tickWorld(dt: number): void {
           });
           if (stacks >= 3) {
             pushFloater({ text: `x${stacks}`, color: "#ff5cf0", x: e.pos.x, y: e.pos.y + e.size + 8, scale: 0.9, ttl: 0.5 });
+          }
+          // EMP stun: disable enemy fire/movement briefly
+          if (pr.empStun && pr.empStun > 0) {
+            e.stunUntil = state.tick + pr.empStun;
+            pushFloater({ text: "EMP!", color: "#ffd24a", x: e.pos.x, y: e.pos.y - e.size - 14, scale: 1.1, ttl: 0.9, bold: true });
+            emitRing(pr.pos.x, pr.pos.y, "#ffd24a");
+          }
+          // AP floater
+          if (pr.armorPiercing) {
+            pushFloater({ text: "AP", color: "#ff5c6c", x: e.pos.x + 10, y: e.pos.y - e.size - 8, scale: 0.85, ttl: 0.5 });
           }
           // splash
           if (pr.aoeRadius && pr.aoeRadius > 0) {

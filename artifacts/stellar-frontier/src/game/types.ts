@@ -240,8 +240,10 @@ export type Player = {
   // Consumables & hotbar
   consumables: Partial<Record<ConsumableId, number>>;
   hotbar: (ConsumableId | null)[];   // 8 slots
-  ammo: Record<string, number>; // instanceId → current ammo count (rocket weapons)
+  ammo: Record<string, number>; // instanceId → standard ammo count (rocket weapons)
   autoRestock: boolean;              // auto-restock rockets on docking
+  rocketAmmoType: Record<string, RocketAmmoType>; // instanceId → active ammo type per weapon
+  ammoByType: Record<string, Partial<Record<RocketAmmoType, number>>>; // instanceId → type → count (AP & EMP)
 };
 
 // ── FACTIONS ─────────────────────────────────────────────────────────────
@@ -436,6 +438,40 @@ export type Enemy = {
   stunUntil?: number;   // game-time seconds; enemy cannot fire/move while stunned
 };
 
+// ── ROCKET AMMO TYPES ────────────────────────────────────────────────────
+export type RocketAmmoType = "standard" | "armor-piercing" | "emp";
+
+export type RocketAmmoTypeDef = {
+  id: RocketAmmoType;
+  name: string;
+  shortName: string;
+  description: string;
+  color: string;
+  costPerRound: number;
+  damageMul: number;     // damage multiplier vs base
+  hasAoe: boolean;       // whether it has splash AOE
+  stunDuration: number;  // seconds of stun on hit (0 = no stun)
+  glyph: string;
+};
+
+export const ROCKET_AMMO_TYPE_DEFS: Record<RocketAmmoType, RocketAmmoTypeDef> = {
+  "standard": {
+    id: "standard", name: "Standard Explosive", shortName: "STD",
+    description: "Standard homing rockets with AOE splash damage. Balanced all-rounder.",
+    color: "#ff8a4e", costPerRound: 8, damageMul: 1.0, hasAoe: true, stunDuration: 0, glyph: "⟁",
+  },
+  "armor-piercing": {
+    id: "armor-piercing", name: "Armor-Piercing", shortName: "AP",
+    description: "+60% hull damage, no AOE. Punches through armored targets.",
+    color: "#ff5c6c", costPerRound: 22, damageMul: 1.6, hasAoe: false, stunDuration: 0, glyph: "▲",
+  },
+  "emp": {
+    id: "emp", name: "EMP Pulse", shortName: "EMP",
+    description: "Reduced damage but disables enemy fire for 2.5 s on hit.",
+    color: "#ffd24a", costPerRound: 30, damageMul: 0.55, hasAoe: false, stunDuration: 2.5, glyph: "⚡",
+  },
+};
+
 export type Projectile = {
   id: string;
   pos: Vec2;
@@ -448,6 +484,8 @@ export type Projectile = {
   crit?: boolean;
   aoeRadius?: number;       // splash radius if set
   homing?: boolean;
+  empStun?: number;         // stun duration in seconds (EMP ammo)
+  armorPiercing?: boolean;  // AP ammo marker
 };
 
 export type Floater = {
