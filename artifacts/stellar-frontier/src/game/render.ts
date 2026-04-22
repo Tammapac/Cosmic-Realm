@@ -509,6 +509,33 @@ function drawParticle(ctx: CanvasRenderingContext2D, pa: Particle): void {
     ctx.globalAlpha = 1;
     return;
   }
+  if (pa.kind === "flash") {
+    const t = 1 - a;  // 0 = just spawned, 1 = about to die
+    const r = pa.size * (0.2 + t * 0.8);  // blooms outward over lifetime
+    ctx.save();
+    ctx.globalAlpha = a * a;  // quadratic fast fade
+    const grd = ctx.createRadialGradient(pa.pos.x, pa.pos.y, 0, pa.pos.x, pa.pos.y, r);
+    grd.addColorStop(0, "#ffffff");
+    grd.addColorStop(0.3, pa.color);
+    grd.addColorStop(1, "transparent");
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(pa.pos.x, pa.pos.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+  if (pa.kind === "debris") {
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.fillStyle = pa.color;
+    ctx.shadowColor = pa.color;
+    ctx.shadowBlur = 4;
+    const s = pa.size * (0.4 + a * 0.6);  // large at spawn, shrinks as it fades
+    ctx.fillRect(pa.pos.x - s / 2, pa.pos.y - s / 2, s, s);
+    ctx.restore();
+    return;
+  }
   ctx.globalAlpha = a;
   ctx.fillStyle = pa.color;
   ctx.fillRect(pa.pos.x - pa.size / 2, pa.pos.y - pa.size / 2, pa.size, pa.size);

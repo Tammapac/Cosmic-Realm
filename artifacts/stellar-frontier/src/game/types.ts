@@ -470,7 +470,7 @@ export type Particle = {
   maxTtl: number;
   color: string;
   size: number;
-  kind?: "trail" | "spark" | "ring" | "engine";
+  kind?: "trail" | "spark" | "ring" | "engine" | "flash" | "debris";
 };
 
 export type StationKind = "hub" | "trade" | "mining" | "military" | "outpost";

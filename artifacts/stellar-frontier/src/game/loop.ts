@@ -321,13 +321,57 @@ function emitTrail(x: number, y: number, color: string): void {
 }
 
 function emitDeath(x: number, y: number, color: string, big = false): void {
-  emitSpark(x, y, color, big ? 60 : 24, big ? 220 : 160, big ? 4 : 3);
-  emitSpark(x, y, "#ffd24a", big ? 30 : 10, big ? 160 : 120, big ? 3 : 2);
+  // Central white flash bloom
+  state.particles.push({
+    id: `fl-${Math.random().toString(36).slice(2, 8)}`,
+    pos: { x, y }, vel: { x: 0, y: 0 },
+    ttl: big ? 0.22 : 0.15, maxTtl: big ? 0.22 : 0.15,
+    color: big ? "#ffffff" : "#ffcc66",
+    size: big ? 80 : 40, kind: "flash",
+  });
+  // Secondary flash in enemy color
+  state.particles.push({
+    id: `fl2-${Math.random().toString(36).slice(2, 8)}`,
+    pos: { x, y }, vel: { x: 0, y: 0 },
+    ttl: big ? 0.18 : 0.12, maxTtl: big ? 0.18 : 0.12,
+    color, size: big ? 60 : 28, kind: "flash",
+  });
+
+  // Debris chunks
+  const debrisCount = big ? 20 : 8;
+  const debrisColors = [color, "#ff8a4e", "#ffd24a", "#ffccaa"];
+  for (let i = 0; i < debrisCount; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const s = (0.3 + Math.random() * 0.7) * (big ? 90 : 60);
+    state.particles.push({
+      id: `db-${Math.random().toString(36).slice(2, 8)}`,
+      pos: { x, y },
+      vel: { x: Math.cos(a) * s, y: Math.sin(a) * s },
+      ttl: 0.5 + Math.random() * 0.5, maxTtl: 1.0,
+      color: debrisColors[Math.floor(Math.random() * debrisColors.length)],
+      size: big ? (5 + Math.random() * 6) : (3 + Math.random() * 4),
+      kind: "debris",
+    });
+  }
+
+  // Hot white core sparks (fast)
+  emitSpark(x, y, "#ffffff", big ? 20 : 8, big ? 260 : 200, big ? 3 : 2);
+  // Enemy-color sparks (medium)
+  emitSpark(x, y, color, big ? 50 : 20, big ? 200 : 150, big ? 4 : 3);
+  // Gold/orange embers (slow)
+  emitSpark(x, y, "#ffd24a", big ? 30 : 10, big ? 100 : 70, big ? 3 : 2);
+
+  // Rings — immediate
+  emitRing(x, y, "#ffffff");
   emitRing(x, y, color);
+  // Staggered extra rings
   if (big) {
-    emitRing(x, y, "#ffffff");
-    setTimeout(() => emitRing(x, y, color), 100);
-    setTimeout(() => emitRing(x, y, "#ffd24a"), 200);
+    setTimeout(() => emitRing(x, y, "#ffd24a"), 80);
+    setTimeout(() => emitRing(x, y, color), 160);
+    setTimeout(() => emitRing(x, y, "#ffffff"), 280);
+    setTimeout(() => emitRing(x, y, "#ff8a4e"), 400);
+  } else {
+    setTimeout(() => emitRing(x, y, "#ffd24a"), 80);
   }
 }
 
