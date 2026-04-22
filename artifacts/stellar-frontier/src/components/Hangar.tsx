@@ -426,13 +426,38 @@ function SlotCell({
           </div>
           <div className="text-mute text-[9px] mt-0.5 leading-tight">{def.description}</div>
           {ammoCount !== null && (
-            <div className="flex items-center gap-1 mt-1">
-              <span className="text-[9px] tracking-widest" style={{ color: ammoLow ? "#ff5c6c" : "#ff8a4e" }}>
-                ⟁ AMMO: {ammoCount}/{ammoMax}
-              </span>
-              {ammoLow && ammoCount > 0 && <span className="text-[8px] text-red font-bold">LOW</span>}
-              {ammoCount === 0 && <span className="text-[8px] font-bold" style={{ color: "#ff5c6c" }}>EMPTY</span>}
-            </div>
+            <>
+              <div className="flex items-center gap-1 mt-1">
+                <span className="text-[9px] tracking-widest" style={{ color: ammoLow ? "#ff5c6c" : "#ff8a4e" }}>
+                  ⟁ AMMO: {ammoCount}/{ammoMax}
+                </span>
+                {ammoLow && ammoCount > 0 && <span className="text-[8px] text-red font-bold">LOW</span>}
+                {ammoCount === 0 && <span className="text-[8px] font-bold" style={{ color: "#ff5c6c" }}>EMPTY</span>}
+              </div>
+              <div className="flex gap-1 mt-1">
+                {(["standard", "armor-piercing", "emp"] as RocketAmmoType[]).map((type) => {
+                  const tDef = ROCKET_AMMO_TYPE_DEFS[type];
+                  const typeCount = getAmmoCountForType(instanceId!, type);
+                  const isActiveType = getActiveAmmoType(instanceId!) === type;
+                  return (
+                    <button
+                      key={type}
+                      className="text-[8px] px-1 py-0.5 tracking-widest"
+                      style={{
+                        background: isActiveType ? tDef.color + "25" : "transparent",
+                        color: isActiveType ? tDef.color : "#555",
+                        border: `1px solid ${isActiveType ? tDef.color + "99" : "#444"}`,
+                        cursor: "pointer",
+                      }}
+                      onClick={(e) => { e.stopPropagation(); switchRocketAmmoType(instanceId!, type); }}
+                      title={tDef.name}
+                    >
+                      {tDef.shortName} {typeCount}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
           )}
           {isComparing && diffs.length > 0 && (
             <div className="mt-1.5 pt-1" style={{ borderTop: "1px dashed #ffd24a33" }}>
