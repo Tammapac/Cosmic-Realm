@@ -819,6 +819,22 @@ export const QUEST_POOL: Quest[] = [
   { id: "q-fracture-dread", title: "Fracture Wardens", description: "Three Dreads patrol the Fracture Zone, blockading the path to the Abyss. Remove them.", zone: "fracture", killType: "dread", killCount: 3, rewardCredits: 400000, rewardExp: 115000, rewardHonor: 6000 },
   { id: "q-abyss-dread", title: "Into the Dark", description: "The Abyss harbors a pack of Dreads unlike any seen before. Hunt them down and return with proof.", zone: "abyss", killType: "dread", killCount: 4, rewardCredits: 650000, rewardExp: 190000, rewardHonor: 10000 },
   { id: "q-abyss-apex", title: "God of the Abyss", description: "A legendary Dread fleet dominates the deepest sector of known space. Become the last thing they see.", zone: "abyss", killType: "dread", killCount: 6, rewardCredits: 1100000, rewardExp: 320000, rewardHonor: 17000 },
+  // Mars deep zones
+  { id: "q-marsdepth-voidlings", title: "Deep Field Haunting", description: "Voidlings have swarmed the outer Martian deep field, disrupting passage. Clear the infestation.", zone: "marsdepth", killType: "voidling", killCount: 6, rewardCredits: 9500, rewardExp: 2800, rewardHonor: 150 },
+  { id: "q-marsdepth-dread", title: "Martian Apex", description: "A Dread warship lurks in the Martian deep. Bring back its core as proof.", zone: "marsdepth", killType: "dread", killCount: 2, rewardCredits: 19000, rewardExp: 5500, rewardHonor: 300 },
+  { id: "q-maelstrom-dread", title: "Eye of the Storm", description: "A Dread armada is using The Maelstrom as a staging ground. Tear through them.", zone: "maelstrom", killType: "dread", killCount: 4, rewardCredits: 34000, rewardExp: 10000, rewardHonor: 550 },
+  { id: "q-maelstrom-apex", title: "Master of the Maelstrom", description: "The Maelstrom's supreme Dread fleet blocks all passage. Eliminate them completely.", zone: "maelstrom", killType: "dread", killCount: 6, rewardCredits: 58000, rewardExp: 17000, rewardHonor: 920 },
+  // Venus zones
+  { id: "q-venus1-scouts", title: "Cloud Layer Sweep", description: "Scout ships harry the upper Venus cloud lanes. Dispatch them and restore safe passage.", zone: "venus1", killType: "scout", killCount: 5, rewardCredits: 380, rewardExp: 90, rewardHonor: 6 },
+  { id: "q-venus1-raiders", title: "Citadel Raiders", description: "A raider gang has been looting Venusian cloud-city outposts. Shut them down.", zone: "venus1", killType: "raider", killCount: 3, rewardCredits: 650, rewardExp: 150, rewardHonor: 11 },
+  { id: "q-venus2-raiders", title: "Sulphur Gate Cleanup", description: "Raider packs lurk in the sulphur wind corridors. Clear the route.", zone: "venus2", killType: "raider", killCount: 6, rewardCredits: 1500, rewardExp: 340, rewardHonor: 19 },
+  { id: "q-venus2-destroyers", title: "Atmospheric Threat", description: "Destroyer squadrons patrol the Sulphur Winds, enforcing blockades. Break them.", zone: "venus2", killType: "destroyer", killCount: 3, rewardCredits: 2600, rewardExp: 650, rewardHonor: 32 },
+  { id: "q-venus3-destroyers", title: "Acid Corridor Purge", description: "Destroyer packs control the Acidic Deep passages. Burn through them.", zone: "venus3", killType: "destroyer", killCount: 5, rewardCredits: 4200, rewardExp: 1200, rewardHonor: 55 },
+  { id: "q-venus3-dread", title: "Venusian Dread Hunt", description: "A Dread-class warship lurks in the corrosive depths. Its reactor is your prize.", zone: "venus3", killType: "dread", killCount: 1, rewardCredits: 6500, rewardExp: 1900, rewardHonor: 110 },
+  { id: "q-venus4-voidlings", title: "Pressure Zone Phantoms", description: "Voidlings phase in and out of the crushing core. Exterminate them before the breach widens.", zone: "venus4", killType: "voidling", killCount: 6, rewardCredits: 9500, rewardExp: 2800, rewardHonor: 150 },
+  { id: "q-venus4-dread", title: "Core Guardian", description: "Two Dread warships orbit the Pressure Core as self-appointed warlords. Dethrone them.", zone: "venus4", killType: "dread", killCount: 2, rewardCredits: 19000, rewardExp: 5500, rewardHonor: 300 },
+  { id: "q-venus5-dread", title: "Eye of Venus", description: "The Eye of Venus is guarded by a Dread armada. Only the bold enter — and fewer leave.", zone: "venus5", killType: "dread", killCount: 4, rewardCredits: 34000, rewardExp: 10000, rewardHonor: 550 },
+  { id: "q-venus5-apex", title: "Sovereign of Venus", description: "Six Dread warships orbit the Eye's singularity. Destroy them all and claim the title.", zone: "venus5", killType: "dread", killCount: 6, rewardCredits: 58000, rewardExp: 17000, rewardHonor: 920 },
 ];
 
 // ── ECONOMY ────────────────────────────────────────────────────────────────
@@ -911,6 +927,55 @@ export const STATIONS: Station[] = [
   { id: "abyss-anchor",name: "Abyss Anchorage",     pos: { x: -1100, y: 800 }, zone: "abyss",   kind: "trade",
     description: "Endgame trading post. Buy or sell anything at extreme prices.", controlledBy: "syndicate",
     prices: { quantum: 0.4, void: 1.8, dread: 2.2, iron: 2.0, synth: 1.8, medpack: 0.5 } },
+  // marsdepth
+  { id: "deep-haven",  name: "Deep Field Haven",   pos: { x: 0, y: 0 },       zone: "marsdepth", kind: "outpost",
+    description: "Isolated Martian outpost in the outer deep field. Last stop before the Maelstrom.", controlledBy: "syndicate",
+    prices: { void: 0.55, dread: 1.2, quantum: 1.4, medpack: 1.3, synth: 1.2, contraband: 0.5, relic: 0.7, exotic: 0.8 } },
+  { id: "iron-depth",  name: "Iron Depth Exchange", pos: { x: 900, y: -700 }, zone: "marsdepth", kind: "trade",
+    description: "Remote Martian trade post for rare salvage and tactical goods.", controlledBy: "crimson",
+    prices: { dread: 1.8, warp: 1.7, plasma: 1.9, medpack: 0.75, quantum: 1.5, void: 1.4, lumenite: 1.2 } },
+  // maelstrom
+  { id: "storm-eye",   name: "Eye of the Storm",   pos: { x: 0, y: 0 },       zone: "maelstrom", kind: "military",
+    description: "Entrenched Martian warstation at the storm's calm center. Top-tier military gear only.", controlledBy: "crimson",
+    prices: { dread: 2.2, warp: 2.0, plasma: 2.3, iron: 0.65, scrap: 0.7, lumenite: 1.1, quantum: 1.6 } },
+  { id: "wreck-point", name: "Wreckage Point",     pos: { x: -900, y: 800 }, zone: "maelstrom", kind: "trade",
+    description: "Salvage bazaar built into the wreckage field. Everything's for sale, no questions asked.", controlledBy: "syndicate",
+    prices: { iron: 0.45, scrap: 0.5, lumenite: 0.7, quantum: 0.85, void: 1.5, dread: 1.9, exotic: 0.7 } },
+  // venus1
+  { id: "cloud-gate",  name: "Cloud Gate Station", pos: { x: 0, y: 0 },       zone: "venus1",   kind: "hub",
+    description: "Entry hub to the Venusian cloud cities. Friendly to all factions.", controlledBy: "aurora",
+    prices: { scrap: 1.0, plasma: 1.0, iron: 0.95, synth: 0.9, medpack: 1.1, lumenite: 1.0, warp: 1.1, void: 1.2, dread: 1.1, food: 0.75, medicine: 0.85, luxury: 1.3 } },
+  { id: "mist-dock",   name: "Mist Dock Outpost",  pos: { x: -800, y: -300 }, zone: "venus1",   kind: "mining",
+    description: "Floating mining platform harvesting rare cloud minerals.", controlledBy: "aurora",
+    prices: { iron: 0.6, lumenite: 0.65, scrap: 1.2, synth: 1.0, medpack: 1.1, "fuel-cell": 0.7, food: 0.65, medicine: 1.1 } },
+  // venus2
+  { id: "sulphur-port", name: "Sulphur Port",      pos: { x: 200, y: -700 },  zone: "venus2",   kind: "outpost",
+    description: "Corrosive atmosphere station. Raider-truce outpost with exotic supplies.", controlledBy: "syndicate",
+    prices: { plasma: 0.75, warp: 0.9, scrap: 1.2, synth: 1.1, medpack: 1.2, void: 1.3, food: 1.3, medicine: 1.4, nanite: 0.85, "bio-matter": 0.75 } },
+  { id: "wind-market", name: "Wind Market",        pos: { x: -700, y: -1100 }, zone: "venus2",  kind: "trade",
+    description: "Chaotic trade station deep in the Sulphur Winds. Cheap quantum parts.", controlledBy: "syndicate",
+    prices: { quantum: 0.65, lumenite: 0.8, dread: 0.95, void: 0.9, plasma: 1.2, warp: 1.3, iron: 1.1, luxury: 0.75, precursor: 1.4 } },
+  // venus3
+  { id: "acid-citadel", name: "Acid Citadel",      pos: { x: -500, y: 400 },  zone: "venus3",   kind: "military",
+    description: "Fortified deep-atmosphere platform. Specialized war contracts available.", controlledBy: "crimson",
+    prices: { dread: 1.4, warp: 1.3, plasma: 1.5, medpack: 0.8, synth: 0.9, quantum: 1.2, "fuel-cell": 1.4, contraband: 0.65 } },
+  { id: "pressure-yard", name: "Pressure Yards",   pos: { x: 1000, y: 700 },  zone: "venus3",   kind: "trade",
+    description: "High-pressure fabrication yards building deep-atmosphere hulls.", controlledBy: "crimson",
+    prices: { iron: 1.4, scrap: 1.3, lumenite: 1.2, plasma: 1.1, dread: 0.9, nanite: 1.5, "fuel-cell": 1.2, luxury: 1.6 } },
+  // venus4
+  { id: "core-refuge",  name: "Core Refuge",       pos: { x: 0, y: -300 },    zone: "venus4",   kind: "outpost",
+    description: "Shielded station near the crushing core. Last refuge before the Eye.", controlledBy: "syndicate",
+    prices: { void: 0.6, dread: 1.2, quantum: 1.4, medpack: 1.3, synth: 1.2, contraband: 0.5, relic: 0.7, exotic: 0.8, food: 1.8 } },
+  { id: "pressure-port", name: "Pressure Point Port", pos: { x: 900, y: 600 }, zone: "venus4",  kind: "trade",
+    description: "Shadow market near the core. Extreme rarity items surface here.", controlledBy: "syndicate",
+    prices: { quantum: 0.5, void: 1.4, dread: 1.5, lumenite: 1.3, warp: 1.2, contraband: 0.4, luxury: 0.6, relic: 0.65, precursor: 0.7, exotic: 1.4 } },
+  // venus5
+  { id: "venus-bastion", name: "Venusian Bastion",  pos: { x: 0, y: 0 },      zone: "venus5",   kind: "military",
+    description: "The ultimate Venusian military fortress. Sells the rarest gear in the solar system.", controlledBy: "crimson",
+    prices: { dread: 2.0, warp: 1.9, plasma: 2.2, iron: 0.68, scrap: 0.75, lumenite: 1.1, quantum: 1.5 } },
+  { id: "eye-bazaar",   name: "Eye Bazaar",         pos: { x: -800, y: 900 }, zone: "venus5",   kind: "trade",
+    description: "Legendary trading post in the heart of Venus. Anything can be bought — at a price.", controlledBy: "syndicate",
+    prices: { iron: 0.5, scrap: 0.55, lumenite: 0.7, quantum: 0.8, void: 1.5, dread: 2.0, exotic: 0.65, relic: 0.7 } },
 ];
 
 export const PORTALS: Portal[] = [
@@ -1063,7 +1128,11 @@ export function moduleDef(idOrItem: string | ModuleItem): ModuleDef {
 }
 
 // ── DUNGEONS ──────────────────────────────────────────────────────────────
-export type DungeonId = "alpha-rift" | "nebula-rift" | "crimson-rift" | "void-rift" | "forge-rift" | "corona-rift" | "fracture-rift" | "abyss-rift";
+export type DungeonId =
+  | "alpha-rift" | "nebula-rift" | "crimson-rift" | "void-rift" | "forge-rift"
+  | "corona-rift" | "fracture-rift" | "abyss-rift"
+  | "marsdepth-rift" | "maelstrom-rift"
+  | "venus1-rift" | "venus2-rift" | "venus3-rift" | "venus4-rift" | "venus5-rift";
 
 export type DungeonDef = {
   id: DungeonId;
@@ -1164,6 +1233,78 @@ export const DUNGEONS: Record<DungeonId, DungeonDef> = {
     rewardModules: ["wp-singular", "wp-void-lance", "wp-hellfire", "gn-leviathan", "gn-phase-drive", "md-singularity", "md-voidframe"],
     rewardMaterials: [{ resourceId: "void", qty: 20 }, { resourceId: "dread", qty: 15 }, { resourceId: "quantum", qty: 18 }],
     color: "#ff5c6c", unlockLevel: 32,
+  },
+  // ── Mars deep dungeons ────────────────────────────────────────────────────
+  "marsdepth-rift": {
+    id: "marsdepth-rift", name: "The Deep Maw", zone: "marsdepth", pos: { x: -1200, y: 900 },
+    description: "Voidlings and Dreads haunt the Martian deep field. Ancient war machines guard a hidden reactor.",
+    enemyTypes: ["voidling", "dread"], enemyHpMul: 2.5, enemyDmgMul: 2.2,
+    waves: 5, enemiesPerWave: 7,
+    rewardCredits: 140000, rewardExp: 40000,
+    rewardModules: ["wp-void-lance", "wp-singular", "wp-hellfire", "wp-sniper", "gn-leviathan", "gn-phase-drive", "md-singularity", "md-voidframe", "md-targeter-2", "md-overclock"],
+    rewardMaterials: [{ resourceId: "void", qty: 12 }, { resourceId: "dread", qty: 8 }, { resourceId: "quantum", qty: 12 }],
+    color: "#ff6844", unlockLevel: 25,
+  },
+  "maelstrom-rift": {
+    id: "maelstrom-rift", name: "The Storm Crucible", zone: "maelstrom", pos: { x: 1100, y: -900 },
+    description: "Six brutal waves of Dreadnoughts churn through the Maelstrom's core. The hardest Mars content.",
+    enemyTypes: ["dread"], enemyHpMul: 3.2, enemyDmgMul: 2.8,
+    waves: 6, enemiesPerWave: 8,
+    rewardCredits: 250000, rewardExp: 70000,
+    rewardModules: ["wp-singular", "wp-void-lance", "wp-hellfire", "gn-leviathan", "gn-phase-drive", "md-singularity", "md-voidframe", "md-heavy-armor"],
+    rewardMaterials: [{ resourceId: "void", qty: 18 }, { resourceId: "dread", qty: 13 }, { resourceId: "quantum", qty: 16 }],
+    color: "#cc4488", unlockLevel: 33,
+  },
+  // ── Venus dungeons ────────────────────────────────────────────────────────
+  "venus1-rift": {
+    id: "venus1-rift", name: "Cloud Gate Anomaly", zone: "venus1", pos: { x: -1300, y: 1000 },
+    description: "Pirate crews nest in the upper cloud layers. A good first challenge for fresh Venusian pilots.",
+    enemyTypes: ["scout", "raider"], enemyHpMul: 1.4, enemyDmgMul: 1.2,
+    waves: 3, enemiesPerWave: 4,
+    rewardCredits: 1600, rewardExp: 420,
+    rewardModules: ["wp-pulse-2", "wp-pulse-3", "gn-core-2", "gn-sprint", "md-thrust-2", "md-cargo", "wp-rocket-1"],
+    rewardMaterials: [{ resourceId: "iron", qty: 6 }, { resourceId: "scrap", qty: 8 }],
+    color: "#c86cff", unlockLevel: 2,
+  },
+  "venus2-rift": {
+    id: "venus2-rift", name: "Sulphur Vortex", zone: "venus2", pos: { x: -1100, y: -700 },
+    description: "A raider fleet fortified inside a sulphur wind spiral. Drops rare plasma and exotic cargo.",
+    enemyTypes: ["raider", "destroyer"], enemyHpMul: 1.6, enemyDmgMul: 1.4,
+    waves: 4, enemiesPerWave: 5,
+    rewardCredits: 4800, rewardExp: 1300,
+    rewardModules: ["wp-plasma", "wp-phase", "wp-ion", "wp-rocket-2", "gn-aegis", "gn-fortify", "gn-hyper", "md-targeter", "md-plating", "md-scavenger", "md-afterburn", "md-overclock"],
+    rewardMaterials: [{ resourceId: "plasma", qty: 8 }, { resourceId: "warp", qty: 4 }, { resourceId: "lumenite", qty: 5 }],
+    color: "#dd88ff", unlockLevel: 7,
+  },
+  "venus3-rift": {
+    id: "venus3-rift", name: "Acidic Furnace", zone: "venus3", pos: { x: 1200, y: -800 },
+    description: "Dreads and destroyers lurk in the acidic deep layers. Epic-grade Venusian modules await.",
+    enemyTypes: ["destroyer", "dread"], enemyHpMul: 1.8, enemyDmgMul: 1.5,
+    waves: 4, enemiesPerWave: 5,
+    rewardCredits: 13000, rewardExp: 3500,
+    rewardModules: ["wp-solar", "wp-scatter", "wp-arc", "wp-torpedo", "gn-quantum", "gn-warp-drive", "md-overcharge", "md-plating", "md-heavy-armor", "md-shield-boost", "md-nano-rep"],
+    rewardMaterials: [{ resourceId: "dread", qty: 3 }, { resourceId: "warp", qty: 8 }, { resourceId: "quantum", qty: 4 }],
+    color: "#bb55ee", unlockLevel: 12,
+  },
+  "venus4-rift": {
+    id: "venus4-rift", name: "Pressure Core Maw", zone: "venus4", pos: { x: -900, y: 1100 },
+    description: "A rift near the crushing core spawns voidlings and Dreads. Legendary modules are your reward.",
+    enemyTypes: ["voidling", "dread"], enemyHpMul: 2.2, enemyDmgMul: 1.8,
+    waves: 5, enemiesPerWave: 6,
+    rewardCredits: 32000, rewardExp: 9000,
+    rewardModules: ["wp-singular", "wp-sniper", "wp-void-lance", "wp-hellfire", "md-voidframe", "md-singularity", "gn-quantum", "gn-phase-drive", "gn-leviathan", "wp-solar"],
+    rewardMaterials: [{ resourceId: "void", qty: 9 }, { resourceId: "dread", qty: 6 }, { resourceId: "quantum", qty: 9 }],
+    color: "#9933dd", unlockLevel: 20,
+  },
+  "venus5-rift": {
+    id: "venus5-rift", name: "The Eye Ascendant", zone: "venus5", pos: { x: -1200, y: -900 },
+    description: "Seven waves of Dreadnoughts circle the Eye of Venus singularity. The ultimate Venusian challenge.",
+    enemyTypes: ["dread"], enemyHpMul: 3.5, enemyDmgMul: 2.9,
+    waves: 7, enemiesPerWave: 8,
+    rewardCredits: 290000, rewardExp: 82000,
+    rewardModules: ["wp-singular", "wp-void-lance", "wp-hellfire", "gn-leviathan", "gn-phase-drive", "md-singularity", "md-voidframe"],
+    rewardMaterials: [{ resourceId: "void", qty: 20 }, { resourceId: "dread", qty: 14 }, { resourceId: "quantum", qty: 18 }],
+    color: "#7722cc", unlockLevel: 30,
   },
 };
 
