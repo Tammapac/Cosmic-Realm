@@ -936,7 +936,10 @@ function tickWorld(dt: number): void {
     }
   }
 
-  // ── Player auto-fire at nearest enemy (prefer boss if close)
+  playerFireCd.value -= dt;
+
+  // ── Update drones (mode-aware: orbit/forward/defensive)
+  const droneCount = p.drones.length;
   let nearest: Enemy | null = null;
   let nearestD = 600;
   for (const e of state.enemies) {
@@ -944,78 +947,6 @@ function tickWorld(dt: number): void {
     const adj = d * (e.isBoss ? 0.6 : 1);
     if (adj < nearestD) { nearest = e; nearestD = adj; }
   }
-  if (nearest && playerFireCd.value <= 0) {
-    const ang = Math.atan2(nearest.pos.y - p.pos.y, nearest.pos.x - p.pos.x);
-    const color = equippedWeaponColor();
-    const tierGuess = Math.min(8, Math.max(1, Math.round(stats.damage / 8)));
-    const isCrit = Math.random() < stats.critChance;
-    const dmg = stats.damage * (isCrit ? 2 : 1);
-    const isRocket = hasRocketWeapon();
-    if (isRocket) {
-      // Check if any rocket weapon has ammo (prioritize active type)
-      const rocketIds = getRocketWeaponIds();
-      let availableId: string | undefined;
-      let activeType = "standard" as import("./types").RocketAmmoType;
-      for (const id of rocketIds) {
-        const t = getActiveAmmoType(id);
-        let count = 0;
-        if (t === "standard") {
-          count = p.ammo[id] ?? 0;
-        } else {
-          count = p.ammoByType?.[id]?.[t] ?? 0;
-        }
-        if (count > 0) { availableId = id; activeType = t; break; }
-      }
-      if (availableId) {
-        const typeDef = ROCKET_AMMO_TYPE_DEFS[activeType];
-        // Consume ammo from correct pool
-        if (activeType === "standard") {
-          p.ammo[availableId] = Math.max(0, (p.ammo[availableId] ?? 0) - 1);
-        } else {
-          if (!p.ammoByType) p.ammoByType = {};
-          if (!p.ammoByType[availableId]) p.ammoByType[availableId] = {};
-          p.ammoByType[availableId][activeType] = Math.max(0, (p.ammoByType[availableId][activeType] ?? 0) - 1);
-        }
-        const typedDmg = dmg * typeDef.damageMul;
-        const spread = (Math.random() - 0.5) * 0.3;
-        fireProjectile("player", p.pos.x, p.pos.y, ang + spread, typedDmg, typeDef.color, 5, {
-          crit: isCrit,
-          aoeRadius: typeDef.hasAoe ? Math.max(stats.aoeRadius, 22) : undefined,
-          homing: true,
-          speedMul: 0.35,
-          empStun: typeDef.stunDuration > 0 ? typeDef.stunDuration : undefined,
-          armorPiercing: activeType === "armor-piercing" ? true : undefined,
-        });
-        // Warn when ammo is low
-        const remaining = activeType === "standard"
-          ? p.ammo[availableId]
-          : (p.ammoByType?.[availableId]?.[activeType] ?? 0);
-        if (remaining === 5) {
-          pushNotification(`⚠ ${typeDef.shortName} ammo low!`, "bad");
-        } else if (remaining === 0) {
-          pushNotification(`${typeDef.shortName} ammo depleted! Dock to restock.`, "bad");
-        }
-      } else {
-        // No ammo — fall back to laser shot
-        const size = tierGuess >= 6 ? 4 : 3;
-        fireProjectile("player", p.pos.x, p.pos.y, ang, dmg * 0.6, "#4ee2ff", size, {
-          crit: isCrit,
-        });
-      }
-    } else {
-      const size = tierGuess >= 6 ? 4 : 3;
-      fireProjectile("player", p.pos.x, p.pos.y, ang, dmg, color, size, {
-        crit: isCrit, aoeRadius: stats.aoeRadius > 0 ? stats.aoeRadius : undefined,
-      });
-    }
-    sfx.shoot(tierGuess);
-    if (isCrit) sfx.crit();
-    playerFireCd.value = isRocket ? 3 : Math.max(0.10, 0.45 / stats.fireRate);
-  }
-  playerFireCd.value -= dt;
-
-  // ── Update drones (mode-aware: orbit/forward/defensive)
-  const droneCount = p.drones.length;
   for (let i = 0; i < droneCount; i++) {
     const d = p.drones[i];
     const def = DRONE_DEFS[d.kind];
