@@ -148,6 +148,10 @@ export function effectiveStats(): {
 }
 
 export function queueAttackTarget(enemyId: string): void {
+  // Gate: only accept when weapon is off cooldown.
+  // Prevents double-clicks, keyboard repeat, or any other repeated triggers
+  // from causing more than one shot per cooldown window.
+  if (playerFireCd.value > 0) return;
   queuedAttackTargetId = enemyId;
 }
 
