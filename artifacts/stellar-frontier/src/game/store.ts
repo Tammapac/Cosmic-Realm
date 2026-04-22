@@ -49,6 +49,12 @@ import { sfx } from "./sound";
 export type HangarTab =
   | "bounties" | "loadout" | "ships" | "drones" | "market" | "cargo" | "repair" | "skills" | "missions" | "dungeons";
 
+export type DockServiceEntry = {
+  kind: "repair" | "shield" | "ammo" | "failed";
+  label: string;
+  cost: number;
+};
+
 export type GameState = {
   player: Player;
   enemies: Enemy[];
@@ -85,6 +91,7 @@ export type GameState = {
   hotbarCooldowns: number[];     // 8 slots, remaining cooldown seconds
   pendingRocketSalvo: number;    // rockets left to fire this tick
   pendingDronePod: boolean;      // spawn a temp combat drone
+  dockingSummary: DockServiceEntry[] | null; // null = not showing
 };
 
 const STORAGE_KEY = "stellar-frontier-save-v5";
@@ -394,6 +401,7 @@ export const state: GameState = {
   hotbarCooldowns: [0, 0, 0, 0, 0, 0, 0, 0],
   pendingRocketSalvo: 0,
   pendingDronePod: false,
+  dockingSummary: null,
 };
 
 const listeners = new Set<() => void>();
@@ -710,29 +718,32 @@ export function setAutoShieldRecharge(enabled: boolean): void {
   save(); bump();
 }
 
-export function autoRepairIfEnabled(hullMax: number): void {
+export function autoRepairIfEnabled(hullMax: number, collect?: DockServiceEntry[]): void {
   const p = state.player;
   if (!p.autoRepairHull) return;
   const hullDamage = hullMax - p.hull;
   if (hullDamage <= 0) return;
   const cost = Math.ceil(hullDamage * 2);
   if (p.credits < cost) {
-    pushNotification(`Auto-Repair: need ${cost}cr to repair hull`, "bad");
+    if (collect) collect.push({ kind: "failed", label: `Hull repair — insufficient credits (need ${cost}cr)`, cost: 0 });
+    else pushNotification(`Auto-Repair: need ${cost}cr to repair hull`, "bad");
     return;
   }
   p.credits -= cost;
   p.hull = hullMax;
   bumpMission("spend-credits", cost);
-  pushNotification(`Auto-Repair: hull restored · -${cost}cr`, "good");
+  if (collect) collect.push({ kind: "repair", label: "Hull repaired to full", cost });
+  else pushNotification(`Auto-Repair: hull restored · -${cost}cr`, "good");
   save(); bump();
 }
 
-export function autoShieldIfEnabled(shieldMax: number): void {
+export function autoShieldIfEnabled(shieldMax: number, collect?: DockServiceEntry[]): void {
   const p = state.player;
   if (!p.autoShieldRecharge) return;
   if (p.shield >= shieldMax) return;
   p.shield = shieldMax;
-  pushNotification("Auto-Shield: shields recharged", "good");
+  if (collect) collect.push({ kind: "shield", label: "Shields recharged to full", cost: 0 });
+  else pushNotification("Auto-Shield: shields recharged", "good");
   save(); bump();
 }
 
@@ -796,7 +807,7 @@ export function purchaseTypedAmmo(weaponId: string, type: RocketAmmoType): void 
   save(); bump();
 }
 
-export function autoRestockIfEnabled(): void {
+export function autoRestockIfEnabled(collect?: DockServiceEntry[]): void {
   const p = state.player;
   if (!p.autoRestock) return;
   const rocketIds = getRocketWeaponIds();
@@ -810,14 +821,28 @@ export function autoRestockIfEnabled(): void {
   if (totalMissing === 0) return;
   const cost = totalMissing * ROCKET_AMMO_COST_PER;
   if (p.credits < cost) {
-    pushNotification(`Auto-Restock: need ${cost}cr to restock ammo`, "bad");
+    if (collect) collect.push({ kind: "failed", label: `Ammo restock — insufficient credits (need ${cost}cr)`, cost: 0 });
+    else pushNotification(`Auto-Restock: need ${cost}cr to restock ammo`, "bad");
     return;
   }
   p.credits -= cost;
   for (const id of rocketIds) p.ammo[id] = max;
   bumpMission("spend-credits", cost);
-  pushNotification(`Auto-Restock: ammo topped up · -${cost}cr`, "good");
+  if (collect) collect.push({ kind: "ammo", label: `Rocket ammo restocked (${totalMissing} rounds)`, cost });
+  else pushNotification(`Auto-Restock: ammo topped up · -${cost}cr`, "good");
   save(); bump();
+}
+
+export function runDockingServices(hullMax: number, shieldMax: number): void {
+  state.dockingSummary = null;
+  const entries: DockServiceEntry[] = [];
+  autoRestockIfEnabled(entries);
+  autoRepairIfEnabled(hullMax, entries);
+  autoShieldIfEnabled(shieldMax, entries);
+  if (entries.length > 0) {
+    state.dockingSummary = entries;
+    bump();
+  }
 }
 
 // ── FACTIONS ──────────────────────────────────────────────────────────────

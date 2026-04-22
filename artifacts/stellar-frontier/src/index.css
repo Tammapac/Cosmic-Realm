@@ -60,6 +60,11 @@ button {
   50% { opacity: 0.4; }
 }
 
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateX(-50%) translateY(-12px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
 .panel {
   background: var(--bg-panel);
   border: 1px solid var(--border-glow);

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { state, bump, useGame, save, pushNotification, abandonDungeon, useConsumable, getRocketWeaponIds, rocketAmmoMax, autoRestockIfEnabled, autoRepairIfEnabled, autoShieldIfEnabled, getActiveAmmoType, switchRocketAmmoType } from "./game/store";
+import { state, bump, useGame, save, pushNotification, abandonDungeon, useConsumable, getRocketWeaponIds, rocketAmmoMax, getActiveAmmoType, switchRocketAmmoType, runDockingServices } from "./game/store";
 import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats } from "./game/loop";
 import { render } from "./game/render";
 import { TopBar } from "./components/TopBar";
@@ -159,9 +159,7 @@ function DockPrompt() {
             pushNotification(`Docking with ${station.name}`, "good");
             save(); bump();
             const stats = effectiveStats();
-            autoRestockIfEnabled();
-            autoRepairIfEnabled(stats.hullMax);
-            autoShieldIfEnabled(stats.shieldMax);
+            runDockingServices(stats.hullMax, stats.shieldMax);
           }}
         >
           [SPACE] DOCK AT {station.name.toUpperCase()}
@@ -277,6 +275,76 @@ function Title() {
   );
 }
 
+function DockingSummary() {
+  const summary = useGame((s) => s.dockingSummary);
+
+  useEffect(() => {
+    if (!summary) return;
+    const dismiss = () => { state.dockingSummary = null; bump(); };
+    const timer = setTimeout(dismiss, 6000);
+    document.addEventListener("click", dismiss, { once: true });
+    return () => { clearTimeout(timer); document.removeEventListener("click", dismiss); };
+  }, [summary]);
+
+  if (!summary) return null;
+
+  const totalCost = summary.reduce((acc, e) => acc + e.cost, 0);
+  const iconFor = (kind: string) => {
+    if (kind === "repair") return "⬡";
+    if (kind === "shield") return "◈";
+    if (kind === "ammo") return "▸";
+    return "✕";
+  };
+  const colorFor = (kind: string) => {
+    if (kind === "repair") return "#4ade80";
+    if (kind === "shield") return "#60a5fa";
+    if (kind === "ammo") return "#facc15";
+    return "#f87171";
+  };
+
+  return (
+    <div
+      className="absolute top-16 left-1/2 -translate-x-1/2 z-50"
+      style={{ animation: "fadeInDown 0.3s ease" }}
+    >
+      <div
+        className="rounded border px-5 py-4 cursor-pointer select-none"
+        style={{
+          background: "rgba(2,6,20,0.92)",
+          borderColor: "#1e3a5f",
+          boxShadow: "0 0 24px rgba(0,180,255,0.15)",
+          minWidth: 260,
+        }}
+      >
+        <div className="text-cyan text-[11px] tracking-[0.25em] font-bold mb-3">◉ DOCKING REPORT</div>
+        <div className="flex flex-col gap-2">
+          {summary.map((entry, i) => (
+            <div key={i} className="flex items-center justify-between gap-4 text-[12px]">
+              <div className="flex items-center gap-2">
+                <span style={{ color: colorFor(entry.kind) }}>{iconFor(entry.kind)}</span>
+                <span style={{ color: entry.kind === "failed" ? "#f87171" : "#c8d8f0" }}>{entry.label}</span>
+              </div>
+              {entry.cost > 0 && (
+                <span style={{ color: "#facc15" }} className="shrink-0">-{entry.cost}cr</span>
+              )}
+            </div>
+          ))}
+        </div>
+        {totalCost > 0 && (
+          <>
+            <div className="border-t mt-3 mb-2" style={{ borderColor: "#1e3a5f" }} />
+            <div className="flex justify-between text-[12px]">
+              <span style={{ color: "#7a9cbf" }}>Total spent</span>
+              <span style={{ color: "#facc15" }}>-{totalCost}cr</span>
+            </div>
+          </>
+        )}
+        <div className="text-[9px] tracking-widest mt-3" style={{ color: "#3a5a7a" }}>CLICK TO DISMISS</div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   // Keyboard shortcuts
   useEffect(() => {
@@ -292,9 +360,7 @@ export default function App() {
           pushNotification("Docking...", "good");
           save(); bump();
           const stats = effectiveStats();
-          autoRestockIfEnabled();
-          autoRepairIfEnabled(stats.hullMax);
-          autoShieldIfEnabled(stats.shieldMax);
+          runDockingServices(stats.hullMax, stats.shieldMax);
         }
       } else if (e.key === "m" || e.key === "M") {
         state.showMap = !state.showMap; bump();
@@ -341,6 +407,7 @@ export default function App() {
       <EventBanners />
       <Title />
       {docked && <Hangar stationId={docked} />}
+      <DockingSummary />
       <Hotbar />
       <IdleRewardModal />
       <FactionPicker />
