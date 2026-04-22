@@ -249,6 +249,8 @@ export type Player = {
   autoRestock: boolean;              // auto-restock rockets on docking
   rocketAmmoType: Record<string, RocketAmmoType>; // instanceId → active ammo type per weapon
   ammoByType: Record<string, Partial<Record<RocketAmmoType, number>>>; // instanceId → type → count (AP & EMP)
+  dungeonClears: Partial<Record<DungeonId, number>>;     // how many times each dungeon has been cleared
+  dungeonBestTimes: Partial<Record<DungeonId, number>>;  // fastest clear time in ms per dungeon
 };
 
 // ── FACTIONS ─────────────────────────────────────────────────────────────

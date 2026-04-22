@@ -547,6 +547,13 @@ function LoadoutTab({ stationId }: { stationId: string }) {
 }
 
 // ── DUNGEONS ──────────────────────────────────────────────────────────────
+function fmtClearTime(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return m > 0 ? `${m}m ${s.toString().padStart(2, "0")}s` : `${s}s`;
+}
+
 function DungeonsTab() {
   const player = useGame((s) => s.player);
   const dungeon = useGame((s) => s.dungeon);
@@ -566,6 +573,8 @@ function DungeonsTab() {
       <div className="grid grid-cols-2 gap-2">
         {list.map((d) => {
           const locked = player.level < d.unlockLevel;
+          const clears = player.dungeonClears?.[d.id] ?? 0;
+          const bestMs = player.dungeonBestTimes?.[d.id];
           return (
             <div key={d.id} className="panel p-2.5" style={{ borderColor: d.color }}>
               <div className="flex items-center justify-between">
@@ -581,6 +590,14 @@ function DungeonsTab() {
               <div className="text-[9px] text-amber mt-1">+{d.rewardCredits.toLocaleString()}cr · +{d.rewardExp}xp · 1 module</div>
               <div className="text-[9px] text-mute mt-0.5">
                 Materials: {d.rewardMaterials.map((m) => `${m.qty}× ${RESOURCES[m.resourceId].name}`).join(" · ")}
+              </div>
+              <div className="flex items-center gap-2 mt-1.5">
+                <div className="text-[9px]" style={{ color: clears > 0 ? "#5cff8a" : "#555" }}>
+                  ✓ {clears === 0 ? "Never cleared" : `${clears}× cleared`}
+                </div>
+                {bestMs !== undefined && (
+                  <div className="text-[9px] text-amber">⏱ {fmtClearTime(bestMs)}</div>
+                )}
               </div>
               <button
                 className="btn btn-primary w-full mt-2"

@@ -163,6 +163,8 @@ function makeInitialPlayer(): Player {
     autoRestock: false,
     rocketAmmoType: {},
     ammoByType: {},
+    dungeonClears: {},
+    dungeonBestTimes: {},
   };
 }
 
@@ -260,6 +262,8 @@ initialPlayer.lastSeen = Date.now();
 if (initialPlayer.faction !== "aurora" && initialPlayer.faction !== "crimson" && initialPlayer.faction !== "syndicate") {
   initialPlayer.faction = null;
 }
+if (!initialPlayer.dungeonClears || typeof initialPlayer.dungeonClears !== "object") initialPlayer.dungeonClears = {};
+if (!initialPlayer.dungeonBestTimes || typeof initialPlayer.dungeonBestTimes !== "object") initialPlayer.dungeonBestTimes = {};
 
 // ── Module/equip migration: ensure inventory + equipped exist ─────────────
 function reconcileEquippedToShip(p: Player): void {
@@ -444,6 +448,8 @@ export function save(): void {
       autoRestock: p.autoRestock,
       rocketAmmoType: p.rocketAmmoType,
       ammoByType: p.ammoByType,
+      dungeonClears: p.dungeonClears,
+      dungeonBestTimes: p.dungeonBestTimes,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
   } catch {
@@ -973,9 +979,16 @@ export function completeDungeon(): void {
   const run = state.dungeon;
   if (!run) return;
   const def = DUNGEONS[run.id];
+  // Track completion history and best clear time
+  const p = state.player;
+  p.dungeonClears[run.id] = (p.dungeonClears[run.id] ?? 0) + 1;
+  const elapsed = Date.now() - run.startedAt;
+  const prevBest = p.dungeonBestTimes[run.id];
+  if (prevBest === undefined || elapsed < prevBest) {
+    p.dungeonBestTimes[run.id] = elapsed;
+  }
   state.dungeon = null;
   // Rewards
-  const p = state.player;
   p.credits += def.rewardCredits;
   p.exp += def.rewardExp;
   p.milestones.totalCreditsEarned += def.rewardCredits;
