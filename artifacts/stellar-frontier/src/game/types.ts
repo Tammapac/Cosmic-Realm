@@ -585,25 +585,25 @@ export const ZONES: Record<ZoneId, Zone> = {
     id: "nebula", name: "Veil Nebula", label: "1-2", faction: "earth",
     bgHueA: "#3a0a4a", bgHueB: "#0a0220", enemyTier: 2,
     enemyTypes: ["raider", "destroyer"],
-    description: "Glowing dust clouds hide raider strongholds.", unlockLevel: 4,
+    description: "Glowing dust clouds hide raider strongholds.", unlockLevel: 8,
   },
   crimson: {
     id: "crimson", name: "Crimson Reach", label: "1-3", faction: "earth",
     bgHueA: "#4a0a18", bgHueB: "#1a0208", enemyTier: 3,
     enemyTypes: ["destroyer", "dread"],
-    description: "Blood-red expanse. Destroyers hunt in packs.", unlockLevel: 8,
+    description: "Blood-red expanse. Destroyers hunt in packs.", unlockLevel: 16,
   },
   void: {
     id: "void", name: "The Void", label: "1-4", faction: "earth",
     bgHueA: "#001a1a", bgHueB: "#000508", enemyTier: 4,
     enemyTypes: ["voidling", "dread"],
-    description: "An empty stretch where reality bends. Voidlings dwell here.", unlockLevel: 12,
+    description: "An empty stretch where reality bends. Voidlings dwell here.", unlockLevel: 24,
   },
   forge: {
     id: "forge", name: "Iron Forge", label: "1-5", faction: "earth",
     bgHueA: "#3a2210", bgHueB: "#1a0c04", enemyTier: 5,
-    enemyTypes: ["destroyer", "dread"],
-    description: "Industrial hellscape. Ancient automated warships guard the furnaces.", unlockLevel: 16,
+    enemyTypes: ["dread"],
+    description: "Industrial hellscape. Only Dreadnoughts remain here.", unlockLevel: 32,
   },
   // ── MARS FACTION (2-1 → 2-5) ─────────────────────────────────────────────
   corona: {
@@ -616,25 +616,25 @@ export const ZONES: Record<ZoneId, Zone> = {
     id: "fracture", name: "Dust Expanse", label: "2-2", faction: "mars",
     bgHueA: "#4a1a0a", bgHueB: "#1e0804", enemyTier: 2,
     enemyTypes: ["raider", "destroyer"],
-    description: "Swirling iron dust storms hide outlaw strongholds.", unlockLevel: 4,
+    description: "Swirling iron dust storms hide outlaw strongholds.", unlockLevel: 8,
   },
   abyss: {
     id: "abyss", name: "Red Reaches", label: "2-3", faction: "mars",
     bgHueA: "#5a0a0a", bgHueB: "#220404", enemyTier: 3,
     enemyTypes: ["destroyer", "dread"],
-    description: "Combat-torn Martian space. Destroyer fleets fight for control.", unlockLevel: 8,
+    description: "Combat-torn Martian space. Destroyer fleets fight for control.", unlockLevel: 16,
   },
   marsdepth: {
     id: "marsdepth", name: "Mars Deep Field", label: "2-4", faction: "mars",
     bgHueA: "#400010", bgHueB: "#180006", enemyTier: 4,
     enemyTypes: ["voidling", "dread"],
-    description: "The deep unknown of Martian space. Void entities breach the hull lines.", unlockLevel: 12,
+    description: "The deep unknown of Martian space. Void entities breach the hull lines.", unlockLevel: 24,
   },
   maelstrom: {
     id: "maelstrom", name: "The Maelstrom", label: "2-5", faction: "mars",
     bgHueA: "#2a0020", bgHueB: "#0e0008", enemyTier: 5,
     enemyTypes: ["dread"],
-    description: "A perpetual storm of wreckage and dread. The ultimate Martian challenge.", unlockLevel: 16,
+    description: "A perpetual storm of wreckage and dread. The ultimate Martian challenge.", unlockLevel: 32,
   },
   // ── VENUS FACTION (3-1 → 3-5) ────────────────────────────────────────────
   venus1: {
@@ -647,25 +647,25 @@ export const ZONES: Record<ZoneId, Zone> = {
     id: "venus2", name: "Sulphur Winds", label: "3-2", faction: "venus",
     bgHueA: "#3a2800", bgHueB: "#160e00", enemyTier: 2,
     enemyTypes: ["raider", "destroyer"],
-    description: "Corrosive winds and raider fleets adapted to Venus's brutal atmosphere.", unlockLevel: 4,
+    description: "Corrosive winds and raider fleets adapted to Venus's brutal atmosphere.", unlockLevel: 8,
   },
   venus3: {
     id: "venus3", name: "Acidic Deep", label: "3-3", faction: "venus",
     bgHueA: "#400a30", bgHueB: "#1a0418", enemyTier: 3,
     enemyTypes: ["destroyer", "dread"],
-    description: "The pressure increases. Heavy destroyer fleets guard Venusian secrets.", unlockLevel: 8,
+    description: "The pressure increases. Heavy destroyer fleets guard Venusian secrets.", unlockLevel: 16,
   },
   venus4: {
     id: "venus4", name: "Pressure Core", label: "3-4", faction: "venus",
     bgHueA: "#2a003a", bgHueB: "#0e0018", enemyTier: 4,
     enemyTypes: ["voidling", "dread"],
-    description: "Near the crushing core of Venus. Reality warps under immense force.", unlockLevel: 12,
+    description: "Near the crushing core of Venus. Reality warps under immense force.", unlockLevel: 24,
   },
   venus5: {
     id: "venus5", name: "Eye of Venus", label: "3-5", faction: "venus",
     bgHueA: "#1a0030", bgHueB: "#080010", enemyTier: 5,
     enemyTypes: ["dread"],
-    description: "The heart of Venusian mystery. Legendary endgame territory.", unlockLevel: 16,
+    description: "The heart of Venusian mystery. Legendary endgame territory.", unlockLevel: 32,
   },
 };
 
@@ -938,8 +938,11 @@ export const PORTALS: Portal[] = [
   { id: "p-v3-v2",  pos: { x: 1500, y: -1300 },  fromZone: "venus3", toZone: "venus2" },
   { id: "p-v3-v4",  pos: { x: -1700, y: -1500 }, fromZone: "venus3", toZone: "venus4" },
   { id: "p-v4-v3",  pos: { x: 1600, y: 1400 },   fromZone: "venus4", toZone: "venus3" },
-  { id: "p-v4-v5",  pos: { x: -1500, y: 1500 },  fromZone: "venus4", toZone: "venus5" },
-  { id: "p-v5-v4",  pos: { x: 1400, y: -1500 },  fromZone: "venus5", toZone: "venus4" },
+  { id: "p-v4-v5",  pos: { x: -1500, y: 1500 },  fromZone: "venus4",    toZone: "venus5"    },
+  { id: "p-v5-v4",  pos: { x: 1400, y: -1500 },  fromZone: "venus5",    toZone: "venus4"    },
+  // Cross-faction bridge: Mars endgame ↔ Venus entry
+  { id: "p-ml-v1",  pos: { x: -1800, y: 600 },   fromZone: "maelstrom", toZone: "venus1"    },
+  { id: "p-v1-ml",  pos: { x: 1700, y: -700 },   fromZone: "venus1",    toZone: "maelstrom" },
 ];
 
 export const MAP_RADIUS = 2400;
