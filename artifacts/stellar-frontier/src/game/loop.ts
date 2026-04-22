@@ -1248,6 +1248,7 @@ function destroyAsteroid(id: string): void {
   if (!a) return;
   emitSpark(a.pos.x, a.pos.y, "#c69060", 16, 120, 3);
   emitSpark(a.pos.x, a.pos.y, "#7a5028", 8, 80, 2);
+  emitDeath(a.pos.x, a.pos.y, a.yields === "lumenite" ? "#80b0b0" : "#c0a070", false);
   sfx.explosion();
   const qty = 2 + Math.floor(Math.random() * 3);
   const got = addCargo(a.yields, qty);
