@@ -55,7 +55,6 @@ function GameCanvas() {
     const wx = state.player.pos.x + (cx - rect.width / 2);
     const wy = state.player.pos.y + (cy - rect.height / 2);
     state.cameraTarget = { x: wx, y: wy };
-    state.selectedWorldTarget = null;
 
     // Pull toward nearest station if clicked nearby
     for (const s of STATIONS) {
@@ -82,6 +81,10 @@ function GameCanvas() {
 
     const asteroid = state.asteroids.find((a) => a.zone === state.player.zone && Math.hypot(a.pos.x - wx, a.pos.y - wy) < a.size + 10);
     if (asteroid) {
+      if (state.selectedWorldTarget?.kind === "enemy") {
+        bump();
+        return;
+      }
       state.selectedWorldTarget = {
         kind: "asteroid",
         id: asteroid.id,
@@ -93,10 +96,7 @@ function GameCanvas() {
       return;
     }
 
-    if (state.selectedWorldTarget?.kind === "enemy") {
-      bump();
-      return;
-    }
+    if (state.selectedWorldTarget?.kind === "enemy") return;
     bump();
   };
 
