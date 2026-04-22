@@ -1102,20 +1102,22 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
     ctx.arc(p.pos.x, p.pos.y, 22, 0, Math.PI * 2);
     ctx.stroke();
   }
-  drawShip(ctx, p.pos.x, p.pos.y, p.angle, p.shipClass, 1, true);
-  // mini hull/shield bars over player ship
-  const cls = SHIP_CLASSES[p.shipClass];
-  // include drone bonuses
-  let hullMax = cls.hullMax, shieldMax = cls.shieldMax;
-  for (const dr of p.drones) {
-    hullMax += DRONE_DEFS[dr.kind].hullBonus;
-    shieldMax += DRONE_DEFS[dr.kind].shieldBonus;
+  if (state.playerRespawnTimer <= 0) {
+    drawShip(ctx, p.pos.x, p.pos.y, p.angle, p.shipClass, 1, true);
+    // mini hull/shield bars over player ship
+    const cls = SHIP_CLASSES[p.shipClass];
+    // include drone bonuses
+    let hullMax = cls.hullMax, shieldMax = cls.shieldMax;
+    for (const dr of p.drones) {
+      hullMax += DRONE_DEFS[dr.kind].hullBonus;
+      shieldMax += DRONE_DEFS[dr.kind].shieldBonus;
+    }
+    drawHullShieldBars(
+      ctx, p.pos.x, p.pos.y - 26,
+      Math.max(0, p.hull / hullMax),
+      Math.max(0, p.shield / shieldMax),
+    );
   }
-  drawHullShieldBars(
-    ctx, p.pos.x, p.pos.y - 26,
-    Math.max(0, p.hull / hullMax),
-    Math.max(0, p.shield / shieldMax),
-  );
 
   // Move target indicator
   const dx = state.cameraTarget.x - p.pos.x;
@@ -1156,6 +1158,29 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
   for (const f of state.floaters) drawFloater(ctx, f);
 
   ctx.restore();
+
+  // ── Player death flash overlay (screen space) ───────────────────────
+  if (state.playerDeathFlash > 0) {
+    const t = state.playerDeathFlash / 0.6;
+    ctx.save();
+    ctx.globalAlpha = t * 0.72;
+    ctx.fillStyle = "#000000";
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalAlpha = t * 0.55;
+    ctx.fillStyle = "#ff1a1a";
+    ctx.fillRect(0, 0, w, h);
+    if (t > 0.5) {
+      ctx.globalAlpha = (t - 0.5) * 2 * t;
+      ctx.fillStyle = `rgba(255, 80, 30, ${(t - 0.5) * 2})`;
+      ctx.font = `bold 42px 'Courier New', monospace`;
+      ctx.textAlign = "center";
+      ctx.shadowColor = "#ff3300";
+      ctx.shadowBlur = 40;
+      ctx.fillStyle = `rgba(255, 255, 255, ${(t - 0.5) * 2 * 0.9})`;
+      ctx.fillText("SHIP DESTROYED", w / 2, h / 2);
+    }
+    ctx.restore();
+  }
 
   // ── Level-up flourish overlay (screen space) ────────────────────────
   if (state.levelUpFlash > 0) {

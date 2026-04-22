@@ -81,6 +81,8 @@ export type GameState = {
   tick: number;
   recentHonor: { id: string; amount: number; ttl: number }[];
   levelUpFlash: number;          // seconds remaining of level-up overlay
+  playerDeathFlash: number;      // seconds remaining of death screen overlay
+  playerRespawnTimer: number;    // >0 = ship destroyed, awaiting respawn; 0 = alive
   bossSpawnTimer: number;        // countdown to next boss event
   pendingIdleReward: { credits: number; exp: number; secondsAway: number } | null;
   dungeon: DungeonRun | null;
@@ -392,6 +394,8 @@ export const state: GameState = {
   tick: 0,
   recentHonor: [],
   levelUpFlash: 0,
+  playerDeathFlash: 0,
+  playerRespawnTimer: 0,
   bossSpawnTimer: 240, // first boss event ~4 minutes in
   pendingIdleReward,
   dungeon: null,

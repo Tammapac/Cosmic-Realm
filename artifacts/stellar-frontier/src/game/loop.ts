@@ -632,20 +632,16 @@ function damagePlayer(amount: number): void {
     emitSpark(p.pos.x, p.pos.y, "#ff5c6c", 6, 70, 2);
     sfx.hit();
     state.cameraShake = Math.max(state.cameraShake, 0.15);
-    if (p.hull <= 0) {
-      const stats2 = effectiveStats();
-      p.hull = stats2.hullMax;
-      p.shield = stats2.shieldMax;
-      const lostCr = Math.floor(p.credits * 0.1);
-      p.credits = Math.max(0, p.credits - lostCr);
-      p.pos = { x: 0, y: 80 };
+    if (p.hull <= 0 && state.playerRespawnTimer <= 0) {
+      const deathX = p.pos.x;
+      const deathY = p.pos.y;
+      const shipColor = SHIP_CLASSES[p.shipClass].color;
+      emitDeath(deathX, deathY, shipColor, true);
+      state.playerDeathFlash = 0.6;
+      state.playerRespawnTimer = 0.5;
+      p.hull = 1;
       p.vel = { x: 0, y: 0 };
-      state.cameraTarget = { ...p.pos };
-      state.enemies = [];
       state.player.milestones.totalDeaths++;
-      bossActive = false;
-      pushNotification(`Ship destroyed. -${lostCr}cr. Respawned.`, "bad");
-      pushChat("system", "SYSTEM", `Your ship was destroyed. -${lostCr} credits.`);
       sfx.explosion(true);
       state.cameraShake = 1;
     }
@@ -688,7 +684,42 @@ const playerFireCd = { value: 0 };
 function tickWorld(dt: number): void {
   state.tick += dt;
   if (state.levelUpFlash > 0) state.levelUpFlash = Math.max(0, state.levelUpFlash - dt);
+  if (state.playerDeathFlash > 0) state.playerDeathFlash = Math.max(0, state.playerDeathFlash - dt);
   if (state.cameraShake > 0) state.cameraShake = Math.max(0, state.cameraShake - dt * 1.6);
+
+  // ── Respawn timer: fire actual respawn logic after explosion delay ────
+  if (state.playerRespawnTimer > 0) {
+    state.playerRespawnTimer -= dt;
+    if (state.playerRespawnTimer <= 0) {
+      state.playerRespawnTimer = 0;
+      const p2 = state.player;
+      const stats2 = effectiveStats();
+      p2.hull = stats2.hullMax;
+      p2.shield = stats2.shieldMax;
+      const lostCr = Math.floor(p2.credits * 0.1);
+      p2.credits = Math.max(0, p2.credits - lostCr);
+      p2.pos = { x: 0, y: 80 };
+      p2.vel = { x: 0, y: 0 };
+      state.cameraTarget = { ...p2.pos };
+      state.enemies = [];
+      bossActive = false;
+      pushNotification(`Ship destroyed. -${lostCr}cr. Respawned.`, "bad");
+      pushChat("system", "SYSTEM", `Your ship was destroyed. -${lostCr} credits.`);
+    }
+    // Keep VFX alive during the death window so explosion particles animate
+    for (const pa of state.particles) {
+      pa.pos.x += pa.vel.x * dt; pa.pos.y += pa.vel.y * dt;
+      pa.vel.x *= 0.95; pa.vel.y *= 0.95;
+      if (pa.rotVel !== undefined && pa.rot !== undefined) pa.rot += pa.rotVel * dt;
+      pa.ttl -= dt;
+    }
+    state.particles = state.particles.filter((pa) => pa.ttl > 0);
+    for (const f of state.floaters) { f.pos.y += f.vy * dt; f.vy *= 0.96; f.ttl -= dt; }
+    state.floaters = state.floaters.filter((f) => f.ttl > 0);
+    for (const ev of state.events) ev.ttl -= dt;
+    state.events = state.events.filter((ev) => ev.ttl > 0);
+    return; // skip combat/movement/AI while awaiting respawn
+  }
   tickHotbarCooldowns(dt);
   const p = state.player;
   const stats = effectiveStats();
