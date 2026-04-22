@@ -105,8 +105,9 @@ function BountiesTab() {
       const z = ZONES[q.zone as keyof typeof ZONES];
       return z && z.faction !== currentFaction && z.unlockLevel <= player.level && !player.completedQuests.includes(q.id);
     }),
+    // Using join as dependency so memo invalidates on any quest completion change
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [currentFaction, player.level, player.completedQuests.length]
+    [currentFaction, player.level, player.completedQuests.join(",")]
   );
 
   const crossByFaction = useMemo(() =>
