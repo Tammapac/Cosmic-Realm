@@ -1,4 +1,4 @@
-import { state, bump, useGame, pushNotification, save, stationPrice, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, rocketAmmoMax, getRocketWeaponIds, ensureAmmoInitialized, setAutoRestock, getActiveAmmoType, switchRocketAmmoType, purchaseTypedAmmo, getAmmoCountForType, ROCKET_AMMO_COST_PER } from "../game/store";
+import { state, bump, useGame, pushNotification, save, stationPrice, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, rocketAmmoMax, getRocketWeaponIds, ensureAmmoInitialized, setAutoRestock, setAutoRepairHull, setAutoShieldRecharge, getActiveAmmoType, switchRocketAmmoType, purchaseTypedAmmo, getAmmoCountForType, ROCKET_AMMO_COST_PER } from "../game/store";
 import {
   ActiveQuest, CONSUMABLE_DEFS, ConsumableId, DAILY_DUNGEON_BONUS, DRONE_DEFS, DroneKind, DroneMode, DUNGEONS, DungeonId, FACTIONS, MODULE_DEFS, ModuleDef, ModuleSlot, ModuleStats, RARITY_COLOR,
   Quest, RESOURCES, ResourceId, ROCKET_AMMO_TYPE_DEFS, RocketAmmoType, SHIP_CLASSES, SKILL_NODES, STATIONS, ShipClassId, SkillBranch,
@@ -1381,6 +1381,52 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
           onClick={() => setAutoRestock(!player.autoRestock)}
         >
           {player.autoRestock ? "ON" : "OFF"}
+        </button>
+      </div>
+
+      <div className="panel p-4 flex items-center gap-4">
+        <div className="text-3xl text-green">⚙</div>
+        <div className="flex-1">
+          <div className="text-green font-bold tracking-widest">AUTO-REPAIR HULL</div>
+          <div className="text-dim text-[11px]">
+            Automatically repair hull damage when docking, if you have enough credits (2cr/HP).
+          </div>
+        </div>
+        <button
+          className="btn"
+          style={{
+            padding: "6px 18px",
+            borderColor: player.autoRepairHull ? "#5cff8a" : "rgba(255,255,255,0.15)",
+            color: player.autoRepairHull ? "#5cff8a" : "#888",
+            background: player.autoRepairHull ? "rgba(92,255,138,0.12)" : "transparent",
+            minWidth: 64,
+          }}
+          onClick={() => setAutoRepairHull(!player.autoRepairHull)}
+        >
+          {player.autoRepairHull ? "ON" : "OFF"}
+        </button>
+      </div>
+
+      <div className="panel p-4 flex items-center gap-4">
+        <div className="text-3xl text-cyan">↺</div>
+        <div className="flex-1">
+          <div className="text-cyan font-bold tracking-widest">AUTO-SHIELD RECHARGE</div>
+          <div className="text-dim text-[11px]">
+            Automatically recharge shields to full when docking. Always free.
+          </div>
+        </div>
+        <button
+          className="btn"
+          style={{
+            padding: "6px 18px",
+            borderColor: player.autoShieldRecharge ? "#4ee2ff" : "rgba(255,255,255,0.15)",
+            color: player.autoShieldRecharge ? "#4ee2ff" : "#888",
+            background: player.autoShieldRecharge ? "rgba(78,226,255,0.12)" : "transparent",
+            minWidth: 64,
+          }}
+          onClick={() => setAutoShieldRecharge(!player.autoShieldRecharge)}
+        >
+          {player.autoShieldRecharge ? "ON" : "OFF"}
         </button>
       </div>
 

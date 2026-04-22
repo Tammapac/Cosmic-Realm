@@ -163,6 +163,8 @@ function makeInitialPlayer(): Player {
     hotbar: ["repair-bot", "shield-charge", null, null, null, null, null, null],
     ammo: {},
     autoRestock: false,
+    autoRepairHull: false,
+    autoShieldRecharge: false,
     rocketAmmoType: {},
     ammoByType: {},
     dungeonClears: {},
@@ -320,6 +322,8 @@ if (!Array.isArray(initialPlayer.hotbar) || initialPlayer.hotbar.length !== 8) {
   initialPlayer.hotbar = ["repair-bot", "shield-charge", null, null, null, null, null, null];
 }
 if (typeof initialPlayer.autoRestock !== "boolean") initialPlayer.autoRestock = false;
+if (typeof initialPlayer.autoRepairHull !== "boolean") initialPlayer.autoRepairHull = false;
+if (typeof initialPlayer.autoShieldRecharge !== "boolean") initialPlayer.autoShieldRecharge = false;
 if (!initialPlayer.rocketAmmoType || typeof initialPlayer.rocketAmmoType !== "object") initialPlayer.rocketAmmoType = {};
 if (!initialPlayer.ammoByType || typeof initialPlayer.ammoByType !== "object") initialPlayer.ammoByType = {};
 
@@ -448,6 +452,8 @@ export function save(): void {
       lastSeen: p.lastSeen,
       ammo: p.ammo,
       autoRestock: p.autoRestock,
+      autoRepairHull: p.autoRepairHull,
+      autoShieldRecharge: p.autoShieldRecharge,
       rocketAmmoType: p.rocketAmmoType,
       ammoByType: p.ammoByType,
       dungeonClears: p.dungeonClears,
@@ -689,6 +695,44 @@ export function restockAmmo(): void {
 export function setAutoRestock(enabled: boolean): void {
   state.player.autoRestock = enabled;
   pushNotification(enabled ? "Auto-Restock enabled" : "Auto-Restock disabled", "info");
+  save(); bump();
+}
+
+export function setAutoRepairHull(enabled: boolean): void {
+  state.player.autoRepairHull = enabled;
+  pushNotification(enabled ? "Auto-Repair Hull enabled" : "Auto-Repair Hull disabled", "info");
+  save(); bump();
+}
+
+export function setAutoShieldRecharge(enabled: boolean): void {
+  state.player.autoShieldRecharge = enabled;
+  pushNotification(enabled ? "Auto-Shield Recharge enabled" : "Auto-Shield Recharge disabled", "info");
+  save(); bump();
+}
+
+export function autoRepairIfEnabled(hullMax: number): void {
+  const p = state.player;
+  if (!p.autoRepairHull) return;
+  const hullDamage = hullMax - p.hull;
+  if (hullDamage <= 0) return;
+  const cost = Math.ceil(hullDamage * 2);
+  if (p.credits < cost) {
+    pushNotification(`Auto-Repair: need ${cost}cr to repair hull`, "bad");
+    return;
+  }
+  p.credits -= cost;
+  p.hull = hullMax;
+  bumpMission("spend-credits", cost);
+  pushNotification(`Auto-Repair: hull restored · -${cost}cr`, "good");
+  save(); bump();
+}
+
+export function autoShieldIfEnabled(shieldMax: number): void {
+  const p = state.player;
+  if (!p.autoShieldRecharge) return;
+  if (p.shield >= shieldMax) return;
+  p.shield = shieldMax;
+  pushNotification("Auto-Shield: shields recharged", "good");
   save(); bump();
 }
 
