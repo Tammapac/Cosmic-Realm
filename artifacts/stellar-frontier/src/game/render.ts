@@ -999,7 +999,8 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
   ctx.save();
   let sx = 0, sy = 0;
   if (state.cameraShake > 0) {
-    const m = state.cameraShake * 12;
+    // Max offset: boss=±8 px, large nearby=±2.6 px, small nearby=±1.3 px
+    const m = state.cameraShake * 16;
     sx = (Math.random() - 0.5) * m;
     sy = (Math.random() - 0.5) * m;
   }

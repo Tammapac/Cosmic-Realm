@@ -504,10 +504,16 @@ function applyKill(e: Enemy, killerCrit: boolean): void {
   emitDeath(e.pos.x, e.pos.y, e.color, !!e.isBoss);
   if (e.isBoss) {
     sfx.bossKill();
+    // Boss always shakes hard (~0.6 s at decay 1.6/s), regardless of distance
     state.cameraShake = Math.max(state.cameraShake, 1);
   } else {
     sfx.explosion(e.size > 16);
-    state.cameraShake = Math.max(state.cameraShake, e.size > 16 ? 0.4 : 0.18);
+    // Scale shake by proximity — enemies > 700 u away don't shake the camera.
+    // baseShake: large=0.32 (~0.2 s), small=0.16 (~0.1 s) at decay rate 1.6/s.
+    const dist = Math.hypot(e.pos.x - state.player.pos.x, e.pos.y - state.player.pos.y);
+    const proximity = Math.max(0, 1 - dist / 700);
+    const baseShake = e.size > 16 ? 0.32 : 0.16;
+    state.cameraShake = Math.max(state.cameraShake, baseShake * proximity);
   }
 
   const expGain = e.exp;
