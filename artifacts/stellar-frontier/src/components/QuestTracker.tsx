@@ -13,21 +13,19 @@ export function QuestTracker() {
   const activeQuests = useGame((s) => s.player.activeQuests);
   const docked = useGame((s) => s.dockedAt);
 
-  if (docked) return null;
-  const visible = activeQuests.filter((q) => !q.completed);
-  if (visible.length === 0) return null;
+  if (docked || activeQuests.length === 0) return null;
 
   return (
     <div
       className="absolute z-30 pointer-events-none"
       style={{ top: 58, left: 12, display: "flex", flexDirection: "column", gap: 4, maxWidth: 220 }}
     >
-      <div className="text-[8px] tracking-[0.25em] text-mute mb-0.5" style={{ letterSpacing: "0.2em" }}>
+      <div className="text-[8px] tracking-[0.25em] text-mute mb-0.5">
         ▸ ACTIVE BOUNTIES
       </div>
-      {visible.slice(0, 5).map((q) => {
+      {activeQuests.slice(0, 5).map((q) => {
         const pct = Math.min(1, q.progress / q.killCount);
-        const done = q.progress >= q.killCount;
+        const done = q.completed;
         const color = done ? "#5cff8a" : ENEMY_DEFS[q.killType]?.color ?? "#4ee2ff";
         const glyph = TYPE_GLYPHS[q.killType] ?? "•";
         return (
@@ -37,7 +35,7 @@ export function QuestTracker() {
             style={{
               borderColor: color + "55",
               boxShadow: done ? `0 0 10px ${color}44` : undefined,
-              opacity: done ? 0.7 : 1,
+              opacity: done ? 0.8 : 1,
             }}
           >
             <div className="flex items-center justify-between gap-2">
@@ -49,7 +47,7 @@ export function QuestTracker() {
                 <span className="truncate">{q.title}</span>
               </div>
               <div className="text-[10px] font-bold tabular-nums shrink-0" style={{ color }}>
-                {q.progress}/{q.killCount}
+                {Math.min(q.progress, q.killCount)}/{q.killCount}
               </div>
             </div>
             <div className="mt-0.5 h-[3px] rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>

@@ -460,14 +460,14 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
   const pulse = 1 + Math.sin(t * 3.5 + e.size * 0.7) * 0.07;
 
   if (e.type === "scout") {
-    // Wasp: narrow stinger body, swept delta wings, split tail fork
+    // scout — wasp
     ctx.fillStyle = c;
     ctx.beginPath();
-    ctx.moveTo(0, -11 * s * pulse);        // nose tip
+    ctx.moveTo(0, -11 * s * pulse);
     ctx.lineTo(2.5 * s, -2 * s);
-    ctx.lineTo(3 * s, 7 * s);             // body right
-    ctx.lineTo(0, 9 * s);                 // tail center
-    ctx.lineTo(-3 * s, 7 * s);            // body left
+    ctx.lineTo(3 * s, 7 * s);
+    ctx.lineTo(0, 9 * s);
+    ctx.lineTo(-3 * s, 7 * s);
     ctx.lineTo(-2.5 * s, -2 * s);
     ctx.closePath();
     ctx.fill();
@@ -516,7 +516,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
     ctx.globalAlpha = 1;
 
   } else if (e.type === "raider") {
-    // Hammerhead: wide flat crescent front, twin engine pods, swept top fin
+    // raider — hammerhead crescent
     const swing = Math.sin(t * 4 + e.size) * s * 0.4;
     ctx.fillStyle = c;
     // main crescent body
@@ -565,9 +565,8 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
     ctx.fill();
 
   } else if (e.type === "destroyer") {
-    // Armored crab: wide hexagonal shell, massive claw arms, armored plating
+    // destroyer — armored crab
     ctx.fillStyle = c;
-    // main hex shell
     ctx.beginPath();
     ctx.moveTo(0, -14 * s * pulse);
     ctx.lineTo(10 * s, -9 * s);
@@ -624,9 +623,8 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
     ctx.fill();
 
   } else if (e.type === "voidling") {
-    // Jellyfish: translucent dome, glowing core, writhing tentacles
+    // voidling — jellyfish
     const wave = Math.sin(t * 3 + e.size);
-    // dome
     ctx.fillStyle = c;
     ctx.globalAlpha = 0.75;
     ctx.beginPath();
@@ -672,7 +670,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
     }
 
   } else {
-    // Dread — colossal leviathan: segmented multi-body, fin rows, massive glow reactor
+    // dread — leviathan
     const breathe = 1 + Math.sin(t * 2 + e.size * 0.3) * 0.04;
     // main fuselage
     ctx.fillStyle = c;
