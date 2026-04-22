@@ -398,7 +398,6 @@ export default function App() {
       <GameCanvas />
       <TopBar />
       <MiniMap />
-      <DockPrompt />
       <Notifications />
       <DungeonHud />
       <QuestTracker />
@@ -410,6 +409,7 @@ export default function App() {
       <Title />
       {docked && <Hangar stationId={docked} />}
       <DockingSummary />
+      <DockPrompt />
       <Hotbar />
       <IdleRewardModal />
       <FactionPicker />
