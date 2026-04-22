@@ -469,13 +469,13 @@ function applyKill(e: Enemy, killerCrit: boolean): void {
       const max = rocketAmmoMax();
       // Give ammo to the weapon with the lowest current count
       let lowestId = rocketIds[0];
-      let lowestCur = p.ammo[lowestId] ?? 0;
+      let lowestCur = state.player.ammo[lowestId] ?? 0;
       for (const rid of rocketIds) {
-        const c = p.ammo[rid] ?? 0;
+        const c = state.player.ammo[rid] ?? 0;
         if (c < lowestCur) { lowestId = rid; lowestCur = c; }
       }
       if (lowestCur < max) {
-        p.ammo[lowestId] = Math.min(max, lowestCur + 1);
+        state.player.ammo[lowestId] = Math.min(max, lowestCur + 1);
         pushFloater({ text: "+1 ammo", color: "#ff8a4e", x: e.pos.x + 20, y: e.pos.y - 18, scale: 0.8, ttl: 0.7 });
       }
     }
