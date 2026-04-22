@@ -669,7 +669,7 @@ export function ensureAmmoInitialized(): void {
     } else {
       p.ammo[id] = Math.min(p.ammo[id], max);
     }
-    if (!p.rocketAmmoType[id]) p.rocketAmmoType[id] = "standard";
+    if (!p.rocketAmmoType[id]) p.rocketAmmoType[id] = "x1";
     if (!p.ammoByType[id]) p.ammoByType[id] = {};
   }
   // Clean up ammo entries for unequipped weapons
@@ -764,12 +764,12 @@ export function autoShieldIfEnabled(shieldMax: number, collect?: DockServiceEntr
 
 /** Get the active ammo type for a given rocket weapon instance. */
 export function getActiveAmmoType(weaponId: string): RocketAmmoType {
-  return state.player.rocketAmmoType?.[weaponId] ?? "standard";
+  return state.player.rocketAmmoType?.[weaponId] ?? "x1";
 }
 
 /** Get the current ammo count for the active type of a weapon. */
 export function getAmmoCountForType(weaponId: string, type: RocketAmmoType): number {
-  if (type === "standard") return state.player.ammo[weaponId] ?? 0;
+  if (type === "x1") return state.player.ammo[weaponId] ?? 0;
   return state.player.ammoByType?.[weaponId]?.[type] ?? 0;
 }
 
@@ -793,7 +793,7 @@ export function purchaseTypedAmmo(weaponId: string, type: RocketAmmoType): void 
   if (!p.ammoByType) p.ammoByType = {};
   if (!p.ammoByType[weaponId]) p.ammoByType[weaponId] = {};
 
-  if (type === "standard") {
+  if (type === "x1") {
     // Delegate to regular restockAmmo for a single weapon
     const cur = p.ammo[weaponId] ?? 0;
     const missing = Math.max(0, max - cur);
@@ -803,7 +803,7 @@ export function purchaseTypedAmmo(weaponId: string, type: RocketAmmoType): void 
     p.credits -= cost;
     p.ammo[weaponId] = max;
     bumpMission("spend-credits", cost);
-    pushNotification(`Restocked ${missing} STD · -${cost}cr`, "good");
+    pushNotification(`Restocked ${missing} X1 · -${cost}cr`, "good");
     save(); bump();
     return;
   }

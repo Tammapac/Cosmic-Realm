@@ -214,7 +214,7 @@ function DockPrompt() {
   );
 }
 
-const AMMO_TYPE_ORDER: RocketAmmoType[] = ["standard", "armor-piercing", "emp"];
+const AMMO_TYPE_ORDER: RocketAmmoType[] = ["x1", "x2", "x3", "x4"];
 
 function AmmoHud() {
   const player = useGame((s) => s.player);
@@ -238,7 +238,7 @@ function AmmoHud() {
         const def = item ? MODULE_DEFS[item.defId] : null;
         const activeType = getActiveAmmoType(id);
         const typeDef = ROCKET_AMMO_TYPE_DEFS[activeType];
-        const cur = activeType === "standard"
+        const cur = activeType === "x1"
           ? (player.ammo[id] ?? 0)
           : (player.ammoByType?.[id]?.[activeType] ?? 0);
         const pct = ammoMax > 0 ? cur / ammoMax : 0;

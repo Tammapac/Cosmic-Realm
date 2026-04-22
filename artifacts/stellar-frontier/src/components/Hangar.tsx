@@ -1395,7 +1395,7 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
                   {wDef?.name ?? "Rocket Launcher"}
                 </div>
                 <div className="space-y-2">
-                  {(["standard", "armor-piercing", "emp"] as RocketAmmoType[]).map((type) => {
+                  {(["x1", "x2", "x3", "x4"] as RocketAmmoType[]).map((type) => {
                     const tDef = ROCKET_AMMO_TYPE_DEFS[type];
                     const cur = getAmmoCountForType(id, type);
                     const missing = Math.max(0, ammoMax - cur);

@@ -948,8 +948,17 @@ function tickWorld(dt: number): void {
     if (enemy && playerFireCd.value <= 0) {
       const ang = Math.atan2(enemy.pos.y - p.pos.y, enemy.pos.x - p.pos.x);
       const stats = effectiveStats();
-      fireProjectile("player", p.pos.x, p.pos.y, ang, stats.damage, "#ff5c6c", 4);
-      playerFireCd.value = Math.max(0.10, 0.45 / stats.fireRate);
+      const ammoType = getActiveAmmoType(p.equipped.weapon.find(Boolean) ?? "");
+      if (ammoType === "x1") {
+        const weaponId = p.equipped.weapon.find(Boolean);
+        if (weaponId && (p.ammo[weaponId] ?? 0) > 0) {
+          p.ammo[weaponId] -= 1;
+          fireProjectile("player", p.pos.x, p.pos.y, ang, stats.damage, "#4ee2ff", 4);
+          playerFireCd.value = Math.max(0.10, 0.45 / stats.fireRate);
+        } else {
+          pushNotification("No X1 ammo loaded", "bad");
+        }
+      }
     }
     queuedAttackTargetId = null;
   }

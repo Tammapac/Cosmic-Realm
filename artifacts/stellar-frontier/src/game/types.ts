@@ -458,7 +458,7 @@ export type Enemy = {
 };
 
 // ── ROCKET AMMO TYPES ────────────────────────────────────────────────────
-export type RocketAmmoType = "standard" | "armor-piercing" | "emp";
+export type RocketAmmoType = "x1" | "x2" | "x3" | "x4";
 
 export type RocketAmmoTypeDef = {
   id: RocketAmmoType;
@@ -474,20 +474,25 @@ export type RocketAmmoTypeDef = {
 };
 
 export const ROCKET_AMMO_TYPE_DEFS: Record<RocketAmmoType, RocketAmmoTypeDef> = {
-  "standard": {
-    id: "standard", name: "Standard Explosive", shortName: "STD",
-    description: "Standard homing rockets with AOE splash damage. Balanced all-rounder.",
-    color: "#ff8a4e", costPerRound: 8, damageMul: 1.0, hasAoe: true, stunDuration: 0, glyph: "⟁",
+  "x1": {
+    id: "x1", name: "Laser Ammo X1", shortName: "X1",
+    description: "Basic laser charge cells.",
+    color: "#4ee2ff", costPerRound: 6, damageMul: 1.0, hasAoe: false, stunDuration: 0, glyph: "Ⅰ",
   },
-  "armor-piercing": {
-    id: "armor-piercing", name: "Armor-Piercing", shortName: "AP",
-    description: "+60% hull damage, no AOE. Punches through armored targets.",
-    color: "#ff5c6c", costPerRound: 22, damageMul: 1.6, hasAoe: false, stunDuration: 0, glyph: "▲",
+  "x2": {
+    id: "x2", name: "Laser Ammo X2", shortName: "X2",
+    description: "Improved laser charge cells.",
+    color: "#5cff8a", costPerRound: 12, damageMul: 1.15, hasAoe: false, stunDuration: 0, glyph: "Ⅱ",
   },
-  "emp": {
-    id: "emp", name: "EMP Pulse", shortName: "EMP",
-    description: "Reduced damage but disables enemy fire for 2.5 s on hit.",
-    color: "#ffd24a", costPerRound: 30, damageMul: 0.55, hasAoe: false, stunDuration: 2.5, glyph: "⚡",
+  "x3": {
+    id: "x3", name: "Laser Ammo X3", shortName: "X3",
+    description: "High-output laser charge cells.",
+    color: "#ffd24a", costPerRound: 18, damageMul: 1.3, hasAoe: false, stunDuration: 0, glyph: "Ⅲ",
+  },
+  "x4": {
+    id: "x4", name: "Laser Ammo X4", shortName: "X4",
+    description: "Overclocked laser charge cells.",
+    color: "#ff5c6c", costPerRound: 28, damageMul: 1.5, hasAoe: false, stunDuration: 0, glyph: "Ⅳ",
   },
 };
 
