@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { state, bump, useGame, save, pushNotification, abandonDungeon, useConsumable, getRocketWeaponIds, rocketAmmoMax, getActiveAmmoType, switchRocketAmmoType, runDockingServices } from "./game/store";
+import { state, bump, useGame, save, pushNotification, abandonDungeon, useConsumable, getAmmoWeaponIds, rocketAmmoMax, getActiveAmmoType, switchRocketAmmoType, runDockingServices } from "./game/store";
 import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats } from "./game/loop";
 import { render } from "./game/render";
 import { TopBar, WorldTargetHud } from "./components/TopBar";
@@ -224,7 +224,7 @@ const AMMO_TYPE_ORDER: RocketAmmoType[] = ["x1", "x2", "x3", "x4"];
 function AmmoHud() {
   const player = useGame((s) => s.player);
   useGame((s) => s.tick);
-  const rocketIds = getRocketWeaponIds();
+  const rocketIds = getAmmoWeaponIds();
   if (rocketIds.length === 0) return null;
   const ammoMax = rocketAmmoMax();
 

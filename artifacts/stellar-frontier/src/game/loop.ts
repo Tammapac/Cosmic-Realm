@@ -2,7 +2,7 @@ import {
   bump, pushChat, pushNotification, pushHonor, save, addCargo, pushFloater,
   pushEvent, bumpMission, state, travelToZone, completeDungeon,
   tickHotbarCooldowns,
-  ensureAmmoInitialized, getRocketWeaponIds, rocketAmmoMax,
+  ensureAmmoInitialized, getAmmoWeaponIds, rocketAmmoMax,
   getActiveAmmoType,
 } from "./store";
 import {
@@ -563,7 +563,7 @@ function applyKill(e: Enemy, killerCrit: boolean): void {
 
   // Ammo scavenge: ~18% chance to recover 1 rocket round from debris
   if (Math.random() < 0.18) {
-    const rocketIds = getRocketWeaponIds();
+    const rocketIds = getAmmoWeaponIds();
     if (rocketIds.length > 0) {
       const max = rocketAmmoMax();
       // Give ammo to the weapon with the lowest current count

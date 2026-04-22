@@ -668,7 +668,7 @@ export function ensureAmmoInitialized(): void {
   const max = rocketAmmoMax();
   if (!p.rocketAmmoType) p.rocketAmmoType = {};
   if (!p.ammoByType) p.ammoByType = {};
-  for (const id of getRocketWeaponIds()) {
+  for (const id of getAmmoWeaponIds()) {
     if (typeof p.ammo[id] !== "number") {
       p.ammo[id] = max;
     } else {
@@ -693,9 +693,9 @@ export function restockAmmo(): void {
   const p = state.player;
   const max = rocketAmmoMax();
   ensureAmmoInitialized();
-  const rocketIds = getRocketWeaponIds();
+  const rocketIds = getAmmoWeaponIds();
   if (rocketIds.length === 0) {
-    pushNotification("No rocket weapons equipped", "info");
+    pushNotification("No weapons equipped", "info");
     return;
   }
   let totalMissing = 0;
@@ -828,7 +828,7 @@ export function purchaseTypedAmmo(weaponId: string, type: RocketAmmoType): void 
 export function autoRestockIfEnabled(collect?: DockServiceEntry[]): void {
   const p = state.player;
   if (!p.autoRestock) return;
-  const rocketIds = getRocketWeaponIds();
+  const rocketIds = getAmmoWeaponIds();
   if (rocketIds.length === 0) return;
   const max = rocketAmmoMax();
   ensureAmmoInitialized();
