@@ -1,4 +1,4 @@
-import { state, bump, useGame, pushNotification, save, stationPrice, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, rocketAmmoMax, getRocketWeaponIds, ensureAmmoInitialized, setAutoRestock, getActiveAmmoType, switchRocketAmmoType, purchaseTypedAmmo, getAmmoCountForType } from "../game/store";
+import { state, bump, useGame, pushNotification, save, stationPrice, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, rocketAmmoMax, getRocketWeaponIds, ensureAmmoInitialized, setAutoRestock, getActiveAmmoType, switchRocketAmmoType, purchaseTypedAmmo, getAmmoCountForType, ROCKET_AMMO_COST_PER } from "../game/store";
 import {
   ActiveQuest, CONSUMABLE_DEFS, ConsumableId, DRONE_DEFS, DroneKind, DroneMode, DUNGEONS, DungeonId, FACTIONS, MODULE_DEFS, ModuleDef, ModuleSlot, ModuleStats, RARITY_COLOR,
   Quest, RESOURCES, ResourceId, ROCKET_AMMO_TYPE_DEFS, RocketAmmoType, SHIP_CLASSES, SKILL_NODES, STATIONS, ShipClassId, SkillBranch,
@@ -248,6 +248,35 @@ function modStatPills(stats: typeof MODULE_DEFS[string]["stats"]) {
   );
 }
 
+function RocketAmmoBadge() {
+  const [showTip, setShowTip] = useState(false);
+  const maxAmmo = rocketAmmoMax();
+  return (
+    <div className="relative inline-block mt-1">
+      <span
+        className="text-[9px] tracking-widest cursor-help inline-flex items-center gap-1"
+        style={{ color: "#ff8a4e", border: "1px solid #ff8a4e55", padding: "1px 5px" }}
+        onMouseEnter={() => setShowTip(true)}
+        onMouseLeave={() => setShowTip(false)}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowTip((v) => !v); }}
+      >
+        ⟁ Ammo: {ROCKET_AMMO_COST_PER}cr/round · max {maxAmmo}
+      </span>
+      {showTip && (
+        <div
+          className="absolute z-50 bottom-full left-0 mb-1.5 panel p-2 text-[9px] leading-relaxed"
+          style={{ width: 200, pointerEvents: "none", color: "var(--text-dim)" }}
+        >
+          <div className="text-[9px] font-bold tracking-widest mb-1" style={{ color: "#ff8a4e" }}>AMMO SYSTEM</div>
+          Rocket weapons fire limited rounds. Restock at any station for <span style={{ color: "#ffd24a" }}>{ROCKET_AMMO_COST_PER}cr per round</span>.
+          Current max capacity: <span style={{ color: "#4ee2ff" }}>{maxAmmo} rounds</span>.
+          Equip a <span style={{ color: "#ff5cf0" }}>Munitions Bay</span> module to increase capacity.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SlotCell({
   slot, index, instanceId, compareWithDef,
 }: {
@@ -443,6 +472,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
                     </div>
                     <div className="text-mute text-[9px] leading-tight">{def.description}</div>
                     {modStatPills(def.stats)}
+                    {def.weaponKind === "rocket" && <RocketAmmoBadge />}
                   </div>
                   <button className="btn btn-primary"
                     style={{ padding: "2px 8px", fontSize: 10 }}
@@ -788,6 +818,8 @@ function MarketTab({ stationId }: { stationId: string }) {
   const player = useGame((s) => s.player);
   const station = STATIONS.find((s) => s.id === stationId)!;
   const cls = SHIP_CLASSES[player.shipClass];
+  const tierCap = Math.min(5, Math.max(1, Math.ceil(player.level / 4)));
+  const marketWeaponModules = Object.values(MODULE_DEFS).filter((d) => d.slot === "weapon" && d.tier <= tierCap);
 
   const buy = (rid: ResourceId, qty: number) => {
     const price = stationPrice(stationId, rid);
@@ -929,6 +961,46 @@ function MarketTab({ stationId }: { stationId: string }) {
                     ×5
                   </button>
                 </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Weapon Modules Shop */}
+      <div className="mt-5">
+        <div className="text-cyan tracking-widest text-xs mb-2">▶ WEAPON MODULES</div>
+        <div className="space-y-1.5">
+          {marketWeaponModules.map((def) => {
+            const canAfford = player.credits >= def.price;
+            return (
+              <div key={def.id} className="panel p-2 flex items-start gap-2"
+                style={{ borderColor: RARITY_COLOR[def.rarity] }}>
+                <div className="flex items-center justify-center flex-shrink-0"
+                  style={{ width: 28, height: 28, background: `${def.color}22`, border: `1px solid ${def.color}`, color: def.color, fontSize: 14 }}>
+                  {def.glyph}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <div className="text-[11px] font-bold tracking-widest" style={{ color: RARITY_COLOR[def.rarity] }}>{def.name}</div>
+                    <span className="text-[8px] uppercase" style={{ color: RARITY_COLOR[def.rarity] }}>· {def.rarity}</span>
+                  </div>
+                  <div className="text-mute text-[9px] leading-tight">{def.description}</div>
+                  {modStatPills(def.stats)}
+                  {def.weaponKind === "rocket" && <RocketAmmoBadge />}
+                </div>
+                <button className="btn btn-primary"
+                  style={{ padding: "2px 8px", fontSize: 10 }}
+                  disabled={!canAfford}
+                  onClick={() => {
+                    if (!canAfford) return;
+                    state.player.credits -= def.price;
+                    addInventoryItem(def.id);
+                    pushNotification(`Bought ${def.name}`, "good");
+                    save(); bump();
+                  }}>
+                  {def.price.toLocaleString()}cr
+                </button>
               </div>
             );
           })}
