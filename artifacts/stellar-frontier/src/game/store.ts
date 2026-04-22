@@ -4,6 +4,8 @@ import {
   Asteroid,
   CargoItem,
   ChatMessage,
+  CONSUMABLE_DEFS,
+  ConsumableId,
   DAILY_MISSION_POOL,
   Drone,
   DUNGEONS,
@@ -72,6 +74,13 @@ export type GameState = {
   bossSpawnTimer: number;        // countdown to next boss event
   pendingIdleReward: { credits: number; exp: number; secondsAway: number } | null;
   dungeon: DungeonRun | null;
+  // consumable effects (game-time seconds)
+  repairBotUntil: number;        // gradual hull heal active until this game-time
+  afterburnUntil: number;        // speed boost active until this game-time
+  miningTargetId: string | null; // asteroid being mined (for beam visual)
+  hotbarCooldowns: number[];     // 8 slots, remaining cooldown seconds
+  pendingRocketSalvo: number;    // rockets left to fire this tick
+  pendingDronePod: boolean;      // spawn a temp combat drone
 };
 
 const STORAGE_KEY = "stellar-frontier-save-v5";
@@ -146,6 +155,8 @@ function makeInitialPlayer(): Player {
     dailyMissions: rollDailyMissions(),
     lastDailyReset: Date.now(),
     lastSeen: Date.now(),
+    consumables: { "repair-bot": 2, "shield-charge": 1 },
+    hotbar: ["repair-bot", "shield-charge", null, null, null, null, null, null],
   };
 }
 
@@ -287,6 +298,13 @@ if (initialPlayer.inventory.length === 0) {
 }
 delete legacy.equipment;
 reconcileEquippedToShip(initialPlayer);
+// Reconcile new consumable fields
+if (!initialPlayer.consumables || typeof initialPlayer.consumables !== "object") {
+  initialPlayer.consumables = { "repair-bot": 2, "shield-charge": 1 };
+}
+if (!Array.isArray(initialPlayer.hotbar) || initialPlayer.hotbar.length !== 8) {
+  initialPlayer.hotbar = ["repair-bot", "shield-charge", null, null, null, null, null, null];
+}
 
 // Daily reset: if >24h since last reset, refresh missions
 const dayMs = 24 * 60 * 60 * 1000;
@@ -349,6 +367,12 @@ export const state: GameState = {
   bossSpawnTimer: 240, // first boss event ~4 minutes in
   pendingIdleReward,
   dungeon: null,
+  repairBotUntil: 0,
+  afterburnUntil: 0,
+  miningTargetId: null,
+  hotbarCooldowns: [0, 0, 0, 0, 0, 0, 0, 0],
+  pendingRocketSalvo: 0,
+  pendingDronePod: false,
 };
 
 const listeners = new Set<() => void>();
@@ -789,6 +813,84 @@ export function abandonDungeon(): void {
   state.enemies = [];
   pushNotification("Abandoned dungeon", "bad");
   bump();
+}
+
+// ── CONSUMABLES ───────────────────────────────────────────────────────────
+export function setHotbarSlot(slot: number, id: ConsumableId | null): void {
+  if (slot < 0 || slot >= 8) return;
+  state.player.hotbar[slot] = id;
+  save(); bump();
+}
+
+export function buyConsumable(id: ConsumableId, qty = 1): void {
+  const def = CONSUMABLE_DEFS[id];
+  if (!def) return;
+  const stack = state.player.consumables[id] ?? 0;
+  if (stack >= def.stackMax) { pushNotification(`Already at max stack (${def.stackMax})`, "bad"); return; }
+  const buy = Math.min(qty, def.stackMax - stack);
+  const cost = def.price * buy;
+  if (state.player.credits < cost) { pushNotification("Not enough credits", "bad"); return; }
+  state.player.credits -= cost;
+  state.player.consumables[id] = stack + buy;
+  pushNotification(`Bought ${buy}× ${def.name}`, "good");
+  save(); bump();
+}
+
+/** Called from Hotbar or key handler. Returns false if can't use. */
+export function useConsumable(slot: number): boolean {
+  const id = state.player.hotbar[slot];
+  if (!id) return false;
+  const def = CONSUMABLE_DEFS[id];
+  if (!def) return false;
+  const count = state.player.consumables[id] ?? 0;
+  if (count <= 0) { pushNotification(`No ${def.name} left`, "bad"); return false; }
+  // Check cooldown
+  if ((state.hotbarCooldowns[slot] ?? 0) > 0) {
+    pushNotification(`${def.name} on cooldown`, "bad"); return false;
+  }
+  // Consume one
+  state.player.consumables[id] = count - 1;
+  // Apply cooldown
+  if (def.cooldown > 0) state.hotbarCooldowns[slot] = def.cooldown;
+  // Apply effect
+  const p = state.player;
+  const cls = SHIP_CLASSES[p.shipClass];
+  switch (id) {
+    case "repair-bot":
+      state.repairBotUntil = state.tick + 8;
+      pushNotification("⚙ Repair Bot deployed", "good"); break;
+    case "shield-charge": {
+      const restore = cls.shieldMax * 0.6;
+      p.shield = Math.min(p.shield + restore, cls.shieldMax);
+      pushNotification("⬡ Shield charged", "good"); break;
+    }
+    case "afterburn-fuel":
+      state.afterburnUntil = state.tick + 5;
+      pushNotification("≫ Afterburn engaged", "good"); break;
+    case "emp-burst":
+      // Mark all nearby enemies as stunned (3s); handled in loop.ts
+      for (const e of state.enemies) {
+        const dx = e.pos.x - p.pos.x, dy = e.pos.y - p.pos.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 500) e.stunUntil = state.tick + 3;
+      }
+      pushNotification("⚡ EMP Burst fired!", "good"); break;
+    case "combat-drone-pod":
+      state.pendingDronePod = true;
+      pushNotification("◉ Drone Pod launched", "good"); break;
+    case "rocket-ammo":
+      state.pendingRocketSalvo = 3;
+      pushNotification("◈ Rocket Salvo — 3 rockets incoming!", "good"); break;
+  }
+  sfx.pickup();
+  save(); bump();
+  return true;
+}
+
+/** Tick-update hotbar cooldowns. Called from game loop. */
+export function tickHotbarCooldowns(dt: number): void {
+  for (let i = 0; i < 8; i++) {
+    if (state.hotbarCooldowns[i] > 0) state.hotbarCooldowns[i] = Math.max(0, state.hotbarCooldowns[i] - dt);
+  }
 }
 
 export { STATIONS, PORTALS };

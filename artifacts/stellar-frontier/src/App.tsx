@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { state, bump, useGame, save, pushNotification, abandonDungeon } from "./game/store";
+import { state, bump, useGame, save, pushNotification, abandonDungeon, useConsumable } from "./game/store";
 import { startLoop, stopLoop, checkPortal, checkStationDock } from "./game/loop";
 import { render } from "./game/render";
 import { TopBar } from "./components/TopBar";
@@ -9,6 +9,7 @@ import { SocialPanel, ClanPanel, GalaxyMap } from "./components/SocialPanel";
 import { FactionPicker } from "./components/FactionPicker";
 import { IdleRewardModal } from "./components/IdleRewardModal";
 import { EventBanners } from "./components/EventBanners";
+import { Hotbar } from "./components/Hotbar";
 import { DUNGEONS, STATIONS, PORTALS, ZONES } from "./game/types";
 import { travelToZone } from "./game/store";
 
@@ -218,6 +219,8 @@ export default function App() {
         state.showMap = false;
         state.showClan = false;
         bump();
+      } else if (e.key >= "1" && e.key <= "8") {
+        if (!state.dockedAt) useConsumable(parseInt(e.key) - 1);
       }
     };
     window.addEventListener("keydown", handler);
@@ -250,6 +253,7 @@ export default function App() {
       <EventBanners />
       <Title />
       {docked && <Hangar stationId={docked} />}
+      <Hotbar />
       <IdleRewardModal />
       <FactionPicker />
       <div className="crt-overlay" />

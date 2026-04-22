@@ -895,6 +895,39 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
   // Player drones
   for (const d of state.player.drones) drawDrone(ctx, d);
 
+  // Mining laser beam (player → target asteroid)
+  if (state.miningTargetId) {
+    const ta = state.asteroids.find((a) => a.id === state.miningTargetId);
+    if (ta) {
+      const pp = state.player.pos;
+      const pulse = 0.55 + 0.45 * Math.abs(Math.sin(state.tick * 18));
+      ctx.save();
+      ctx.globalAlpha = pulse;
+      ctx.strokeStyle = "#44ffcc";
+      ctx.lineWidth = 3;
+      ctx.shadowColor = "#44ffcc";
+      ctx.shadowBlur = 14;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(pp.x, pp.y);
+      ctx.lineTo(ta.pos.x, ta.pos.y);
+      ctx.stroke();
+      // Inner hot core
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = pulse * 0.7;
+      ctx.beginPath();
+      ctx.moveTo(pp.x, pp.y);
+      ctx.lineTo(ta.pos.x, ta.pos.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    } else {
+      state.miningTargetId = null;  // asteroid gone, clear
+    }
+  }
+
   // Player ship
   const p = state.player;
   // shield ring when shield > 0

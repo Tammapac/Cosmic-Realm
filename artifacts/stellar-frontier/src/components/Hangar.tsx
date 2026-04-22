@@ -1,6 +1,6 @@
-import { state, bump, useGame, pushNotification, save, stationPrice, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots } from "../game/store";
+import { state, bump, useGame, pushNotification, save, stationPrice, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable } from "../game/store";
 import {
-  ActiveQuest, DRONE_DEFS, DroneKind, DroneMode, DUNGEONS, DungeonId, FACTIONS, MODULE_DEFS, ModuleSlot, RARITY_COLOR,
+  ActiveQuest, CONSUMABLE_DEFS, ConsumableId, DRONE_DEFS, DroneKind, DroneMode, DUNGEONS, DungeonId, FACTIONS, MODULE_DEFS, ModuleSlot, RARITY_COLOR,
   Quest, RESOURCES, ResourceId, SHIP_CLASSES, SKILL_NODES, STATIONS, ShipClassId, SkillBranch,
   SkillId,
 } from "../game/types";
@@ -763,6 +763,59 @@ function MarketTab({ stationId }: { stationId: string }) {
 
       <div className="mt-3 text-mute text-[10px] italic">
         Tip: visit Iron Belt Refinery for cheap iron and lumenite. Resell quantum chips at Crimson stations for premium.
+      </div>
+
+      {/* Consumables Shop */}
+      <div className="mt-5">
+        <div className="text-cyan tracking-widest text-xs mb-2">▶ CONSUMABLES SHOP</div>
+        <div className="grid grid-cols-1 gap-1">
+          {(Object.keys(CONSUMABLE_DEFS) as ConsumableId[]).map((cid) => {
+            const def = CONSUMABLE_DEFS[cid];
+            const have = player.consumables[cid] ?? 0;
+            return (
+              <div
+                key={cid}
+                className="flex items-center gap-3 px-3 py-2 border-b"
+                style={{ borderColor: "var(--border-soft)" }}
+              >
+                <div
+                  style={{
+                    width: 30, height: 30, fontSize: 18,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    background: `${def.color}22`, border: `1px solid ${def.color}`,
+                    color: def.color, flexShrink: 0,
+                  }}
+                >
+                  {def.icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-bright text-[11px] font-bold">{def.name}</div>
+                  <div className="text-mute text-[9px]">{def.description}</div>
+                </div>
+                <div className="text-cyan text-[11px] tabular-nums whitespace-nowrap">×{have}</div>
+                <div className="text-amber text-[11px] tabular-nums whitespace-nowrap">{def.price}cr</div>
+                <div className="flex gap-1">
+                  <button
+                    className="btn btn-primary"
+                    style={{ padding: "2px 8px", fontSize: 9 }}
+                    disabled={player.credits < def.price}
+                    onClick={() => buyConsumable(cid, 1)}
+                  >
+                    ×1
+                  </button>
+                  <button
+                    className="btn btn-primary"
+                    style={{ padding: "2px 8px", fontSize: 9 }}
+                    disabled={player.credits < def.price * 5}
+                    onClick={() => buyConsumable(cid, 5)}
+                  >
+                    ×5
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 import {
   bump, pushChat, pushNotification, pushHonor, save, addCargo, pushFloater,
   pushEvent, bumpMission, state, travelToZone, completeDungeon,
+  tickHotbarCooldowns,
 } from "./store";
 import {
   DRONE_DEFS, Drone, DUNGEONS, ENEMY_DEFS, ENEMY_NAMES, EXP_FOR_LEVEL,
@@ -574,8 +575,47 @@ function tickWorld(dt: number): void {
   state.tick += dt;
   if (state.levelUpFlash > 0) state.levelUpFlash = Math.max(0, state.levelUpFlash - dt);
   if (state.cameraShake > 0) state.cameraShake = Math.max(0, state.cameraShake - dt * 1.6);
+  tickHotbarCooldowns(dt);
   const p = state.player;
   const stats = effectiveStats();
+
+  // ── Consumable: Repair Bot HoT
+  if (state.repairBotUntil > 0 && state.tick < state.repairBotUntil) {
+    const cls = SHIP_CLASSES[p.shipClass];
+    p.hull = Math.min(p.hull + (40 / 8) * dt, cls.hullMax);
+  }
+
+  // ── Consumable: Pending Rocket Salvo
+  if (state.pendingRocketSalvo > 0) {
+    const nearest = state.enemies.reduce<{ dist: number; e: Enemy | null }>(
+      (acc, e) => { const dx = e.pos.x - p.pos.x, dy = e.pos.y - p.pos.y; const d = Math.sqrt(dx*dx+dy*dy); return d < acc.dist ? { dist: d, e } : acc; },
+      { dist: 2000, e: null }
+    );
+    const targetAng = nearest.e ? Math.atan2(nearest.e.pos.y - p.pos.y, nearest.e.pos.x - p.pos.x) : p.angle;
+    const spread = (state.pendingRocketSalvo - 1) * 0.22;
+    const startAng = targetAng - spread;
+    fireProjectile("player", p.pos.x, p.pos.y, startAng + (3 - state.pendingRocketSalvo) * 0.22, 35, "#ff8a4e", 4, { homing: true, speedMul: 0.35 });
+    state.pendingRocketSalvo--;
+  }
+
+  // ── Consumable: Drone Pod — spawn temp drone
+  if (state.pendingDronePod) {
+    state.pendingDronePod = false;
+    const tempDrone: import("./types").Drone = {
+      id: `temp-drone-${Date.now()}`,
+      kind: "combat-i",
+      mode: "forward",
+      hp: 200, hpMax: 200,
+      orbitPhase: Math.random() * Math.PI * 2,
+      fireCd: 0,
+    };
+    p.drones.push(tempDrone);
+    // Mark for removal after 30s using a simple check via TTL on id
+    setTimeout(() => {
+      const idx = p.drones.findIndex(d => d.id === tempDrone.id);
+      if (idx !== -1) { p.drones.splice(idx, 1); bump(); }
+    }, 30000);
+  }
 
   // ── Player movement
   const dx = state.cameraTarget.x - p.pos.x;
@@ -588,9 +628,10 @@ function tickWorld(dt: number): void {
     p.vel.y += Math.sin(p.angle) * accel * dt;
   }
   const v = Math.sqrt(p.vel.x * p.vel.x + p.vel.y * p.vel.y);
-  if (v > stats.speed) {
-    p.vel.x = (p.vel.x / v) * stats.speed;
-    p.vel.y = (p.vel.y / v) * stats.speed;
+  const speedCap = state.afterburnUntil > state.tick ? stats.speed * 3 : stats.speed;
+  if (v > speedCap) {
+    p.vel.x = (p.vel.x / v) * speedCap;
+    p.vel.y = (p.vel.y / v) * speedCap;
   }
   p.vel.x *= 0.96;
   p.vel.y *= 0.96;
@@ -662,6 +703,12 @@ function tickWorld(dt: number): void {
     if (e.combo) {
       e.combo.ttl -= dt;
       if (e.combo.ttl <= 0) e.combo = undefined;
+    }
+    // EMP stun: skip AI while stunned
+    if (e.stunUntil !== undefined && e.stunUntil > state.tick) {
+      e.vel.x *= 0.85; e.vel.y *= 0.85;  // decelerate
+      e.pos.x += e.vel.x * dt; e.pos.y += e.vel.y * dt;
+      continue;
     }
 
     if (e.behavior === "fast") {
@@ -890,10 +937,13 @@ function tickWorld(dt: number): void {
         if (distance(pr.pos.x, pr.pos.y, a.pos.x, a.pos.y) < a.size + 2) {
           a.hp -= pr.damage;
           emitSpark(pr.pos.x, pr.pos.y, "#c69060", 3, 60, 2);
-          if (a.hp <= 0) destroyAsteroid(a.id);
+          state.miningTargetId = a.id;   // track for laser beam visual
+          if (a.hp <= 0) { state.miningTargetId = null; destroyAsteroid(a.id); }
           return false;
         }
       }
+      // Clear stale mining target if no projectile hit this frame
+      // (cleared each ~300ms naturally since miningTargetId only updates on hit)
     } else {
       // enemy projectile -> hit drones first, then player
       for (const dr of p.drones) {

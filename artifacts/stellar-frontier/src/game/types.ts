@@ -116,7 +116,18 @@ export type ResourceId =
   | "lumenite"
   | "medpack"
   | "synth"
-  | "quantum";
+  | "quantum"
+  // trade goods (station-to-station economy)
+  | "food"
+  | "medicine"
+  | "luxury"
+  | "nanite"
+  | "bio-matter"
+  | "precursor"
+  | "fuel-cell"
+  | "contraband"
+  | "relic"
+  | "exotic";
 
 export type Resource = {
   id: ResourceId;
@@ -166,6 +177,35 @@ export type HonorRank = {
   pips: number;          // number of icon pips
 };
 
+// ── CONSUMABLES ────────────────────────────────────────────────────────────
+export type ConsumableId =
+  | "rocket-ammo"
+  | "repair-bot"
+  | "combat-drone-pod"
+  | "shield-charge"
+  | "emp-burst"
+  | "afterburn-fuel";
+
+export type ConsumableDef = {
+  id: ConsumableId;
+  name: string;
+  icon: string;
+  description: string;
+  price: number;
+  cooldown: number;   // seconds; 0 = no cooldown
+  stackMax: number;
+  color: string;
+};
+
+export const CONSUMABLE_DEFS: Record<ConsumableId, ConsumableDef> = {
+  "rocket-ammo":       { id: "rocket-ammo",       name: "Rocket Salvo",    icon: "◈", description: "Fire 3 homing rockets instantly.",           price: 400,  cooldown: 0,  stackMax: 20, color: "#ff8a4e" },
+  "repair-bot":        { id: "repair-bot",         name: "Repair Bot",      icon: "⚙", description: "Restore 40 hull over 8 seconds.",             price: 350,  cooldown: 15, stackMax: 10, color: "#5cff8a" },
+  "combat-drone-pod":  { id: "combat-drone-pod",   name: "Drone Pod",       icon: "◉", description: "Deploy an extra combat drone for 30 s.",      price: 600,  cooldown: 30, stackMax: 5,  color: "#4ee2ff" },
+  "shield-charge":     { id: "shield-charge",      name: "Shield Charge",   icon: "⬡", description: "Instantly restore 60 % of max shield.",       price: 280,  cooldown: 20, stackMax: 10, color: "#4ee2ff" },
+  "emp-burst":         { id: "emp-burst",           name: "EMP Burst",       icon: "⚡", description: "Stun all enemies within 500 units for 3 s.", price: 500,  cooldown: 0,  stackMax: 8,  color: "#ffd24a" },
+  "afterburn-fuel":    { id: "afterburn-fuel",      name: "Afterburn",       icon: "≫", description: "Triple ship speed for 5 seconds.",            price: 250,  cooldown: 0,  stackMax: 12, color: "#ff5cf0" },
+};
+
 export type Player = {
   name: string;
   shipClass: ShipClassId;
@@ -196,6 +236,9 @@ export type Player = {
   dailyMissions: ActiveMission[];
   lastDailyReset: number;       // ms timestamp
   lastSeen: number;             // ms timestamp for idle calc
+  // Consumables & hotbar
+  consumables: Partial<Record<ConsumableId, number>>;
+  hotbar: (ConsumableId | null)[];   // 8 slots
 };
 
 // ── FACTIONS ─────────────────────────────────────────────────────────────
@@ -387,6 +430,7 @@ export type Enemy = {
   // ranged kiting helpers
   burstCd?: number;
   burstShots?: number;
+  stunUntil?: number;   // game-time seconds; enemy cannot fire/move while stunned
 };
 
 export type Projectile = {
@@ -686,37 +730,56 @@ export const RESOURCES: Record<ResourceId, Resource> = {
   medpack:  { id: "medpack",  name: "Med Packs",     basePrice: 60,  glyph: "✚", color: "#5cff8a", description: "Field-grade medical kits." },
   synth:    { id: "synth",    name: "Synth Fuel",    basePrice: 28,  glyph: "≈", color: "#ffd24a", description: "Refined fuel. Stations always need more." },
   quantum:  { id: "quantum",  name: "Quantum Chip",  basePrice: 220, glyph: "⌬", color: "#ff5cf0", description: "Bleeding-edge processors. Specialty cargo." },
+  // trade goods
+  food:        { id: "food",        name: "Food Supplies",    basePrice: 20,  glyph: "≋", color: "#aadd77", description: "Essential rations for frontier stations. Always needed." },
+  medicine:    { id: "medicine",    name: "Medicine",         basePrice: 55,  glyph: "✚", color: "#ff7777", description: "Field-grade medicine. Valuable in combat zones." },
+  luxury:      { id: "luxury",      name: "Luxury Goods",     basePrice: 110, glyph: "◆", color: "#ffcc44", description: "Rare commodities. Stations on the outer rim pay big." },
+  nanite:      { id: "nanite",      name: "Nanite Paste",     basePrice: 145, glyph: "∷", color: "#44ddff", description: "Self-replicating nano-machines. Used in hull repairs." },
+  "bio-matter":{ id: "bio-matter",  name: "Bio-Matter",       basePrice: 75,  glyph: "❧", color: "#88ff88", description: "Biological specimens. Research stations pay premium." },
+  precursor:   { id: "precursor",   name: "Precursor Tech",   basePrice: 300, glyph: "⎔", color: "#dd88ff", description: "Ancient alien artifacts. Worth a fortune in the right market." },
+  "fuel-cell": { id: "fuel-cell",   name: "Fuel Cell",        basePrice: 40,  glyph: "▶", color: "#ffaa44", description: "Standard fuel cells. Military stations always need them." },
+  contraband:  { id: "contraband",  name: "Contraband",       basePrice: 180, glyph: "☠", color: "#ff4466", description: "Illegal goods. Huge profit if you can dodge the law." },
+  relic:       { id: "relic",       name: "Ancient Relic",    basePrice: 380, glyph: "⌘", color: "#ddcc00", description: "Priceless historical artifacts. Only the deepest vaults hold them." },
+  exotic:      { id: "exotic",      name: "Exotic Matter",    basePrice: 500, glyph: "✧", color: "#ff44cc", description: "Unstable matter from beyond the Abyss. Worth fortunes." },
 };
 
 export const STATIONS: Station[] = [
   // alpha
   { id: "helix",   name: "Helix Station",  pos: { x: 0, y: 0 },     zone: "alpha",   kind: "hub",
     description: "Capital hub of the Alpha Frontier.", controlledBy: "aurora",
-    prices: { scrap: 1.0, plasma: 1.0, iron: 0.95, synth: 0.9, medpack: 1.1, lumenite: 1.0, warp: 1.1, void: 1.2, dread: 1.1, quantum: 1.0 } },
+    prices: { scrap: 1.0, plasma: 1.0, iron: 0.95, synth: 0.9, medpack: 1.1, lumenite: 1.0, warp: 1.1, void: 1.2, dread: 1.1, quantum: 1.0,
+              food: 0.7, medicine: 0.8, luxury: 1.4, "fuel-cell": 0.8, "bio-matter": 1.2 } },
   { id: "iron-belt", name: "Iron Belt Refinery", pos: { x: -900, y: -200 }, zone: "alpha", kind: "mining",
     description: "Refinery sitting on a rich mineral belt.", controlledBy: "aurora",
-    prices: { iron: 0.6, lumenite: 0.7, scrap: 1.2, synth: 1.0, medpack: 1.1, plasma: 1.05 } },
+    prices: { iron: 0.6, lumenite: 0.7, scrap: 1.2, synth: 1.0, medpack: 1.1, plasma: 1.05,
+              food: 0.6, "fuel-cell": 0.7, medicine: 1.2 } },
   // nebula
   { id: "veiled",   name: "Veiled Outpost", pos: { x: 200, y: -800 }, zone: "nebula",  kind: "outpost",
     description: "A mining outpost run by a raider truce.", controlledBy: "syndicate",
-    prices: { plasma: 0.7, warp: 0.85, scrap: 1.2, synth: 1.15, medpack: 1.2, void: 1.3 } },
+    prices: { plasma: 0.7, warp: 0.85, scrap: 1.2, synth: 1.15, medpack: 1.2, void: 1.3,
+              food: 1.3, medicine: 1.4, nanite: 0.8, "bio-matter": 0.7, luxury: 1.6 } },
   { id: "azure-port", name: "Azure Trade Port", pos: { x: -600, y: -1200 }, zone: "nebula", kind: "trade",
     description: "Bustling free-port. Buys high, sells fair.", controlledBy: "syndicate",
-    prices: { quantum: 0.7, lumenite: 0.85, dread: 0.9, void: 0.95, plasma: 1.2, warp: 1.25, iron: 1.15, scrap: 1.25 } },
+    prices: { quantum: 0.7, lumenite: 0.85, dread: 0.9, void: 0.95, plasma: 1.2, warp: 1.25, iron: 1.15, scrap: 1.25,
+              luxury: 0.7, precursor: 1.5, relic: 1.6, food: 1.5, medicine: 1.3, nanite: 1.4 } },
   // crimson
   { id: "ember",    name: "Ember Citadel",  pos: { x: -600, y: 400 },  zone: "crimson", kind: "military",
     description: "Crimson Reach naval citadel. Premium for war goods.", controlledBy: "crimson",
-    prices: { dread: 1.3, warp: 1.3, plasma: 1.4, medpack: 0.85, synth: 0.95, quantum: 1.2 } },
+    prices: { dread: 1.3, warp: 1.3, plasma: 1.4, medpack: 0.85, synth: 0.95, quantum: 1.2,
+              food: 1.6, medicine: 0.7, "fuel-cell": 1.5, contraband: 0.6 } },
   { id: "scarlet-yard", name: "Scarlet Shipyards", pos: { x: 1100, y: 800 }, zone: "crimson", kind: "trade",
     description: "Capital ship construction yards.", controlledBy: "crimson",
-    prices: { iron: 1.4, scrap: 1.35, lumenite: 1.2, plasma: 1.1, dread: 0.85 } },
+    prices: { iron: 1.4, scrap: 1.35, lumenite: 1.2, plasma: 1.1, dread: 0.85,
+              nanite: 1.5, "fuel-cell": 1.3, food: 1.5, luxury: 1.7 } },
   // void
   { id: "echo",     name: "Echo Anchorage", pos: { x: 0, y: -300 },    zone: "void",    kind: "outpost",
     description: "Last refuge in The Void.", controlledBy: "syndicate",
-    prices: { void: 0.6, dread: 1.2, quantum: 1.4, medpack: 1.3, synth: 1.2 } },
+    prices: { void: 0.6, dread: 1.2, quantum: 1.4, medpack: 1.3, synth: 1.2,
+              contraband: 0.5, relic: 0.7, exotic: 0.8, food: 1.8, medicine: 1.6 } },
   { id: "obsidian-port", name: "Obsidian Free Port", pos: { x: 900, y: 600 }, zone: "void", kind: "trade",
     description: "A trade haven for ghosts and smugglers.", controlledBy: "syndicate",
-    prices: { quantum: 0.55, void: 1.4, dread: 1.4, lumenite: 1.3, warp: 1.2 } },
+    prices: { quantum: 0.55, void: 1.4, dread: 1.4, lumenite: 1.3, warp: 1.2,
+              contraband: 0.4, luxury: 0.6, relic: 0.65, precursor: 0.7, food: 1.9, exotic: 1.5 } },
   // forge
   { id: "ironclad",    name: "Ironclad Bastion",   pos: { x: 0, y: 0 },       zone: "forge",    kind: "military",
     description: "Heavily fortified military hub. Sells advanced weapons at a premium.", controlledBy: "crimson",
