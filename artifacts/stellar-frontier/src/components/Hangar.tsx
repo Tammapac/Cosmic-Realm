@@ -1562,6 +1562,12 @@ function SkillsTab() {
     { id: "utility",     name: "UTILITY",     color: "#5cff8a" },
     { id: "engineering", name: "ENGINEERING", color: "#ffd24a" },
   ];
+  const branchNodes: Record<SkillBranch, SkillNode[]> = {
+    offense: SKILL_NODES.filter((n) => n.branch === "offense"),
+    defense: SKILL_NODES.filter((n) => n.branch === "defense"),
+    utility: SKILL_NODES.filter((n) => n.branch === "utility"),
+    engineering: SKILL_NODES.filter((n) => n.branch === "engineering"),
+  };
 
   return (
     <div className="p-4 space-y-3">
@@ -1587,12 +1593,22 @@ function SkillsTab() {
 
       <div className="grid grid-cols-2 gap-3" style={{ gridTemplateColumns: "repeat(4,1fr)" }}>
         {branches.map((b) => (
-          <div key={b.id} className="panel p-3">
+          <div key={b.id} className="panel p-3" style={{ position: "relative", overflow: "hidden" }}>
+            <div
+              style={{
+                position: "absolute",
+                left: 18,
+                top: 44,
+                bottom: 14,
+                width: 2,
+                background: `linear-gradient(to bottom, ${b.color}55, ${b.color}11)`,
+              }}
+            />
             <div className="font-bold tracking-widest text-xs mb-2" style={{ color: b.color }}>
               ◆ {b.name}
             </div>
-            <div className="space-y-2">
-              {SKILL_NODES.filter((n) => n.branch === b.id).map((n) => {
+            <div className="space-y-4">
+              {branchNodes[b.id].map((n, idx) => {
                 const cur = player.skills[n.id] ?? 0;
                 const reqMet = !n.requires || (player.skills[n.requires] ?? 0) > 0;
                 const canBuy = cur < n.maxRank && reqMet && player.skillPoints >= n.cost;
@@ -1601,10 +1617,25 @@ function SkillsTab() {
                     key={n.id}
                     className="p-2"
                     style={{
+                      marginLeft: idx === 0 ? 0 : idx % 2 === 0 ? 20 : 10,
                       background: cur > 0 ? `${b.color}11` : "rgba(255,255,255,0.02)",
                       border: `1px solid ${cur > 0 ? b.color + "66" : "rgba(255,255,255,0.08)"}`,
+                      borderRadius: 6,
+                      position: "relative",
                     }}
                   >
+                    {idx > 0 && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          left: -12,
+                          top: 16,
+                          width: 12,
+                          height: 2,
+                          background: `${b.color}55`,
+                        }}
+                      />
+                    )}
                     <div className="flex items-center justify-between mb-1">
                       <div className="font-bold text-[11px]" style={{ color: cur > 0 ? b.color : "var(--text-dim)" }}>
                         {n.name}
