@@ -94,6 +94,12 @@ export type GameState = {
   pendingRocketSalvo: number;    // rockets left to fire this tick
   pendingDronePod: boolean;      // spawn a temp combat drone
   dockingSummary: DockServiceEntry[] | null; // null = not showing
+  selectedWorldTarget: {
+    kind: "enemy" | "asteroid";
+    id: string;
+    name: string;
+    detail: string;
+  } | null;
 };
 
 const STORAGE_KEY = "stellar-frontier-save-v5";
@@ -178,6 +184,7 @@ function makeInitialPlayer(): Player {
     ammoByType: {},
     dungeonClears: {},
     dungeonBestTimes: {},
+    selectedWorldTarget: null,
   };
 }
 

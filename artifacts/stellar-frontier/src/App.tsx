@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { state, bump, useGame, save, pushNotification, abandonDungeon, useConsumable, getRocketWeaponIds, rocketAmmoMax, getActiveAmmoType, switchRocketAmmoType, runDockingServices } from "./game/store";
 import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats } from "./game/loop";
 import { render } from "./game/render";
-import { TopBar } from "./components/TopBar";
+import { TopBar, WorldTargetHud } from "./components/TopBar";
 import { MiniMap } from "./components/MiniMap";
 import { Hangar } from "./components/Hangar";
 import { SocialPanel, ClanPanel, GalaxyMap } from "./components/SocialPanel";
@@ -12,7 +12,7 @@ import { EventBanners } from "./components/EventBanners";
 import { Hotbar } from "./components/Hotbar";
 import { QuestTracker } from "./components/QuestTracker";
 import { DUNGEONS, STATIONS, PORTALS, ZONES, MODULE_DEFS, ROCKET_AMMO_TYPE_DEFS, RocketAmmoType } from "./game/types";
-import { travelToZone } from "./game/store";
+import { travelToZone, state as gameState } from "./game/store";
 
 function GameCanvas() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -55,6 +55,7 @@ function GameCanvas() {
     const wx = state.player.pos.x + (cx - rect.width / 2);
     const wy = state.player.pos.y + (cy - rect.height / 2);
     state.cameraTarget = { x: wx, y: wy };
+    state.selectedWorldTarget = null;
 
     // Pull toward nearest station if clicked nearby
     for (const s of STATIONS) {
@@ -64,6 +65,32 @@ function GameCanvas() {
         break;
       }
     }
+
+    const enemy = state.enemies.find((en) => en.zone === state.player.zone && Math.hypot(en.pos.x - wx, en.pos.y - wy) < Math.max(18, en.size + 10));
+    if (enemy) {
+      state.selectedWorldTarget = {
+        kind: "enemy",
+        id: enemy.id,
+        name: enemy.name ?? enemy.type.toUpperCase(),
+        detail: `${enemy.type.toUpperCase()} · ${Math.max(0, Math.round(enemy.hull))}/${Math.round(enemy.hullMax)} HP`,
+      };
+      bump();
+      return;
+    }
+
+    const asteroid = state.asteroids.find((a) => a.zone === state.player.zone && Math.hypot(a.pos.x - wx, a.pos.y - wy) < a.size + 10);
+    if (asteroid) {
+      state.selectedWorldTarget = {
+        kind: "asteroid",
+        id: asteroid.id,
+        name: asteroid.yields === "lumenite" ? "LUMENITE ROCK" : "ORE ROCK",
+        detail: `${asteroid.yields.toUpperCase()} · ${Math.round(asteroid.hp)}/${Math.round(asteroid.hpMax)} HP`,
+      };
+      state.miningTargetId = asteroid.id;
+      bump();
+      return;
+    }
+
     bump();
   };
 
@@ -397,6 +424,7 @@ export default function App() {
     <div className="relative w-full h-full overflow-hidden" style={{ background: "#02040c" }}>
       <GameCanvas />
       <TopBar />
+      <WorldTargetHud />
       <MiniMap />
       <Notifications />
       <DungeonHud />

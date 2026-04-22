@@ -131,6 +131,32 @@ export function TopBar() {
   );
 }
 
+export function WorldTargetHud() {
+  const target = useGame((s) => s.selectedWorldTarget);
+  if (!target) return null;
+  return (
+    <div
+      className="panel pointer-events-none"
+      style={{
+        position: "fixed",
+        left: 14,
+        top: "50%",
+        transform: "translateY(-50%)",
+        zIndex: 35,
+        minWidth: 160,
+        maxWidth: 220,
+        padding: "8px 10px",
+      }}
+    >
+      <div className="text-[9px] tracking-widest text-mute">TARGET</div>
+      <div className="text-[12px] font-bold" style={{ color: target.kind === "enemy" ? "#ff5c6c" : "#c69060" }}>
+        {target.name}
+      </div>
+      <div className="text-[10px] text-dim mt-1">{target.detail}</div>
+    </div>
+  );
+}
+
 function MicroBar({
   label, value, max, color,
 }: { label: string; value: number; max: number; color: string }) {
