@@ -49,6 +49,7 @@ export function Hotbar() {
     >
       <button
         onClick={attackSelectedTarget}
+        onMouseDown={(e) => e.preventDefault()}
         title={selectedTarget?.kind === "enemy" ? `Attack ${selectedTarget.name}` : "Select an enemy first"}
         style={{
           position: "relative",
