@@ -323,51 +323,84 @@ function emitTrail(x: number, y: number, color: string): void {
 }
 
 function emitDeath(x: number, y: number, color: string, big = false): void {
+  const B = big;
+
   // Central white flash bloom
   state.particles.push({
     id: `fl-${Math.random().toString(36).slice(2, 8)}`,
     pos: { x, y }, vel: { x: 0, y: 0 },
-    ttl: big ? 0.22 : 0.15, maxTtl: big ? 0.22 : 0.15,
-    color: big ? "#ffffff" : "#ffcc66",
-    size: big ? 80 : 40, kind: "flash",
+    ttl: B ? 0.22 : 0.15, maxTtl: B ? 0.22 : 0.15,
+    color: B ? "#ffffff" : "#ffcc66",
+    size: B ? 80 : 40, kind: "flash",
   });
-  // Secondary flash in enemy color
   state.particles.push({
     id: `fl2-${Math.random().toString(36).slice(2, 8)}`,
     pos: { x, y }, vel: { x: 0, y: 0 },
-    ttl: big ? 0.18 : 0.12, maxTtl: big ? 0.18 : 0.12,
-    color, size: big ? 60 : 28, kind: "flash",
+    ttl: B ? 0.18 : 0.12, maxTtl: B ? 0.18 : 0.12,
+    color, size: B ? 60 : 28, kind: "flash",
   });
 
-  // Debris chunks
-  const debrisCount = big ? 20 : 8;
-  const debrisColors = [color, "#ff8a4e", "#ffd24a", "#ffccaa"];
+  // Fireballs — orange/red blobs that linger and expand
+  const fbColors = ["#ff8c00", "#ff4500", "#ffd700", "#ff6600"];
+  const fbCount = B ? 5 : 3;
+  for (let i = 0; i < fbCount; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const spd = (0.2 + Math.random() * 0.5) * (B ? 55 : 35);
+    state.particles.push({
+      id: `fb-${Math.random().toString(36).slice(2, 8)}`,
+      pos: { x: x + (Math.random() - 0.5) * 6, y: y + (Math.random() - 0.5) * 6 },
+      vel: { x: Math.cos(a) * spd, y: Math.sin(a) * spd },
+      ttl: 0.35 + Math.random() * 0.25, maxTtl: 0.6,
+      color: fbColors[Math.floor(Math.random() * fbColors.length)],
+      size: B ? (55 + Math.random() * 35) : (28 + Math.random() * 18),
+      kind: "fireball",
+    });
+  }
+
+  // Smoke puffs — dark expanding circles that billow and linger
+  const smokeCount = B ? 8 : 4;
+  for (let i = 0; i < smokeCount; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const spd = (0.1 + Math.random() * 0.35) * (B ? 40 : 25);
+    state.particles.push({
+      id: `sm-${Math.random().toString(36).slice(2, 8)}`,
+      pos: { x: x + (Math.random() - 0.5) * 8, y: y + (Math.random() - 0.5) * 8 },
+      vel: { x: Math.cos(a) * spd, y: Math.sin(a) * spd },
+      ttl: 0.7 + Math.random() * 0.5, maxTtl: 1.2,
+      color: i % 2 === 0 ? "#222" : "#444",
+      size: B ? (30 + Math.random() * 25) : (16 + Math.random() * 14),
+      kind: "smoke",
+    });
+  }
+
+  // Spinning hull debris chunks
+  const debrisCount = B ? 18 : 8;
+  const debrisColors = [color, "#ff8a4e", "#ffd24a", "#ffccaa", "#cccccc"];
   for (let i = 0; i < debrisCount; i++) {
     const a = Math.random() * Math.PI * 2;
-    const s = (0.3 + Math.random() * 0.7) * (big ? 90 : 60);
+    const spd = (0.3 + Math.random() * 0.7) * (B ? 100 : 65);
     state.particles.push({
       id: `db-${Math.random().toString(36).slice(2, 8)}`,
       pos: { x, y },
-      vel: { x: Math.cos(a) * s, y: Math.sin(a) * s },
+      vel: { x: Math.cos(a) * spd, y: Math.sin(a) * spd },
       ttl: 0.5 + Math.random() * 0.5, maxTtl: 1.0,
       color: debrisColors[Math.floor(Math.random() * debrisColors.length)],
-      size: big ? (5 + Math.random() * 6) : (3 + Math.random() * 4),
+      size: B ? (5 + Math.random() * 7) : (3 + Math.random() * 4),
+      rot: Math.random() * Math.PI * 2,
+      rotVel: (Math.random() - 0.5) * 14,
       kind: "debris",
     });
   }
 
-  // Hot white core sparks (fast)
-  emitSpark(x, y, "#ffffff", big ? 20 : 8, big ? 260 : 200, big ? 3 : 2);
-  // Enemy-color sparks (medium)
-  emitSpark(x, y, color, big ? 50 : 20, big ? 200 : 150, big ? 4 : 3);
-  // Gold/orange embers (slow)
-  emitSpark(x, y, "#ffd24a", big ? 30 : 10, big ? 100 : 70, big ? 3 : 2);
+  // Sparks — three tiers
+  emitSpark(x, y, "#ffffff", B ? 20 : 8, B ? 280 : 210, B ? 3 : 2);
+  emitSpark(x, y, color, B ? 40 : 16, B ? 190 : 140, B ? 4 : 3);
+  emitSpark(x, y, "#ffd24a", B ? 25 : 8, B ? 110 : 75, B ? 3 : 2);
 
-  // Rings — immediate
+  // Rings — staggered
   emitRing(x, y, "#ffffff");
   emitRing(x, y, color);
-  // Staggered extra rings
-  if (big) {
+  if (B) {
     setTimeout(() => emitRing(x, y, "#ffd24a"), 80);
     setTimeout(() => emitRing(x, y, color), 160);
     setTimeout(() => emitRing(x, y, "#ffffff"), 280);
@@ -1098,6 +1131,9 @@ function tickWorld(dt: number): void {
     pa.pos.y += pa.vel.y * dt;
     pa.vel.x *= 0.95;
     pa.vel.y *= 0.95;
+    if (pa.rotVel !== undefined && pa.rot !== undefined) {
+      pa.rot += pa.rotVel * dt;
+    }
     pa.ttl -= dt;
   }
   state.particles = state.particles.filter((pa) => pa.ttl > 0);

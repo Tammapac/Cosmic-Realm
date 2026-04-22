@@ -508,7 +508,9 @@ export type Particle = {
   maxTtl: number;
   color: string;
   size: number;
-  kind?: "trail" | "spark" | "ring" | "engine" | "flash" | "debris";
+  rot?: number;
+  rotVel?: number;
+  kind?: "trail" | "spark" | "ring" | "engine" | "flash" | "debris" | "fireball" | "smoke";
 };
 
 export type StationKind = "hub" | "trade" | "mining" | "military" | "outpost";

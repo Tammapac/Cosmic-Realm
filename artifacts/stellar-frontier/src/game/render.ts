@@ -525,14 +525,47 @@ function drawParticle(ctx: CanvasRenderingContext2D, pa: Particle): void {
     ctx.restore();
     return;
   }
+  if (pa.kind === "fireball") {
+    const t = 1 - a;
+    const r = pa.size * (0.3 + t * 0.85);
+    ctx.save();
+    ctx.globalAlpha = a * 0.85;
+    const grd = ctx.createRadialGradient(pa.pos.x, pa.pos.y, 0, pa.pos.x, pa.pos.y, r);
+    grd.addColorStop(0, "#ffffff");
+    grd.addColorStop(0.15, "#ffffa0");
+    grd.addColorStop(0.4, pa.color);
+    grd.addColorStop(0.75, "#330000");
+    grd.addColorStop(1, "transparent");
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(pa.pos.x, pa.pos.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+  if (pa.kind === "smoke") {
+    const t = 1 - a;
+    const r = pa.size * (0.4 + t * 0.9);
+    ctx.save();
+    ctx.globalAlpha = a * 0.45;
+    ctx.fillStyle = pa.color;
+    ctx.beginPath();
+    ctx.arc(pa.pos.x, pa.pos.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
   if (pa.kind === "debris") {
     ctx.save();
     ctx.globalAlpha = a;
+    ctx.translate(pa.pos.x, pa.pos.y);
+    ctx.rotate(pa.rot ?? 0);
     ctx.fillStyle = pa.color;
     ctx.shadowColor = pa.color;
-    ctx.shadowBlur = 4;
-    const s = pa.size * (0.4 + a * 0.6);  // large at spawn, shrinks as it fades
-    ctx.fillRect(pa.pos.x - s / 2, pa.pos.y - s / 2, s, s);
+    ctx.shadowBlur = 5;
+    const s = pa.size * (0.4 + a * 0.6);
+    ctx.fillRect(-s, -s * 0.4, s * 2, s * 0.8);
+    ctx.fillRect(-s * 0.4, -s, s * 0.8, s * 0.9);
     ctx.restore();
     return;
   }
