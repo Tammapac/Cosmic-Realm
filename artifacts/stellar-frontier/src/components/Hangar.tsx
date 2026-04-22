@@ -1,8 +1,8 @@
 import { state, bump, useGame, pushNotification, save, stationPrice, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, rocketAmmoMax, getRocketWeaponIds, ensureAmmoInitialized, setAutoRestock, setAutoRepairHull, setAutoShieldRecharge, getActiveAmmoType, switchRocketAmmoType, purchaseTypedAmmo, getAmmoCountForType, ROCKET_AMMO_COST_PER } from "../game/store";
 import {
   ActiveQuest, CONSUMABLE_DEFS, ConsumableId, DAILY_DUNGEON_BONUS, DRONE_DEFS, DroneKind, DroneMode, DUNGEONS, DungeonId, FACTIONS, MODULE_DEFS, ModuleDef, ModuleSlot, ModuleStats, RARITY_COLOR,
-  Quest, RESOURCES, ResourceId, ROCKET_AMMO_TYPE_DEFS, RocketAmmoType, SHIP_CLASSES, SKILL_NODES, STATIONS, ShipClassId, SkillBranch,
-  SkillId, getDailyFeaturedDungeon,
+  Quest, QUEST_POOL, RESOURCES, ResourceId, ROCKET_AMMO_TYPE_DEFS, RocketAmmoType, SHIP_CLASSES, SKILL_NODES, STATIONS, ShipClassId, SkillBranch,
+  SkillId, ZONES, getDailyFeaturedDungeon,
 } from "../game/types";
 import type { HangarTab } from "../game/store";
 import { effectiveStats } from "../game/loop";
@@ -88,9 +88,36 @@ export function Hangar({ stationId }: { stationId: string }) {
 }
 
 // ── BOUNTIES ──────────────────────────────────────────────────────────────
+const ZONE_FACTION_META: Record<string, { label: string; color: string; glyph: string }> = {
+  earth: { label: "Earth Concord",  color: "#4ee2ff", glyph: "⊕" },
+  mars:  { label: "Mars Coalition", color: "#ff7733", glyph: "⊗" },
+  venus: { label: "Venus Enclave",  color: "#c96fff", glyph: "⊛" },
+};
+
 function BountiesTab() {
   const player = useGame((s) => s.player);
   const available = useGame((s) => s.availableQuests);
+
+  // Cross-faction: quests from other factions' zones that the player's level unlocks
+  const currentFaction = ZONES[player.zone as keyof typeof ZONES]?.faction ?? "earth";
+  const crossFactionQuests = useMemo(() =>
+    QUEST_POOL.filter((q) => {
+      const z = ZONES[q.zone as keyof typeof ZONES];
+      return z && z.faction !== currentFaction && z.unlockLevel <= player.level && !player.completedQuests.includes(q.id);
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentFaction, player.level, player.completedQuests.length]
+  );
+
+  const crossByFaction = useMemo(() =>
+    crossFactionQuests.reduce<Record<string, Quest[]>>((acc, q) => {
+      const f = ZONES[q.zone as keyof typeof ZONES].faction;
+      if (!acc[f]) acc[f] = [];
+      acc[f].push(q);
+      return acc;
+    }, {}),
+    [crossFactionQuests]
+  );
 
   const accept = (q: Quest) => {
     if (player.activeQuests.find((x) => x.id === q.id)) return;
@@ -115,61 +142,119 @@ function BountiesTab() {
   };
 
   return (
-    <div className="grid grid-cols-2 gap-4 p-4">
-      <div>
-        <div className="text-cyan tracking-widest text-xs mb-3">▶ AVAILABLE BOUNTIES</div>
-        <div className="space-y-2">
-          {available.map((q) => {
-            const has = player.activeQuests.find((x) => x.id === q.id);
-            const done = player.completedQuests.includes(q.id);
-            return (
-              <div key={q.id} className="panel p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1">
-                    <div className="text-amber glow-amber text-sm font-bold">{q.title}</div>
-                    <div className="text-dim text-[11px] mt-1 mb-2">{q.description}</div>
-                    <div className="flex gap-3 text-[10px] flex-wrap">
-                      <span className="text-cyan">⚔ {q.killCount}× {q.killType}</span>
-                      <span className="text-amber">+{q.rewardCredits}cr</span>
-                      <span className="text-magenta">+{q.rewardExp}xp</span>
-                      <span className="text-green">+{q.rewardHonor} honor</span>
+    <div className="p-4 space-y-4">
+      {/* Top row: available bounties (current zone) + active log */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <div className="text-cyan tracking-widest text-xs mb-3">▶ AVAILABLE BOUNTIES</div>
+          <div className="space-y-2">
+            {available.length === 0 && (
+              <div className="text-mute text-xs italic">No bounties posted in this zone.</div>
+            )}
+            {available.map((q) => {
+              const has = player.activeQuests.find((x) => x.id === q.id);
+              const done = player.completedQuests.includes(q.id);
+              return (
+                <div key={q.id} className="panel p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1">
+                      <div className="text-amber glow-amber text-sm font-bold">{q.title}</div>
+                      <div className="text-dim text-[11px] mt-1 mb-2">{q.description}</div>
+                      <div className="flex gap-3 text-[10px] flex-wrap">
+                        <span className="text-cyan">⚔ {q.killCount}× {q.killType}</span>
+                        <span className="text-amber">+{q.rewardCredits.toLocaleString()}cr</span>
+                        <span className="text-magenta">+{q.rewardExp.toLocaleString()}xp</span>
+                        <span className="text-green">+{q.rewardHonor} honor</span>
+                      </div>
                     </div>
+                    <button className="btn btn-primary" disabled={!!has || done} onClick={() => accept(q)}>
+                      {done ? "Done" : has ? "Active" : "Accept"}
+                    </button>
                   </div>
-                  <button className="btn btn-primary" disabled={!!has || done} onClick={() => accept(q)}>
-                    {done ? "Done" : has ? "Active" : "Accept"}
-                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div>
+          <div className="text-cyan tracking-widest text-xs mb-3">▶ ACTIVE QUESTS ({player.activeQuests.length}/5)</div>
+          <div className="space-y-2">
+            {player.activeQuests.length === 0 && (
+              <div className="text-mute text-xs italic">No active quests. Take a contract from the board.</div>
+            )}
+            {player.activeQuests.map((q) => (
+              <div key={q.id} className="panel p-3">
+                <div className="text-amber glow-amber text-sm font-bold">{q.title}</div>
+                <div className="text-dim text-[11px] mt-1 mb-2">
+                  {q.progress}/{q.killCount} {q.killType}s eliminated
+                </div>
+                <div className="bar mb-2">
+                  <div className="bar-fill" style={{
+                    width: `${(q.progress / q.killCount) * 100}%`,
+                    background: "linear-gradient(90deg, #ff5cf066, #ff5cf0)",
+                    boxShadow: "0 0 6px #ff5cf0",
+                  }} />
+                </div>
+                <button className="btn btn-amber w-full" disabled={!q.completed} onClick={() => turnIn(q)}>
+                  {q.completed ? "Turn In" : "In Progress"}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Cross-faction contracts */}
+      {Object.keys(crossByFaction).length > 0 && (
+        <div className="border-t pt-4" style={{ borderColor: "var(--border-soft)" }}>
+          <div className="text-cyan tracking-widest text-xs mb-1">▶ CROSS-FACTION CONTRACTS</div>
+          <div className="text-mute text-[10px] mb-3">Accept now — progress counts when you arrive in that zone.</div>
+          {Object.entries(crossByFaction).map(([faction, quests]) => {
+            const meta = ZONE_FACTION_META[faction] ?? ZONE_FACTION_META.earth;
+            return (
+              <div key={faction} className="mb-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs tracking-widest font-bold" style={{ color: meta.color }}>
+                    {meta.glyph} {meta.label.toUpperCase()}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {quests.map((q) => {
+                    const has = player.activeQuests.find((x) => x.id === q.id);
+                    const done = player.completedQuests.includes(q.id);
+                    const zone = ZONES[q.zone as keyof typeof ZONES];
+                    return (
+                      <div
+                        key={q.id}
+                        className="panel p-3"
+                        style={{ borderLeft: `2px solid ${meta.color}55` }}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[9px] tracking-widest mb-1" style={{ color: meta.color }}>
+                              {zone.label} · {zone.name.toUpperCase()}
+                            </div>
+                            <div className="text-amber text-sm font-bold truncate">{q.title}</div>
+                            <div className="text-dim text-[11px] mt-1 mb-2 line-clamp-2">{q.description}</div>
+                            <div className="flex gap-2 text-[10px] flex-wrap">
+                              <span className="text-cyan">⚔ {q.killCount}× {q.killType}</span>
+                              <span className="text-amber">+{q.rewardCredits.toLocaleString()}cr</span>
+                              <span className="text-magenta">+{q.rewardExp.toLocaleString()}xp</span>
+                            </div>
+                          </div>
+                          <button className="btn btn-primary shrink-0" disabled={!!has || done} onClick={() => accept(q)}>
+                            {done ? "Done" : has ? "Active" : "Accept"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );
           })}
         </div>
-      </div>
-      <div>
-        <div className="text-cyan tracking-widest text-xs mb-3">▶ ACTIVE QUESTS ({player.activeQuests.length}/5)</div>
-        <div className="space-y-2">
-          {player.activeQuests.length === 0 && (
-            <div className="text-mute text-xs italic">No active quests. Take a contract from the board.</div>
-          )}
-          {player.activeQuests.map((q) => (
-            <div key={q.id} className="panel p-3">
-              <div className="text-amber glow-amber text-sm font-bold">{q.title}</div>
-              <div className="text-dim text-[11px] mt-1 mb-2">
-                {q.progress}/{q.killCount} {q.killType}s eliminated
-              </div>
-              <div className="bar mb-2">
-                <div className="bar-fill" style={{
-                  width: `${(q.progress / q.killCount) * 100}%`,
-                  background: "linear-gradient(90deg, #ff5cf066, #ff5cf0)",
-                  boxShadow: "0 0 6px #ff5cf0",
-                }} />
-              </div>
-              <button className="btn btn-amber w-full" disabled={!q.completed} onClick={() => turnIn(q)}>
-                {q.completed ? "Turn In" : "In Progress"}
-              </button>
-            </div>
-          ))}
-        </div>
-      </div>
+      )}
     </div>
   );
 }
