@@ -195,6 +195,8 @@ function spawnEnemy(): void {
     loot: def.loot,
     burstCd: 0,
     burstShots: 0,
+    spawnPos: { x: px, y: py },
+    aggro: false,
   });
 }
 
@@ -222,6 +224,8 @@ function spawnDungeonEnemy(type: EnemyType, hpMul: number, dmgMul: number): void
     honor: Math.round(def.honor * 1.4),
     color: def.color, size: def.size,
     loot: def.loot, burstCd: 0, burstShots: 0,
+    spawnPos: { x: px, y: py },
+    aggro: true,
   });
 }
 
@@ -291,6 +295,8 @@ function spawnBoss(): void {
     bossPhase: 0,
     burstCd: 0,
     burstShots: 0,
+    spawnPos: { x: px, y: py },
+    aggro: true,
   });
   bossActive = true;
   pushEvent({
@@ -852,7 +858,10 @@ function tickWorld(dt: number): void {
     }
   }
 
-  // ── Update enemies (varied AI per behavior)
+  // ── Update enemies (patrol near spawn, aggro when player is near)
+  const AGGRO_RANGE = 400;
+  const LEASH_RANGE = 800;
+  const MIN_DIST = 60;
   for (const e of state.enemies) {
     const exd = p.pos.x - e.pos.x;
     const eyd = p.pos.y - e.pos.y;
@@ -865,26 +874,52 @@ function tickWorld(dt: number): void {
     }
     // EMP stun: skip AI while stunned
     if (e.stunUntil !== undefined && e.stunUntil > state.tick) {
-      e.vel.x *= 0.85; e.vel.y *= 0.85;  // decelerate
+      e.vel.x *= 0.85; e.vel.y *= 0.85;
       e.pos.x += e.vel.x * dt; e.pos.y += e.vel.y * dt;
       continue;
     }
 
-    if (e.behavior === "fast") {
-      // zigzag fast pursuit
+    // Aggro check: enter aggro when player is close, drop aggro when too far from spawn
+    const distFromSpawn = Math.sqrt(
+      (e.pos.x - e.spawnPos.x) ** 2 + (e.pos.y - e.spawnPos.y) ** 2
+    );
+    if (!e.aggro && ed < AGGRO_RANGE) e.aggro = true;
+    if (e.aggro && distFromSpawn > LEASH_RANGE) e.aggro = false;
+    if (e.isBoss) e.aggro = ed < 800;
+
+    if (!e.aggro) {
+      // PATROL: drift slowly near spawn position
+      const toSpawnX = e.spawnPos.x - e.pos.x;
+      const toSpawnY = e.spawnPos.y - e.pos.y;
+      const toSpawnD = Math.sqrt(toSpawnX * toSpawnX + toSpawnY * toSpawnY);
+      const patrolSpeed = e.speed * 0.25;
+      if (toSpawnD > 120) {
+        const ang = Math.atan2(toSpawnY, toSpawnX);
+        e.vel.x = Math.cos(ang) * patrolSpeed;
+        e.vel.y = Math.sin(ang) * patrolSpeed;
+        e.angle = ang;
+      } else {
+        const wobble = Math.sin(state.tick * 0.8 + e.pos.x * 0.01) * Math.PI;
+        e.vel.x = Math.cos(wobble) * patrolSpeed * 0.5;
+        e.vel.y = Math.sin(wobble) * patrolSpeed * 0.5;
+        e.angle = wobble;
+      }
+    } else if (ed < MIN_DIST) {
+      // Too close to player — stop and hold position
+      e.vel.x *= 0.8;
+      e.vel.y *= 0.8;
+    } else if (e.behavior === "fast") {
       const wobble = Math.sin(state.tick * 5 + (e.pos.x + e.pos.y)) * 0.6;
       const ang = e.angle + wobble;
       e.vel.x = Math.cos(ang) * e.speed;
       e.vel.y = Math.sin(ang) * e.speed;
     } else if (e.behavior === "ranged") {
-      // kite at ~340px range
       const ideal = 340;
       const speed = e.speed * (ed < ideal - 40 ? -1 : ed > ideal + 40 ? 1 : 0.2);
       e.vel.x = Math.cos(e.angle) * speed;
       e.vel.y = Math.sin(e.angle) * speed;
     } else if (e.behavior === "tank") {
-      // slow steady advance, hold at ~120
-      if (ed > 140) {
+      if (ed > 160) {
         e.vel.x = Math.cos(e.angle) * e.speed;
         e.vel.y = Math.sin(e.angle) * e.speed;
       } else {
@@ -892,8 +927,7 @@ function tickWorld(dt: number): void {
         e.vel.y *= 0.85;
       }
     } else {
-      // chaser default
-      if (ed > 80) {
+      if (ed > 120) {
         e.vel.x = Math.cos(e.angle) * e.speed;
         e.vel.y = Math.sin(e.angle) * e.speed;
       } else {
@@ -904,8 +938,9 @@ function tickWorld(dt: number): void {
     e.pos.x += e.vel.x * dt;
     e.pos.y += e.vel.y * dt;
 
-    // Firing: ranged fires more, tanks fire bursts, bosses fire spread
+    // Firing: only when aggroed
     e.fireCd -= dt;
+    if (!e.aggro) continue;
     if (e.isBoss) {
       if (e.fireCd <= 0 && ed < 600) {
         // 5-shot spread
@@ -950,12 +985,15 @@ function tickWorld(dt: number): void {
     }
   }
 
+  // ── Auto-attack: continuously fire at locked target until it's dead
   playerFireCd.value -= dt;
-  if (queuedAttackTargetId) {
-    const enemy = state.enemies.find((e) => e.id === queuedAttackTargetId);
-    if (enemy && playerFireCd.value <= 0) {
-      const ang = Math.atan2(enemy.pos.y - p.pos.y, enemy.pos.x - p.pos.x);
-      const stats = effectiveStats();
+  const atkTarget = state.attackTargetId
+    ? state.enemies.find((e) => e.id === state.attackTargetId)
+    : null;
+  if (atkTarget && playerFireCd.value <= 0) {
+    const ang = Math.atan2(atkTarget.pos.y - p.pos.y, atkTarget.pos.x - p.pos.x);
+    const atkDist = Math.sqrt((atkTarget.pos.x - p.pos.x) ** 2 + (atkTarget.pos.y - p.pos.y) ** 2);
+    if (atkDist < 600) {
       const ammoType = getActiveAmmoType(p.equipped.weapon.find(Boolean) ?? "");
       if (ammoType === "x1") {
         const weaponIds = p.equipped.weapon.filter(Boolean) as string[];
@@ -972,13 +1010,15 @@ function tickWorld(dt: number): void {
           playerFireCd.value = cd;
           state.attackCooldownUntil = state.tick + cd;
           state.attackCooldownDuration = cd;
-          state.combatLaserFlash = { enemyId: queuedAttackTargetId!, ttl: 0.14, maxTtl: 0.14 };
-        } else {
-          pushNotification("No X1 ammo loaded", "bad");
+          state.combatLaserFlash = { enemyId: state.attackTargetId!, ttl: 0.14, maxTtl: 0.14 };
         }
       }
     }
-    queuedAttackTargetId = null;
+  }
+  if (state.attackTargetId && !atkTarget) {
+    state.attackTargetId = null;
+    state.selectedWorldTarget = null;
+    bump();
   }
 
   // ── Update drones (mode-aware: orbit/forward/defensive)

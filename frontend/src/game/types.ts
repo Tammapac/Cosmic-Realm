@@ -431,7 +431,7 @@ export type GameEvent = {
 export type Enemy = {
   id: string;
   type: EnemyType;
-  name?: string;            // individual enemy name label
+  name?: string;
   behavior: EnemyBehavior;
   pos: Vec2;
   vel: Vec2;
@@ -448,13 +448,14 @@ export type Enemy = {
   color: string;
   size: number;
   isBoss?: boolean;
-  bossPhase?: number;       // 0-2, segments
-  combo?: { stacks: number; ttl: number };  // player combo mark
-  hitFlash?: number;        // 0..1 brief white tint after hit
-  // ranged kiting helpers
+  bossPhase?: number;
+  combo?: { stacks: number; ttl: number };
+  hitFlash?: number;
   burstCd?: number;
   burstShots?: number;
-  stunUntil?: number;   // game-time seconds; enemy cannot fire/move while stunned
+  stunUntil?: number;
+  spawnPos: Vec2;
+  aggro: boolean;
 };
 
 // ── ROCKET AMMO TYPES ────────────────────────────────────────────────────

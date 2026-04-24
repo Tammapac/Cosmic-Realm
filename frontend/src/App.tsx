@@ -50,24 +50,21 @@ function GameCanvas() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (state.dockedAt) return;
+  const screenToWorld = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
     const cx = e.clientX - rect.left;
     const cy = e.clientY - rect.top;
-    const wx = state.player.pos.x + (cx - rect.width / 2);
-    const wy = state.player.pos.y + (cy - rect.height / 2);
-    state.cameraTarget = { x: wx, y: wy };
+    return {
+      x: state.player.pos.x + (cx - rect.width / 2),
+      y: state.player.pos.y + (cy - rect.height / 2),
+    };
+  };
 
-    // Pull toward nearest station if clicked nearby
-    for (const s of STATIONS) {
-      if (s.zone !== state.player.zone) continue;
-      if (Math.hypot(s.pos.x - wx, s.pos.y - wy) < 60) {
-        state.cameraTarget = { x: s.pos.x, y: s.pos.y };
-        break;
-      }
-    }
+  const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (state.dockedAt) return;
+    const { x: wx, y: wy } = screenToWorld(e);
 
+    // Check if clicking on enemy — select/lock target but do NOT move ship
     const enemy = state.enemies.find((en) => Math.hypot(en.pos.x - wx, en.pos.y - wy) < Math.max(24, en.size + 14));
     if (enemy) {
       state.selectedWorldTarget = {
@@ -77,18 +74,14 @@ function GameCanvas() {
         detail: `${enemy.type.toUpperCase()} · ${Math.max(0, Math.round(enemy.hull))}/${Math.round(enemy.hullMax)} HP`,
       };
       state.attackTargetId = enemy.id;
-      state.cameraTarget = { x: enemy.pos.x, y: enemy.pos.y };
-      state.miningTargetId = null; // stop mining laser when locking onto an enemy
+      state.miningTargetId = null;
       bump();
       return;
     }
 
+    // Check if clicking on asteroid — select but do NOT move ship
     const asteroid = state.asteroids.find((a) => a.zone === state.player.zone && Math.hypot(a.pos.x - wx, a.pos.y - wy) < a.size + 10);
     if (asteroid) {
-      if (state.selectedWorldTarget?.kind === "enemy") {
-        bump();
-        return;
-      }
       state.selectedWorldTarget = {
         kind: "asteroid",
         id: asteroid.id,
@@ -100,8 +93,38 @@ function GameCanvas() {
       return;
     }
 
-    if (state.selectedWorldTarget?.kind === "enemy") return;
+    // Clicked on free space — move ship there
+    state.cameraTarget = { x: wx, y: wy };
+    state.attackTargetId = null;
+    state.selectedWorldTarget = null;
+    state.miningTargetId = null;
+
+    // Snap to station if clicked nearby
+    for (const s of STATIONS) {
+      if (s.zone !== state.player.zone) continue;
+      if (Math.hypot(s.pos.x - wx, s.pos.y - wy) < 60) {
+        state.cameraTarget = { x: s.pos.x, y: s.pos.y };
+        break;
+      }
+    }
     bump();
+  };
+
+  const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (state.dockedAt) return;
+    const { x: wx, y: wy } = screenToWorld(e);
+    const enemy = state.enemies.find((en) => Math.hypot(en.pos.x - wx, en.pos.y - wy) < Math.max(24, en.size + 14));
+    if (enemy) {
+      state.selectedWorldTarget = {
+        kind: "enemy",
+        id: enemy.id,
+        name: enemy.name ?? enemy.type.toUpperCase(),
+        detail: `${enemy.type.toUpperCase()} · ${Math.max(0, Math.round(enemy.hull))}/${Math.round(enemy.hullMax)} HP`,
+      };
+      state.attackTargetId = enemy.id;
+      state.miningTargetId = null;
+      bump();
+    }
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -119,6 +142,7 @@ function GameCanvas() {
     <canvas
       ref={canvasRef}
       onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
       onMouseMove={handleMouseMove}
       onContextMenu={(e) => e.preventDefault()}
       className="absolute inset-0 w-full h-full"
