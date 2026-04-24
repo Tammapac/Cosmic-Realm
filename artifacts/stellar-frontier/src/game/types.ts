@@ -496,7 +496,7 @@ export const ROCKET_AMMO_TYPE_DEFS: Record<RocketAmmoType, RocketAmmoTypeDef> = 
   },
 };
 
-export const LASER_AMMO_TYPE_ORDER: RocketAmmoType[] = ["x1", "x2", "x3", "x4"];
+export const LASER_AMMO_TYPE_ORDER: RocketAmmoType[] = ["x1"];
 
 export type Projectile = {
   id: string;
