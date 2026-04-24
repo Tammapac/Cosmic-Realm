@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { state, bump, useGame, save, pushNotification, abandonDungeon, useConsumable, getAmmoWeaponIds, rocketAmmoMax, getActiveAmmoType, runDockingServices } from "./game/store";
+import { state, bump, useGame, save, pushNotification, abandonDungeon, useConsumable, getAmmoWeaponIds, rocketAmmoMax, getActiveAmmoType, getAmmoCountForType, runDockingServices } from "./game/store";
 import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats } from "./game/loop";
 import { render } from "./game/render";
 import { TopBar, WorldTargetHud } from "./components/TopBar";
@@ -230,19 +230,24 @@ function AmmoHud() {
   const rocketIds = getAmmoWeaponIds();
   if (rocketIds.length === 0) return null;
 
-  const ammoMax = rocketAmmoMax();
-  const totalMax = ammoMax * rocketIds.length;
-  const totalCur = rocketIds.reduce((sum, id) => sum + (player.ammo[id] ?? 0), 0);
-  const pct = totalMax > 0 ? totalCur / totalMax : 0;
-  const isEmpty = totalCur === 0;
-  const isLow = totalCur > 0 && totalCur <= 10 * rocketIds.length;
-
-  const firstId = rocketIds[0];
-  const item = player.inventory.find((m) => m.instanceId === firstId);
+  // Show primary (first) weapon's active ammo type
+  const primaryId = rocketIds[0];
+  const item = player.inventory.find((m) => m.instanceId === primaryId);
   const def = item ? MODULE_DEFS[item.defId] : null;
-  const activeType = getActiveAmmoType(firstId);
+  const activeType = getActiveAmmoType(primaryId);
   const typeDef = ROCKET_AMMO_TYPE_DEFS[activeType];
+  const ammoMax = rocketAmmoMax();
+  const cur = getAmmoCountForType(primaryId, activeType);
+  const pct = ammoMax > 0 ? cur / ammoMax : 0;
+  const isEmpty = cur === 0;
+  const isLow = cur > 0 && cur <= 10;
   const barColor = isEmpty ? "#ff5c6c" : isLow ? "#ffd24a" : typeDef.color;
+
+  const handleClick = () => {
+    state.hangarTab = "ammo";
+    bump();
+    if (!state.dockedAt) pushNotification("Dock at a station to restock ammo", "bad");
+  };
 
   return (
     <div className="absolute z-30" style={{ bottom: 56, right: 12 }}>
@@ -252,8 +257,11 @@ function AmmoHud() {
           borderColor: barColor,
           boxShadow: (isEmpty || isLow) ? `0 0 8px ${barColor}66` : undefined,
           minWidth: 148,
+          cursor: "pointer",
           animation: isLow ? "hud-pulse 1s ease-in-out infinite" : undefined,
         }}
+        title="Click to go to Ammo tab when docked"
+        onClick={handleClick}
       >
         <div className="flex items-center justify-between gap-2">
           <div className="text-[9px] tracking-widest truncate" style={{ color: def?.color ?? barColor }}>
@@ -263,8 +271,8 @@ function AmmoHud() {
             )}
           </div>
           <div className="text-[10px] font-bold tabular-nums" style={{ color: barColor }}>
-            {isEmpty ? "EMPTY" : isLow ? `${totalCur} LOW` : totalCur}
-            <span className="text-mute text-[8px]">/{totalMax}</span>
+            {isEmpty ? "EMPTY" : isLow ? `${cur} LOW` : cur}
+            <span className="text-mute text-[8px]">/{ammoMax}</span>
           </div>
         </div>
         <div className="mt-0.5 h-1" style={{ background: "rgba(255,255,255,0.08)" }}>
