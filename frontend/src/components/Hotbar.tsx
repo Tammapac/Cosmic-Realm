@@ -15,6 +15,7 @@ export function Hotbar() {
   const attackCooldownDuration = useGame((s) => s.attackCooldownDuration);
   const docked = useGame((s) => s.dockedAt);
   const selectedTarget = useGame((s) => s.selectedWorldTarget);
+  const isAttacking = useGame((s) => s.isAttacking);
   const weaponName = state.player.equipped.weapon.find(Boolean)
     ? (state.player.inventory.find((it) => it.instanceId === state.player.equipped.weapon.find(Boolean)) && "Singularity Driver")
     : null;
@@ -22,8 +23,6 @@ export function Hotbar() {
   if (docked) return null;
 
   const attackOnCooldown = tick < attackCooldownUntil;
-
-  const isAttacking = useGame((s) => s.isAttacking);
 
   const toggleAttack = () => {
     if (!selectedTarget || selectedTarget.kind !== "enemy") {

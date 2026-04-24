@@ -335,6 +335,7 @@ export function GalaxyMap() {
             <span style={{ color: "#c86cff", fontWeight: "bold", fontSize: 11, letterSpacing: 2 }}>VENUS [VRU]</span>
           </div>
 
+          <div style={{ position: "relative" }}>
           <svg viewBox="0 0 760 510" style={{ width: "100%", height: "auto" }}>
             {/* Connection lines */}
             {MAP_LINKS.map(([a, b], i) => {
@@ -423,12 +424,12 @@ export function GalaxyMap() {
             })}
           </svg>
 
-          {/* Hovered zone detail */}
+          {/* Hovered zone detail — absolute so it doesn't shift the SVG */}
           {hovered && (() => {
             const z = ZONES_LOCAL[hovered];
             const n = nodeMap.get(hovered)!;
             return (
-              <div className="panel p-2 mt-2" style={{ borderColor: n.color + "66" }}>
+              <div className="panel p-2" style={{ position: "absolute", left: 0, right: 0, bottom: 0, borderColor: n.color + "66", background: "rgba(6,10,28,0.95)", zIndex: 10 }}>
                 <div className="flex items-center gap-2">
                   <span style={{ color: n.color, fontWeight: "bold", fontSize: 12 }}>{z.label}</span>
                   <span style={{ color: "#e8f0ff", fontWeight: "bold", fontSize: 12 }}>{z.name.toUpperCase()}</span>
@@ -438,6 +439,7 @@ export function GalaxyMap() {
               </div>
             );
           })()}
+          </div>
 
           <div className="text-mute text-[9px] italic mt-2 text-center">
             Click a zone to warp. Dashed lines = cross-faction portals.
