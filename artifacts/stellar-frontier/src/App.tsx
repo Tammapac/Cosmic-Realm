@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { state, bump, useGame, save, pushNotification, abandonDungeon, useConsumable, getAmmoWeaponIds, rocketAmmoMax, getActiveAmmoType, switchRocketAmmoType, runDockingServices } from "./game/store";
+import { state, bump, useGame, save, pushNotification, abandonDungeon, useConsumable, getAmmoWeaponIds, rocketAmmoMax, getActiveAmmoType, runDockingServices } from "./game/store";
 import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats } from "./game/loop";
 import { render } from "./game/render";
 import { TopBar, WorldTargetHud } from "./components/TopBar";
@@ -11,7 +11,7 @@ import { IdleRewardModal } from "./components/IdleRewardModal";
 import { EventBanners } from "./components/EventBanners";
 import { Hotbar } from "./components/Hotbar";
 import { QuestTracker } from "./components/QuestTracker";
-import { DUNGEONS, STATIONS, PORTALS, ZONES, MODULE_DEFS, ROCKET_AMMO_TYPE_DEFS, RocketAmmoType } from "./game/types";
+import { DUNGEONS, STATIONS, PORTALS, ZONES, MODULE_DEFS, ROCKET_AMMO_TYPE_DEFS } from "./game/types";
 import { travelToZone, state as gameState } from "./game/store";
 
 function GameCanvas() {
@@ -220,81 +220,60 @@ function DockPrompt() {
   );
 }
 
-const AMMO_TYPE_ORDER: RocketAmmoType[] = ["x1", "x2", "x3", "x4"];
-
 function AmmoHud() {
+  const docked = useGame((s) => s.dockedAt);
   const player = useGame((s) => s.player);
   useGame((s) => s.tick);
+
+  if (docked) return null;
+
   const rocketIds = getAmmoWeaponIds();
   if (rocketIds.length === 0) return null;
-  const ammoMax = rocketAmmoMax();
 
-  const cycleAmmoType = (weaponId: string) => {
-    if (state.dockedAt) return;
-    const current = getActiveAmmoType(weaponId);
-    const idx = AMMO_TYPE_ORDER.indexOf(current);
-    const next = AMMO_TYPE_ORDER[(idx + 1) % AMMO_TYPE_ORDER.length];
-    switchRocketAmmoType(weaponId, next);
-  };
+  const ammoMax = rocketAmmoMax();
+  const totalMax = ammoMax * rocketIds.length;
+  const totalCur = rocketIds.reduce((sum, id) => sum + (player.ammo[id] ?? 0), 0);
+  const pct = totalMax > 0 ? totalCur / totalMax : 0;
+  const isEmpty = totalCur === 0;
+  const isLow = totalCur > 0 && totalCur <= 10 * rocketIds.length;
+
+  const firstId = rocketIds[0];
+  const item = player.inventory.find((m) => m.instanceId === firstId);
+  const def = item ? MODULE_DEFS[item.defId] : null;
+  const activeType = getActiveAmmoType(firstId);
+  const typeDef = ROCKET_AMMO_TYPE_DEFS[activeType];
+  const barColor = isEmpty ? "#ff5c6c" : isLow ? "#ffd24a" : typeDef.color;
 
   return (
-    <div className="absolute z-30" style={{ bottom: 56, right: 12, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-      {rocketIds.map((id) => {
-        const item = player.inventory.find((m) => m.instanceId === id);
-        const def = item ? MODULE_DEFS[item.defId] : null;
-        const activeType = getActiveAmmoType(id);
-        const typeDef = ROCKET_AMMO_TYPE_DEFS[activeType];
-        const cur = activeType === "x1"
-          ? (player.ammo[id] ?? 0)
-          : (player.ammoByType?.[id]?.[activeType] ?? 0);
-        const pct = ammoMax > 0 ? cur / ammoMax : 0;
-        const isEmpty = cur === 0;
-        const isLow = cur > 0 && cur <= 5;
-        const barColor = isEmpty ? "#ff5c6c" : isLow ? "#ffd24a" : typeDef.color;
-        return (
-          <div
-            key={id}
-            className="panel px-2 py-1"
-            style={{
-              borderColor: barColor,
-              boxShadow: (isEmpty || isLow) ? `0 0 8px ${barColor}66` : undefined,
-              minWidth: 148,
-              cursor: "pointer",
-            }}
-            title="Click to cycle ammo type"
-            onClick={() => cycleAmmoType(id)}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-[9px] tracking-widest truncate" style={{ color: def?.color ?? barColor }}>
-                {typeDef.glyph} {def?.name ?? "Rocket"}
-              </div>
-              <div className="flex items-center gap-1">
-                <span
-                  className="text-[8px] font-bold px-1 rounded"
-                  style={{ background: typeDef.color + "30", color: typeDef.color, border: `1px solid ${typeDef.color}80` }}
-                >
-                  {typeDef.shortName}
-                </span>
-                <div className="text-[10px] font-bold tabular-nums" style={{ color: barColor }}>
-                  {isEmpty ? "EMPTY" : isLow ? `${cur} LOW` : cur}
-                  <span className="text-mute text-[8px]">/{ammoMax}</span>
-                </div>
-              </div>
-            </div>
-            <div className="mt-0.5 h-1" style={{ background: "rgba(255,255,255,0.08)" }}>
-              <div
-                className="h-full"
-                style={{
-                  width: `${pct * 100}%`,
-                  background: barColor,
-                  transition: "width 0.2s",
-                }}
-              />
-            </div>
+    <div className="absolute z-30" style={{ bottom: 56, right: 12 }}>
+      <div
+        className="panel px-2 py-1"
+        style={{
+          borderColor: barColor,
+          boxShadow: (isEmpty || isLow) ? `0 0 8px ${barColor}66` : undefined,
+          minWidth: 148,
+          animation: isLow ? "hud-pulse 1s ease-in-out infinite" : undefined,
+        }}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-[9px] tracking-widest truncate" style={{ color: def?.color ?? barColor }}>
+            {typeDef.glyph} {def?.name ?? "Laser"}
+            {rocketIds.length > 1 && (
+              <span className="text-mute"> ×{rocketIds.length}</span>
+            )}
           </div>
-        );
-      })}
-      <div className="text-[8px] text-mute text-right" style={{ pointerEvents: "none" }}>click ammo to cycle type</div>
+          <div className="text-[10px] font-bold tabular-nums" style={{ color: barColor }}>
+            {isEmpty ? "EMPTY" : isLow ? `${totalCur} LOW` : totalCur}
+            <span className="text-mute text-[8px]">/{totalMax}</span>
+          </div>
+        </div>
+        <div className="mt-0.5 h-1" style={{ background: "rgba(255,255,255,0.08)" }}>
+          <div
+            className="h-full"
+            style={{ width: `${pct * 100}%`, background: barColor, transition: "width 0.2s" }}
+          />
+        </div>
+      </div>
     </div>
   );
 }
