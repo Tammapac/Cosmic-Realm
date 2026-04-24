@@ -241,12 +241,11 @@ function AmmoHud() {
   const pct = ammoMax > 0 ? cur / ammoMax : 0;
   const isEmpty = cur === 0;
   const isLow = cur > 0 && cur <= 10;
-  const barColor = isEmpty ? "#ff5c6c" : isLow ? "#ffd24a" : typeDef.color;
+  const barColor = isEmpty || isLow ? "#ff5c6c" : typeDef.color;
 
   const handleClick = () => {
     state.hangarTab = "ammo";
     bump();
-    if (!state.dockedAt) pushNotification("Dock at a station to restock ammo", "bad");
   };
 
   return (
