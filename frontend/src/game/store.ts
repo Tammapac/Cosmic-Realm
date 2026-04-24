@@ -107,6 +107,7 @@ export type GameState = {
   attackTargetId: string | null;
   isAttacking: boolean;
   cargoBoxes: CargoBox[];
+  showAmmoSelector: boolean;
 };
 
 const STORAGE_KEY = "stellar-frontier-save-v5";
@@ -426,6 +427,7 @@ export const state: GameState = {
   attackTargetId: null,
   isAttacking: false,
   cargoBoxes: [],
+  showAmmoSelector: false,
 };
 
 const listeners = new Set<() => void>();

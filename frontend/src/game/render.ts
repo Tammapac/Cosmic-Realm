@@ -1160,11 +1160,44 @@ function drawProjectile(ctx: CanvasRenderingContext2D, pr: Projectile): void {
     ctx.lineTo(4, pr.size / 2 + 1);
     ctx.stroke();
     ctx.globalAlpha = 1;
+  } else if (pr.weaponKind === "rocket") {
+    // ── Rocket: missile body with fins and exhaust ──
+    ctx.shadowColor = pr.color;
+    ctx.shadowBlur = 14;
+    // missile body (metallic gray)
+    ctx.fillStyle = "#bbbbbb";
+    ctx.fillRect(-7, -2, 14, 4);
+    // nose cone (colored)
+    ctx.beginPath();
+    ctx.moveTo(9, 0);
+    ctx.lineTo(5, -2.5);
+    ctx.lineTo(5, 2.5);
+    ctx.closePath();
+    ctx.fillStyle = pr.color;
+    ctx.fill();
+    // tail fins
+    ctx.fillStyle = "#888888";
+    ctx.beginPath();
+    ctx.moveTo(-7, -2); ctx.lineTo(-11, -5); ctx.lineTo(-5, -2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-7, 2); ctx.lineTo(-11, 5); ctx.lineTo(-5, 2);
+    ctx.closePath();
+    ctx.fill();
+    // exhaust flame
+    const flicker = 0.7 + 0.3 * Math.sin(Date.now() * 0.03);
+    ctx.globalAlpha = 0.85 * flicker;
+    ctx.fillStyle = "#ff8a4e";
+    ctx.fillRect(-12, -1.5, 5, 3);
+    ctx.globalAlpha = 0.5 * flicker;
+    ctx.fillStyle = "#ffd24a";
+    ctx.fillRect(-15, -1, 3, 2);
+    ctx.globalAlpha = 1;
   } else {
-    // ── Standard / default: orange glow ──
+    // ── Laser / default: energy bolt ──
     ctx.shadowColor = pr.color;
     ctx.shadowBlur = 12;
-    // glowing core
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(-3, -1, 6, 2);
     ctx.fillStyle = pr.color;
