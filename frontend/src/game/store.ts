@@ -2,6 +2,7 @@ import { useSyncExternalStore } from "react";
 import {
   ActiveMission,
   Asteroid,
+  CargoBox,
   CargoItem,
   ChatMessage,
   CONSUMABLE_DEFS,
@@ -47,7 +48,7 @@ import {
 import { sfx } from "./sound";
 
 export type HangarTab =
-  | "bounties" | "loadout" | "ships" | "drones" | "market" | "cargo" | "repair" | "skills" | "missions" | "dungeons" | "ammo";
+  | "bounties" | "loadout" | "ships" | "drones" | "market" | "cargo" | "repair" | "skills" | "missions" | "dungeons";
 
 export type DockServiceEntry = {
   kind: "repair" | "shield" | "ammo" | "failed";
@@ -96,7 +97,7 @@ export type GameState = {
   hotbarCooldowns: number[];     // 8 slots, remaining cooldown seconds
   pendingRocketSalvo: number;    // rockets left to fire this tick
   pendingDronePod: boolean;      // spawn a temp combat drone
-  dockingSummary: DockServiceEntry[] | null; // null = not showing
+  dockingSummary: DockServiceEntry[] | null;
   selectedWorldTarget: {
     kind: "enemy" | "asteroid";
     id: string;
@@ -104,6 +105,8 @@ export type GameState = {
     detail: string;
   } | null;
   attackTargetId: string | null;
+  isAttacking: boolean;
+  cargoBoxes: CargoBox[];
 };
 
 const STORAGE_KEY = "stellar-frontier-save-v5";
@@ -188,8 +191,6 @@ function makeInitialPlayer(): Player {
     ammoByType: {},
     dungeonClears: {},
     dungeonBestTimes: {},
-    selectedWorldTarget: null,
-    attackTargetId: null,
   };
 }
 
@@ -284,7 +285,7 @@ if (!Array.isArray(initialPlayer.dailyMissions)) initialPlayer.dailyMissions = r
 if (typeof initialPlayer.lastDailyReset !== "number") initialPlayer.lastDailyReset = Date.now();
 const prevLastSeen = typeof initialPlayer.lastSeen === "number" ? initialPlayer.lastSeen : Date.now();
 initialPlayer.lastSeen = Date.now();
-if (initialPlayer.faction !== "aurora" && initialPlayer.faction !== "crimson" && initialPlayer.faction !== "syndicate") {
+if (initialPlayer.faction !== "earth" && initialPlayer.faction !== "mars" && initialPlayer.faction !== "venus") {
   initialPlayer.faction = null;
 }
 if (!initialPlayer.dungeonClears || typeof initialPlayer.dungeonClears !== "object") initialPlayer.dungeonClears = {};
@@ -421,6 +422,10 @@ export const state: GameState = {
   pendingRocketSalvo: 0,
   pendingDronePod: false,
   dockingSummary: null,
+  selectedWorldTarget: null,
+  attackTargetId: null,
+  isAttacking: false,
+  cargoBoxes: [],
 };
 
 const listeners = new Set<() => void>();
@@ -611,6 +616,7 @@ export function travelToZone(zoneId: ZoneId): void {
   state.enemies = [];
   state.projectiles = [];
   state.particles = [];
+  state.cargoBoxes = [];
   refreshOthers(zoneId);
   pushNotification(`Warped to ${ZONES[zoneId].name}`, "good");
   pushChat("system", "SYSTEM", `You entered ${ZONES[zoneId].name}.`);
@@ -687,7 +693,7 @@ export function maxDroneSlots(): number {
 }
 
 // ── AMMO ──────────────────────────────────────────────────────────────────
-export const ROCKET_AMMO_BASE = 2000;
+export const ROCKET_AMMO_BASE = 999999;
 export const ROCKET_AMMO_COST_PER = 8; // credits per rocket round when restocking
 
 export function rocketAmmoMax(): number {
@@ -922,8 +928,10 @@ export function runDockingServices(hullMax: number, shieldMax: number): void {
 export function chooseFaction(id: FactionId): void {
   state.player.faction = id;
   state.showFactionPicker = false;
-  pushNotification(`Allied with ${FACTIONS[id].name}`, "good");
-  pushChat("system", "SYSTEM", `You pledged loyalty to ${FACTIONS[id].name}.`);
+  const f = FACTIONS[id];
+  pushNotification(`Joined ${f.name} [${f.tag}]`, "good");
+  pushChat("system", "SYSTEM", `You pledged loyalty to ${f.name} [${f.tag}].`);
+  travelToZone(f.startZone);
   save(); bump();
 }
 

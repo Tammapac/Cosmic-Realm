@@ -1,7 +1,7 @@
 import { state, bump, useGame, pushNotification, save, stationPrice, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, rocketAmmoMax, getAmmoWeaponIds, ensureAmmoInitialized, setAutoRestock, setAutoRepairHull, setAutoShieldRecharge, getActiveAmmoType, switchRocketAmmoType, purchaseTypedAmmo, getAmmoCountForType, ROCKET_AMMO_COST_PER } from "../game/store";
 import {
   ActiveQuest, CONSUMABLE_DEFS, ConsumableId, DAILY_DUNGEON_BONUS, DRONE_DEFS, DroneKind, DroneMode, DUNGEONS, DungeonId, FACTIONS, MODULE_DEFS, ModuleDef, ModuleSlot, ModuleStats, RARITY_COLOR,
-  Quest, QUEST_POOL, RESOURCES, ResourceId, ROCKET_AMMO_TYPE_DEFS, RocketAmmoType, SHIP_CLASSES, SKILL_NODES, STATIONS, ShipClassId, SkillBranch,
+  Quest, QUEST_POOL, RESOURCES, ResourceId, ROCKET_AMMO_TYPE_DEFS, RocketAmmoType, SHIP_CLASSES, SKILL_NODES, SkillNode, STATIONS, ShipClassId, SkillBranch,
   SkillId, ZONES, getDailyFeaturedDungeon,
 } from "../game/types";
 import type { HangarTab } from "../game/store";
@@ -15,7 +15,6 @@ const TABS: { id: HangarTab; label: string; glyph: string }[] = [
   { id: "skills",   label: "Skills",   glyph: "✦" },
   { id: "ships",    label: "Shipyard", glyph: "▲" },
   { id: "loadout",  label: "Loadout",  glyph: "⚙" },
-  { id: "ammo",     label: "Ammo",     glyph: "⟁" },
   { id: "dungeons", label: "Dungeons", glyph: "▼" },
   { id: "drones",   label: "Drones",   glyph: "✦" },
   { id: "market",   label: "Market",   glyph: "$" },
@@ -76,7 +75,6 @@ export function Hangar({ stationId }: { stationId: string }) {
           {tab === "missions" && <MissionsTab />}
           {tab === "skills" && <SkillsTab />}
           {tab === "loadout" && <LoadoutTab stationId={stationId} />}
-          {tab === "ammo" && <AmmoTab />}
           {tab === "dungeons" && <DungeonsTab />}
           {tab === "ships" && <ShipsTab />}
           {tab === "drones" && <DronesTab />}
@@ -437,7 +435,7 @@ function SlotCell({
                 {ammoCount === 0 && <span className="text-[8px] font-bold" style={{ color: "#ff5c6c" }}>EMPTY</span>}
               </div>
               <div className="flex gap-1 mt-1">
-                {(["standard", "armor-piercing", "emp"] as RocketAmmoType[]).map((type) => {
+                {(["x1", "x2", "x3", "x4"] as RocketAmmoType[]).map((type) => {
                   const tDef = ROCKET_AMMO_TYPE_DEFS[type];
                   const typeCount = getAmmoCountForType(instanceId!, type);
                   const isActiveType = getActiveAmmoType(instanceId!) === type;
@@ -1096,73 +1094,107 @@ function MarketTab({ stationId }: { stationId: string }) {
   };
 
   const allRes = Object.values(RESOURCES);
+  const isTrade = station.kind === "trade";
+
+  const sellAll = () => {
+    let totalEarn = 0;
+    for (const c of [...player.cargo]) {
+      const price = stationPrice(stationId, c.resourceId);
+      const earn = price * c.qty;
+      totalEarn += earn;
+      removeCargo(c.resourceId, c.qty);
+    }
+    if (totalEarn > 0) {
+      player.credits += totalEarn;
+      pushNotification(`Sold all cargo · +${totalEarn.toLocaleString()}cr`, "good");
+      save(); bump();
+    } else {
+      pushNotification("Nothing to sell", "bad");
+    }
+  };
 
   return (
     <div className="p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <div className="text-cyan tracking-widest text-xs">▶ COMMODITY EXCHANGE</div>
-          <div className="text-mute text-[10px]">
-            Buy low at one station, sell high at another. Different stations specialize in different resources.
-          </div>
-        </div>
-        <div className="text-right">
-          <div className="text-mute text-[10px]">CREDITS</div>
-          <div className="text-amber font-bold">{player.credits.toLocaleString()}cr</div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-7 gap-2 px-2 py-1 text-[9px] tracking-widest text-mute border-b" style={{ borderColor: "var(--border-soft)" }}>
-        <div className="col-span-2">RESOURCE</div>
-        <div className="text-right">BASE</div>
-        <div className="text-right">HERE</div>
-        <div className="text-right">±</div>
-        <div className="text-right">CARGO</div>
-        <div className="text-center">TRADE</div>
-      </div>
-
-      <div className="space-y-1 mt-1">
-        {allRes.map((r) => {
-          const price = stationPrice(stationId, r.id);
-          const diff = ((price - r.basePrice) / r.basePrice) * 100;
-          const have = player.cargo.find((c) => c.resourceId === r.id)?.qty ?? 0;
-          return (
-            <div key={r.id} className="grid grid-cols-7 gap-2 items-center px-2 py-1.5 hover:bg-white/5 border-b" style={{ borderColor: "var(--border-soft)" }}>
-              <div className="col-span-2 flex items-center gap-2">
-                <div
-                  className="flex items-center justify-center"
-                  style={{ width: 22, height: 22, background: `${r.color}22`, border: `1px solid ${r.color}`, color: r.color, fontSize: 12 }}
-                >
-                  {r.glyph}
-                </div>
-                <div>
-                  <div className="text-bright text-[11px]">{r.name}</div>
-                  <div className="text-mute text-[8px]">{r.description}</div>
-                </div>
-              </div>
-              <div className="text-right text-mute text-[11px] tabular-nums">{r.basePrice}</div>
-              <div className="text-right font-bold tabular-nums" style={{ color: diff < 0 ? "#5cff8a" : diff > 0 ? "#ff5c6c" : "var(--text-dim)" }}>
-                {price}
-              </div>
-              <div className="text-right text-[10px] tabular-nums" style={{ color: diff < 0 ? "#5cff8a" : "#ff5c6c" }}>
-                {diff > 0 ? "+" : ""}{diff.toFixed(0)}%
-              </div>
-              <div className="text-right text-cyan text-[11px] tabular-nums">{have}</div>
-              <div className="flex gap-1 justify-center">
-                <button className="btn" style={{ padding: "2px 6px", fontSize: 9 }} onClick={() => buy(r.id, 1)}>+1</button>
-                <button className="btn" style={{ padding: "2px 6px", fontSize: 9 }} onClick={() => buy(r.id, 10)}>+10</button>
-                <button className="btn btn-amber" style={{ padding: "2px 6px", fontSize: 9 }} disabled={have <= 0} onClick={() => sell(r.id, 1)}>-1</button>
-                <button className="btn btn-amber" style={{ padding: "2px 6px", fontSize: 9 }} disabled={have < 10} onClick={() => sell(r.id, 10)}>-10</button>
-                <button className="btn btn-amber" style={{ padding: "2px 6px", fontSize: 9 }} disabled={have <= 0} onClick={() => sell(r.id, have)}>All</button>
+      {isTrade && (
+        <>
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <div className="text-cyan tracking-widest text-xs">▶ COMMODITY EXCHANGE</div>
+              <div className="text-mute text-[10px]">
+                Buy low at one station, sell high at another. Different stations specialize in different resources.
               </div>
             </div>
-          );
-        })}
-      </div>
+            <div className="flex items-center gap-3">
+              <button className="btn btn-amber" style={{ padding: "4px 10px", fontSize: 10 }} onClick={sellAll}>
+                SELL ALL CARGO
+              </button>
+              <div className="text-right">
+                <div className="text-mute text-[10px]">CREDITS</div>
+                <div className="text-amber font-bold">{player.credits.toLocaleString()}cr</div>
+              </div>
+            </div>
+          </div>
 
-      <div className="mt-3 text-mute text-[10px] italic">
-        Tip: visit Iron Belt Refinery for cheap iron and lumenite. Resell quantum chips at Crimson stations for premium.
-      </div>
+          <div className="grid grid-cols-7 gap-2 px-2 py-1 text-[9px] tracking-widest text-mute border-b" style={{ borderColor: "var(--border-soft)" }}>
+            <div className="col-span-2">RESOURCE</div>
+            <div className="text-right">BASE</div>
+            <div className="text-right">HERE</div>
+            <div className="text-right">±</div>
+            <div className="text-right">CARGO</div>
+            <div className="text-center">TRADE</div>
+          </div>
+
+          <div className="space-y-1 mt-1">
+            {allRes.map((r) => {
+              const price = stationPrice(stationId, r.id);
+              const diff = ((price - r.basePrice) / r.basePrice) * 100;
+              const have = player.cargo.find((c) => c.resourceId === r.id)?.qty ?? 0;
+              return (
+                <div key={r.id} className="grid grid-cols-7 gap-2 items-center px-2 py-1.5 hover:bg-white/5 border-b" style={{ borderColor: "var(--border-soft)" }}>
+                  <div className="col-span-2 flex items-center gap-2">
+                    <div
+                      className="flex items-center justify-center"
+                      style={{ width: 22, height: 22, background: `${r.color}22`, border: `1px solid ${r.color}`, color: r.color, fontSize: 12 }}
+                    >
+                      {r.glyph}
+                    </div>
+                    <div>
+                      <div className="text-bright text-[11px]">{r.name}</div>
+                      <div className="text-mute text-[8px]">{r.description}</div>
+                    </div>
+                  </div>
+                  <div className="text-right text-mute text-[11px] tabular-nums">{r.basePrice}</div>
+                  <div className="text-right font-bold tabular-nums" style={{ color: diff < 0 ? "#5cff8a" : diff > 0 ? "#ff5c6c" : "var(--text-dim)" }}>
+                    {price}
+                  </div>
+                  <div className="text-right text-[10px] tabular-nums" style={{ color: diff < 0 ? "#5cff8a" : "#ff5c6c" }}>
+                    {diff > 0 ? "+" : ""}{diff.toFixed(0)}%
+                  </div>
+                  <div className="text-right text-cyan text-[11px] tabular-nums">{have}</div>
+                  <div className="flex gap-1 justify-center">
+                    <button className="btn" style={{ padding: "2px 6px", fontSize: 9 }} onClick={() => buy(r.id, 1)}>+1</button>
+                    <button className="btn" style={{ padding: "2px 6px", fontSize: 9 }} onClick={() => buy(r.id, 10)}>+10</button>
+                    <button className="btn btn-amber" style={{ padding: "2px 6px", fontSize: 9 }} disabled={have <= 0} onClick={() => sell(r.id, 1)}>-1</button>
+                    <button className="btn btn-amber" style={{ padding: "2px 6px", fontSize: 9 }} disabled={have < 10} onClick={() => sell(r.id, 10)}>-10</button>
+                    <button className="btn btn-amber" style={{ padding: "2px 6px", fontSize: 9 }} disabled={have <= 0} onClick={() => sell(r.id, have)}>All</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-3 text-mute text-[10px] italic">
+            Tip: visit Iron Belt Refinery for cheap iron and lumenite. Resell quantum chips at Crimson stations for premium.
+          </div>
+        </>
+      )}
+
+      {!isTrade && (
+        <div className="mb-4 p-3 text-center" style={{ background: "rgba(78, 226, 255, 0.05)", border: "1px solid var(--border-soft)" }}>
+          <div className="text-mute text-[11px]">This station does not have a commodity exchange.</div>
+          <div className="text-dim text-[9px] mt-1">Visit a Trade station to buy and sell resources.</div>
+        </div>
+      )}
 
       {/* Consumables Shop */}
       <div className="mt-5">

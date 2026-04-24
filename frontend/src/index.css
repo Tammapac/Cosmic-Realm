@@ -156,3 +156,22 @@ button {
   background: linear-gradient(180deg, transparent 0%, rgba(255, 255, 255, 0.03) 50%, transparent 100%);
   animation: scan 6s linear infinite;
 }
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0a0f24;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a3a7a;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #4ee2ff;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2a3a7a #0a0f24;
+}
