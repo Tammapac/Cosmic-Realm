@@ -958,10 +958,16 @@ function tickWorld(dt: number): void {
       const stats = effectiveStats();
       const ammoType = getActiveAmmoType(p.equipped.weapon.find(Boolean) ?? "");
       if (ammoType === "x1") {
-        const weaponId = p.equipped.weapon.find(Boolean);
-        if (weaponId && (p.ammo[weaponId] ?? 0) > 0) {
-          p.ammo[weaponId] -= 1;
-          fireProjectile("player", p.pos.x, p.pos.y, ang, stats.damage, "#4ee2ff", 4);
+        const weaponIds = p.equipped.weapon.filter(Boolean) as string[];
+        let firedAny = false;
+        for (const weaponId of weaponIds) {
+          if ((p.ammo[weaponId] ?? 0) > 0) {
+            p.ammo[weaponId] -= 1;
+            fireProjectile("player", p.pos.x, p.pos.y, ang, stats.damage, "#4ee2ff", 4);
+            firedAny = true;
+          }
+        }
+        if (firedAny) {
           const cd = Math.max(0.10, 0.45 / stats.fireRate);
           playerFireCd.value = cd;
           state.attackCooldownUntil = state.tick + cd;
