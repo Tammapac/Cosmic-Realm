@@ -1104,19 +1104,76 @@ function drawHullShieldBars(
 // ── PROJECTILES ───────────────────────────────────────────────────────────
 function drawProjectile(ctx: CanvasRenderingContext2D, pr: Projectile): void {
   ctx.save();
-  ctx.shadowColor = pr.color;
-  ctx.shadowBlur = 12;
   ctx.translate(pr.pos.x, pr.pos.y);
   ctx.rotate(Math.atan2(pr.vel.y, pr.vel.x));
-  // glowing core
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(-3, -1, 6, 2);
-  ctx.fillStyle = pr.color;
-  ctx.fillRect(-7, -pr.size / 2, 14, pr.size);
-  ctx.fillStyle = pr.color;
-  ctx.globalAlpha = 0.5;
-  ctx.fillRect(-10, -pr.size / 2 - 1, 20, pr.size + 2);
-  ctx.globalAlpha = 1;
+
+  if (pr.armorPiercing) {
+    // ── AP: narrow crimson spike with sharp tip ──
+    ctx.shadowColor = pr.color;
+    ctx.shadowBlur = 18;
+    // thin bright core
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(-2, -0.5, 4, 1);
+    // narrow elongated body
+    ctx.fillStyle = pr.color;
+    ctx.fillRect(-10, -pr.size / 3, 20, (pr.size * 2) / 3);
+    // sharp front tip
+    ctx.beginPath();
+    ctx.moveTo(10, 0);
+    ctx.lineTo(4, -(pr.size / 3));
+    ctx.lineTo(4, pr.size / 3);
+    ctx.closePath();
+    ctx.fill();
+    // faint outer glow
+    ctx.globalAlpha = 0.35;
+    ctx.shadowBlur = 24;
+    ctx.fillRect(-12, -pr.size / 2, 22, pr.size);
+    ctx.globalAlpha = 1;
+  } else if (pr.empStun && pr.empStun > 0) {
+    // ── EMP: electric yellow with crackling glow ──
+    const pulse = 0.75 + 0.25 * Math.sin(Date.now() * 0.025);
+    ctx.shadowColor = pr.color;
+    ctx.shadowBlur = 20 * pulse;
+    // bright white core
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(-3, -1.5, 6, 3);
+    // wider electric body
+    ctx.fillStyle = pr.color;
+    ctx.fillRect(-7, -pr.size / 2, 14, pr.size);
+    // outer electric aura
+    ctx.globalAlpha = 0.45 * pulse;
+    ctx.shadowBlur = 30;
+    ctx.fillRect(-11, -(pr.size / 2) - 2, 22, pr.size + 4);
+    ctx.globalAlpha = 1;
+    // small electric arcs on the sides
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 0.8;
+    ctx.globalAlpha = 0.6 * pulse;
+    ctx.beginPath();
+    ctx.moveTo(-4, -(pr.size / 2) - 1);
+    ctx.lineTo(-2, 0);
+    ctx.lineTo(-4, pr.size / 2 + 1);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(4, -(pr.size / 2) - 1);
+    ctx.lineTo(2, 0);
+    ctx.lineTo(4, pr.size / 2 + 1);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  } else {
+    // ── Standard / default: orange glow ──
+    ctx.shadowColor = pr.color;
+    ctx.shadowBlur = 12;
+    // glowing core
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(-3, -1, 6, 2);
+    ctx.fillStyle = pr.color;
+    ctx.fillRect(-7, -pr.size / 2, 14, pr.size);
+    ctx.globalAlpha = 0.5;
+    ctx.fillRect(-10, -pr.size / 2 - 1, 20, pr.size + 2);
+    ctx.globalAlpha = 1;
+  }
+
   ctx.restore();
 }
 

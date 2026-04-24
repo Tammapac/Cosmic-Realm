@@ -1053,6 +1053,23 @@ function tickWorld(dt: number): void {
     pr.pos.y += pr.vel.y * dt;
     pr.ttl -= dt;
     if (pr.ttl <= 0) return false;
+    // ── Ammo-type colored trail for player homing rockets ──
+    if (pr.homing && pr.fromPlayer && Math.random() < 0.6) {
+      const isEmp = !!(pr.empStun && pr.empStun > 0);
+      const trailSize = pr.armorPiercing ? 2 : isEmp ? 3.5 : 3;
+      const trailTtl = pr.armorPiercing ? 0.22 : isEmp ? 0.32 : 0.28;
+      state.particles.push({
+        id: `rt-${Math.random().toString(36).slice(2, 8)}`,
+        pos: { x: pr.pos.x, y: pr.pos.y },
+        vel: { x: 0, y: 0 },
+        ttl: trailTtl, maxTtl: trailTtl,
+        color: pr.color, size: trailSize, kind: "trail",
+      });
+      // EMP rockets also emit occasional electric ring pulse while in flight
+      if (isEmp && Math.random() < 0.08) {
+        emitRing(pr.pos.x, pr.pos.y, pr.color);
+      }
+    }
     if (pr.fromPlayer) {
       // hit enemies
       for (const e of state.enemies) {
@@ -1081,7 +1098,10 @@ function tickWorld(dt: number): void {
           if (pr.empStun && pr.empStun > 0) {
             e.stunUntil = state.tick + pr.empStun;
             pushFloater({ text: "EMP!", color: "#ffd24a", x: e.pos.x, y: e.pos.y - e.size - 14, scale: 1.1, ttl: 0.9, bold: true });
-            emitRing(pr.pos.x, pr.pos.y, "#ffd24a");
+            emitRing(pr.pos.x, pr.pos.y, pr.color);
+            emitRing(pr.pos.x, pr.pos.y, "#ffffff");
+            setTimeout(() => emitRing(pr.pos.x, pr.pos.y, pr.color), 100);
+            setTimeout(() => emitRing(pr.pos.x, pr.pos.y, pr.color), 220);
           }
           // AP floater
           if (pr.armorPiercing) {
