@@ -687,7 +687,7 @@ export function maxDroneSlots(): number {
 }
 
 // ── AMMO ──────────────────────────────────────────────────────────────────
-export const ROCKET_AMMO_BASE = 20;
+export const ROCKET_AMMO_BASE = 2000;
 export const ROCKET_AMMO_COST_PER = 8; // credits per rocket round when restocking
 
 export function rocketAmmoMax(): number {
