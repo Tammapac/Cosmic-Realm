@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
-import { state, bump, useGame, save, pushNotification, abandonDungeon, useConsumable, getAmmoWeaponIds, rocketAmmoMax, getActiveAmmoType, getAmmoCountForType, runDockingServices } from "./game/store";
+import { useEffect, useRef, useState } from "react";
+import { state, bump, useGame, save, pushNotification, abandonDungeon, useConsumable, getAmmoWeaponIds, rocketAmmoMax, getActiveAmmoType, getAmmoCountForType, runDockingServices, loadServerPlayer } from "./game/store";
 import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats } from "./game/loop";
 import { render } from "./game/render";
 import { TopBar, WorldTargetHud } from "./components/TopBar";
@@ -13,6 +13,9 @@ import { Hotbar } from "./components/Hotbar";
 import { QuestTracker } from "./components/QuestTracker";
 import { DUNGEONS, STATIONS, PORTALS, ZONES, MODULE_DEFS, ROCKET_AMMO_TYPE_DEFS } from "./game/types";
 import { travelToZone, state as gameState } from "./game/store";
+import AuthScreen from "./components/AuthScreen";
+import { hasToken, getPlayer, clearToken } from "./net/api";
+import { connectSocket, disconnectSocket, setSocketListeners, sendPosition } from "./net/socket";
 
 function GameCanvas() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -288,7 +291,7 @@ function AmmoHud() {
 function Title() {
   return (
     <div className="absolute bottom-3 left-3 z-30 pointer-events-none">
-      <div className="text-cyan glow-cyan text-[10px] tracking-[0.3em]">STELLAR FRONTIER</div>
+      <div className="text-cyan glow-cyan text-[10px] tracking-[0.3em]">COSMIC REALM</div>
       <div className="text-mute text-[9px] tracking-widest">
         v 2.0 · CLICK to move · MINIMAP click warps · SPACE docks · SHOOT asteroids to mine
       </div>
@@ -366,7 +369,21 @@ function DockingSummary() {
   );
 }
 
-export default function App() {
+function GameApp() {
+  // Send position to server every 100ms for other players
+  useEffect(() => {
+    const id = setInterval(() => {
+      sendPosition(
+        state.player.pos.x,
+        state.player.pos.y,
+        state.player.vel.x,
+        state.player.vel.y,
+        state.player.angle
+      );
+    }, 100);
+    return () => clearInterval(id);
+  }, []);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -448,4 +465,52 @@ export default function App() {
       <div className="crt-overlay" />
     </div>
   );
+}
+
+export default function App() {
+  const [authed, setAuthed] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!hasToken()) {
+      setLoading(false);
+      return;
+    }
+    getPlayer()
+      .then((data) => {
+        loadServerPlayer(data.player);
+        connectSocket(localStorage.getItem("cosmic-token")!);
+        setAuthed(true);
+      })
+      .catch(() => {
+        clearToken();
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <div style={{
+        position: "fixed", inset: 0, display: "flex", alignItems: "center",
+        justifyContent: "center", background: "#020408", color: "#4ee2ff",
+        fontSize: 14, letterSpacing: 4,
+      }}>
+        CONNECTING...
+      </div>
+    );
+  }
+
+  if (!authed) {
+    return (
+      <AuthScreen
+        onAuth={(playerData) => {
+          loadServerPlayer(playerData);
+          connectSocket(localStorage.getItem("cosmic-token")!);
+          setAuthed(true);
+        }}
+      />
+    );
+  }
+
+  return <GameApp />;
 }
