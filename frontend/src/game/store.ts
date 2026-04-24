@@ -487,9 +487,58 @@ export function save(): void {
       dungeonBestTimes: p.dungeonBestTimes,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+    // Also save to server if logged in
+    if (localStorage.getItem("cosmic-token")) {
+      fetch("/api/player/save", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("cosmic-token")}`,
+        },
+        body: JSON.stringify({ ...toSave, pos: p.pos }),
+      }).catch(() => {});
+    }
   } catch {
     /* ignore */
   }
+}
+
+export function loadServerPlayer(data: any): void {
+  const p = state.player;
+  if (data.name) p.name = data.name;
+  if (data.shipClass) p.shipClass = data.shipClass;
+  if (data.level != null) p.level = data.level;
+  if (data.exp != null) p.exp = data.exp;
+  if (data.credits != null) p.credits = data.credits;
+  if (data.honor != null) p.honor = data.honor;
+  if (data.hull != null) p.hull = data.hull;
+  if (data.shield != null) p.shield = data.shield;
+  if (data.zone) p.zone = data.zone;
+  if (data.pos) { p.pos.x = data.pos.x; p.pos.y = data.pos.y; }
+  if (data.faction !== undefined) p.faction = data.faction;
+  if (data.skillPoints != null) p.skillPoints = data.skillPoints;
+  if (data.skills) p.skills = data.skills;
+  if (data.ownedShips) p.ownedShips = data.ownedShips;
+  if (data.inventory) p.inventory = data.inventory;
+  if (data.equipped) p.equipped = data.equipped;
+  if (data.cargo) p.cargo = data.cargo;
+  if (data.drones) p.drones = data.drones;
+  if (data.consumables) p.consumables = data.consumables;
+  if (data.hotbar) p.hotbar = data.hotbar;
+  if (data.ammo) p.ammo = data.ammo;
+  if (data.rocketAmmoType) p.rocketAmmoType = data.rocketAmmoType;
+  if (data.ammoByType) p.ammoByType = data.ammoByType;
+  if (data.autoRestock != null) p.autoRestock = data.autoRestock;
+  if (data.autoRepairHull != null) p.autoRepairHull = data.autoRepairHull;
+  if (data.autoShieldRecharge != null) p.autoShieldRecharge = data.autoShieldRecharge;
+  if (data.activeQuests) p.activeQuests = data.activeQuests;
+  if (data.completedQuests) p.completedQuests = data.completedQuests;
+  if (data.dailyMissions) p.dailyMissions = data.dailyMissions;
+  if (data.lastDailyReset != null) p.lastDailyReset = data.lastDailyReset;
+  if (data.milestones) p.milestones = data.milestones;
+  if (data.dungeonClears) p.dungeonClears = data.dungeonClears;
+  if (data.dungeonBestTimes) p.dungeonBestTimes = data.dungeonBestTimes;
+  bump();
 }
 
 export function pushNotification(text: string, kind: "info" | "good" | "bad" = "info"): void {
