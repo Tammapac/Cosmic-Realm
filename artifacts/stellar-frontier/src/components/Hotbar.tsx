@@ -15,6 +15,9 @@ export function Hotbar() {
   const attackCooldownDuration = useGame((s) => s.attackCooldownDuration);
   const docked = useGame((s) => s.dockedAt);
   const selectedTarget = useGame((s) => s.selectedWorldTarget);
+  const weaponName = state.player.equipped.weapon.find(Boolean)
+    ? (state.player.inventory.find((it) => it.instanceId === state.player.equipped.weapon.find(Boolean)) && "Singularity Driver")
+    : null;
 
   if (docked) return null;
 
@@ -50,7 +53,7 @@ export function Hotbar() {
       <button
         onClick={attackSelectedTarget}
         onMouseDown={(e) => e.preventDefault()}
-        title={selectedTarget?.kind === "enemy" ? `Attack ${selectedTarget.name}` : "Select an enemy first"}
+            title={selectedTarget?.kind === "enemy" ? `Attack ${selectedTarget.name}` : "Select an enemy first"}
         style={{
           position: "relative",
           width: 78,
@@ -78,7 +81,7 @@ export function Hotbar() {
             transition: "width 0.05s linear",
           }} />
         )}
-        ATTACK
+        {weaponName ?? "ATTACK"}
       </button>
       {hotbar.map((id, i) => {
         const def = id ? CONSUMABLE_DEFS[id] : null;
