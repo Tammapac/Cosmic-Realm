@@ -520,7 +520,11 @@ export function loadServerPlayer(data: any): void {
   if (data.shield != null) p.shield = data.shield;
   if (data.zone) p.zone = data.zone;
   if (data.pos) { p.pos.x = data.pos.x; p.pos.y = data.pos.y; }
-  if (data.faction !== undefined) p.faction = data.faction;
+  if (data.faction !== undefined) {
+    const FACTION_MIGRATE: Record<string, string> = { aurora: "earth", crimson: "mars", syndicate: "venus" };
+    p.faction = (FACTION_MIGRATE[data.faction] ?? data.faction) as any;
+    if (p.faction !== "earth" && p.faction !== "mars" && p.faction !== "venus") p.faction = null;
+  }
   if (data.skillPoints != null) p.skillPoints = data.skillPoints;
   if (data.skills) p.skills = data.skills;
   if (data.ownedShips) p.ownedShips = data.ownedShips;
