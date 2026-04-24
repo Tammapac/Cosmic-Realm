@@ -166,7 +166,8 @@ export function ClanPanel() {
   const player = useGame((s) => s.player);
   const [name, setName] = useState("");
 
-  if (!useGame((s) => s.showClan)) return null;
+  const showClan = useGame((s) => s.showClan);
+  if (!showClan) return null;
 
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(2,4,12,0.85)" }}>
@@ -287,77 +288,107 @@ import { travelToZone } from "../game/store";
 type MapNode = { id: ZoneIdType; cx: number; cy: number; faction: string; color: string };
 
 const MAP_NODES: MapNode[] = [
-  { id: "alpha",    cx: 120, cy: 80,  faction: "earth", color: "#4ee2ff" },
-  { id: "nebula",   cx: 120, cy: 170, faction: "earth", color: "#4ee2ff" },
-  { id: "crimson",  cx: 120, cy: 260, faction: "earth", color: "#4ee2ff" },
-  { id: "void",     cx: 120, cy: 350, faction: "earth", color: "#4ee2ff" },
-  { id: "forge",    cx: 120, cy: 440, faction: "earth", color: "#4ee2ff" },
-  { id: "corona",   cx: 380, cy: 80,  faction: "mars",  color: "#ff8a4e" },
-  { id: "fracture", cx: 380, cy: 170, faction: "mars",  color: "#ff8a4e" },
-  { id: "abyss",    cx: 380, cy: 260, faction: "mars",  color: "#ff8a4e" },
-  { id: "marsdepth",cx: 380, cy: 350, faction: "mars",  color: "#ff8a4e" },
-  { id: "maelstrom",cx: 380, cy: 440, faction: "mars",  color: "#ff8a4e" },
-  { id: "venus1",   cx: 640, cy: 80,  faction: "venus", color: "#c86cff" },
-  { id: "venus2",   cx: 640, cy: 170, faction: "venus", color: "#c86cff" },
-  { id: "venus3",   cx: 640, cy: 260, faction: "venus", color: "#c86cff" },
-  { id: "venus4",   cx: 640, cy: 350, faction: "venus", color: "#c86cff" },
-  { id: "venus5",   cx: 640, cy: 440, faction: "venus", color: "#c86cff" },
+  // Earth (top-left cluster)
+  { id: "alpha",    cx: 70,  cy: 100, faction: "earth", color: "#4ee2ff" },
+  { id: "nebula",   cx: 175, cy: 100, faction: "earth", color: "#4ee2ff" },
+  { id: "crimson",  cx: 70,  cy: 215, faction: "earth", color: "#4ee2ff" },
+  { id: "void",     cx: 175, cy: 215, faction: "earth", color: "#4ee2ff" },
+  { id: "forge",    cx: 265, cy: 315, faction: "earth", color: "#4ee2ff" },
+  // Mars (top-right cluster)
+  { id: "corona",    cx: 690, cy: 100, faction: "mars", color: "#ff8a4e" },
+  { id: "fracture",  cx: 585, cy: 100, faction: "mars", color: "#ff8a4e" },
+  { id: "abyss",     cx: 690, cy: 215, faction: "mars", color: "#ff8a4e" },
+  { id: "marsdepth", cx: 585, cy: 215, faction: "mars", color: "#ff8a4e" },
+  { id: "maelstrom", cx: 495, cy: 315, faction: "mars", color: "#ff8a4e" },
+  // Venus (bottom cluster)
+  { id: "venus1",  cx: 230, cy: 475, faction: "venus", color: "#c86cff" },
+  { id: "venus2",  cx: 380, cy: 475, faction: "venus", color: "#c86cff" },
+  { id: "venus3",  cx: 530, cy: 475, faction: "venus", color: "#c86cff" },
+  { id: "venus4",  cx: 310, cy: 395, faction: "venus", color: "#c86cff" },
+  { id: "venus5",  cx: 450, cy: 395, faction: "venus", color: "#c86cff" },
 ];
 
 const MAP_LINKS: [ZoneIdType, ZoneIdType][] = [
-  ["alpha", "nebula"], ["nebula", "crimson"], ["crimson", "void"], ["void", "forge"],
-  ["corona", "fracture"], ["fracture", "abyss"], ["abyss", "marsdepth"], ["marsdepth", "maelstrom"],
-  ["venus1", "venus2"], ["venus2", "venus3"], ["venus3", "venus4"], ["venus4", "venus5"],
-  ["forge", "corona"], ["maelstrom", "venus1"],
+  // Earth internal
+  ["alpha", "nebula"], ["alpha", "crimson"], ["nebula", "void"], ["crimson", "void"], ["void", "forge"],
+  // Mars internal
+  ["corona", "fracture"], ["corona", "abyss"], ["fracture", "marsdepth"], ["abyss", "marsdepth"], ["marsdepth", "maelstrom"],
+  // Venus internal
+  ["venus1", "venus4"], ["venus2", "venus4"], ["venus2", "venus5"], ["venus3", "venus5"], ["venus4", "venus5"],
+  // Cross-faction bridges (center triangle)
+  ["forge", "maelstrom"], ["forge", "venus4"], ["maelstrom", "venus5"],
+];
+
+const FACTION_LABELS: { text: string; x: number; y: number; color: string }[] = [
+  { text: "EARTH [EIC]", x: 122, y: 50, color: "#4ee2ff" },
+  { text: "MARS [MMO]", x: 638, y: 50, color: "#ff8a4e" },
+  { text: "VENUS [VRU]", x: 380, y: 510, color: "#c86cff" },
 ];
 
 export function GalaxyMap() {
   const player = useGame((s) => s.player);
   const [hovered, setHovered] = useState<ZoneIdType | null>(null);
+  const showMap = useGame((s) => s.showMap);
 
-  if (!useGame((s) => s.showMap)) return null;
+  if (!showMap) return null;
 
   const nodeMap = new Map(MAP_NODES.map((n) => [n.id, n]));
 
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(2,4,12,0.92)" }}>
-      <div className="panel" style={{ width: "min(96vw, 800px)", maxHeight: "92vh", display: "flex", flexDirection: "column" }}>
+      <div className="panel" style={{ width: "min(96vw, 820px)", maxHeight: "92vh", display: "flex", flexDirection: "column" }}>
         <div className="flex items-center justify-between p-3 border-b" style={{ borderColor: "var(--border-soft)", flexShrink: 0 }}>
           <div className="text-cyan glow-cyan tracking-widest font-bold">★ GALAXY MAP</div>
           <button className="btn btn-danger" onClick={() => { state.showMap = false; bump(); }}>✕</button>
         </div>
 
         <div style={{ overflowY: "auto", flex: 1, padding: "12px" }}>
-          {/* Faction column headers */}
-          <div style={{ display: "flex", justifyContent: "space-around", marginBottom: 8 }}>
-            <span style={{ color: "#4ee2ff", fontWeight: "bold", fontSize: 11, letterSpacing: 2 }}>EARTH [EIC]</span>
-            <span style={{ color: "#ff8a4e", fontWeight: "bold", fontSize: 11, letterSpacing: 2 }}>MARS [MMO]</span>
-            <span style={{ color: "#c86cff", fontWeight: "bold", fontSize: 11, letterSpacing: 2 }}>VENUS [VRU]</span>
-          </div>
-
           <div style={{ position: "relative" }}>
-          <svg viewBox="0 0 760 510" style={{ width: "100%", height: "auto" }}>
+          <svg viewBox="0 0 760 530" style={{ width: "100%", height: "auto" }}>
+            {/* Faction territory backgrounds */}
+            <polygon points="10,40 300,40 310,350 180,350 10,260" fill="#4ee2ff06" stroke="#4ee2ff15" strokeWidth={1} />
+            <polygon points="460,40 750,40 750,260 580,350 450,350" fill="#ff8a4e06" stroke="#ff8a4e15" strokeWidth={1} />
+            <polygon points="180,360 580,360 580,510 180,510" fill="#c86cff06" stroke="#c86cff15" strokeWidth={1} />
+
+            {/* Faction labels */}
+            {FACTION_LABELS.map((f) => (
+              <text key={f.text} x={f.x} y={f.y} textAnchor="middle"
+                fill={f.color} fontSize={11} fontWeight="bold" fontFamily="'Courier New', monospace"
+                letterSpacing={2} opacity={0.8}
+              >{f.text}</text>
+            ))}
+
             {/* Connection lines */}
             {MAP_LINKS.map(([a, b], i) => {
               const na = nodeMap.get(a)!;
               const nb = nodeMap.get(b)!;
               const isCross = na.faction !== nb.faction;
+              const mx = (na.cx + nb.cx) / 2;
+              const my = (na.cy + nb.cy) / 2;
               return (
-                <line key={i} x1={na.cx} y1={na.cy} x2={nb.cx} y2={nb.cy}
-                  stroke={isCross ? "#ff5cf088" : na.color + "44"}
-                  strokeWidth={isCross ? 1.5 : 2}
-                  strokeDasharray={isCross ? "6 4" : "none"}
-                />
+                <g key={i}>
+                  <line x1={na.cx} y1={na.cy} x2={nb.cx} y2={nb.cy}
+                    stroke={isCross ? "#ff5cf088" : na.color + "44"}
+                    strokeWidth={isCross ? 1.5 : 1.5}
+                    strokeDasharray={isCross ? "6 4" : "none"}
+                  />
+                  {/* Junction dot at midpoint */}
+                  <circle cx={mx} cy={my} r={2.5}
+                    fill={isCross ? "#ff5cf0" : na.color}
+                    opacity={isCross ? 0.6 : 0.3}
+                  />
+                </g>
               );
             })}
 
-            {/* Zone circles */}
+            {/* Zone nodes */}
             {MAP_NODES.map((n) => {
               const z = ZONES_LOCAL[n.id];
               const locked = player.level < z.unlockLevel;
               const current = player.zone === n.id;
               const isHov = hovered === n.id;
-              const r = current ? 30 : isHov ? 28 : 24;
+              const w = current ? 68 : isHov ? 64 : 58;
+              const h = current ? 42 : isHov ? 40 : 36;
 
               return (
                 <g key={n.id}
@@ -374,46 +405,49 @@ export function GalaxyMap() {
                 >
                   {/* Outer glow for current */}
                   {current && (
-                    <circle cx={n.cx} cy={n.cy} r={r + 6} fill="none"
-                      stroke={n.color} strokeWidth={1.5} opacity={0.5}
+                    <rect x={n.cx - w/2 - 4} y={n.cy - h/2 - 4} width={w + 8} height={h + 8} rx={4}
+                      fill="none" stroke={n.color} strokeWidth={1.5} opacity={0.5}
                       strokeDasharray="4 3"
                     />
                   )}
-                  {/* Main circle */}
-                  <circle cx={n.cx} cy={n.cy} r={r}
-                    fill={locked ? "#0a0f24" : current ? n.color + "33" : isHov ? n.color + "22" : "#0a0f24"}
+                  {/* Background fill */}
+                  <rect x={n.cx - w/2} y={n.cy - h/2} width={w} height={h} rx={3}
+                    fill={locked ? "#0a0f24" : current ? n.color + "22" : isHov ? n.color + "15" : "#0c1228"}
                     stroke={locked ? "#1a2348" : n.color}
-                    strokeWidth={current ? 2.5 : 1.5}
+                    strokeWidth={current ? 2 : 1.2}
                   />
-                  {/* Label inside */}
-                  <text x={n.cx} y={n.cy - 4} textAnchor="middle"
+                  {/* Label top-left */}
+                  <text x={n.cx - w/2 + 5} y={n.cy - 4} textAnchor="start"
                     fill={locked ? "#5a6a98" : "#e8f0ff"}
-                    fontSize={11} fontWeight="bold" fontFamily="'Courier New', monospace"
+                    fontSize={12} fontWeight="bold" fontFamily="'Courier New', monospace"
                   >
                     {z.label}
                   </text>
-                  <text x={n.cx} y={n.cy + 9} textAnchor="middle"
+                  {/* Tier badge */}
+                  <text x={n.cx + w/2 - 5} y={n.cy - 4} textAnchor="end"
                     fill={locked ? "#3a4a68" : n.color}
                     fontSize={7} fontFamily="'Courier New', monospace"
                   >
                     T{z.enemyTier}
                   </text>
-                  {/* Name below circle */}
-                  <text x={n.cx} y={n.cy + r + 14} textAnchor="middle"
-                    fill={locked ? "#3a4a68" : isHov ? "#e8f0ff" : "#8a9ac8"}
-                    fontSize={8} fontFamily="'Courier New', monospace"
+                  {/* Zone name */}
+                  <text x={n.cx} y={n.cy + 12} textAnchor="middle"
+                    fill={locked ? "#3a4a68" : isHov ? "#e8f0ff" : "#7a8ab8"}
+                    fontSize={7} fontFamily="'Courier New', monospace"
                   >
                     {z.name.toUpperCase()}
                   </text>
+                  {/* Lock indicator */}
                   {locked && (
-                    <text x={n.cx} y={n.cy + r + 24} textAnchor="middle"
+                    <text x={n.cx} y={n.cy + h/2 + 12} textAnchor="middle"
                       fill="#ff5c6c" fontSize={7} fontFamily="'Courier New', monospace"
                     >
-                      LV {z.unlockLevel}
+                      🔒 LV {z.unlockLevel}
                     </text>
                   )}
+                  {/* Current marker */}
                   {current && (
-                    <text x={n.cx} y={n.cy + r + 24} textAnchor="middle"
+                    <text x={n.cx} y={n.cy + h/2 + 12} textAnchor="middle"
                       fill={n.color} fontSize={7} fontWeight="bold" fontFamily="'Courier New', monospace"
                     >
                       ▸ HERE
@@ -424,7 +458,7 @@ export function GalaxyMap() {
             })}
           </svg>
 
-          {/* Hovered zone detail — absolute so it doesn't shift the SVG */}
+          {/* Hovered zone detail — absolute overlay */}
           {hovered && (() => {
             const z = ZONES_LOCAL[hovered];
             const n = nodeMap.get(hovered)!;
@@ -442,7 +476,7 @@ export function GalaxyMap() {
           </div>
 
           <div className="text-mute text-[9px] italic mt-2 text-center">
-            Click a zone to warp. Dashed lines = cross-faction portals.
+            Click a zone to warp. Dashed lines = cross-faction portals. Faction zones on borders, high-tier zones bridge the center.
           </div>
         </div>
       </div>
