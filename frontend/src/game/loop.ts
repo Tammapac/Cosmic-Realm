@@ -6,7 +6,7 @@ import {
   getActiveAmmoType,
 } from "./store";
 import {
-  DRONE_DEFS, Drone, DUNGEONS, ENEMY_DEFS, ENEMY_NAMES, EXP_FOR_LEVEL,
+  CargoBox, DRONE_DEFS, Drone, DUNGEONS, ENEMY_DEFS, ENEMY_NAMES, EXP_FOR_LEVEL,
   Enemy, EnemyType, FACTION_ENEMY_MODS, FACTIONS, MODULE_DEFS, ModuleStats,
   PORTALS, ROCKET_AMMO_TYPE_DEFS,
   SHIP_CLASSES, STATIONS, ZONES, ZoneId,
@@ -536,59 +536,23 @@ function applyKill(e: Enemy, killerCrit: boolean): void {
   const credGain = e.credits + (state.player.skills["ut-salvage"] ?? 0) * Math.max(1, Math.floor(e.honor));
   const honorGain = e.honor;
 
-  state.player.exp += expGain;
-  state.player.credits += credGain;
-  const prevCredEarned = state.player.milestones.totalCreditsEarned;
-  state.player.milestones.totalCreditsEarned += credGain;
-  checkMilestoneTier("totalCreditsEarned", prevCredEarned, state.player.milestones.totalCreditsEarned);
+  const hasSalvage = state.player.drones.some((d) => d.kind === "salvage");
+  const lootQty = e.loot ? e.loot.qty + (hasSalvage ? 1 : 0) + stats.lootBonus : 0;
 
-  const prevRank = rankFor(state.player.honor).index;
-  state.player.honor += honorGain;
-  pushHonor(honorGain);
-  const newRank = rankFor(state.player.honor).index;
-  if (newRank > prevRank) {
-    pushNotification(`PROMOTED → ${rankFor(state.player.honor).name}`, "good");
-    pushChat("system", "SYSTEM", `You earned the rank of ${rankFor(state.player.honor).name}.`);
-  }
+  const box: CargoBox = {
+    id: `cb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    pos: { x: e.pos.x + (Math.random() - 0.5) * 30, y: e.pos.y + (Math.random() - 0.5) * 30 },
+    resourceId: e.loot?.resourceId ?? "scrap",
+    qty: lootQty,
+    credits: credGain,
+    exp: expGain,
+    honor: honorGain,
+    ttl: 30,
+    color: e.isBoss ? "#ffd24a" : "#5cff8a",
+  };
+  state.cargoBoxes.push(box);
 
-  // Floating numbers at enemy pos
-  pushFloater({ text: `+${expGain} XP`, color: "#ff5cf0", x: e.pos.x, y: e.pos.y - 12, scale: 1.1, bold: true });
-  pushFloater({ text: `+${credGain}cr`, color: "#ffd24a", x: e.pos.x + 14, y: e.pos.y, scale: 1, ttl: 0.9 });
-  if (honorGain > 0) {
-    pushFloater({ text: `+${honorGain} ✪`, color: rankFor(state.player.honor).color, x: e.pos.x - 14, y: e.pos.y + 12, ttl: 1, scale: 0.9 });
-  }
-
-  // Loot
-  if (e.loot) {
-    const hasSalvage = state.player.drones.some((d) => d.kind === "salvage");
-    const qty = e.loot.qty + (hasSalvage ? 1 : 0) + stats.lootBonus;
-    const got = addCargo(e.loot.resourceId, qty);
-    if (got > 0) {
-      pushFloater({ text: `+${got} loot`, color: "#5cff8a", x: e.pos.x, y: e.pos.y + 24, scale: 0.85, ttl: 0.9 });
-      sfx.pickup();
-    } else {
-      pushNotification("Cargo bay full", "bad");
-    }
-  }
-
-  // Ammo scavenge: ~18% chance to recover 1 rocket round from debris
-  if (Math.random() < 0.18) {
-    const rocketIds = getAmmoWeaponIds();
-    if (rocketIds.length > 0) {
-      const max = rocketAmmoMax();
-      // Give ammo to the weapon with the lowest current count
-      let lowestId = rocketIds[0];
-      let lowestCur = state.player.ammo[lowestId] ?? 0;
-      for (const rid of rocketIds) {
-        const c = state.player.ammo[rid] ?? 0;
-        if (c < lowestCur) { lowestId = rid; lowestCur = c; }
-      }
-      if (lowestCur < max) {
-        state.player.ammo[lowestId] = Math.min(max, lowestCur + 1);
-        pushFloater({ text: "+1 ammo", color: "#ff8a4e", x: e.pos.x + 20, y: e.pos.y - 18, scale: 0.8, ttl: 0.7 });
-      }
-    }
-  }
+  pushFloater({ text: "LOOT ▼", color: box.color, x: e.pos.x, y: e.pos.y - 12, scale: 1, bold: true });
 
   // Quest progress
   for (const q of state.player.activeQuests) {
@@ -858,8 +822,7 @@ function tickWorld(dt: number): void {
     }
   }
 
-  // ── Update enemies (patrol near spawn, aggro when player is near)
-  const AGGRO_RANGE = 400;
+  // ── Update enemies (patrol near spawn, aggro only when player attacks them)
   const LEASH_RANGE = 800;
   const MIN_DIST = 60;
   for (const e of state.enemies) {
@@ -879,11 +842,10 @@ function tickWorld(dt: number): void {
       continue;
     }
 
-    // Aggro check: enter aggro when player is close, drop aggro when too far from spawn
+    // Aggro: only enters aggro when player attacks, drops aggro when too far from spawn
     const distFromSpawn = Math.sqrt(
       (e.pos.x - e.spawnPos.x) ** 2 + (e.pos.y - e.spawnPos.y) ** 2
     );
-    if (!e.aggro && ed < AGGRO_RANGE) e.aggro = true;
     if (e.aggro && distFromSpawn > LEASH_RANGE) e.aggro = false;
     if (e.isBoss) e.aggro = ed < 800;
 
@@ -985,43 +947,54 @@ function tickWorld(dt: number): void {
     }
   }
 
-  // ── Auto-attack: continuously fire at locked target until it's dead
+  // ── Attack: only fire when player chooses to attack (isAttacking)
   playerFireCd.value -= dt;
   const atkTarget = state.attackTargetId
     ? state.enemies.find((e) => e.id === state.attackTargetId)
     : null;
-  if (atkTarget && playerFireCd.value <= 0) {
+  const FIRE_RANGE = 400;
+  if (state.isAttacking && atkTarget && playerFireCd.value <= 0) {
     const ang = Math.atan2(atkTarget.pos.y - p.pos.y, atkTarget.pos.x - p.pos.x);
     const atkDist = Math.sqrt((atkTarget.pos.x - p.pos.x) ** 2 + (atkTarget.pos.y - p.pos.y) ** 2);
-    if (atkDist < 600) {
-      const ammoType = getActiveAmmoType(p.equipped.weapon.find(Boolean) ?? "");
-      if (ammoType === "x1") {
-        const weaponIds = p.equipped.weapon.filter(Boolean) as string[];
-        let firedAny = false;
-        for (const weaponId of weaponIds) {
-          if ((p.ammo[weaponId] ?? 0) > 0) {
-            p.ammo[weaponId] -= 1;
-            fireProjectile("player", p.pos.x, p.pos.y, ang, stats.damage, "#4ee2ff", 4);
-            firedAny = true;
-          }
+    if (atkDist < FIRE_RANGE) {
+      const weaponIds = p.equipped.weapon.filter(Boolean) as string[];
+      const primaryWeaponId = weaponIds[0] ?? "";
+      const ammoType = getActiveAmmoType(primaryWeaponId);
+      const typeDef = ROCKET_AMMO_TYPE_DEFS[ammoType];
+      const dmgMul = typeDef?.damageMul ?? 1.0;
+      const projColor = typeDef?.color ?? "#4ee2ff";
+      let firedAny = false;
+      // All weapons consume from a unified ammo pool (first weapon's ammo)
+      const ammoCount = p.ammo[primaryWeaponId] ?? 0;
+      const ammoNeeded = weaponIds.length;
+      if (ammoCount >= ammoNeeded) {
+        p.ammo[primaryWeaponId] -= ammoNeeded;
+        const projDmg = Math.round(stats.damage * dmgMul / weaponIds.length);
+        for (let wi = 0; wi < weaponIds.length; wi++) {
+          const spread = weaponIds.length > 1 ? (wi - (weaponIds.length - 1) / 2) * 0.06 : 0;
+          fireProjectile("player", p.pos.x, p.pos.y, ang + spread, projDmg, projColor, 4);
         }
-        if (firedAny) {
-          const cd = Math.max(0.10, 0.45 / stats.fireRate);
-          playerFireCd.value = cd;
-          state.attackCooldownUntil = state.tick + cd;
-          state.attackCooldownDuration = cd;
-          state.combatLaserFlash = { enemyId: state.attackTargetId!, ttl: 0.14, maxTtl: 0.14 };
-        }
+        firedAny = true;
+        // Aggro the target when player attacks
+        atkTarget.aggro = true;
+      }
+      if (firedAny) {
+        const cd = Math.max(0.15, 0.55 / stats.fireRate);
+        playerFireCd.value = cd;
+        state.attackCooldownUntil = state.tick + cd;
+        state.attackCooldownDuration = cd;
       }
     }
   }
+  // Clear target lock only when enemy dies
   if (state.attackTargetId && !atkTarget) {
     state.attackTargetId = null;
     state.selectedWorldTarget = null;
+    state.isAttacking = false;
     bump();
   }
 
-  // ── Update drones (mode-aware: orbit/forward/defensive)
+  // ── Update drones (formation behind player)
   const droneCount = p.drones.length;
   let nearest: Enemy | null = null;
   let nearestD = 600;
@@ -1035,22 +1008,20 @@ function tickWorld(dt: number): void {
     const def = DRONE_DEFS[d.kind];
     d.orbitPhase += dt * 1.5;
 
-    let radius = 38 + (i % 2) * 12;
-    let centerX = p.pos.x;
-    let centerY = p.pos.y;
-    let ang = d.orbitPhase + (i / Math.max(1, droneCount)) * Math.PI * 2;
-    if (d.mode === "forward" && nearest) {
-      // sit between player and target
-      const tx = (p.pos.x + nearest.pos.x) / 2;
-      const ty = (p.pos.y + nearest.pos.y) / 2;
-      centerX = tx; centerY = ty;
-      radius = 18;
-    } else if (d.mode === "defensive") {
-      radius = 24;
-    }
+    // Formation: line up behind the player ship
+    const behindAngle = p.angle + Math.PI;
+    const cols = Math.min(4, droneCount);
+    const row = Math.floor(i / cols);
+    const col = i % cols;
+    const spacing = 22;
+    const rowOffset = (row + 1) * spacing;
+    const colOffset = (col - (Math.min(cols, droneCount - row * cols) - 1) / 2) * spacing;
+    const perpAngle = behindAngle + Math.PI / 2;
+    const anchorX = p.pos.x + Math.cos(behindAngle) * rowOffset + Math.cos(perpAngle) * colOffset;
+    const anchorY = p.pos.y + Math.sin(behindAngle) * rowOffset + Math.sin(perpAngle) * colOffset;
     (d as Drone & { anchor?: { x: number; y: number } }).anchor = {
-      x: centerX + Math.cos(ang) * radius,
-      y: centerY + Math.sin(ang) * radius,
+      x: anchorX,
+      y: anchorY,
     };
     if (def.fireRate > 0) {
       d.fireCd -= dt;
@@ -1216,6 +1187,42 @@ function tickWorld(dt: number): void {
   state.particles = state.particles.filter((pa) => pa.ttl > 0);
   if (state.particles.length > 320) {
     state.particles.splice(0, state.particles.length - 320);
+  }
+
+  // ── Cargo box TTL + pickup
+  for (const cb of state.cargoBoxes) cb.ttl -= dt;
+  state.cargoBoxes = state.cargoBoxes.filter((cb) => cb.ttl > 0);
+  const PICKUP_RANGE = 80;
+  for (let i = state.cargoBoxes.length - 1; i >= 0; i--) {
+    const cb = state.cargoBoxes[i];
+    const dx = cb.pos.x - p.pos.x;
+    const dy = cb.pos.y - p.pos.y;
+    if (dx * dx + dy * dy < PICKUP_RANGE * PICKUP_RANGE) {
+      state.player.exp += cb.exp;
+      state.player.credits += cb.credits;
+      const prevCredEarned = state.player.milestones.totalCreditsEarned;
+      state.player.milestones.totalCreditsEarned += cb.credits;
+      checkMilestoneTier("totalCreditsEarned", prevCredEarned, state.player.milestones.totalCreditsEarned);
+      const prevRank = rankFor(state.player.honor).index;
+      state.player.honor += cb.honor;
+      pushHonor(cb.honor);
+      const newRank = rankFor(state.player.honor).index;
+      if (newRank > prevRank) {
+        pushNotification(`PROMOTED → ${rankFor(state.player.honor).name}`, "good");
+        pushChat("system", "SYSTEM", `You earned the rank of ${rankFor(state.player.honor).name}.`);
+      }
+      if (cb.qty > 0) {
+        const got = addCargo(cb.resourceId, cb.qty);
+        if (got > 0) pushFloater({ text: `+${got} loot`, color: "#5cff8a", x: cb.pos.x, y: cb.pos.y + 18, scale: 0.85, ttl: 0.9 });
+        else pushNotification("Cargo bay full", "bad");
+      }
+      pushFloater({ text: `+${cb.exp} XP`, color: "#ff5cf0", x: cb.pos.x, y: cb.pos.y - 12, scale: 1.1, bold: true });
+      pushFloater({ text: `+${cb.credits}cr`, color: "#ffd24a", x: cb.pos.x + 14, y: cb.pos.y, scale: 1, ttl: 0.9 });
+      if (cb.honor > 0) pushFloater({ text: `+${cb.honor} ✪`, color: rankFor(state.player.honor).color, x: cb.pos.x - 14, y: cb.pos.y + 12, ttl: 1, scale: 0.9 });
+      sfx.pickup();
+      tryLevelUp();
+      state.cargoBoxes.splice(i, 1);
+    }
   }
 
   // ── Floaters update

@@ -53,7 +53,7 @@ export function TopBar() {
               <>
                 <span>·</span>
                 <span style={{ color: FACTIONS[player.faction].color }}>
-                  ◆ {FACTIONS[player.faction].name.toUpperCase()}
+                  ◆ [{FACTIONS[player.faction].tag}]
                 </span>
               </>
             )}
@@ -119,13 +119,6 @@ export function TopBar() {
         >
           ⚑ Clan
         </button>
-        <button
-          className="btn btn-amber"
-          style={{ padding: "5px 10px", fontSize: 15 }}
-          onClick={() => { save(); pushNotification("Game saved", "good"); }}
-        >
-          ♥ Save
-        </button>
       </div>
     </div>
   );
@@ -163,7 +156,7 @@ function MicroBar({
   const pct = Math.max(0, Math.min(100, (value / Math.max(1, max)) * 100));
   return (
     <div className="flex items-center gap-1 mb-0.5">
-      <span className="text-mute text-[13px] w-9 tracking-widest">{label}</span>
+      <span className="text-[13px] w-9 tracking-widest" style={{ color: "#ffffff" }}>{label}</span>
       <div className="bar flex-1" style={{ height: 10 }}>
         <div className="bar-fill"
           style={{
@@ -183,7 +176,7 @@ function MicroBar({
 function Stat({ label, value, color }: { label: string; value: string; color: string }) {
   return (
     <div className="text-center">
-      <div className="text-mute text-[13px]">{label}</div>
+      <div className="text-[13px]" style={{ color: "#ffffff" }}>{label}</div>
       <div className="font-bold text-[16px] tabular-nums" style={{ color }}>{value}</div>
     </div>
   );

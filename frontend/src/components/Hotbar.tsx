@@ -1,6 +1,6 @@
 import { useGame, useConsumable, state, bump, pushNotification } from "../game/store";
 import { CONSUMABLE_DEFS } from "../game/types";
-import { effectiveStats, queueAttackTarget } from "../game/loop";
+import { effectiveStats } from "../game/loop";
 
 const SLOT_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8"];
 
@@ -23,7 +23,9 @@ export function Hotbar() {
 
   const attackOnCooldown = tick < attackCooldownUntil;
 
-  const attackSelectedTarget = () => {
+  const isAttacking = useGame((s) => s.isAttacking);
+
+  const toggleAttack = () => {
     if (!selectedTarget || selectedTarget.kind !== "enemy") {
       pushNotification("Select an enemy first", "bad");
       return;
@@ -33,7 +35,7 @@ export function Hotbar() {
       pushNotification("Target lost", "bad");
       return;
     }
-    queueAttackTarget(enemy.id);
+    state.isAttacking = !state.isAttacking;
     bump();
   };
 
@@ -51,15 +53,15 @@ export function Hotbar() {
       }}
     >
       <button
-        onClick={attackSelectedTarget}
+        onClick={toggleAttack}
         onMouseDown={(e) => e.preventDefault()}
-            title={selectedTarget?.kind === "enemy" ? `Attack ${selectedTarget.name}` : "Select an enemy first"}
+            title={selectedTarget?.kind === "enemy" ? (isAttacking ? "Stop attacking" : `Attack ${selectedTarget.name}`) : "Select an enemy first"}
         style={{
           position: "relative",
           width: 78,
           height: 52,
-          border: `2px solid ${attackOnCooldown ? "#7a1a22" : "#ff3b4d"}`,
-          background: attackOnCooldown ? "#14040a" : "#24070b",
+          border: `2px solid ${isAttacking ? "#ff5c6c" : attackOnCooldown ? "#7a1a22" : "#ff3b4d"}`,
+          background: isAttacking ? "#3a0a10" : attackOnCooldown ? "#14040a" : "#24070b",
           borderRadius: 4,
           color: attackOnCooldown ? "#7a3a44" : "#ffb3bb",
           fontFamily: "'Courier New', monospace",
@@ -81,7 +83,7 @@ export function Hotbar() {
             transition: "width 0.05s linear",
           }} />
         )}
-        {weaponName ?? "ATTACK"}
+        {isAttacking ? "FIRING" : "ATTACK"}
       </button>
       {hotbar.map((id, i) => {
         const def = id ? CONSUMABLE_DEFS[id] : null;

@@ -1,6 +1,6 @@
 import {
-  Asteroid, DRONE_DEFS, Drone, DUNGEONS, Enemy, FACTIONS, Floater, MAP_RADIUS, OtherPlayer, Particle,
-  PORTALS, Projectile, SHIP_CLASSES, STATIONS, ShipClassId, Station, ZONES,
+  Asteroid, CargoBox, DRONE_DEFS, Drone, DUNGEONS, Enemy, FACTIONS, Floater, MAP_RADIUS, OtherPlayer, Particle,
+  PORTALS, Projectile, SHIP_CLASSES, STATIONS, ShipClassId, Station, ZONES, rankFor,
 } from "./types";
 import { state } from "./store";
 
@@ -1048,7 +1048,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
   drawHealthBar(ctx, e.pos.x, e.pos.y - e.size - 10, barW, e.hull / e.hullMax);
   if (e.isBoss) {
     ctx.fillStyle = "#ff8a4e";
-    ctx.font = "bold 9px 'Courier New', monospace";
+    ctx.font = "bold 12px 'Courier New', monospace";
     ctx.textAlign = "center";
     ctx.shadowColor = "#000";
     ctx.shadowBlur = 4;
@@ -1056,7 +1056,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
     ctx.shadowBlur = 0;
   } else if (e.name) {
     ctx.fillStyle = e.color;
-    ctx.font = "bold 8px 'Courier New', monospace";
+    ctx.font = "bold 11px 'Courier New', monospace";
     ctx.textAlign = "center";
     ctx.shadowColor = "#000000";
     ctx.shadowBlur = 3;
@@ -1066,7 +1066,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
   // combo indicator
   if (e.combo && e.combo.stacks > 1) {
     ctx.fillStyle = "#ff5cf0";
-    ctx.font = "bold 9px 'Courier New', monospace";
+    ctx.font = "bold 12px 'Courier New', monospace";
     ctx.textAlign = "center";
     ctx.shadowColor = "#ff5cf0";
     ctx.shadowBlur = 4;
@@ -1362,19 +1362,19 @@ function drawStation(
 
   // labels
   ctx.fillStyle = "#e8f0ff";
-  ctx.font = "bold 11px 'Courier New', monospace";
+  ctx.font = "bold 14px 'Courier New', monospace";
   ctx.textAlign = "center";
   ctx.shadowColor = "#000";
   ctx.shadowBlur = 4;
   ctx.fillText(name, x, y - 64);
   ctx.fillStyle = accent;
-  ctx.font = "9px 'Courier New', monospace";
-  ctx.fillText(`${STATION_GLYPH[kind] || "□"} ${kind.toUpperCase()}`, x, y - 52);
+  ctx.font = "11px 'Courier New', monospace";
+  ctx.fillText(`${STATION_GLYPH[kind] || "□"} ${kind.toUpperCase()}`, x, y - 50);
   ctx.fillText("[ DOCK ]", x, y + 70);
   if (station) {
     const fc = FACTIONS[station.controlledBy];
     ctx.fillStyle = fc.color;
-    ctx.font = "8px 'Courier New', monospace";
+    ctx.font = "10px 'Courier New', monospace";
     ctx.fillText(`◆ ${fc.name.toUpperCase()}`, x, y + 82);
   }
   ctx.shadowBlur = 0;
@@ -1383,7 +1383,7 @@ function drawStation(
 // ── FLOATERS ──────────────────────────────────────────────────────────────
 function drawFloater(ctx: CanvasRenderingContext2D, f: Floater): void {
   const a = Math.max(0, Math.min(1, f.ttl / f.maxTtl));
-  const sz = Math.round(11 * f.scale);
+  const sz = Math.round(14 * f.scale);
   ctx.save();
   ctx.globalAlpha = a;
   ctx.font = `${f.bold ? "bold " : ""}${sz}px 'Courier New', monospace`;
@@ -1431,11 +1431,11 @@ function drawRift(ctx: CanvasRenderingContext2D, x: number, y: number, color: st
   ctx.arc(0, 0, 12, 0, Math.PI * 2);
   ctx.fill();
   // label
-  ctx.font = "bold 10px 'Courier New', monospace";
+  ctx.font = "bold 12px 'Courier New', monospace";
   ctx.fillStyle = color;
   ctx.textAlign = "center";
   ctx.fillText("▼ " + name.toUpperCase(), 0, -r - 14);
-  ctx.font = "8px 'Courier New', monospace";
+  ctx.font = "10px 'Courier New', monospace";
   ctx.fillStyle = "#aab";
   ctx.fillText(active ? "ACTIVE" : "DUNGEON RIFT", 0, r + 18);
   ctx.restore();
@@ -1466,12 +1466,37 @@ function drawPortal(ctx: CanvasRenderingContext2D, x: number, y: number, toName:
   ctx.restore();
 
   ctx.fillStyle = "#ff5cf0";
-  ctx.font = "bold 10px 'Courier New', monospace";
+  ctx.font = "bold 12px 'Courier New', monospace";
   ctx.textAlign = "center";
   ctx.shadowColor = "#000";
   ctx.shadowBlur = 4;
   ctx.fillText(`▶ ${toName}`, x, y - 50);
   ctx.shadowBlur = 0;
+}
+
+// ── CARGO BOXES ──────────────────────────────────────────────────────────
+function drawCargoBox(ctx: CanvasRenderingContext2D, cb: CargoBox, t: number): void {
+  const bob = Math.sin(t * 3) * 3;
+  const flash = cb.ttl < 5 ? (Math.sin(t * 12) > 0 ? 1 : 0.3) : 1;
+  ctx.save();
+  ctx.translate(cb.pos.x, cb.pos.y + bob);
+  ctx.globalAlpha = flash;
+  ctx.shadowColor = cb.color;
+  ctx.shadowBlur = 10;
+  ctx.fillStyle = cb.color + "44";
+  ctx.strokeStyle = cb.color;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.rect(-8, -8, 16, 16);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = cb.color;
+  ctx.font = "bold 12px Courier";
+  ctx.textAlign = "center";
+  ctx.fillText("▼", 0, 4);
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
+  ctx.restore();
 }
 
 // ── ASTEROIDS ─────────────────────────────────────────────────────────────
@@ -1530,15 +1555,15 @@ function drawDrone(ctx: CanvasRenderingContext2D, d: Drone): void {
 function drawOtherPlayer(ctx: CanvasRenderingContext2D, o: OtherPlayer): void {
   drawShip(ctx, o.pos.x, o.pos.y, o.angle, o.shipClass, 0.85);
   ctx.fillStyle = o.inParty ? "#5cff8a" : "#8a9ac8";
-  ctx.font = "9px 'Courier New', monospace";
+  ctx.font = "11px 'Courier New', monospace";
   ctx.textAlign = "center";
   ctx.shadowColor = "#000";
   ctx.shadowBlur = 3;
   ctx.fillText(`${o.name} [${o.level}]`, o.pos.x, o.pos.y - 22);
   if (o.clan) {
     ctx.fillStyle = "#4ee2ff";
-    ctx.font = "8px 'Courier New', monospace";
-    ctx.fillText(`<${o.clan}>`, o.pos.x, o.pos.y - 32);
+    ctx.font = "10px 'Courier New', monospace";
+    ctx.fillText(`<${o.clan}>`, o.pos.x, o.pos.y - 34);
   }
   ctx.shadowBlur = 0;
 }
@@ -1632,6 +1657,9 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
     drawRift(ctx, d.pos.x, d.pos.y, d.color, d.name, state.tick, state.dungeon?.id === d.id);
   }
 
+  // Cargo boxes
+  for (const cb of state.cargoBoxes) drawCargoBox(ctx, cb, state.tick);
+
   // Other players
   for (const o of state.others) drawOtherPlayer(ctx, o);
 
@@ -1711,35 +1739,7 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
     }
   }
 
-  // Combat laser flash (player → target enemy, brief on-shot beam)
-  if (state.combatLaserFlash) {
-    const clf = state.combatLaserFlash;
-    const te = state.enemies.find((e) => e.id === clf.enemyId);
-    if (te) {
-      const pp = state.player.pos;
-      const alpha = clf.ttl / clf.maxTtl;
-      ctx.save();
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctx.globalAlpha = alpha * 0.9;
-      ctx.shadowColor = "#4ee2ff";
-      ctx.shadowBlur = 20;
-      ctx.strokeStyle = "rgba(78,226,255,0.85)";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(pp.x, pp.y);
-      ctx.lineTo(te.pos.x, te.pos.y);
-      ctx.stroke();
-      ctx.strokeStyle = "#ffffff";
-      ctx.lineWidth = 1.5;
-      ctx.shadowBlur = 6;
-      ctx.beginPath();
-      ctx.moveTo(pp.x, pp.y);
-      ctx.lineTo(te.pos.x, te.pos.y);
-      ctx.stroke();
-      ctx.restore();
-    }
-  }
+  // (beam visual removed — only projectiles are shown now)
 
   // Player ship
   const p = state.player;
@@ -1755,7 +1755,6 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
     drawShip(ctx, p.pos.x, p.pos.y, p.angle, p.shipClass, 1, true);
     // mini hull/shield bars over player ship
     const cls = SHIP_CLASSES[p.shipClass];
-    // include drone bonuses
     let hullMax = cls.hullMax, shieldMax = cls.shieldMax;
     for (const dr of p.drones) {
       hullMax += DRONE_DEFS[dr.kind].hullBonus;
@@ -1766,6 +1765,29 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
       Math.max(0, p.hull / hullMax),
       Math.max(0, p.shield / shieldMax),
     );
+    // Player name + rank symbol above ship
+    const rank = rankFor(p.honor);
+    const factionColor = p.faction ? FACTIONS[p.faction].color : "#7a8ad8";
+    ctx.font = "bold 13px 'Courier New', monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#e8f0ff";
+    ctx.shadowColor = "#000";
+    ctx.shadowBlur = 3;
+    const nameY = p.pos.y - 38;
+    ctx.fillText(p.name, p.pos.x, nameY);
+    // Rank symbol next to name
+    ctx.fillStyle = rank.color;
+    ctx.shadowColor = rank.color;
+    ctx.shadowBlur = 4;
+    const nameWidth = ctx.measureText(p.name).width;
+    ctx.fillText(rank.symbol, p.pos.x + nameWidth / 2 + 8, nameY);
+    // Faction icon
+    if (p.faction) {
+      ctx.fillStyle = factionColor;
+      ctx.shadowColor = factionColor;
+      ctx.fillText("◆", p.pos.x - nameWidth / 2 - 8, nameY);
+    }
+    ctx.shadowBlur = 0;
   }
 
   // Move target indicator
@@ -1788,7 +1810,7 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
   }
 
   // Floating honor numbers near player
-  ctx.font = "bold 10px 'Courier New', monospace";
+  ctx.font = "bold 12px 'Courier New', monospace";
   ctx.textAlign = "center";
   let hi = 0;
   for (const honor of state.recentHonor) {
@@ -1860,7 +1882,7 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
     ctx.textAlign = "center";
     ctx.fillText("LEVEL UP", cx, cy - 80);
     ctx.fillStyle = `rgba(255, 92, 240, ${t})`;
-    ctx.font = "bold 12px 'Courier New', monospace";
+    ctx.font = "bold 14px 'Courier New', monospace";
     ctx.fillText(`+1 SKILL POINT`, cx, cy - 56);
     ctx.restore();
   }

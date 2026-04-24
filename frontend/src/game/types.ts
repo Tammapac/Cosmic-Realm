@@ -266,39 +266,44 @@ export type Player = {
 };
 
 // ── FACTIONS ─────────────────────────────────────────────────────────────
-export type FactionId = "aurora" | "crimson" | "syndicate";
+export type FactionId = "earth" | "mars" | "venus";
 
 export type Faction = {
   id: FactionId;
   name: string;
+  tag: string;
   motto: string;
   description: string;
   color: string;
   bonus: { damage?: number; speed?: number; shieldRegen?: number; tradeDiscount?: number; lootBonus?: number };
   bonusText: string;
+  startZone: ZoneId;
 };
 
 export const FACTIONS: Record<FactionId, Faction> = {
-  aurora: {
-    id: "aurora", name: "Aurora Concord", motto: "Vigil over the lanes.",
-    description: "Defenders of the trade routes. Renowned for shielding tech and disciplined cruisers.",
-    color: "#4ee2ff",
+  earth: {
+    id: "earth", name: "Earth Imperial Command", tag: "EIC", motto: "Order through strength.",
+    description: "The disciplined military force of Earth. Renowned for shielding tech and armored cruisers.",
+    color: "#4ea8ff",
     bonus: { shieldRegen: 1.5, tradeDiscount: 0.05 },
-    bonusText: "+50% shield regen · 5% trade discount at Concord stations",
+    bonusText: "+50% shield regen · 5% trade discount at EIC stations",
+    startZone: "alpha",
   },
-  crimson: {
-    id: "crimson", name: "Crimson Vanguard", motto: "Burn or be burned.",
-    description: "A military doctrine forged in the Crimson Reach. Heavy guns, heavier consequences.",
-    color: "#ff5c6c",
+  mars: {
+    id: "mars", name: "Mars Mining Operations", tag: "MMO", motto: "Forge the frontier.",
+    description: "The industrial war machine of Mars. Heavy guns, relentless firepower, and iron resolve.",
+    color: "#ff8a4e",
     bonus: { damage: 0.10, lootBonus: 1 },
     bonusText: "+10% laser damage · +1 bonus loot per kill",
+    startZone: "corona",
   },
-  syndicate: {
-    id: "syndicate", name: "Void Syndicate", motto: "Profit between the stars.",
-    description: "A smuggler-backed syndicate. Faster ships, deeper cargo, smarter deals.",
-    color: "#ff5cf0",
+  venus: {
+    id: "venus", name: "Venus Revolutionary Unit", tag: "VRU", motto: "Speed is survival.",
+    description: "The cunning traders and pilots of Venus. Faster ships, deeper cargo, smarter deals.",
+    color: "#5cff8a",
     bonus: { speed: 0.10, tradeDiscount: 0.10 },
     bonusText: "+10% speed · 10% better market prices",
+    startZone: "venus1",
   },
 };
 
@@ -527,6 +532,18 @@ export type Floater = {
   bold?: boolean;
 };
 
+export type CargoBox = {
+  id: string;
+  pos: Vec2;
+  resourceId: ResourceId;
+  qty: number;
+  credits: number;
+  exp: number;
+  honor: number;
+  ttl: number;
+  color: string;
+};
+
 export type Particle = {
   id: string;
   pos: Vec2;
@@ -705,7 +722,7 @@ export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
     id: "wasp",
     name: "Wasp Interceptor",
     hullMax: 90, shieldMax: 70, baseSpeed: 240, baseDamage: 10,
-    cargoMax: 14, droneSlots: 1, price: 4500,
+    cargoMax: 14, droneSlots: 1, price: 15000,
     slots: { weapon: 2, generator: 1, module: 1 },
     description: "Glass cannon. Fastest hull in the sector.",
     color: "#ffe25c", accent: "#3a2a08",
@@ -714,7 +731,7 @@ export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
     id: "vanguard",
     name: "Vanguard",
     hullMax: 180, shieldMax: 120, baseSpeed: 160, baseDamage: 14,
-    cargoMax: 40, droneSlots: 2, price: 12000,
+    cargoMax: 40, droneSlots: 2, price: 50000,
     slots: { weapon: 2, generator: 2, module: 2 },
     description: "All-rounder hull. Solid in any zone.",
     color: "#5cff8a", accent: "#0a2a14",
@@ -723,8 +740,8 @@ export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
     id: "reaver",
     name: "Reaver Mk-II",
     hullMax: 160, shieldMax: 140, baseSpeed: 200, baseDamage: 18,
-    cargoMax: 30, droneSlots: 2, price: 24000,
-    slots: { weapon: 2, generator: 2, module: 2 },
+    cargoMax: 30, droneSlots: 2, price: 120000,
+    slots: { weapon: 3, generator: 2, module: 2 },
     description: "Swift hunter. Built for raids.",
     color: "#ff8a4e", accent: "#3a1a08",
   },
@@ -732,8 +749,8 @@ export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
     id: "obsidian",
     name: "Obsidian Reaver",
     hullMax: 220, shieldMax: 180, baseSpeed: 200, baseDamage: 22,
-    cargoMax: 30, droneSlots: 3, price: 48000,
-    slots: { weapon: 3, generator: 2, module: 3 },
+    cargoMax: 30, droneSlots: 3, price: 280000,
+    slots: { weapon: 3, generator: 3, module: 3 },
     description: "Predator of the deep lanes.",
     color: "#ff5cf0", accent: "#2a0a30",
   },
@@ -741,8 +758,8 @@ export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
     id: "marauder",
     name: "Marauder",
     hullMax: 280, shieldMax: 200, baseSpeed: 170, baseDamage: 26,
-    cargoMax: 60, droneSlots: 3, price: 78000,
-    slots: { weapon: 3, generator: 3, module: 3 },
+    cargoMax: 60, droneSlots: 4, price: 500000,
+    slots: { weapon: 4, generator: 3, module: 3 },
     description: "Heavy gunship with cargo to spare.",
     color: "#aaff5c", accent: "#1a3008",
   },
@@ -750,8 +767,8 @@ export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
     id: "phalanx",
     name: "Phalanx Cruiser",
     hullMax: 340, shieldMax: 280, baseSpeed: 150, baseDamage: 24,
-    cargoMax: 70, droneSlots: 4, price: 110000,
-    slots: { weapon: 3, generator: 3, module: 4 },
+    cargoMax: 70, droneSlots: 5, price: 900000,
+    slots: { weapon: 4, generator: 3, module: 4 },
     description: "Drone-carrier cruiser. Project power through the swarm.",
     color: "#4ee2ff", accent: "#08203a",
   },
@@ -759,8 +776,8 @@ export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
     id: "titan",
     name: "Titan Bulwark",
     hullMax: 400, shieldMax: 300, baseSpeed: 130, baseDamage: 30,
-    cargoMax: 80, droneSlots: 3, price: 140000,
-    slots: { weapon: 4, generator: 3, module: 4 },
+    cargoMax: 80, droneSlots: 5, price: 1500000,
+    slots: { weapon: 5, generator: 4, module: 5 },
     description: "Walking fortress. Slow but devastating.",
     color: "#ffd24a", accent: "#3a2a08",
   },
@@ -768,8 +785,8 @@ export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
     id: "leviathan",
     name: "Leviathan Dreadnought",
     hullMax: 600, shieldMax: 480, baseSpeed: 110, baseDamage: 42,
-    cargoMax: 120, droneSlots: 5, price: 320000,
-    slots: { weapon: 4, generator: 4, module: 5 },
+    cargoMax: 120, droneSlots: 6, price: 3200000,
+    slots: { weapon: 6, generator: 5, module: 6 },
     description: "Capital-class warship. Sectors part before it.",
     color: "#ff5c6c", accent: "#3a0810",
   },
@@ -777,8 +794,8 @@ export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
     id: "specter",
     name: "Specter Phaseframe",
     hullMax: 220, shieldMax: 360, baseSpeed: 220, baseDamage: 34,
-    cargoMax: 40, droneSlots: 4, price: 480000,
-    slots: { weapon: 4, generator: 4, module: 5 },
+    cargoMax: 40, droneSlots: 6, price: 5000000,
+    slots: { weapon: 6, generator: 5, module: 6 },
     description: "Phase-shifted void hull. The endgame chassis.",
     color: "#b06cff", accent: "#15083a",
   },
@@ -788,35 +805,35 @@ export const EXP_FOR_LEVEL = (level: number) => 100 * level * level;
 
 export const ENEMY_DEFS: Record<
   EnemyType,
-  Omit<Enemy, "id" | "pos" | "vel" | "angle" | "hull" | "fireCd">
+  Omit<Enemy, "id" | "pos" | "vel" | "angle" | "hull" | "fireCd" | "spawnPos" | "aggro">
 > = {
   scout: {
     type: "scout", behavior: "fast",
-    hullMax: 30, damage: 4, speed: 130, exp: 10, credits: 25, honor: 1,
+    hullMax: 50, damage: 3, speed: 130, exp: 4, credits: 8, honor: 0,
     color: "#ff8866", size: 10,
     loot: { resourceId: "scrap", qty: 1 },
   },
   raider: {
     type: "raider", behavior: "chaser",
-    hullMax: 70, damage: 9, speed: 75, exp: 28, credits: 80, honor: 3,
+    hullMax: 120, damage: 6, speed: 75, exp: 10, credits: 20, honor: 1,
     color: "#ff4466", size: 13,
     loot: { resourceId: "plasma", qty: 1 },
   },
   destroyer: {
     type: "destroyer", behavior: "tank",
-    hullMax: 220, damage: 18, speed: 50, exp: 70, credits: 220, honor: 8,
+    hullMax: 350, damage: 12, speed: 50, exp: 25, credits: 60, honor: 2,
     color: "#aa44ff", size: 18,
     loot: { resourceId: "warp", qty: 1 },
   },
   voidling: {
     type: "voidling", behavior: "ranged",
-    hullMax: 110, damage: 16, speed: 90, exp: 90, credits: 280, honor: 12,
+    hullMax: 200, damage: 10, speed: 90, exp: 35, credits: 80, honor: 4,
     color: "#44ffe2", size: 14,
     loot: { resourceId: "void", qty: 1 },
   },
   dread: {
     type: "dread", behavior: "tank",
-    hullMax: 380, damage: 28, speed: 45, exp: 180, credits: 600, honor: 25,
+    hullMax: 600, damage: 18, speed: 45, exp: 60, credits: 150, honor: 8,
     color: "#ffaa22", size: 24,
     loot: { resourceId: "dread", qty: 1 },
   },
@@ -919,169 +936,171 @@ export const RESOURCES: Record<ResourceId, Resource> = {
 export const STATIONS: Station[] = [
   // alpha
   { id: "helix",   name: "Helix Station",  pos: { x: 0, y: 0 },     zone: "alpha",   kind: "hub",
-    description: "Capital hub of the Alpha Frontier.", controlledBy: "aurora",
+    description: "Capital hub of the Alpha Frontier.", controlledBy: "earth",
     prices: { scrap: 1.0, plasma: 1.0, iron: 0.95, synth: 0.9, medpack: 1.1, lumenite: 1.0, warp: 1.1, void: 1.2, dread: 1.1, quantum: 1.0,
               food: 0.7, medicine: 0.8, luxury: 1.4, "fuel-cell": 0.8, "bio-matter": 1.2, spice: 0.85, "data-core": 1.3 } },
   { id: "iron-belt", name: "Iron Belt Refinery", pos: { x: -1800, y: -400 }, zone: "alpha", kind: "mining",
-    description: "Refinery sitting on a rich mineral belt.", controlledBy: "aurora",
+    description: "Refinery sitting on a rich mineral belt.", controlledBy: "earth",
     prices: { iron: 0.6, lumenite: 0.7, scrap: 1.2, synth: 1.0, medpack: 1.1, plasma: 1.05,
               food: 0.6, "fuel-cell": 0.7, medicine: 1.2, ore: 0.65, "star-map": 1.25 } },
   // nebula
   { id: "veiled",   name: "Veiled Outpost", pos: { x: 400, y: -1600 }, zone: "nebula",  kind: "outpost",
-    description: "A mining outpost run by a raider truce.", controlledBy: "syndicate",
+    description: "A mining outpost run by a raider truce.", controlledBy: "venus",
     prices: { plasma: 0.7, warp: 0.85, scrap: 1.2, synth: 1.15, medpack: 1.2, void: 1.3,
               food: 1.3, medicine: 1.4, nanite: 0.8, "bio-matter": 0.7, luxury: 1.6, silk: 0.75, artifacts: 1.2 } },
   { id: "azure-port", name: "Azure Trade Port", pos: { x: -1200, y: -2400 }, zone: "nebula", kind: "trade",
-    description: "Bustling free-port. Buys high, sells fair.", controlledBy: "syndicate",
+    description: "Bustling free-port. Buys high, sells fair.", controlledBy: "venus",
     prices: { quantum: 0.7, lumenite: 0.85, dread: 0.9, void: 0.95, plasma: 1.2, warp: 1.25, iron: 1.15, scrap: 1.25,
               luxury: 0.7, precursor: 1.5, relic: 1.6, food: 1.5, medicine: 1.3, nanite: 1.4, blackglass: 0.8, "data-core": 0.9 } },
   // crimson
   { id: "ember",    name: "Ember Citadel",  pos: { x: -1200, y: 800 },  zone: "crimson", kind: "military",
-    description: "Crimson Reach naval citadel. Premium for war goods.", controlledBy: "crimson",
+    description: "Crimson Reach naval citadel. Premium for war goods.", controlledBy: "mars",
     prices: { dread: 1.3, warp: 1.3, plasma: 1.4, medpack: 0.85, synth: 0.95, quantum: 1.2,
               food: 1.6, medicine: 0.7, "fuel-cell": 1.5, contraband: 0.6, blackglass: 0.7, "fusion-lattice": 0.9 } },
   { id: "scarlet-yard", name: "Scarlet Shipyards", pos: { x: 2200, y: 1600 }, zone: "crimson", kind: "trade",
-    description: "Capital ship construction yards.", controlledBy: "crimson",
+    description: "Capital ship construction yards.", controlledBy: "mars",
     prices: { iron: 1.4, scrap: 1.35, lumenite: 1.2, plasma: 1.1, dread: 0.85,
               nanite: 1.5, "fuel-cell": 1.3, food: 1.5, luxury: 1.7, ore: 1.15, "fusion-lattice": 1.05 } },
   // void
   { id: "echo",     name: "Echo Anchorage", pos: { x: 0, y: -600 },    zone: "void",    kind: "outpost",
-    description: "Last refuge in The Void.", controlledBy: "syndicate",
+    description: "Last refuge in The Void.", controlledBy: "venus",
     prices: { void: 0.6, dread: 1.2, quantum: 1.4, medpack: 1.3, synth: 1.2,
               contraband: 0.5, relic: 0.7, exotic: 0.8, food: 1.8, medicine: 1.6, "medical-serum": 0.85, "cloning-gel": 0.75 } },
   { id: "obsidian-port", name: "Obsidian Free Port", pos: { x: 1800, y: 1200 }, zone: "void", kind: "trade",
-    description: "A trade haven for ghosts and smugglers.", controlledBy: "syndicate",
+    description: "A trade haven for ghosts and smugglers.", controlledBy: "venus",
     prices: { quantum: 0.55, void: 1.4, dread: 1.4, lumenite: 1.3, warp: 1.2,
               contraband: 0.4, luxury: 0.6, relic: 0.65, precursor: 0.7, food: 1.9, exotic: 1.5, artifacts: 0.7, "data-core": 0.75 } },
   // forge
   { id: "ironclad",    name: "Ironclad Bastion",   pos: { x: 0, y: 0 },       zone: "forge",    kind: "military",
-    description: "Heavily fortified military hub. Sells advanced weapons at a premium.", controlledBy: "crimson",
+    description: "Heavily fortified military hub. Sells advanced weapons at a premium.", controlledBy: "mars",
     prices: { dread: 1.5, warp: 1.4, plasma: 1.6, iron: 0.7, scrap: 0.8, lumenite: 1.0, quantum: 1.3 } },
   { id: "forge-gate",  name: "Forge Gate Depot",   pos: { x: -1600, y: 1800 },  zone: "forge",    kind: "trade",
-    description: "Industrial depot trading raw ore and components.", controlledBy: "syndicate",
+    description: "Industrial depot trading raw ore and components.", controlledBy: "venus",
     prices: { iron: 0.5, scrap: 0.6, lumenite: 0.75, quantum: 0.9, dread: 1.2, void: 1.3, blackglass: 0.6, ore: 0.55 } },
   // corona
   { id: "solar-haven", name: "Solar Haven",         pos: { x: 800, y: -1200 }, zone: "corona",   kind: "outpost",
-    description: "Heat-shielded station orbiting the corona. Rare energy crystals for sale.", controlledBy: "aurora",
+    description: "Heat-shielded station orbiting the corona. Rare energy crystals for sale.", controlledBy: "earth",
     prices: { lumenite: 0.5, plasma: 0.6, warp: 0.8, void: 1.2, dread: 1.3, quantum: 1.0, "star-map": 0.7, "fusion-lattice": 0.75 } },
   { id: "corona-mkt",  name: "Corona Market",       pos: { x: 2000, y: 1200 }, zone: "corona",   kind: "trade",
-    description: "Black-market hub. Strange goods at strange prices.", controlledBy: "syndicate",
+    description: "Black-market hub. Strange goods at strange prices.", controlledBy: "venus",
     prices: { quantum: 0.6, void: 0.7, dread: 1.1, plasma: 1.3, lumenite: 1.2, iron: 1.5, artifacts: 0.8, relic: 0.9 } },
   // fracture
   { id: "rift-base",   name: "Rift Base Omega",     pos: { x: -1000, y: 800 }, zone: "fracture", kind: "military",
-    description: "Last militarized foothold before the Abyss. Legendary gear.", controlledBy: "crimson",
+    description: "Last militarized foothold before the Abyss. Legendary gear.", controlledBy: "mars",
     prices: { dread: 2.0, warp: 1.8, plasma: 2.0, medpack: 0.7, quantum: 1.5, void: 1.6, blackglass: 0.55, precursor: 1.2 } },
   { id: "null-post",   name: "Null-Point Station",  pos: { x: 1400, y: -1800 }, zone: "fracture", kind: "outpost",
-    description: "Barely functional outpost in folded space.", controlledBy: "syndicate",
+    description: "Barely functional outpost in folded space.", controlledBy: "venus",
     prices: { void: 0.5, quantum: 0.7, dread: 1.4, lumenite: 1.5, synth: 1.3, "data-core": 0.8, "medical-serum": 0.9 } },
   // abyss
   { id: "void-heart",  name: "Void Heart Station",  pos: { x: 0, y: 0 },      zone: "abyss",    kind: "outpost",
-    description: "The deepest station in known space. No questions asked.", controlledBy: "syndicate",
+    description: "The deepest station in known space. No questions asked.", controlledBy: "venus",
     prices: { void: 0.4, dread: 0.8, quantum: 0.5, lumenite: 1.8, plasma: 2.5, warp: 2.0 } },
   { id: "abyss-anchor",name: "Abyss Anchorage",     pos: { x: -2200, y: 1600 }, zone: "abyss",   kind: "trade",
-    description: "Endgame trading post. Buy or sell anything at extreme prices.", controlledBy: "syndicate",
+    description: "Endgame trading post. Buy or sell anything at extreme prices.", controlledBy: "venus",
     prices: { quantum: 0.4, void: 1.8, dread: 2.2, iron: 2.0, synth: 1.8, medpack: 0.5 } },
   // marsdepth
   { id: "deep-haven",  name: "Deep Field Haven",   pos: { x: 0, y: 0 },       zone: "marsdepth", kind: "outpost",
-    description: "Isolated Martian outpost in the outer deep field. Last stop before the Maelstrom.", controlledBy: "syndicate",
+    description: "Isolated Martian outpost in the outer deep field. Last stop before the Maelstrom.", controlledBy: "venus",
     prices: { void: 0.55, dread: 1.2, quantum: 1.4, medpack: 1.3, synth: 1.2, contraband: 0.5, relic: 0.7, exotic: 0.8 } },
   { id: "iron-depth",  name: "Iron Depth Exchange", pos: { x: 1800, y: -1400 }, zone: "marsdepth", kind: "trade",
-    description: "Remote Martian trade post for rare salvage and tactical goods.", controlledBy: "crimson",
+    description: "Remote Martian trade post for rare salvage and tactical goods.", controlledBy: "mars",
     prices: { dread: 1.8, warp: 1.7, plasma: 1.9, medpack: 0.75, quantum: 1.5, void: 1.4, lumenite: 1.2 } },
   // maelstrom
   { id: "storm-eye",   name: "Eye of the Storm",   pos: { x: 0, y: 0 },       zone: "maelstrom", kind: "military",
-    description: "Entrenched Martian warstation at the storm's calm center. Top-tier military gear only.", controlledBy: "crimson",
+    description: "Entrenched Martian warstation at the storm's calm center. Top-tier military gear only.", controlledBy: "mars",
     prices: { dread: 2.2, warp: 2.0, plasma: 2.3, iron: 0.65, scrap: 0.7, lumenite: 1.1, quantum: 1.6 } },
   { id: "wreck-point", name: "Wreckage Point",     pos: { x: -1800, y: 1600 }, zone: "maelstrom", kind: "trade",
-    description: "Salvage bazaar built into the wreckage field. Everything's for sale, no questions asked.", controlledBy: "syndicate",
+    description: "Salvage bazaar built into the wreckage field. Everything's for sale, no questions asked.", controlledBy: "venus",
     prices: { iron: 0.45, scrap: 0.5, lumenite: 0.7, quantum: 0.85, void: 1.5, dread: 1.9, exotic: 0.7 } },
   // venus1
   { id: "cloud-gate",  name: "Cloud Gate Station", pos: { x: 0, y: 0 },       zone: "venus1",   kind: "hub",
-    description: "Entry hub to the Venusian cloud cities. Friendly to all factions.", controlledBy: "aurora",
+    description: "Entry hub to the Venusian cloud cities. Friendly to all factions.", controlledBy: "earth",
     prices: { scrap: 1.0, plasma: 1.0, iron: 0.95, synth: 0.9, medpack: 1.1, lumenite: 1.0, warp: 1.1, void: 1.2, dread: 1.1, food: 0.75, medicine: 0.85, luxury: 1.3 } },
   { id: "mist-dock",   name: "Mist Dock Outpost",  pos: { x: -1600, y: -600 }, zone: "venus1",   kind: "mining",
-    description: "Floating mining platform harvesting rare cloud minerals.", controlledBy: "aurora",
+    description: "Floating mining platform harvesting rare cloud minerals.", controlledBy: "earth",
     prices: { iron: 0.6, lumenite: 0.65, scrap: 1.2, synth: 1.0, medpack: 1.1, "fuel-cell": 0.7, food: 0.65, medicine: 1.1 } },
   { id: "halo-walk",  name: "Halo Walk Station",  pos: { x: 1640, y: 1080 },   zone: "venus1",   kind: "trade",
-    description: "A bright civilian waypoint for cloud travelers and merchants.", controlledBy: "aurora",
+    description: "A bright civilian waypoint for cloud travelers and merchants.", controlledBy: "earth",
     prices: { food: 0.7, medicine: 0.9, luxury: 1.1, scrap: 1.1, plasma: 1.05, lumenite: 0.9, synth: 1.0 } },
   // venus2
   { id: "sulphur-port", name: "Sulphur Port",      pos: { x: 400, y: -1400 },  zone: "venus2",   kind: "outpost",
-    description: "Corrosive atmosphere station. Raider-truce outpost with exotic supplies.", controlledBy: "syndicate",
+    description: "Corrosive atmosphere station. Raider-truce outpost with exotic supplies.", controlledBy: "venus",
     prices: { plasma: 0.75, warp: 0.9, scrap: 1.2, synth: 1.1, medpack: 1.2, void: 1.3, food: 1.3, medicine: 1.4, nanite: 0.85, "bio-matter": 0.75 } },
   { id: "wind-market", name: "Wind Market",        pos: { x: -1400, y: -2200 }, zone: "venus2",  kind: "trade",
-    description: "Chaotic trade station deep in the Sulphur Winds. Cheap quantum parts.", controlledBy: "syndicate",
+    description: "Chaotic trade station deep in the Sulphur Winds. Cheap quantum parts.", controlledBy: "venus",
     prices: { quantum: 0.65, lumenite: 0.8, dread: 0.95, void: 0.9, plasma: 1.2, warp: 1.3, iron: 1.1, luxury: 0.75, precursor: 1.4 } },
   { id: "brass-spire", name: "Brass Spire",       pos: { x: 2400, y: -400 }, zone: "venus2",  kind: "outpost",
-    description: "A wind-battered relay with fuel, repairs, and hot gossip.", controlledBy: "syndicate",
+    description: "A wind-battered relay with fuel, repairs, and hot gossip.", controlledBy: "venus",
     prices: { plasma: 0.85, warp: 0.95, food: 1.2, medicine: 1.25, nanite: 0.9, luxury: 1.0, "fuel-cell": 0.8 } },
   // venus3
   { id: "acid-citadel", name: "Acid Citadel",      pos: { x: -1000, y: 800 },  zone: "venus3",   kind: "military",
-    description: "Fortified deep-atmosphere platform. Specialized war contracts available.", controlledBy: "crimson",
+    description: "Fortified deep-atmosphere platform. Specialized war contracts available.", controlledBy: "mars",
     prices: { dread: 1.4, warp: 1.3, plasma: 1.5, medpack: 0.8, synth: 0.9, quantum: 1.2, "fuel-cell": 1.4, contraband: 0.65 } },
   { id: "pressure-yard", name: "Pressure Yards",   pos: { x: 2000, y: 1400 },  zone: "venus3",   kind: "trade",
-    description: "High-pressure fabrication yards building deep-atmosphere hulls.", controlledBy: "crimson",
+    description: "High-pressure fabrication yards building deep-atmosphere hulls.", controlledBy: "mars",
     prices: { iron: 1.4, scrap: 1.3, lumenite: 1.2, plasma: 1.1, dread: 0.9, nanite: 1.5, "fuel-cell": 1.2, luxury: 1.6 } },
   { id: "acid-exchange", name: "Acid Exchange",   pos: { x: -2500, y: -1300 }, zone: "venus3", kind: "mining",
-    description: "Strip-mining exchange for hulls, ore, and deep-atmosphere salvage.", controlledBy: "crimson",
+    description: "Strip-mining exchange for hulls, ore, and deep-atmosphere salvage.", controlledBy: "mars",
     prices: { iron: 0.55, scrap: 0.65, lumenite: 0.8, plasma: 1.0, synth: 1.1, food: 1.3, medicine: 1.2 } },
   // venus4
   { id: "core-refuge",  name: "Core Refuge",       pos: { x: 0, y: -600 },    zone: "venus4",   kind: "outpost",
-    description: "Shielded station near the crushing core. Last refuge before the Eye.", controlledBy: "syndicate",
+    description: "Shielded station near the crushing core. Last refuge before the Eye.", controlledBy: "venus",
     prices: { void: 0.6, dread: 1.2, quantum: 1.4, medpack: 1.3, synth: 1.2, contraband: 0.5, relic: 0.7, exotic: 0.8, food: 1.8 } },
   { id: "pressure-port", name: "Pressure Point Port", pos: { x: 1800, y: 1200 }, zone: "venus4",  kind: "trade",
-    description: "Shadow market near the core. Extreme rarity items surface here.", controlledBy: "syndicate",
+    description: "Shadow market near the core. Extreme rarity items surface here.", controlledBy: "venus",
     prices: { quantum: 0.5, void: 1.4, dread: 1.5, lumenite: 1.3, warp: 1.2, contraband: 0.4, luxury: 0.6, relic: 0.65, precursor: 0.7, exotic: 1.4 } },
   { id: "cradle", name: "Cradle Station",          pos: { x: -2200, y: 500 }, zone: "venus4", kind: "outpost",
-    description: "A shielded refuge that services long-haul couriers and prospectors.", controlledBy: "syndicate",
+    description: "A shielded refuge that services long-haul couriers and prospectors.", controlledBy: "venus",
     prices: { food: 1.6, medicine: 1.4, medpack: 1.1, synth: 1.0, quantum: 0.9, relic: 0.8, exotic: 0.9 } },
   // venus5
   { id: "venus-bastion", name: "Venusian Bastion",  pos: { x: 0, y: 0 },      zone: "venus5",   kind: "military",
-    description: "The ultimate Venusian military fortress. Sells the rarest gear in the solar system.", controlledBy: "crimson",
+    description: "The ultimate Venusian military fortress. Sells the rarest gear in the solar system.", controlledBy: "mars",
     prices: { dread: 2.0, warp: 1.9, plasma: 2.2, iron: 0.68, scrap: 0.75, lumenite: 1.1, quantum: 1.5 } },
   { id: "eye-bazaar",   name: "Eye Bazaar",         pos: { x: -1600, y: 1800 }, zone: "venus5",   kind: "trade",
-    description: "Legendary trading post in the heart of Venus. Anything can be bought — at a price.", controlledBy: "syndicate",
+    description: "Legendary trading post in the heart of Venus. Anything can be bought — at a price.", controlledBy: "venus",
     prices: { iron: 0.5, scrap: 0.55, lumenite: 0.7, quantum: 0.8, void: 1.5, dread: 2.0, exotic: 0.65, relic: 0.7 } },
   { id: "singularity-dock", name: "Singularity Dock", pos: { x: 2500, y: -900 }, zone: "venus5", kind: "military",
-    description: "A blackglass dock for elite escorts and endgame merchants.", controlledBy: "crimson",
+    description: "A blackglass dock for elite escorts and endgame merchants.", controlledBy: "mars",
     prices: { dread: 1.5, warp: 1.6, plasma: 1.8, quantum: 1.0, relic: 0.95, exotic: 0.9, lumenite: 1.1 } },
 ];
 
 export const PORTALS: Portal[] = [
-  { id: "p-a-n",  pos: { x: 1400, y: -1200 }, fromZone: "alpha",    toZone: "nebula"   },
-  { id: "p-n-a",  pos: { x: -1200, y: 1100 }, fromZone: "nebula",   toZone: "alpha"    },
-  { id: "p-a-c",  pos: { x: -1600, y: 1500 }, fromZone: "alpha",    toZone: "crimson"  },
-  { id: "p-c-a",  pos: { x: 1500, y: -1300 }, fromZone: "crimson",  toZone: "alpha"    },
-  { id: "p-c-v",  pos: { x: -1700, y: -1500 }, fromZone: "crimson", toZone: "void"     },
-  { id: "p-v-c",  pos: { x: 1600, y: 1400 },  fromZone: "void",     toZone: "crimson"  },
-  { id: "p-v-f",  pos: { x: -1500, y: -1600 }, fromZone: "void",    toZone: "forge"    },
-  { id: "p-f-v",  pos: { x: 1400, y: 1500 },  fromZone: "forge",    toZone: "void"     },
-  { id: "p-f-co", pos: { x: -1600, y: 1400 }, fromZone: "forge",    toZone: "corona"   },
-  { id: "p-co-f", pos: { x: 1500, y: -1400 }, fromZone: "corona",   toZone: "forge"    },
-  { id: "p-co-fr",pos: { x: -1700, y: -1400 }, fromZone: "corona",  toZone: "fracture" },
-  { id: "p-fr-co",pos: { x: 1600, y: 1300 },  fromZone: "fracture", toZone: "corona"   },
-  { id: "p-fr-ab",  pos: { x: -1500, y: 1500 },  fromZone: "fracture",  toZone: "abyss"     },
-  { id: "p-ab-fr",  pos: { x: 1400, y: -1500 },  fromZone: "abyss",     toZone: "fracture"  },
-  // Mars continuation: abyss → marsdepth → maelstrom
-  { id: "p-ab-md",  pos: { x: -1400, y: 1300 },  fromZone: "abyss",     toZone: "marsdepth" },
-  { id: "p-md-ab",  pos: { x: 1300, y: -1400 },  fromZone: "marsdepth", toZone: "abyss"     },
-  { id: "p-md-ml",  pos: { x: -1600, y: -1500 }, fromZone: "marsdepth", toZone: "maelstrom" },
-  { id: "p-ml-md",  pos: { x: 1400, y: 1400 },   fromZone: "maelstrom", toZone: "marsdepth" },
+  // Earth chain: alpha ↔ nebula ↔ crimson ↔ void ↔ forge (top-right / bottom-left corners)
+  { id: "p-a-n",   pos: { x:  28000, y: -28000 }, fromZone: "alpha",    toZone: "nebula"   },
+  { id: "p-n-a",   pos: { x: -28000, y:  28000 }, fromZone: "nebula",   toZone: "alpha"    },
+  { id: "p-n-c",   pos: { x:  28000, y:  28000 }, fromZone: "nebula",   toZone: "crimson"  },
+  { id: "p-c-n",   pos: { x: -28000, y: -28000 }, fromZone: "crimson",  toZone: "nebula"   },
+  { id: "p-c-v",   pos: { x:  28000, y: -28000 }, fromZone: "crimson",  toZone: "void"     },
+  { id: "p-v-c",   pos: { x: -28000, y:  28000 }, fromZone: "void",     toZone: "crimson"  },
+  { id: "p-v-f",   pos: { x:  28000, y:  28000 }, fromZone: "void",     toZone: "forge"    },
+  { id: "p-f-v",   pos: { x: -28000, y: -28000 }, fromZone: "forge",    toZone: "void"     },
+  // Cross-faction: Earth endgame → Mars entry
+  { id: "p-f-co",  pos: { x: -28000, y:  28000 }, fromZone: "forge",    toZone: "corona"   },
+  { id: "p-co-f",  pos: { x:  28000, y: -28000 }, fromZone: "corona",   toZone: "forge"    },
+  // Mars chain: corona ↔ fracture ↔ abyss ↔ marsdepth ↔ maelstrom
+  { id: "p-co-fr", pos: { x: -28000, y: -28000 }, fromZone: "corona",   toZone: "fracture" },
+  { id: "p-fr-co", pos: { x:  28000, y:  28000 }, fromZone: "fracture", toZone: "corona"   },
+  { id: "p-fr-ab", pos: { x: -28000, y:  28000 }, fromZone: "fracture", toZone: "abyss"    },
+  { id: "p-ab-fr", pos: { x:  28000, y: -28000 }, fromZone: "abyss",    toZone: "fracture" },
+  { id: "p-ab-md", pos: { x: -28000, y: -28000 }, fromZone: "abyss",    toZone: "marsdepth"},
+  { id: "p-md-ab", pos: { x:  28000, y:  28000 }, fromZone: "marsdepth",toZone: "abyss"    },
+  { id: "p-md-ml", pos: { x: -28000, y:  28000 }, fromZone: "marsdepth",toZone: "maelstrom"},
+  { id: "p-ml-md", pos: { x:  28000, y: -28000 }, fromZone: "maelstrom",toZone: "marsdepth"},
+  // Cross-faction: Mars endgame → Venus entry
+  { id: "p-ml-v1", pos: { x: -28000, y: -28000 }, fromZone: "maelstrom",toZone: "venus1"   },
+  { id: "p-v1-ml", pos: { x:  28000, y:  28000 }, fromZone: "venus1",   toZone: "maelstrom"},
   // Venus chain: venus1 ↔ venus2 ↔ venus3 ↔ venus4 ↔ venus5
-  { id: "p-v1-v2",  pos: { x: 1400, y: -1200 },  fromZone: "venus1", toZone: "venus2" },
-  { id: "p-v2-v1",  pos: { x: -1200, y: 1100 },  fromZone: "venus2", toZone: "venus1" },
-  { id: "p-v2-v3",  pos: { x: -1600, y: 1500 },  fromZone: "venus2", toZone: "venus3" },
-  { id: "p-v3-v2",  pos: { x: 1500, y: -1300 },  fromZone: "venus3", toZone: "venus2" },
-  { id: "p-v3-v4",  pos: { x: -1700, y: -1500 }, fromZone: "venus3", toZone: "venus4" },
-  { id: "p-v4-v3",  pos: { x: 1600, y: 1400 },   fromZone: "venus4", toZone: "venus3" },
-  { id: "p-v4-v5",  pos: { x: -1500, y: 1500 },  fromZone: "venus4",    toZone: "venus5"    },
-  { id: "p-v5-v4",  pos: { x: 1400, y: -1500 },  fromZone: "venus5",    toZone: "venus4"    },
-  // Cross-faction bridge: Mars endgame ↔ Venus entry
-  { id: "p-ml-v1",  pos: { x: -1800, y: 600 },   fromZone: "maelstrom", toZone: "venus1"    },
-  { id: "p-v1-ml",  pos: { x: 1700, y: -700 },   fromZone: "venus1",    toZone: "maelstrom" },
+  { id: "p-v1-v2", pos: { x:  28000, y: -28000 }, fromZone: "venus1",   toZone: "venus2"   },
+  { id: "p-v2-v1", pos: { x: -28000, y:  28000 }, fromZone: "venus2",   toZone: "venus1"   },
+  { id: "p-v2-v3", pos: { x:  28000, y:  28000 }, fromZone: "venus2",   toZone: "venus3"   },
+  { id: "p-v3-v2", pos: { x: -28000, y: -28000 }, fromZone: "venus3",   toZone: "venus2"   },
+  { id: "p-v3-v4", pos: { x:  28000, y: -28000 }, fromZone: "venus3",   toZone: "venus4"   },
+  { id: "p-v4-v3", pos: { x: -28000, y:  28000 }, fromZone: "venus4",   toZone: "venus3"   },
+  { id: "p-v4-v5", pos: { x:  28000, y:  28000 }, fromZone: "venus4",   toZone: "venus5"   },
+  { id: "p-v5-v4", pos: { x: -28000, y: -28000 }, fromZone: "venus5",   toZone: "venus4"   },
 ];
 
-export const MAP_RADIUS = 8500;
+export const MAP_RADIUS = 32000;
 
 export const FAKE_NAMES = [
   "Nyx_77","VoidPilot","StarbornAce","RogueComet","Hex.Drift","Aurora",
@@ -1103,25 +1122,28 @@ export const ENEMY_NAMES: Record<EnemyType, string[]> = {
 
 // ── DRONES ────────────────────────────────────────────────────────────────
 export const DRONE_DEFS: Record<DroneKind, DroneDef> = {
-  "combat-i":  { id: "combat-i",  name: "Hornet Combat Drone",  price: 6000,  damageBonus: 6,  shieldBonus: 0,  hullBonus: 0,  fireRate: 0.7, color: "#ff5c6c", description: "Light auto-cannon drone. Fires at hostiles in range." },
-  "combat-ii": { id: "combat-ii", name: "Wasp Mk-II Drone",     price: 22000, damageBonus: 14, shieldBonus: 0,  hullBonus: 0,  fireRate: 1.1, color: "#ff8a4e", description: "Heavy combat drone with rapid pulse cannons." },
-  "shield-i":  { id: "shield-i",  name: "Aegis Shield Drone",   price: 9000,  damageBonus: 0,  shieldBonus: 60, hullBonus: 20, fireRate: 0,   color: "#4ee2ff", description: "Projects an additional shield bubble. Boosts your shield max." },
-  "shield-ii": { id: "shield-ii", name: "Bulwark Shield Drone", price: 28000, damageBonus: 0,  shieldBonus: 140, hullBonus: 40, fireRate: 0,  color: "#7ad8ff", description: "Capital-grade defense drone. Massive shield bonus." },
-  "salvage":   { id: "salvage",   name: "Salvager Drone",       price: 14000, damageBonus: 2,  shieldBonus: 30, hullBonus: 30, fireRate: 0.4, color: "#5cff8a", description: "Retrieves extra cargo from kills, light defenses." },
+  "combat-i":  { id: "combat-i",  name: "Hornet Combat Drone",  price: 50000,  damageBonus: 6,  shieldBonus: 0,  hullBonus: 0,  fireRate: 0.7, color: "#ff5c6c", description: "Light auto-cannon drone. Fires at hostiles in range." },
+  "combat-ii": { id: "combat-ii", name: "Wasp Mk-II Drone",     price: 180000, damageBonus: 14, shieldBonus: 0,  hullBonus: 0,  fireRate: 1.1, color: "#ff8a4e", description: "Heavy combat drone with rapid pulse cannons." },
+  "shield-i":  { id: "shield-i",  name: "Aegis Shield Drone",   price: 75000,  damageBonus: 0,  shieldBonus: 60, hullBonus: 20, fireRate: 0,   color: "#4ee2ff", description: "Projects an additional shield bubble. Boosts your shield max." },
+  "shield-ii": { id: "shield-ii", name: "Bulwark Shield Drone", price: 250000, damageBonus: 0,  shieldBonus: 140, hullBonus: 40, fireRate: 0,  color: "#7ad8ff", description: "Capital-grade defense drone. Massive shield bonus." },
+  "salvage":   { id: "salvage",   name: "Salvager Drone",       price: 120000, damageBonus: 2,  shieldBonus: 30, hullBonus: 30, fireRate: 0.4, color: "#5cff8a", description: "Retrieves extra cargo from kills, light defenses." },
 };
 
 // ── HONOR RANKS ───────────────────────────────────────────────────────────
 export const HONOR_RANKS: HonorRank[] = [
-  { index: 0, name: "Recruit",     minHonor: 0,      color: "#7a8ad8", symbol: "·",  pips: 0 },
-  { index: 1, name: "Cadet",       minHonor: 30,     color: "#7ad8ff", symbol: "▿",  pips: 1 },
-  { index: 2, name: "Pilot",       minHonor: 120,    color: "#5cff8a", symbol: "◇",  pips: 1 },
-  { index: 3, name: "Lieutenant",  minHonor: 350,    color: "#aaff5c", symbol: "◆",  pips: 2 },
-  { index: 4, name: "Veteran",     minHonor: 800,    color: "#ffd24a", symbol: "★",  pips: 2 },
-  { index: 5, name: "Commander",   minHonor: 2000,   color: "#ff8a4e", symbol: "★",  pips: 3 },
-  { index: 6, name: "Captain",     minHonor: 5000,   color: "#ff5c6c", symbol: "✪",  pips: 3 },
-  { index: 7, name: "Admiral",     minHonor: 12000,  color: "#ff5cf0", symbol: "✪",  pips: 4 },
-  { index: 8, name: "Warlord",     minHonor: 30000,  color: "#b06cff", symbol: "✸",  pips: 4 },
-  { index: 9, name: "Legend",      minHonor: 80000,  color: "#fff75c", symbol: "✺",  pips: 5 },
+  { index: 0,  name: "Recruit",          minHonor: 0,        color: "#7a8ad8", symbol: "·",  pips: 0 },
+  { index: 1,  name: "Space Pilot",      minHonor: 500,      color: "#7ad8ff", symbol: "▿",  pips: 1 },
+  { index: 2,  name: "Basic Pilot",      minHonor: 2000,     color: "#5cff8a", symbol: "◇",  pips: 1 },
+  { index: 3,  name: "Pilot",            minHonor: 5000,     color: "#aaff5c", symbol: "◆",  pips: 2 },
+  { index: 4,  name: "Chief Pilot",      minHonor: 12000,    color: "#ffd24a", symbol: "★",  pips: 2 },
+  { index: 5,  name: "Lieutenant",       minHonor: 30000,    color: "#ff8a4e", symbol: "★",  pips: 3 },
+  { index: 6,  name: "Commander",        minHonor: 80000,    color: "#ff5c6c", symbol: "✪",  pips: 3 },
+  { index: 7,  name: "Captain",          minHonor: 200000,   color: "#ff5cf0", symbol: "✪",  pips: 4 },
+  { index: 8,  name: "Admiral",          minHonor: 500000,   color: "#b06cff", symbol: "✸",  pips: 4 },
+  { index: 9,  name: "General",          minHonor: 1200000,  color: "#fff75c", symbol: "✺",  pips: 5 },
+  { index: 10, name: "Marshal",          minHonor: 3000000,  color: "#ff4444", symbol: "✸",  pips: 5 },
+  { index: 11, name: "Grand Marshal",    minHonor: 8000000,  color: "#ffd700", symbol: "✺",  pips: 6 },
+  { index: 12, name: "Legend",           minHonor: 20000000, color: "#ffffff", symbol: "✸",  pips: 7 },
 ];
 
 export function rankFor(honor: number): HonorRank {
@@ -1137,58 +1159,58 @@ export const RARITY_COLOR: Record<ModuleRarity, string> = {
 
 export const MODULE_DEFS: Record<string, ModuleDef> = {
   // ── LASER WEAPONS ────────────────────────────────────────────────────────
-  "wp-pulse-1":   { id: "wp-pulse-1",   slot: "weapon", weaponKind: "laser",  name: "Pulse Laser Mk-I",     description: "Basic laser. Reliable starter weapon.",                   rarity: "common",    color: "#4ee2ff", glyph: "▶", tier: 1, price: 500,   stats: { damage: 6,  fireRate: 1.0 } },
-  "wp-pulse-2":   { id: "wp-pulse-2",   slot: "weapon", weaponKind: "laser",  name: "Pulse Laser Mk-II",    description: "Tuned pulse array. More damage, faster fire.",             rarity: "uncommon",  color: "#5cff8a", glyph: "▶", tier: 2, price: 2200,  stats: { damage: 12, fireRate: 1.15 } },
-  "wp-pulse-3":   { id: "wp-pulse-3",   slot: "weapon", weaponKind: "laser",  name: "Pulse Laser Mk-III",   description: "Military-grade pulse array. High output.",                 rarity: "rare",      color: "#4ee2ff", glyph: "▶", tier: 3, price: 8500,  stats: { damage: 20, fireRate: 1.3, critChance: 0.03 } },
-  "wp-ion":       { id: "wp-ion",       slot: "weapon", weaponKind: "laser",  name: "Ion Cannon",           description: "Heavy ion burst. Solid damage at mid range.",              rarity: "uncommon",  color: "#aaff5c", glyph: "≫", tier: 2, price: 3400,  stats: { damage: 16, fireRate: 0.95 } },
-  "wp-scatter":   { id: "wp-scatter",   slot: "weapon", weaponKind: "laser",  name: "Scatter Laser",        description: "Fires 3 thin beams at once. Great vs groups.",             rarity: "uncommon",  color: "#7ad8ff", glyph: "⋙", tier: 2, price: 3800,  stats: { damage: 9,  fireRate: 1.4, aoeRadius: 8 } },
-  "wp-plasma":    { id: "wp-plasma",    slot: "weapon", weaponKind: "laser",  name: "Plasma Cannon",        description: "Heavy plasma slug. High damage, slower cycle.",            rarity: "rare",      color: "#ff5cf0", glyph: "◆", tier: 3, price: 7800,  stats: { damage: 22, fireRate: 0.85, critChance: 0.04 } },
-  "wp-phase":     { id: "wp-phase",     slot: "weapon", weaponKind: "laser",  name: "Phase Repeater",       description: "Rapid-fire phase array. Crit-leaning.",                    rarity: "rare",      color: "#ff5cf0", glyph: "≫", tier: 3, price: 9000,  stats: { damage: 14, fireRate: 1.5, critChance: 0.08 } },
-  "wp-arc":       { id: "wp-arc",       slot: "weapon", weaponKind: "laser",  name: "Arc Disruptor",        description: "Chain-arc lightning. Splash effect on hit.",               rarity: "rare",      color: "#c8ffaa", glyph: "⚡", tier: 3, price: 11000, stats: { damage: 18, fireRate: 1.1, aoeRadius: 14, critChance: 0.05 } },
-  "wp-sniper":    { id: "wp-sniper",    slot: "weapon", weaponKind: "laser",  name: "Precision Sniper",     description: "Long-range beam. Extreme damage, very slow fire.",         rarity: "epic",      color: "#ffffff", glyph: "—", tier: 4, price: 18000, stats: { damage: 48, fireRate: 0.45, critChance: 0.18 } },
-  "wp-solar":     { id: "wp-solar",     slot: "weapon", weaponKind: "laser",  name: "Solar Lance",          description: "Star-grade lance. Splash damage, brutal output.",          rarity: "epic",      color: "#ffd24a", glyph: "✺", tier: 4, price: 24000, stats: { damage: 34, fireRate: 1.0, aoeRadius: 18, critChance: 0.06 } },
-  "wp-void-lance":{ id: "wp-void-lance",slot: "weapon", weaponKind: "laser",  name: "Void Lance",           description: "Phase-shifted lance. Endgame laser weapon.",               rarity: "legendary", color: "#b06cff", glyph: "✸", tier: 5, price: 55000, stats: { damage: 44, fireRate: 1.3, aoeRadius: 22, critChance: 0.10 } },
-  "wp-singular":  { id: "wp-singular",  slot: "weapon", weaponKind: "laser",  name: "Singularity Driver",   description: "Endgame weapon. Massive splash + crit.",                   rarity: "legendary", color: "#ff5c6c", glyph: "✸", tier: 5, price: 80000, stats: { damage: 52, fireRate: 1.1, aoeRadius: 28, critChance: 0.12 } },
+  "wp-pulse-1":   { id: "wp-pulse-1",   slot: "weapon", weaponKind: "laser",  name: "Pulse Laser Mk-I",     description: "Basic laser. Reliable starter weapon.",                   rarity: "common",    color: "#4ee2ff", glyph: "▶", tier: 1, price: 2500,   stats: { damage: 6,  fireRate: 1.0 } },
+  "wp-pulse-2":   { id: "wp-pulse-2",   slot: "weapon", weaponKind: "laser",  name: "Pulse Laser Mk-II",    description: "Tuned pulse array. More damage, faster fire.",             rarity: "uncommon",  color: "#5cff8a", glyph: "▶", tier: 2, price: 11000,  stats: { damage: 12, fireRate: 1.15 } },
+  "wp-pulse-3":   { id: "wp-pulse-3",   slot: "weapon", weaponKind: "laser",  name: "Pulse Laser Mk-III",   description: "Military-grade pulse array. High output.",                 rarity: "rare",      color: "#4ee2ff", glyph: "▶", tier: 3, price: 42500,  stats: { damage: 20, fireRate: 1.3, critChance: 0.03 } },
+  "wp-ion":       { id: "wp-ion",       slot: "weapon", weaponKind: "laser",  name: "Ion Cannon",           description: "Heavy ion burst. Solid damage at mid range.",              rarity: "uncommon",  color: "#aaff5c", glyph: "≫", tier: 2, price: 17000,  stats: { damage: 16, fireRate: 0.95 } },
+  "wp-scatter":   { id: "wp-scatter",   slot: "weapon", weaponKind: "laser",  name: "Scatter Laser",        description: "Fires 3 thin beams at once. Great vs groups.",             rarity: "uncommon",  color: "#7ad8ff", glyph: "⋙", tier: 2, price: 19000,  stats: { damage: 9,  fireRate: 1.4, aoeRadius: 8 } },
+  "wp-plasma":    { id: "wp-plasma",    slot: "weapon", weaponKind: "laser",  name: "Plasma Cannon",        description: "Heavy plasma slug. High damage, slower cycle.",            rarity: "rare",      color: "#ff5cf0", glyph: "◆", tier: 3, price: 39000,  stats: { damage: 22, fireRate: 0.85, critChance: 0.04 } },
+  "wp-phase":     { id: "wp-phase",     slot: "weapon", weaponKind: "laser",  name: "Phase Repeater",       description: "Rapid-fire phase array. Crit-leaning.",                    rarity: "rare",      color: "#ff5cf0", glyph: "≫", tier: 3, price: 45000,  stats: { damage: 14, fireRate: 1.5, critChance: 0.08 } },
+  "wp-arc":       { id: "wp-arc",       slot: "weapon", weaponKind: "laser",  name: "Arc Disruptor",        description: "Chain-arc lightning. Splash effect on hit.",               rarity: "rare",      color: "#c8ffaa", glyph: "⚡", tier: 3, price: 55000, stats: { damage: 18, fireRate: 1.1, aoeRadius: 14, critChance: 0.05 } },
+  "wp-sniper":    { id: "wp-sniper",    slot: "weapon", weaponKind: "laser",  name: "Precision Sniper",     description: "Long-range beam. Extreme damage, very slow fire.",         rarity: "epic",      color: "#ffffff", glyph: "—", tier: 4, price: 90000, stats: { damage: 48, fireRate: 0.45, critChance: 0.18 } },
+  "wp-solar":     { id: "wp-solar",     slot: "weapon", weaponKind: "laser",  name: "Solar Lance",          description: "Star-grade lance. Splash damage, brutal output.",          rarity: "epic",      color: "#ffd24a", glyph: "✺", tier: 4, price: 120000, stats: { damage: 34, fireRate: 1.0, aoeRadius: 18, critChance: 0.06 } },
+  "wp-void-lance":{ id: "wp-void-lance",slot: "weapon", weaponKind: "laser",  name: "Void Lance",           description: "Phase-shifted lance. Endgame laser weapon.",               rarity: "legendary", color: "#b06cff", glyph: "✸", tier: 5, price: 275000, stats: { damage: 44, fireRate: 1.3, aoeRadius: 22, critChance: 0.10 } },
+  "wp-singular":  { id: "wp-singular",  slot: "weapon", weaponKind: "laser",  name: "Singularity Driver",   description: "Endgame weapon. Massive splash + crit.",                   rarity: "legendary", color: "#ff5c6c", glyph: "✸", tier: 5, price: 400000, stats: { damage: 52, fireRate: 1.1, aoeRadius: 28, critChance: 0.12 } },
 
   // ── ROCKET WEAPONS ───────────────────────────────────────────────────────
-  "wp-rocket-1":  { id: "wp-rocket-1",  slot: "weapon", weaponKind: "rocket", name: "Rocket Launcher Mk-I", description: "Fires slow homing rockets. High damage, low fire rate.",    rarity: "uncommon",  color: "#ff8a4e", glyph: "↑", tier: 2, price: 5500,  stats: { damage: 30, fireRate: 0.5,  aoeRadius: 20 } },
-  "wp-rocket-2":  { id: "wp-rocket-2",  slot: "weapon", weaponKind: "rocket", name: "Heavy Rocket Pod",     description: "Twin heavy rockets. More blast, slower reload.",           rarity: "rare",      color: "#ff5c6c", glyph: "↑", tier: 3, price: 14000, stats: { damage: 55, fireRate: 0.4,  aoeRadius: 30, critChance: 0.04 } },
-  "wp-torpedo":   { id: "wp-torpedo",   slot: "weapon", weaponKind: "rocket", name: "Void Torpedo",         description: "Endgame guided torpedo. Massive AoE destruction.",         rarity: "epic",      color: "#ffd24a", glyph: "⬆", tier: 4, price: 38000, stats: { damage: 90, fireRate: 0.3,  aoeRadius: 45, critChance: 0.08 } },
-  "wp-hellfire":  { id: "wp-hellfire",  slot: "weapon", weaponKind: "rocket", name: "Hellfire Barrage",     description: "Rapid-fire mini rockets. Trades damage for fire rate.",     rarity: "epic",      color: "#ff5cf0", glyph: "⇑", tier: 4, price: 42000, stats: { damage: 35, fireRate: 0.85, aoeRadius: 18, critChance: 0.06 } },
+  "wp-rocket-1":  { id: "wp-rocket-1",  slot: "weapon", weaponKind: "rocket", name: "Rocket Launcher Mk-I", description: "Fires slow homing rockets. High damage, low fire rate.",    rarity: "uncommon",  color: "#ff8a4e", glyph: "↑", tier: 2, price: 27500,  stats: { damage: 30, fireRate: 0.5,  aoeRadius: 20 } },
+  "wp-rocket-2":  { id: "wp-rocket-2",  slot: "weapon", weaponKind: "rocket", name: "Heavy Rocket Pod",     description: "Twin heavy rockets. More blast, slower reload.",           rarity: "rare",      color: "#ff5c6c", glyph: "↑", tier: 3, price: 70000, stats: { damage: 55, fireRate: 0.4,  aoeRadius: 30, critChance: 0.04 } },
+  "wp-torpedo":   { id: "wp-torpedo",   slot: "weapon", weaponKind: "rocket", name: "Void Torpedo",         description: "Endgame guided torpedo. Massive AoE destruction.",         rarity: "epic",      color: "#ffd24a", glyph: "⬆", tier: 4, price: 190000, stats: { damage: 90, fireRate: 0.3,  aoeRadius: 45, critChance: 0.08 } },
+  "wp-hellfire":  { id: "wp-hellfire",  slot: "weapon", weaponKind: "rocket", name: "Hellfire Barrage",     description: "Rapid-fire mini rockets. Trades damage for fire rate.",     rarity: "epic",      color: "#ff5cf0", glyph: "⇑", tier: 4, price: 210000, stats: { damage: 35, fireRate: 0.85, aoeRadius: 18, critChance: 0.06 } },
 
   // ── GENERATORS (shields + regen, speed-focused, hybrid) ──────────────────
-  "gn-core-1":    { id: "gn-core-1",    slot: "generator", name: "Core Generator Mk-I",   description: "Stock reactor. Modest shield + regen.",               rarity: "common",    color: "#8aa0c0", glyph: "◈", tier: 1, price: 500,   stats: { shieldMax: 30,  shieldRegen: 2 } },
-  "gn-core-2":    { id: "gn-core-2",    slot: "generator", name: "Core Generator Mk-II",  description: "Improved reactor. Better shield & hull.",             rarity: "uncommon",  color: "#5cff8a", glyph: "◈", tier: 2, price: 2400,  stats: { shieldMax: 70,  shieldRegen: 4,  hullMax: 20 } },
-  "gn-sprint":    { id: "gn-sprint",    slot: "generator", name: "Sprint Drive",          description: "Speed-focused reactor. Big speed boost, light shield.", rarity: "uncommon",  color: "#aaff5c", glyph: "➤", tier: 2, price: 3200,  stats: { speed: 45,      shieldMax: 30,   shieldRegen: 2 } },
-  "gn-aegis":     { id: "gn-aegis",     slot: "generator", name: "Aegis Reactor",         description: "Shield-focused core. Big shield bonus.",              rarity: "rare",      color: "#4ee2ff", glyph: "◇", tier: 3, price: 9000,  stats: { shieldMax: 140, shieldRegen: 7 } },
-  "gn-fortify":   { id: "gn-fortify",   slot: "generator", name: "Fortify Reactor",       description: "Hull-focused core. Tanky.",                           rarity: "rare",      color: "#ff8a4e", glyph: "▣", tier: 3, price: 9000,  stats: { hullMax: 90,    shieldMax: 60,   damageReduction: 0.05 } },
-  "gn-hyper":     { id: "gn-hyper",     slot: "generator", name: "Hyperdrive Core",       description: "Massive speed boost. Trade shields for velocity.",    rarity: "rare",      color: "#5cff8a", glyph: "≫", tier: 3, price: 12000, stats: { speed: 90,      shieldMax: 50,   shieldRegen: 3 } },
-  "gn-prism":     { id: "gn-prism",     slot: "generator", name: "Prism Reactor",         description: "Balanced: speed + damage + some shield.",             rarity: "rare",      color: "#ffd24a", glyph: "◉", tier: 3, price: 11000, stats: { speed: 40,      damage: 8,       shieldMax: 80,   shieldRegen: 4 } },
-  "gn-quantum":   { id: "gn-quantum",   slot: "generator", name: "Quantum Reactor",       description: "Endgame core. Massive shield & regen.",               rarity: "epic",      color: "#ff5cf0", glyph: "⌬", tier: 4, price: 26000, stats: { shieldMax: 240, shieldRegen: 12, hullMax: 80 } },
-  "gn-warp-drive":{ id: "gn-warp-drive",slot: "generator", name: "Warp Drive Core",       description: "Speed-endgame: fastest generator available.",         rarity: "epic",      color: "#aaff5c", glyph: "⇒", tier: 4, price: 30000, stats: { speed: 130,     shieldMax: 100,  shieldRegen: 6 } },
-  "gn-leviathan": { id: "gn-leviathan", slot: "generator", name: "Leviathan Core",        description: "Legendary generator. Max survivability.",             rarity: "legendary", color: "#ff5c6c", glyph: "✸", tier: 5, price: 95000, stats: { shieldMax: 400, shieldRegen: 20, hullMax: 160, damageReduction: 0.08 } },
-  "gn-phase-drive":{ id:"gn-phase-drive",slot:"generator", name: "Phase Drive",           description: "Legendary speed gen. Insane velocity + some shields.", rarity: "legendary", color: "#b06cff", glyph: "✺", tier: 5, price: 90000, stats: { speed: 180,     shieldMax: 160,  shieldRegen: 8,  hullMax: 40 } },
+  "gn-core-1":    { id: "gn-core-1",    slot: "generator", name: "Core Generator Mk-I",   description: "Stock reactor. Modest shield + regen.",               rarity: "common",    color: "#8aa0c0", glyph: "◈", tier: 1, price: 2500,   stats: { shieldMax: 30,  shieldRegen: 2 } },
+  "gn-core-2":    { id: "gn-core-2",    slot: "generator", name: "Core Generator Mk-II",  description: "Improved reactor. Better shield & hull.",             rarity: "uncommon",  color: "#5cff8a", glyph: "◈", tier: 2, price: 12000,  stats: { shieldMax: 70,  shieldRegen: 4,  hullMax: 20 } },
+  "gn-sprint":    { id: "gn-sprint",    slot: "generator", name: "Sprint Drive",          description: "Speed-focused reactor. Big speed boost, light shield.", rarity: "uncommon",  color: "#aaff5c", glyph: "➤", tier: 2, price: 16000,  stats: { speed: 45,      shieldMax: 30,   shieldRegen: 2 } },
+  "gn-aegis":     { id: "gn-aegis",     slot: "generator", name: "Aegis Reactor",         description: "Shield-focused core. Big shield bonus.",              rarity: "rare",      color: "#4ee2ff", glyph: "◇", tier: 3, price: 45000,  stats: { shieldMax: 140, shieldRegen: 7 } },
+  "gn-fortify":   { id: "gn-fortify",   slot: "generator", name: "Fortify Reactor",       description: "Hull-focused core. Tanky.",                           rarity: "rare",      color: "#ff8a4e", glyph: "▣", tier: 3, price: 45000,  stats: { hullMax: 90,    shieldMax: 60,   damageReduction: 0.05 } },
+  "gn-hyper":     { id: "gn-hyper",     slot: "generator", name: "Hyperdrive Core",       description: "Massive speed boost. Trade shields for velocity.",    rarity: "rare",      color: "#5cff8a", glyph: "≫", tier: 3, price: 60000, stats: { speed: 90,      shieldMax: 50,   shieldRegen: 3 } },
+  "gn-prism":     { id: "gn-prism",     slot: "generator", name: "Prism Reactor",         description: "Balanced: speed + damage + some shield.",             rarity: "rare",      color: "#ffd24a", glyph: "◉", tier: 3, price: 55000, stats: { speed: 40,      damage: 8,       shieldMax: 80,   shieldRegen: 4 } },
+  "gn-quantum":   { id: "gn-quantum",   slot: "generator", name: "Quantum Reactor",       description: "Endgame core. Massive shield & regen.",               rarity: "epic",      color: "#ff5cf0", glyph: "⌬", tier: 4, price: 130000, stats: { shieldMax: 240, shieldRegen: 12, hullMax: 80 } },
+  "gn-warp-drive":{ id: "gn-warp-drive",slot: "generator", name: "Warp Drive Core",       description: "Speed-endgame: fastest generator available.",         rarity: "epic",      color: "#aaff5c", glyph: "⇒", tier: 4, price: 150000, stats: { speed: 130,     shieldMax: 100,  shieldRegen: 6 } },
+  "gn-leviathan": { id: "gn-leviathan", slot: "generator", name: "Leviathan Core",        description: "Legendary generator. Max survivability.",             rarity: "legendary", color: "#ff5c6c", glyph: "✸", tier: 5, price: 475000, stats: { shieldMax: 400, shieldRegen: 20, hullMax: 160, damageReduction: 0.08 } },
+  "gn-phase-drive":{ id:"gn-phase-drive",slot:"generator", name: "Phase Drive",           description: "Legendary speed gen. Insane velocity + some shields.", rarity: "legendary", color: "#b06cff", glyph: "✺", tier: 5, price: 450000, stats: { speed: 180,     shieldMax: 160,  shieldRegen: 8,  hullMax: 40 } },
 
   // ── MODULES (utility: speed, cargo, loot, crit, AoE, armor, etc.) ────────
-  "md-thrust-1":  { id: "md-thrust-1",  slot: "module", name: "Ion Thruster Mk-I",      description: "Boosts top speed by 30.",                               rarity: "common",    color: "#5cff8a", glyph: "➤", tier: 1, price: 600,   stats: { speed: 30 } },
-  "md-thrust-2":  { id: "md-thrust-2",  slot: "module", name: "Ion Thruster Mk-II",     description: "Substantial speed boost.",                              rarity: "uncommon",  color: "#5cff8a", glyph: "➤", tier: 2, price: 2800,  stats: { speed: 70 } },
-  "md-afterburn": { id: "md-afterburn", slot: "module", name: "Afterburner",             description: "Speed +110, no other bonuses. Pure velocity.",          rarity: "rare",      color: "#aaff5c", glyph: "⇒", tier: 3, price: 9500,  stats: { speed: 110 } },
-  "md-cargo":     { id: "md-cargo",     slot: "module", name: "Expanded Cargo Bay",     description: "+25% cargo capacity.",                                  rarity: "uncommon",  color: "#c69060", glyph: "▤", tier: 2, price: 3200,  stats: { cargoBonus: 0.25 } },
-  "md-cargo-2":   { id: "md-cargo-2",   slot: "module", name: "Bulk Cargo Bay",         description: "+50% cargo capacity.",                                  rarity: "rare",      color: "#c69060", glyph: "▤", tier: 3, price: 8000,  stats: { cargoBonus: 0.50 } },
-  "md-ammo-bay":  { id: "md-ammo-bay",  slot: "module", name: "Munitions Bay",          description: "+10 max ammo capacity for rocket weapons.",             rarity: "uncommon",  color: "#ff8a4e", glyph: "⟁", tier: 2, price: 3500,  stats: { ammoCapacity: 10 } },
-  "md-ammo-bay-2":{ id: "md-ammo-bay-2",slot: "module", name: "Expanded Munitions Bay", description: "+25 max ammo capacity for rocket weapons.",             rarity: "rare",      color: "#ff5c6c", glyph: "⟁", tier: 3, price: 9500,  stats: { ammoCapacity: 25 } },
-  "md-targeter":  { id: "md-targeter",  slot: "module", name: "Targeter Array",         description: "+10% crit chance.",                                     rarity: "rare",      color: "#ff5cf0", glyph: "✦", tier: 3, price: 8000,  stats: { critChance: 0.10 } },
-  "md-targeter-2":{ id: "md-targeter-2",slot: "module", name: "Advanced Targeter",      description: "+18% crit chance.",                                     rarity: "epic",      color: "#ff5cf0", glyph: "⊕", tier: 4, price: 22000, stats: { critChance: 0.18 } },
-  "md-plating":   { id: "md-plating",   slot: "module", name: "Reactive Plating",       description: "-8% incoming damage, +40 hull.",                        rarity: "rare",      color: "#ff8a4e", glyph: "⛨", tier: 3, price: 9500,  stats: { damageReduction: 0.08, hullMax: 40 } },
-  "md-heavy-armor":{ id:"md-heavy-armor",slot:"module", name: "Heavy Combat Armor",     description: "-15% damage taken, +80 hull.",                          rarity: "epic",      color: "#ff8a4e", glyph: "⬛", tier: 4, price: 26000, stats: { damageReduction: 0.15, hullMax: 80 } },
-  "md-shield-boost":{ id:"md-shield-boost",slot:"module",name: "Shield Booster",        description: "+120 max shield, +3 shield regen.",                     rarity: "rare",      color: "#4ee2ff", glyph: "◈", tier: 3, price: 8500,  stats: { shieldMax: 120, shieldRegen: 3 } },
-  "md-scavenger": { id: "md-scavenger", slot: "module", name: "Scavenger Module",       description: "+1 loot per kill.",                                     rarity: "rare",      color: "#ffd24a", glyph: "$", tier: 3, price: 7500,  stats: { lootBonus: 1 } },
-  "md-loot-2":    { id: "md-loot-2",    slot: "module", name: "Syndicate Scanner",      description: "+2 loot per kill.",                                     rarity: "epic",      color: "#ffd24a", glyph: "❖", tier: 4, price: 20000, stats: { lootBonus: 2 } },
-  "md-overcharge":{ id: "md-overcharge",slot: "module", name: "Overcharge Capacitor",   description: "+14 damage to all weapons, +10% fire rate.",             rarity: "epic",      color: "#ff5c6c", glyph: "⚡", tier: 4, price: 28000, stats: { damage: 14, fireRate: 1.1 } },
-  "md-overclock": { id: "md-overclock", slot: "module", name: "Overclock Module",       description: "+25% fire rate, +8 damage, -30 hull (trade-off).",      rarity: "epic",      color: "#ffaa22", glyph: "⚙", tier: 4, price: 30000, stats: { fireRate: 1.25, damage: 8, hullMax: -30 } },
-  "md-nano-rep":  { id: "md-nano-rep",  slot: "module", name: "Nano-Repair Bot",        description: "+5 shield regen & +30 hull.",                           rarity: "uncommon",  color: "#5cff8a", glyph: "⬡", tier: 2, price: 4500,  stats: { shieldRegen: 5, hullMax: 30 } },
-  "md-voidframe": { id: "md-voidframe", slot: "module", name: "Voidframe Stabilizer",   description: "Endgame: speed + DR + shield + crit.",                   rarity: "legendary", color: "#b06cff", glyph: "✺", tier: 5, price: 90000, stats: { speed: 60, damageReduction: 0.12, shieldMax: 120, critChance: 0.05 } },
-  "md-singularity":{ id:"md-singularity",slot:"module", name: "Singularity Field",      description: "Legendary utility module. All stats boosted.",           rarity: "legendary", color: "#ff5c6c", glyph: "✸", tier: 5, price: 120000,stats: { damage: 20, speed: 50, shieldMax: 150, shieldRegen: 8, critChance: 0.08, damageReduction: 0.10 } },
+  "md-thrust-1":  { id: "md-thrust-1",  slot: "module", name: "Ion Thruster Mk-I",      description: "Boosts top speed by 30.",                               rarity: "common",    color: "#5cff8a", glyph: "➤", tier: 1, price: 3000,   stats: { speed: 30 } },
+  "md-thrust-2":  { id: "md-thrust-2",  slot: "module", name: "Ion Thruster Mk-II",     description: "Substantial speed boost.",                              rarity: "uncommon",  color: "#5cff8a", glyph: "➤", tier: 2, price: 14000,  stats: { speed: 70 } },
+  "md-afterburn": { id: "md-afterburn", slot: "module", name: "Afterburner",             description: "Speed +110, no other bonuses. Pure velocity.",          rarity: "rare",      color: "#aaff5c", glyph: "⇒", tier: 3, price: 47500,  stats: { speed: 110 } },
+  "md-cargo":     { id: "md-cargo",     slot: "module", name: "Expanded Cargo Bay",     description: "+25% cargo capacity.",                                  rarity: "uncommon",  color: "#c69060", glyph: "▤", tier: 2, price: 16000,  stats: { cargoBonus: 0.25 } },
+  "md-cargo-2":   { id: "md-cargo-2",   slot: "module", name: "Bulk Cargo Bay",         description: "+50% cargo capacity.",                                  rarity: "rare",      color: "#c69060", glyph: "▤", tier: 3, price: 40000,  stats: { cargoBonus: 0.50 } },
+  "md-ammo-bay":  { id: "md-ammo-bay",  slot: "module", name: "Munitions Bay",          description: "+10 max ammo capacity for rocket weapons.",             rarity: "uncommon",  color: "#ff8a4e", glyph: "⟁", tier: 2, price: 17500,  stats: { ammoCapacity: 10 } },
+  "md-ammo-bay-2":{ id: "md-ammo-bay-2",slot: "module", name: "Expanded Munitions Bay", description: "+25 max ammo capacity for rocket weapons.",             rarity: "rare",      color: "#ff5c6c", glyph: "⟁", tier: 3, price: 47500,  stats: { ammoCapacity: 25 } },
+  "md-targeter":  { id: "md-targeter",  slot: "module", name: "Targeter Array",         description: "+10% crit chance.",                                     rarity: "rare",      color: "#ff5cf0", glyph: "✦", tier: 3, price: 40000,  stats: { critChance: 0.10 } },
+  "md-targeter-2":{ id: "md-targeter-2",slot: "module", name: "Advanced Targeter",      description: "+18% crit chance.",                                     rarity: "epic",      color: "#ff5cf0", glyph: "⊕", tier: 4, price: 110000, stats: { critChance: 0.18 } },
+  "md-plating":   { id: "md-plating",   slot: "module", name: "Reactive Plating",       description: "-8% incoming damage, +40 hull.",                        rarity: "rare",      color: "#ff8a4e", glyph: "⛨", tier: 3, price: 47500,  stats: { damageReduction: 0.08, hullMax: 40 } },
+  "md-heavy-armor":{ id:"md-heavy-armor",slot:"module", name: "Heavy Combat Armor",     description: "-15% damage taken, +80 hull.",                          rarity: "epic",      color: "#ff8a4e", glyph: "⬛", tier: 4, price: 130000, stats: { damageReduction: 0.15, hullMax: 80 } },
+  "md-shield-boost":{ id:"md-shield-boost",slot:"module",name: "Shield Booster",        description: "+120 max shield, +3 shield regen.",                     rarity: "rare",      color: "#4ee2ff", glyph: "◈", tier: 3, price: 42500,  stats: { shieldMax: 120, shieldRegen: 3 } },
+  "md-scavenger": { id: "md-scavenger", slot: "module", name: "Scavenger Module",       description: "+1 loot per kill.",                                     rarity: "rare",      color: "#ffd24a", glyph: "$", tier: 3, price: 37500,  stats: { lootBonus: 1 } },
+  "md-loot-2":    { id: "md-loot-2",    slot: "module", name: "Syndicate Scanner",      description: "+2 loot per kill.",                                     rarity: "epic",      color: "#ffd24a", glyph: "❖", tier: 4, price: 100000, stats: { lootBonus: 2 } },
+  "md-overcharge":{ id: "md-overcharge",slot: "module", name: "Overcharge Capacitor",   description: "+14 damage to all weapons, +10% fire rate.",             rarity: "epic",      color: "#ff5c6c", glyph: "⚡", tier: 4, price: 140000, stats: { damage: 14, fireRate: 1.1 } },
+  "md-overclock": { id: "md-overclock", slot: "module", name: "Overclock Module",       description: "+25% fire rate, +8 damage, -30 hull (trade-off).",      rarity: "epic",      color: "#ffaa22", glyph: "⚙", tier: 4, price: 150000, stats: { fireRate: 1.25, damage: 8, hullMax: -30 } },
+  "md-nano-rep":  { id: "md-nano-rep",  slot: "module", name: "Nano-Repair Bot",        description: "+5 shield regen & +30 hull.",                           rarity: "uncommon",  color: "#5cff8a", glyph: "⬡", tier: 2, price: 22500,  stats: { shieldRegen: 5, hullMax: 30 } },
+  "md-voidframe": { id: "md-voidframe", slot: "module", name: "Voidframe Stabilizer",   description: "Endgame: speed + DR + shield + crit.",                   rarity: "legendary", color: "#b06cff", glyph: "✺", tier: 5, price: 450000, stats: { speed: 60, damageReduction: 0.12, shieldMax: 120, critChance: 0.05 } },
+  "md-singularity":{ id:"md-singularity",slot:"module", name: "Singularity Field",      description: "Legendary utility module. All stats boosted.",           rarity: "legendary", color: "#ff5c6c", glyph: "✸", tier: 5, price: 600000,stats: { damage: 20, speed: 50, shieldMax: 150, shieldRegen: 8, critChance: 0.08, damageReduction: 0.10 } },
 };
 
 export function moduleDef(idOrItem: string | ModuleItem): ModuleDef {

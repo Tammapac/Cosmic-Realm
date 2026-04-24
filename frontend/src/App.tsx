@@ -64,7 +64,7 @@ function GameCanvas() {
     if (state.dockedAt) return;
     const { x: wx, y: wy } = screenToWorld(e);
 
-    // Check if clicking on enemy — select/lock target but do NOT move ship
+    // Check if clicking on enemy — lock target (stays locked), do NOT auto-attack
     const enemy = state.enemies.find((en) => Math.hypot(en.pos.x - wx, en.pos.y - wy) < Math.max(24, en.size + 14));
     if (enemy) {
       state.selectedWorldTarget = {
@@ -93,10 +93,8 @@ function GameCanvas() {
       return;
     }
 
-    // Clicked on free space — move ship there
+    // Clicked on free space — move ship there, keep target lock
     state.cameraTarget = { x: wx, y: wy };
-    state.attackTargetId = null;
-    state.selectedWorldTarget = null;
     state.miningTargetId = null;
 
     // Snap to station if clicked nearby
@@ -123,6 +121,8 @@ function GameCanvas() {
       };
       state.attackTargetId = enemy.id;
       state.miningTargetId = null;
+      // Double-click also starts attacking
+      state.isAttacking = true;
       bump();
     }
   };
@@ -271,7 +271,7 @@ function AmmoHud() {
   const barColor = isEmpty || isLow ? "#ff5c6c" : typeDef.color;
 
   const handleClick = () => {
-    state.hangarTab = "ammo";
+    state.hangarTab = "loadout";
     bump();
   };
 
@@ -435,7 +435,17 @@ function GameApp() {
         state.showClan = false;
         bump();
       } else if (e.key >= "1" && e.key <= "8") {
-        if (!state.dockedAt) useConsumable(parseInt(e.key) - 1);
+        if (!state.dockedAt) {
+          if (e.key === "1" && e.ctrlKey) {
+            // Ctrl+1 toggles attack
+            if (state.attackTargetId) {
+              state.isAttacking = !state.isAttacking;
+              bump();
+            }
+          } else {
+            useConsumable(parseInt(e.key) - 1);
+          }
+        }
       }
     };
     window.addEventListener("keydown", handler);

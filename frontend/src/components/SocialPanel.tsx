@@ -284,89 +284,163 @@ export function ClanPanel() {
 import { ZONES as ZONES_LOCAL, ZoneId as ZoneIdType } from "../game/types";
 import { travelToZone } from "../game/store";
 
-const FACTION_GROUPS: {
-  key: string;
-  label: string;
-  color: string;
-  zones: ZoneIdType[];
-}[] = [
-  { key: "earth", label: "★ EARTH FACTION", color: "#4ee2ff",
-    zones: ["alpha", "nebula", "crimson", "void", "forge"] },
-  { key: "mars",  label: "★ MARS FACTION",  color: "#ff8a4e",
-    zones: ["corona", "fracture", "abyss", "marsdepth", "maelstrom"] },
-  { key: "venus", label: "★ VENUS FACTION", color: "#c86cff",
-    zones: ["venus1", "venus2", "venus3", "venus4", "venus5"] },
+type MapNode = { id: ZoneIdType; cx: number; cy: number; faction: string; color: string };
+
+const MAP_NODES: MapNode[] = [
+  { id: "alpha",    cx: 120, cy: 80,  faction: "earth", color: "#4ee2ff" },
+  { id: "nebula",   cx: 120, cy: 170, faction: "earth", color: "#4ee2ff" },
+  { id: "crimson",  cx: 120, cy: 260, faction: "earth", color: "#4ee2ff" },
+  { id: "void",     cx: 120, cy: 350, faction: "earth", color: "#4ee2ff" },
+  { id: "forge",    cx: 120, cy: 440, faction: "earth", color: "#4ee2ff" },
+  { id: "corona",   cx: 380, cy: 80,  faction: "mars",  color: "#ff8a4e" },
+  { id: "fracture", cx: 380, cy: 170, faction: "mars",  color: "#ff8a4e" },
+  { id: "abyss",    cx: 380, cy: 260, faction: "mars",  color: "#ff8a4e" },
+  { id: "marsdepth",cx: 380, cy: 350, faction: "mars",  color: "#ff8a4e" },
+  { id: "maelstrom",cx: 380, cy: 440, faction: "mars",  color: "#ff8a4e" },
+  { id: "venus1",   cx: 640, cy: 80,  faction: "venus", color: "#c86cff" },
+  { id: "venus2",   cx: 640, cy: 170, faction: "venus", color: "#c86cff" },
+  { id: "venus3",   cx: 640, cy: 260, faction: "venus", color: "#c86cff" },
+  { id: "venus4",   cx: 640, cy: 350, faction: "venus", color: "#c86cff" },
+  { id: "venus5",   cx: 640, cy: 440, faction: "venus", color: "#c86cff" },
+];
+
+const MAP_LINKS: [ZoneIdType, ZoneIdType][] = [
+  ["alpha", "nebula"], ["nebula", "crimson"], ["crimson", "void"], ["void", "forge"],
+  ["corona", "fracture"], ["fracture", "abyss"], ["abyss", "marsdepth"], ["marsdepth", "maelstrom"],
+  ["venus1", "venus2"], ["venus2", "venus3"], ["venus3", "venus4"], ["venus4", "venus5"],
+  ["forge", "corona"], ["maelstrom", "venus1"],
 ];
 
 export function GalaxyMap() {
   const player = useGame((s) => s.player);
+  const [hovered, setHovered] = useState<ZoneIdType | null>(null);
 
   if (!useGame((s) => s.showMap)) return null;
 
+  const nodeMap = new Map(MAP_NODES.map((n) => [n.id, n]));
+
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(2,4,12,0.92)" }}>
-      <div className="panel" style={{ width: "min(96vw, 980px)", maxHeight: "90vh", display: "flex", flexDirection: "column" }}>
+      <div className="panel" style={{ width: "min(96vw, 800px)", maxHeight: "92vh", display: "flex", flexDirection: "column" }}>
         <div className="flex items-center justify-between p-3 border-b" style={{ borderColor: "var(--border-soft)", flexShrink: 0 }}>
           <div className="text-cyan glow-cyan tracking-widest font-bold">★ GALAXY MAP</div>
           <button className="btn btn-danger" onClick={() => { state.showMap = false; bump(); }}>✕</button>
         </div>
 
-        <div style={{ overflowY: "auto", flex: 1 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", padding: "12px" }}>
-            {FACTION_GROUPS.map((group) => (
-              <div key={group.key}>
-                <div className="tracking-widest font-bold text-[12px] mb-2 text-center pb-1"
-                  style={{ color: group.color, borderBottom: `1px solid ${group.color}44` }}>
-                  {group.label}
-                </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  {group.zones.map((zid) => {
-                    const z = ZONES_LOCAL[zid];
-                    const locked = player.level < z.unlockLevel;
-                    const current = player.zone === zid;
-                    return (
-                      <div key={zid} className="panel" style={{
-                        borderColor: current ? group.color : "var(--border-glow)",
-                        padding: "8px",
-                        borderLeft: `3px solid ${group.color}${locked ? "44" : "cc"}`,
-                      }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "3px" }}>
-                          <span style={{
-                            background: group.color + "22", color: group.color,
-                            borderRadius: "3px", padding: "1px 5px", fontSize: "10px",
-                            fontWeight: "bold", flexShrink: 0,
-                          }}>{z.label}</span>
-                          <span className="font-bold tracking-wide text-[11px]" style={{ color: locked ? "var(--text-mute)" : "var(--text-dim)" }}>
-                            {z.name.toUpperCase()}
-                          </span>
-                        </div>
-                        <div className="text-[10px] mb-2" style={{ color: "var(--text-mute)", lineHeight: 1.3 }}>{z.description}</div>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "4px" }}>
-                          <span className="text-[10px]" style={{ color: "var(--text-mute)" }}>
-                            Tier {z.enemyTier} · Lv {z.unlockLevel}+
-                          </span>
-                          {current ? (
-                            <button className="btn text-[10px]" style={{ padding: "2px 8px" }} disabled>Here</button>
-                          ) : (
-                            <button
-                              className="btn btn-primary text-[10px]"
-                              style={{ padding: "2px 8px" }}
-                              disabled={locked}
-                              onClick={() => { travelToZone(zid); state.showMap = false; bump(); }}
-                            >
-                              {locked ? `Lv ${z.unlockLevel}` : "Warp"}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
+        <div style={{ overflowY: "auto", flex: 1, padding: "12px" }}>
+          {/* Faction column headers */}
+          <div style={{ display: "flex", justifyContent: "space-around", marginBottom: 8 }}>
+            <span style={{ color: "#4ee2ff", fontWeight: "bold", fontSize: 11, letterSpacing: 2 }}>EARTH [EIC]</span>
+            <span style={{ color: "#ff8a4e", fontWeight: "bold", fontSize: 11, letterSpacing: 2 }}>MARS [MMO]</span>
+            <span style={{ color: "#c86cff", fontWeight: "bold", fontSize: 11, letterSpacing: 2 }}>VENUS [VRU]</span>
           </div>
-          <div className="px-4 pb-3 text-mute text-[10px] italic">
-            Tip: Fly through magenta portals in each sector to travel between zones.
+
+          <svg viewBox="0 0 760 510" style={{ width: "100%", height: "auto" }}>
+            {/* Connection lines */}
+            {MAP_LINKS.map(([a, b], i) => {
+              const na = nodeMap.get(a)!;
+              const nb = nodeMap.get(b)!;
+              const isCross = na.faction !== nb.faction;
+              return (
+                <line key={i} x1={na.cx} y1={na.cy} x2={nb.cx} y2={nb.cy}
+                  stroke={isCross ? "#ff5cf088" : na.color + "44"}
+                  strokeWidth={isCross ? 1.5 : 2}
+                  strokeDasharray={isCross ? "6 4" : "none"}
+                />
+              );
+            })}
+
+            {/* Zone circles */}
+            {MAP_NODES.map((n) => {
+              const z = ZONES_LOCAL[n.id];
+              const locked = player.level < z.unlockLevel;
+              const current = player.zone === n.id;
+              const isHov = hovered === n.id;
+              const r = current ? 30 : isHov ? 28 : 24;
+
+              return (
+                <g key={n.id}
+                  style={{ cursor: locked ? "not-allowed" : "pointer" }}
+                  onMouseEnter={() => setHovered(n.id)}
+                  onMouseLeave={() => setHovered(null)}
+                  onClick={() => {
+                    if (!locked && !current) {
+                      travelToZone(n.id);
+                      state.showMap = false;
+                      bump();
+                    }
+                  }}
+                >
+                  {/* Outer glow for current */}
+                  {current && (
+                    <circle cx={n.cx} cy={n.cy} r={r + 6} fill="none"
+                      stroke={n.color} strokeWidth={1.5} opacity={0.5}
+                      strokeDasharray="4 3"
+                    />
+                  )}
+                  {/* Main circle */}
+                  <circle cx={n.cx} cy={n.cy} r={r}
+                    fill={locked ? "#0a0f24" : current ? n.color + "33" : isHov ? n.color + "22" : "#0a0f24"}
+                    stroke={locked ? "#1a2348" : n.color}
+                    strokeWidth={current ? 2.5 : 1.5}
+                  />
+                  {/* Label inside */}
+                  <text x={n.cx} y={n.cy - 4} textAnchor="middle"
+                    fill={locked ? "#5a6a98" : "#e8f0ff"}
+                    fontSize={11} fontWeight="bold" fontFamily="'Courier New', monospace"
+                  >
+                    {z.label}
+                  </text>
+                  <text x={n.cx} y={n.cy + 9} textAnchor="middle"
+                    fill={locked ? "#3a4a68" : n.color}
+                    fontSize={7} fontFamily="'Courier New', monospace"
+                  >
+                    T{z.enemyTier}
+                  </text>
+                  {/* Name below circle */}
+                  <text x={n.cx} y={n.cy + r + 14} textAnchor="middle"
+                    fill={locked ? "#3a4a68" : isHov ? "#e8f0ff" : "#8a9ac8"}
+                    fontSize={8} fontFamily="'Courier New', monospace"
+                  >
+                    {z.name.toUpperCase()}
+                  </text>
+                  {locked && (
+                    <text x={n.cx} y={n.cy + r + 24} textAnchor="middle"
+                      fill="#ff5c6c" fontSize={7} fontFamily="'Courier New', monospace"
+                    >
+                      LV {z.unlockLevel}
+                    </text>
+                  )}
+                  {current && (
+                    <text x={n.cx} y={n.cy + r + 24} textAnchor="middle"
+                      fill={n.color} fontSize={7} fontWeight="bold" fontFamily="'Courier New', monospace"
+                    >
+                      ▸ HERE
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+
+          {/* Hovered zone detail */}
+          {hovered && (() => {
+            const z = ZONES_LOCAL[hovered];
+            const n = nodeMap.get(hovered)!;
+            return (
+              <div className="panel p-2 mt-2" style={{ borderColor: n.color + "66" }}>
+                <div className="flex items-center gap-2">
+                  <span style={{ color: n.color, fontWeight: "bold", fontSize: 12 }}>{z.label}</span>
+                  <span style={{ color: "#e8f0ff", fontWeight: "bold", fontSize: 12 }}>{z.name.toUpperCase()}</span>
+                  <span style={{ color: "#5a6a98", fontSize: 10 }}>Tier {z.enemyTier} · Lv {z.unlockLevel}+</span>
+                </div>
+                <div style={{ color: "#8a9ac8", fontSize: 10, marginTop: 2 }}>{z.description}</div>
+              </div>
+            );
+          })()}
+
+          <div className="text-mute text-[9px] italic mt-2 text-center">
+            Click a zone to warp. Dashed lines = cross-faction portals.
           </div>
         </div>
       </div>
