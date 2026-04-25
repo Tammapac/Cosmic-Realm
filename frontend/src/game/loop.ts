@@ -237,7 +237,7 @@ export function queueAttackTarget(enemyId: string): void {
   // Gate: only accept when weapon is off cooldown.
   // Prevents double-clicks, keyboard repeat, or any other repeated triggers
   // from causing more than one shot per cooldown window.
-  if (playerFireCd.value > 0) return;
+  if (playerFireCd.value > 0 && rocketFireCd.value > 0) return;
   queuedAttackTargetId = enemyId;
 }
 
@@ -808,6 +808,7 @@ export function stopLoop(): void {
 }
 
 const playerFireCd = { value: 0 };
+const rocketFireCd = { value: 0 };
 
 function tickWorld(dt: number): void {
   state.tick += dt;
@@ -1124,11 +1125,12 @@ function tickWorld(dt: number): void {
 
   // ── Attack: only fire when player chooses to attack (isAttacking)
   playerFireCd.value -= dt;
+  rocketFireCd.value -= dt;
   const atkTarget = state.attackTargetId
     ? state.enemies.find((e) => e.id === state.attackTargetId)
     : null;
   const FIRE_RANGE = 400;
-  if (state.isAttacking && atkTarget && playerFireCd.value <= 0) {
+  if (state.isAttacking && atkTarget) {
     const ang = Math.atan2(atkTarget.pos.y - p.pos.y, atkTarget.pos.x - p.pos.x);
     const atkDist = Math.sqrt((atkTarget.pos.x - p.pos.x) ** 2 + (atkTarget.pos.y - p.pos.y) ** 2);
     if (atkDist < FIRE_RANGE) {
@@ -1137,33 +1139,42 @@ function tickWorld(dt: number): void {
       const typeDef = ROCKET_AMMO_TYPE_DEFS[ammoType];
       const dmgMul = (typeDef?.damageMul ?? 1.0) * 0.4;
       const projColor = typeDef?.color ?? "#4ee2ff";
-      let firedAny = false;
       const globalAmmo = p.ammo[ammoType] ?? 0;
       const canFire = globalAmmo >= 1;
-      if (canFire) {
-        p.ammo[ammoType] = globalAmmo - 1;
-        const totalDmg = stats.damage * dmgMul;
-        const laserIds: string[] = [];
-        const rocketIds: string[] = [];
-        for (const wid of weaponIds) {
-          const wi = p.inventory.find((m) => m.instanceId === wid);
-          const wd = wi ? MODULE_DEFS[wi.defId] : null;
-          if (wd?.weaponKind === "rocket") rocketIds.push(wid);
-          else laserIds.push(wid);
+      const laserIds: string[] = [];
+      const rocketIds: string[] = [];
+      for (const wid of weaponIds) {
+        const wi = p.inventory.find((m) => m.instanceId === wid);
+        const wd = wi ? MODULE_DEFS[wi.defId] : null;
+        if (wd?.weaponKind === "rocket") rocketIds.push(wid);
+        else laserIds.push(wid);
+      }
+      const totalDmg = stats.damage * dmgMul;
+      const perpAng = ang + Math.PI / 2;
+
+      // Fire lasers on laser cooldown
+      if (playerFireCd.value <= 0 && laserIds.length > 0 && canFire) {
+        p.ammo[ammoType] = (p.ammo[ammoType] ?? 0) - 1;
+        const laserShare = totalDmg * laserIds.length / weaponIds.length;
+        const perShot = Math.round(laserShare / 2);
+        for (let si = 0; si < 2; si++) {
+          const side = si === 0 ? -1 : 1;
+          const ox = p.pos.x + Math.cos(perpAng) * 14 * side;
+          const oy = p.pos.y + Math.sin(perpAng) * 14 * side;
+          fireProjectile("player", ox, oy, ang - side * 0.03, perShot, projColor, 4, {
+            weaponKind: "laser",
+          });
         }
-        const perpAng = ang + Math.PI / 2;
-        if (laserIds.length > 0) {
-          const laserShare = totalDmg * laserIds.length / weaponIds.length;
-          const perShot = Math.round(laserShare / 2);
-          for (let si = 0; si < 2; si++) {
-            const side = si === 0 ? -1 : 1;
-            const ox = p.pos.x + Math.cos(perpAng) * 14 * side;
-            const oy = p.pos.y + Math.sin(perpAng) * 14 * side;
-            fireProjectile("player", ox, oy, ang - side * 0.03, perShot, projColor, 4, {
-              weaponKind: "laser",
-            });
-          }
-        }
+        atkTarget.aggro = true;
+        const cd = Math.max(0.2, 0.85 / stats.fireRate);
+        playerFireCd.value = cd;
+        state.attackCooldownUntil = state.tick + cd;
+        state.attackCooldownDuration = cd;
+      }
+
+      // Fire rockets on separate slower cooldown
+      if (rocketFireCd.value <= 0 && rocketIds.length > 0 && canFire) {
+        if (laserIds.length === 0) p.ammo[ammoType] = (p.ammo[ammoType] ?? 0) - 1;
         for (const rId of rocketIds) {
           const rDmg = Math.round(totalDmg / weaponIds.length);
           fireProjectile("player", p.pos.x, p.pos.y, ang, rDmg, projColor, 5, {
@@ -1172,14 +1183,15 @@ function tickWorld(dt: number): void {
             speedMul: 0.55,
           });
         }
-        firedAny = true;
         atkTarget.aggro = true;
-      }
-      if (firedAny) {
-        const cd = Math.max(0.2, 0.85 / stats.fireRate);
-        playerFireCd.value = cd;
-        state.attackCooldownUntil = state.tick + cd;
-        state.attackCooldownDuration = cd;
+        // Rocket cooldown: ~3s for Mk-I (fireRate 0.5), faster for Hellfire (0.85)
+        const avgRocketRate = rocketIds.reduce((sum, rid) => {
+          const ri = p.inventory.find((m) => m.instanceId === rid);
+          const rd = ri ? MODULE_DEFS[ri.defId] : null;
+          return sum + (rd?.stats.fireRate ?? 0.5);
+        }, 0) / rocketIds.length;
+        const rCd = 1.5 / avgRocketRate;
+        rocketFireCd.value = rCd;
       }
     }
   }
@@ -1281,18 +1293,34 @@ function tickWorld(dt: number): void {
     pr.pos.y += pr.vel.y * dt;
     pr.ttl -= dt;
     if (pr.ttl <= 0) return false;
-    // ── Ammo-type colored trail for player homing rockets ──
-    if (pr.homing && pr.fromPlayer && Math.random() < 0.6) {
+    // ── Rocket trail: long fiery trail + bright smoke ──
+    if (pr.weaponKind === "rocket" && pr.fromPlayer) {
       const isEmp = !!(pr.empStun && pr.empStun > 0);
-      const trailSize = pr.armorPiercing ? 2 : isEmp ? 3.5 : 3;
-      const trailTtl = pr.armorPiercing ? 0.22 : isEmp ? 0.32 : 0.28;
-      state.particles.push({
-        id: `rt-${Math.random().toString(36).slice(2, 8)}`,
-        pos: { x: pr.pos.x, y: pr.pos.y },
-        vel: { x: 0, y: 0 },
-        ttl: trailTtl, maxTtl: trailTtl,
-        color: pr.color, size: trailSize, kind: "trail",
-      });
+      const velAng = Math.atan2(pr.vel.y, pr.vel.x);
+      const backX = -Math.cos(velAng);
+      const backY = -Math.sin(velAng);
+      // Fiery core trail (dense)
+      if (Math.random() < 0.85) {
+        const spread = (Math.random() - 0.5) * 8;
+        state.particles.push({
+          id: `rt-${Math.random().toString(36).slice(2, 8)}`,
+          pos: { x: pr.pos.x + backX * 6 + spread * backY, y: pr.pos.y + backY * 6 - spread * backX },
+          vel: { x: backX * (20 + Math.random() * 40) + (Math.random() - 0.5) * 15, y: backY * (20 + Math.random() * 40) + (Math.random() - 0.5) * 15 },
+          ttl: 0.35 + Math.random() * 0.25, maxTtl: 0.6,
+          color: pr.color, size: 3 + Math.random() * 2, kind: "ember",
+        });
+      }
+      // Bright smoke puffs (wider, fade to white)
+      if (Math.random() < 0.7) {
+        const spread = (Math.random() - 0.5) * 12;
+        state.particles.push({
+          id: `rs-${Math.random().toString(36).slice(2, 8)}`,
+          pos: { x: pr.pos.x + backX * 10 + spread * backY, y: pr.pos.y + backY * 10 - spread * backX },
+          vel: { x: backX * (10 + Math.random() * 20) + (Math.random() - 0.5) * 25, y: backY * (10 + Math.random() * 20) + (Math.random() - 0.5) * 25 },
+          ttl: 0.5 + Math.random() * 0.4, maxTtl: 0.9,
+          color: "#cccccc", size: 4 + Math.random() * 4, kind: "smoke",
+        });
+      }
       // EMP rockets also emit occasional electric ring pulse while in flight
       if (isEmp && Math.random() < 0.08) {
         emitRing(pr.pos.x, pr.pos.y, pr.color);
@@ -1336,9 +1364,43 @@ function tickWorld(dt: number): void {
               size: 2 + Math.random() * 2, kind: "ember",
             });
           }
+          // Rocket explosion on impact
+          if (pr.weaponKind === "rocket") {
+            state.particles.push({
+              id: `rf-${Math.random().toString(36).slice(2, 8)}`,
+              pos: { x: pr.pos.x, y: pr.pos.y }, vel: { x: 0, y: 0 },
+              ttl: 0.22, maxTtl: 0.22,
+              color: "#ff8a4e", size: 50, kind: "flash",
+            });
+            emitRing(pr.pos.x, pr.pos.y, "#ff8a4e", 40);
+            emitRing(pr.pos.x, pr.pos.y, "#ffd24a", 30);
+            for (let fi = 0; fi < 6; fi++) {
+              const fa = Math.random() * Math.PI * 2;
+              const fs = 40 + Math.random() * 80;
+              state.particles.push({
+                id: `rfb-${Math.random().toString(36).slice(2, 8)}`,
+                pos: { x: pr.pos.x, y: pr.pos.y },
+                vel: { x: Math.cos(fa) * fs, y: Math.sin(fa) * fs },
+                ttl: 0.2 + Math.random() * 0.2, maxTtl: 0.4,
+                color: "#ff8a4e", size: 4 + Math.random() * 4, kind: "fireball",
+              });
+            }
+            for (let si = 0; si < 4; si++) {
+              const sa = Math.random() * Math.PI * 2;
+              const ss = 20 + Math.random() * 40;
+              state.particles.push({
+                id: `rfs-${Math.random().toString(36).slice(2, 8)}`,
+                pos: { x: pr.pos.x, y: pr.pos.y },
+                vel: { x: Math.cos(sa) * ss, y: Math.sin(sa) * ss },
+                ttl: 0.4 + Math.random() * 0.3, maxTtl: 0.7,
+                color: "#aaaaaa", size: 5 + Math.random() * 5, kind: "smoke",
+              });
+            }
+            sfx.explosion();
+          }
           // Camera shake on hit
           const hitDist = Math.hypot(pr.pos.x - state.player.pos.x, pr.pos.y - state.player.pos.y);
-          const hitShake = pr.crit ? 0.15 : 0.08;
+          const hitShake = pr.weaponKind === "rocket" ? 0.25 : (pr.crit ? 0.15 : 0.08);
           state.cameraShake = Math.max(state.cameraShake, hitShake * Math.max(0, 1 - hitDist / 500));
           // damage floater
           pushFloater({
