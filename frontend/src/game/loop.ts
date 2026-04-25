@@ -972,29 +972,15 @@ function tickWorld(dt: number): void {
     const atkDist = Math.sqrt((atkTarget.pos.x - p.pos.x) ** 2 + (atkTarget.pos.y - p.pos.y) ** 2);
     if (atkDist < FIRE_RANGE) {
       const weaponIds = p.equipped.weapon.filter(Boolean) as string[];
-      const primaryWeaponId = weaponIds[0] ?? "";
-      const ammoType = getActiveAmmoType(primaryWeaponId);
+      const ammoType = getActiveAmmoType();
       const typeDef = ROCKET_AMMO_TYPE_DEFS[ammoType];
       const dmgMul = (typeDef?.damageMul ?? 1.0) * 0.5;
       const projColor = typeDef?.color ?? "#4ee2ff";
       let firedAny = false;
-      // Check each weapon has at least 1 ammo in its own pool
-      let canFire = true;
-      for (const wid of weaponIds) {
-        const wAmmo = ammoType === "x1" ? (p.ammo[wid] ?? 0) : (p.ammoByType?.[wid]?.[ammoType] ?? 0);
-        if (wAmmo < 1) { canFire = false; break; }
-      }
+      const globalAmmo = p.ammo[ammoType] ?? 0;
+      const canFire = globalAmmo >= 1;
       if (canFire) {
-        // Consume 1 ammo from each weapon's own pool
-        for (const wid of weaponIds) {
-          if (ammoType === "x1") {
-            p.ammo[wid] = (p.ammo[wid] ?? 0) - 1;
-          } else {
-            if (!p.ammoByType) p.ammoByType = {};
-            if (!p.ammoByType[wid]) p.ammoByType[wid] = {};
-            p.ammoByType[wid][ammoType] = (p.ammoByType[wid][ammoType] ?? 0) - 1;
-          }
-        }
+        p.ammo[ammoType] = globalAmmo - 1;
         const totalDmg = stats.damage * dmgMul;
         const laserIds: string[] = [];
         const rocketIds: string[] = [];

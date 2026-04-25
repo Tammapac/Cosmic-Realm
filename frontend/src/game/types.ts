@@ -267,12 +267,11 @@ export type Player = {
   // Consumables & hotbar
   consumables: Partial<Record<ConsumableId, number>>;
   hotbar: (ConsumableId | null)[];   // 8 slots
-  ammo: Record<string, number>; // instanceId → standard ammo count (rocket weapons)
-  autoRestock: boolean;              // auto-restock rockets on docking
-  autoRepairHull: boolean;           // auto-repair hull on docking (costs credits)
-  autoShieldRecharge: boolean;       // auto-recharge shields on docking (free)
-  rocketAmmoType: Record<string, RocketAmmoType>; // instanceId → active ammo type per weapon
-  ammoByType: Record<string, Partial<Record<RocketAmmoType, number>>>; // instanceId → type → count (AP & EMP)
+  ammo: Record<RocketAmmoType, number>; // global ammo pool per type
+  activeAmmoType: RocketAmmoType;        // one global active ammo type for all weapons
+  autoRestock: boolean;
+  autoRepairHull: boolean;
+  autoShieldRecharge: boolean;
   dungeonClears: Partial<Record<DungeonId, number>>;     // how many times each dungeon has been cleared
   dungeonBestTimes: Partial<Record<DungeonId, number>>;  // fastest clear time in ms per dungeon
 };

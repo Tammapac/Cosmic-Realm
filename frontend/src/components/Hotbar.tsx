@@ -1,4 +1,4 @@
-import { useGame, useConsumable, state, bump, pushNotification, getActiveAmmoType, getAmmoCountForType, switchRocketAmmoType, getAmmoWeaponIds, rocketAmmoMax } from "../game/store";
+import { useGame, useConsumable, state, bump, pushNotification, getActiveAmmoType, getAmmoCount, switchAmmoType, getAmmoWeaponIds, rocketAmmoMax } from "../game/store";
 import { CONSUMABLE_DEFS, ROCKET_AMMO_TYPE_DEFS, LASER_AMMO_TYPE_ORDER, RocketAmmoType } from "../game/types";
 
 const SLOT_KEYS = ["2", "3", "4", "5", "6", "7", "8", "9"];
@@ -36,13 +36,9 @@ export function Hotbar() {
     bump();
   };
 
-  const weaponIds = getAmmoWeaponIds();
-  const primaryId = weaponIds[0] ?? "";
-  const activeAmmoType = primaryId ? getActiveAmmoType(primaryId) : "x1";
+  const activeAmmoType = getActiveAmmoType();
   const ammoDef = ROCKET_AMMO_TYPE_DEFS[activeAmmoType];
-  const ammoCount = primaryId
-    ? getAmmoCountForType(primaryId, activeAmmoType)
-    : 0;
+  const ammoCount = getAmmoCount(activeAmmoType);
 
   const toggleAmmoSelector = () => {
     state.showAmmoSelector = !state.showAmmoSelector;
@@ -50,9 +46,7 @@ export function Hotbar() {
   };
 
   const selectAmmo = (type: RocketAmmoType) => {
-    if (primaryId) {
-      switchRocketAmmoType(primaryId, type);
-    }
+    switchAmmoType(type);
     state.showAmmoSelector = false;
     bump();
   };
@@ -159,7 +153,7 @@ export function Hotbar() {
             </div>
             {LASER_AMMO_TYPE_ORDER.map((type) => {
               const def = ROCKET_AMMO_TYPE_DEFS[type];
-              const count = primaryId ? getAmmoCountForType(primaryId, type) : 0;
+              const count = getAmmoCount(type);
               const isActive = type === activeAmmoType;
               return (
                 <div

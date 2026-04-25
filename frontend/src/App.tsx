@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { state, bump, useGame, save, pushNotification, abandonDungeon, useConsumable, getAmmoWeaponIds, rocketAmmoMax, getActiveAmmoType, getAmmoCountForType, runDockingServices, loadServerPlayer, collectCargoBox } from "./game/store";
+import { state, bump, useGame, save, pushNotification, abandonDungeon, useConsumable, getAmmoWeaponIds, rocketAmmoMax, getActiveAmmoType, getAmmoCount, runDockingServices, loadServerPlayer, collectCargoBox } from "./game/store";
 import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats } from "./game/loop";
 import { render } from "./game/render";
 import { TopBar, WorldTargetHud } from "./components/TopBar";
@@ -262,17 +262,13 @@ function AmmoHud() {
 
   if (docked) return null;
 
-  const rocketIds = getAmmoWeaponIds();
-  if (rocketIds.length === 0) return null;
+  const weaponIds = getAmmoWeaponIds();
+  if (weaponIds.length === 0) return null;
 
-  // Show primary (first) weapon's active ammo type
-  const primaryId = rocketIds[0];
-  const item = player.inventory.find((m) => m.instanceId === primaryId);
-  const def = item ? MODULE_DEFS[item.defId] : null;
-  const activeType = getActiveAmmoType(primaryId);
+  const activeType = getActiveAmmoType();
   const typeDef = ROCKET_AMMO_TYPE_DEFS[activeType];
   const ammoMax = rocketAmmoMax();
-  const cur = getAmmoCountForType(primaryId, activeType);
+  const cur = getAmmoCount(activeType);
   const pct = ammoMax > 0 ? cur / ammoMax : 0;
   const isEmpty = cur === 0;
   const isLow = cur > 0 && cur <= 10;
@@ -298,11 +294,8 @@ function AmmoHud() {
         onClick={handleClick}
       >
         <div className="flex items-center justify-between gap-2">
-          <div className="text-[9px] tracking-widest truncate" style={{ color: def?.color ?? barColor }}>
-            {typeDef.glyph} {def?.name ?? "Laser"}
-            {rocketIds.length > 1 && (
-              <span className="text-mute"> ×{rocketIds.length}</span>
-            )}
+          <div className="text-[9px] tracking-widest truncate" style={{ color: typeDef.color }}>
+            {typeDef.glyph} {typeDef.shortName} AMMO
           </div>
           <div className="text-[10px] font-bold tabular-nums" style={{ color: barColor }}>
             {isEmpty ? "EMPTY" : isLow ? `${cur} LOW` : cur}
