@@ -1,8 +1,7 @@
-import { useGame, useConsumable, state, bump, pushNotification } from "../game/store";
-import { CONSUMABLE_DEFS } from "../game/types";
-import { effectiveStats } from "../game/loop";
+import { useGame, useConsumable, state, bump, pushNotification, getActiveAmmoType, getAmmoCountForType, switchRocketAmmoType, getAmmoWeaponIds, rocketAmmoMax } from "../game/store";
+import { CONSUMABLE_DEFS, ROCKET_AMMO_TYPE_DEFS, LASER_AMMO_TYPE_ORDER, RocketAmmoType } from "../game/types";
 
-const SLOT_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8"];
+const SLOT_KEYS = ["2", "3", "4", "5", "6", "7", "8", "9"];
 
 export function Hotbar() {
   const hotbar = useGame((s) => s.player.hotbar);
@@ -16,9 +15,8 @@ export function Hotbar() {
   const docked = useGame((s) => s.dockedAt);
   const selectedTarget = useGame((s) => s.selectedWorldTarget);
   const isAttacking = useGame((s) => s.isAttacking);
-  const weaponName = state.player.equipped.weapon.find(Boolean)
-    ? (state.player.inventory.find((it) => it.instanceId === state.player.equipped.weapon.find(Boolean)) && "Singularity Driver")
-    : null;
+  const showAmmoSelector = useGame((s) => s.showAmmoSelector);
+  const player = useGame((s) => s.player);
 
   if (docked) return null;
 
@@ -38,6 +36,27 @@ export function Hotbar() {
     bump();
   };
 
+  const weaponIds = getAmmoWeaponIds();
+  const primaryId = weaponIds[0] ?? "";
+  const activeAmmoType = primaryId ? getActiveAmmoType(primaryId) : "x1";
+  const ammoDef = ROCKET_AMMO_TYPE_DEFS[activeAmmoType];
+  const ammoCount = primaryId
+    ? getAmmoCountForType(primaryId, activeAmmoType)
+    : 0;
+
+  const toggleAmmoSelector = () => {
+    state.showAmmoSelector = !state.showAmmoSelector;
+    bump();
+  };
+
+  const selectAmmo = (type: RocketAmmoType) => {
+    if (primaryId) {
+      switchRocketAmmoType(primaryId, type);
+    }
+    state.showAmmoSelector = false;
+    bump();
+  };
+
   return (
     <div
       style={{
@@ -54,7 +73,7 @@ export function Hotbar() {
       <button
         onClick={toggleAttack}
         onMouseDown={(e) => e.preventDefault()}
-            title={selectedTarget?.kind === "enemy" ? (isAttacking ? "Stop attacking" : `Attack ${selectedTarget.name}`) : "Select an enemy first"}
+        title={selectedTarget?.kind === "enemy" ? (isAttacking ? "Stop attacking" : `Attack ${selectedTarget.name}`) : "Select an enemy first"}
         style={{
           position: "relative",
           width: 78,
@@ -84,12 +103,106 @@ export function Hotbar() {
         )}
         {isAttacking ? "FIRING" : "ATTACK"}
       </button>
+
+      {/* Ammo selector (key 1) */}
+      <div style={{ position: "relative" }}>
+        <div
+          onClick={toggleAmmoSelector}
+          title={`${ammoDef.name} — Click or press 1 to change ammo type`}
+          style={{
+            width: 52,
+            height: 52,
+            border: `2px solid ${ammoDef.color}`,
+            background: showAmmoSelector ? `${ammoDef.color}33` : "#0c1220",
+            borderRadius: 4,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            position: "relative",
+            overflow: "hidden",
+            fontFamily: "'Courier New', monospace",
+            boxShadow: showAmmoSelector ? `0 0 12px ${ammoDef.color}88` : `0 0 6px ${ammoDef.color}44`,
+          }}
+        >
+          <div style={{ position: "absolute", top: 2, left: 4, fontSize: 9, color: "#556", zIndex: 3 }}>1</div>
+          <div style={{ fontSize: 18, lineHeight: 1, color: ammoDef.color, zIndex: 3, textShadow: `0 0 8px ${ammoDef.color}`, fontWeight: "bold" }}>
+            {ammoDef.glyph}
+          </div>
+          <div style={{ position: "absolute", bottom: 2, right: 4, fontSize: 8, fontWeight: "bold", color: ammoCount === 0 ? "#553" : "#ccc", zIndex: 3 }}>
+            {ammoDef.shortName}
+          </div>
+        </div>
+
+        {showAmmoSelector && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: 58,
+              left: "50%",
+              transform: "translateX(-50%)",
+              background: "#0a0e1a",
+              border: "1px solid #334",
+              borderRadius: 6,
+              padding: 4,
+              display: "flex",
+              flexDirection: "column",
+              gap: 2,
+              minWidth: 160,
+              boxShadow: "0 0 20px rgba(0,0,0,0.8)",
+              zIndex: 60,
+            }}
+          >
+            <div style={{ fontSize: 8, color: "#667", letterSpacing: "0.15em", textAlign: "center", padding: "2px 0" }}>
+              SELECT AMMO TYPE
+            </div>
+            {LASER_AMMO_TYPE_ORDER.map((type) => {
+              const def = ROCKET_AMMO_TYPE_DEFS[type];
+              const count = primaryId ? getAmmoCountForType(primaryId, type) : 0;
+              const isActive = type === activeAmmoType;
+              return (
+                <div
+                  key={type}
+                  onClick={(e) => { e.stopPropagation(); selectAmmo(type); }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "4px 8px",
+                    borderRadius: 4,
+                    cursor: "pointer",
+                    background: isActive ? `${def.color}22` : "transparent",
+                    border: isActive ? `1px solid ${def.color}88` : "1px solid transparent",
+                    transition: "background 0.1s",
+                  }}
+                  onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = "#ffffff0a"; }}
+                  onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                >
+                  <div style={{ fontSize: 16, color: def.color, fontWeight: "bold", width: 20, textAlign: "center", textShadow: `0 0 6px ${def.color}` }}>
+                    {def.glyph}
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 10, color: isActive ? def.color : "#ccc", fontWeight: isActive ? "bold" : "normal" }}>
+                      {def.shortName} {isActive && "◂"}
+                    </div>
+                    <div style={{ fontSize: 8, color: "#667" }}>{def.description}</div>
+                  </div>
+                  <div style={{ fontSize: 10, color: count === 0 ? "#ff5c6c" : "#aaa", fontWeight: "bold", fontFamily: "'Courier New', monospace" }}>
+                    {count}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {hotbar.map((id, i) => {
         const def = id ? CONSUMABLE_DEFS[id] : null;
         const count = id ? (consumables[id] ?? 0) : 0;
         const cd = cooldowns[i] ?? 0;
         const isEmpty = !id || count === 0;
-        // Active indicator for time-based consumables
         let isActive = false;
         if (id === "afterburn-fuel" && afterburnUntil > tick) isActive = true;
         if (id === "repair-bot" && repairBotUntil > tick) isActive = true;
@@ -121,7 +234,6 @@ export function Hotbar() {
               boxShadow: isActive ? `0 0 12px ${def?.color}88` : undefined,
             }}
           >
-            {/* Cooldown fill overlay */}
             {cd > 0 && def && (
               <div
                 style={{
@@ -136,20 +248,9 @@ export function Hotbar() {
                 }}
               />
             )}
-            {/* Slot key label */}
-            <div
-              style={{
-                position: "absolute",
-                top: 2,
-                left: 4,
-                fontSize: 9,
-                color: "#556",
-                zIndex: 3,
-              }}
-            >
+            <div style={{ position: "absolute", top: 2, left: 4, fontSize: 9, color: "#556", zIndex: 3 }}>
               {SLOT_KEYS[i]}
             </div>
-            {/* Icon */}
             <div
               style={{
                 fontSize: 20,
@@ -161,7 +262,6 @@ export function Hotbar() {
             >
               {def ? def.icon : "·"}
             </div>
-            {/* Count */}
             {def && (
               <div
                 style={{
@@ -177,7 +277,6 @@ export function Hotbar() {
                 ×{count}
               </div>
             )}
-            {/* Cooldown timer text */}
             {cd > 0 && (
               <div
                 style={{

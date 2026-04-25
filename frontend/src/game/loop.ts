@@ -8,7 +8,7 @@ import {
 import {
   CargoBox, DRONE_DEFS, Drone, DUNGEONS, ENEMY_DEFS, ENEMY_NAMES, EXP_FOR_LEVEL,
   Enemy, EnemyType, FACTION_ENEMY_MODS, FACTIONS, MODULE_DEFS, ModuleStats,
-  PORTALS, ROCKET_AMMO_TYPE_DEFS,
+  PORTALS, ROCKET_AMMO_TYPE_DEFS, WeaponKind,
   SHIP_CLASSES, STATIONS, ZONES, ZoneId,
   rankFor,
 } from "./types";
@@ -436,7 +436,7 @@ function emitDeath(x: number, y: number, color: string, big = false): void {
 function fireProjectile(
   from: "player" | "enemy" | "drone",
   x: number, y: number, angle: number, damage: number, color: string, size = 3,
-  opts?: { crit?: boolean; aoeRadius?: number; speedMul?: number; homing?: boolean; empStun?: number; armorPiercing?: boolean },
+  opts?: { crit?: boolean; aoeRadius?: number; speedMul?: number; homing?: boolean; empStun?: number; armorPiercing?: boolean; weaponKind?: WeaponKind },
 ): void {
   const speedBase = from === "player" ? 560 : from === "drone" ? 480 : 320;
   const speed = speedBase * (opts?.speedMul ?? 1);
@@ -454,6 +454,7 @@ function fireProjectile(
     homing: opts?.homing,
     empStun: opts?.empStun,
     armorPiercing: opts?.armorPiercing,
+    weaponKind: opts?.weaponKind,
   });
 }
 
@@ -964,18 +965,32 @@ function tickWorld(dt: number): void {
       const dmgMul = typeDef?.damageMul ?? 1.0;
       const projColor = typeDef?.color ?? "#4ee2ff";
       let firedAny = false;
-      // All weapons consume from a unified ammo pool (first weapon's ammo)
-      const ammoCount = p.ammo[primaryWeaponId] ?? 0;
+      const ammoCount = ammoType === "x1"
+        ? (p.ammo[primaryWeaponId] ?? 0)
+        : (p.ammoByType?.[primaryWeaponId]?.[ammoType] ?? 0);
       const ammoNeeded = weaponIds.length;
       if (ammoCount >= ammoNeeded) {
-        p.ammo[primaryWeaponId] -= ammoNeeded;
+        if (ammoType === "x1") {
+          p.ammo[primaryWeaponId] -= ammoNeeded;
+        } else {
+          if (!p.ammoByType) p.ammoByType = {};
+          if (!p.ammoByType[primaryWeaponId]) p.ammoByType[primaryWeaponId] = {};
+          p.ammoByType[primaryWeaponId][ammoType] = (p.ammoByType[primaryWeaponId][ammoType] ?? 0) - ammoNeeded;
+        }
         const projDmg = Math.round(stats.damage * dmgMul / weaponIds.length);
         for (let wi = 0; wi < weaponIds.length; wi++) {
+          const wItem = p.inventory.find((m) => m.instanceId === weaponIds[wi]);
+          const wDef = wItem ? MODULE_DEFS[wItem.defId] : null;
+          const wKind: WeaponKind = wDef?.weaponKind ?? "laser";
           const spread = weaponIds.length > 1 ? (wi - (weaponIds.length - 1) / 2) * 0.06 : 0;
-          fireProjectile("player", p.pos.x, p.pos.y, ang + spread, projDmg, projColor, 4);
+          const isRocket = wKind === "rocket";
+          fireProjectile("player", p.pos.x, p.pos.y, ang + spread, projDmg, projColor, isRocket ? 5 : 4, {
+            weaponKind: wKind,
+            homing: isRocket,
+            speedMul: isRocket ? 0.55 : undefined,
+          });
         }
         firedAny = true;
-        // Aggro the target when player attacks
         atkTarget.aggro = true;
       }
       if (firedAny) {

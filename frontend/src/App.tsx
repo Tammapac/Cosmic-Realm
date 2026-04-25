@@ -433,18 +433,16 @@ function GameApp() {
       } else if (e.key === "Escape") {
         state.showMap = false;
         state.showClan = false;
+        state.showAmmoSelector = false;
         bump();
-      } else if (e.key >= "1" && e.key <= "8") {
+      } else if (e.key === "1") {
         if (!state.dockedAt) {
-          if (e.key === "1" && e.ctrlKey) {
-            // Ctrl+1 toggles attack
-            if (state.attackTargetId) {
-              state.isAttacking = !state.isAttacking;
-              bump();
-            }
-          } else {
-            useConsumable(parseInt(e.key) - 1);
-          }
+          state.showAmmoSelector = !state.showAmmoSelector;
+          bump();
+        }
+      } else if (e.key >= "2" && e.key <= "9") {
+        if (!state.dockedAt) {
+          useConsumable(parseInt(e.key) - 2);
         }
       }
     };
