@@ -1362,15 +1362,30 @@ function drawParticle(ctx: CanvasRenderingContext2D, pa: Particle): void {
     const s = pa.size * (0.4 + a * 0.6);
     // Fire glow behind the fragment
     ctx.shadowColor = "#ff6600";
-    ctx.shadowBlur = 10 + s;
+    ctx.shadowBlur = 8 + s * 0.8;
+    // Irregular jagged polygon shape
     ctx.fillStyle = pa.color;
-    ctx.fillRect(-s, -s * 0.4, s * 2, s * 0.8);
-    ctx.fillRect(-s * 0.4, -s, s * 0.8, s * 0.9);
-    // Bright hot edge
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.8, -s * 0.3);
+    ctx.lineTo(-s * 0.2, -s * 0.7);
+    ctx.lineTo(s * 0.5, -s * 0.5);
+    ctx.lineTo(s * 0.9, -s * 0.1);
+    ctx.lineTo(s * 0.6, s * 0.6);
+    ctx.lineTo(-s * 0.1, s * 0.7);
+    ctx.lineTo(-s * 0.7, s * 0.3);
+    ctx.closePath();
+    ctx.fill();
+    // Hot bright core
     ctx.shadowBlur = 0;
-    ctx.globalAlpha = a * 0.6;
+    ctx.globalAlpha = a * 0.5;
     ctx.fillStyle = "#ffd24a";
-    ctx.fillRect(-s * 0.6, -s * 0.2, s * 1.2, s * 0.4);
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.3, -s * 0.1);
+    ctx.lineTo(s * 0.2, -s * 0.25);
+    ctx.lineTo(s * 0.35, s * 0.15);
+    ctx.lineTo(-s * 0.1, s * 0.3);
+    ctx.closePath();
+    ctx.fill();
     ctx.restore();
     return;
   }

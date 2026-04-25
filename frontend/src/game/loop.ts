@@ -1309,18 +1309,18 @@ function tickWorld(dt: number): void {
             size: pr.crit ? 40 : 25, kind: "flash",
           });
           // A few embers flying outward from hit point
-          const emberCount = pr.crit ? 5 : 3;
+          const emberCount = pr.crit ? 4 : 2;
           for (let ei = 0; ei < emberCount; ei++) {
             const ea = Math.random() * Math.PI * 2;
-            const es = 120 + Math.random() * 200;
+            const es = 80 + Math.random() * 120;
             const eColors = ["#ff8c00", "#ff4500", "#ffd700", e.color];
             state.particles.push({
               id: `em-${Math.random().toString(36).slice(2, 8)}`,
               pos: { x: pr.pos.x, y: pr.pos.y },
               vel: { x: Math.cos(ea) * es, y: Math.sin(ea) * es },
-              ttl: 0.4 + Math.random() * 0.3, maxTtl: 0.7,
+              ttl: 0.3 + Math.random() * 0.25, maxTtl: 0.55,
               color: eColors[Math.floor(Math.random() * eColors.length)],
-              size: 2.5 + Math.random() * 2.5, kind: "ember",
+              size: 2 + Math.random() * 2, kind: "ember",
             });
           }
           // Camera shake on hit
