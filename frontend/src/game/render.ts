@@ -1889,7 +1889,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
     ctx.globalAlpha = 0.22;
     const sheen = ctx.createRadialGradient(-s * 1, -s * 4, 0, 0, -s * 2, r * 0.55);
     sheen.addColorStop(0, "#ffffff");
-    sheen.addColorStop(0.3, lt + "66");
+    sheen.addColorStop(0.3, lt.replace("rgb(", "rgba(").replace(")", ",0.4)"));
     sheen.addColorStop(0.7, "transparent");
     sheen.addColorStop(1, "transparent");
     ctx.fillStyle = sheen;
