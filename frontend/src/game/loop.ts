@@ -1170,10 +1170,17 @@ function tickWorld(dt: number): void {
           state.particles.push({
             id: `mf-${Math.random().toString(36).slice(2, 8)}`,
             pos: { x: ox, y: oy }, vel: { x: 0, y: 0 },
-            ttl: 0.08, maxTtl: 0.08,
-            color: laserColor, size: 18, kind: "flash",
+            ttl: 0.12, maxTtl: 0.12,
+            color: laserColor, size: 35, kind: "flash",
           });
-          emitSpark(ox, oy, laserColor, 2, 60, 1.5);
+          state.particles.push({
+            id: `mf2-${Math.random().toString(36).slice(2, 8)}`,
+            pos: { x: ox, y: oy }, vel: { x: 0, y: 0 },
+            ttl: 0.06, maxTtl: 0.06,
+            color: "#ffffff", size: 20, kind: "flash",
+          });
+          emitSpark(ox, oy, laserColor, 4, 90, 2);
+          emitSpark(ox, oy, "#ffffff", 2, 50, 1);
         }
         atkTarget.aggro = true;
         const cd = Math.max(0.2, 0.85 / stats.fireRate);
@@ -1201,20 +1208,28 @@ function tickWorld(dt: number): void {
         state.particles.push({
           id: `rl-${Math.random().toString(36).slice(2, 8)}`,
           pos: { x: p.pos.x, y: p.pos.y }, vel: { x: 0, y: 0 },
-          ttl: 0.12, maxTtl: 0.12,
-          color: "#ff8a4e", size: 24, kind: "flash",
+          ttl: 0.18, maxTtl: 0.18,
+          color: "#ff8a4e", size: 45, kind: "flash",
         });
-        for (let si = 0; si < 4; si++) {
+        state.particles.push({
+          id: `rl2-${Math.random().toString(36).slice(2, 8)}`,
+          pos: { x: p.pos.x, y: p.pos.y }, vel: { x: 0, y: 0 },
+          ttl: 0.08, maxTtl: 0.08,
+          color: "#ffffff", size: 25, kind: "flash",
+        });
+        emitRing(p.pos.x, p.pos.y, "#ff8a4e", 20);
+        for (let si = 0; si < 6; si++) {
           const sa = Math.random() * Math.PI * 2;
-          const ss = 15 + Math.random() * 30;
+          const ss = 25 + Math.random() * 50;
           state.particles.push({
             id: `rls-${Math.random().toString(36).slice(2, 8)}`,
             pos: { x: p.pos.x, y: p.pos.y },
             vel: { x: Math.cos(sa) * ss, y: Math.sin(sa) * ss },
-            ttl: 0.2 + Math.random() * 0.15, maxTtl: 0.35,
-            color: Math.random() > 0.5 ? "#ff8a4e" : "#aaaaaa", size: 2 + Math.random() * 2, kind: "smoke",
+            ttl: 0.25 + Math.random() * 0.2, maxTtl: 0.45,
+            color: Math.random() > 0.4 ? "#ff8a4e" : "#bbbbbb", size: 3 + Math.random() * 3, kind: "smoke",
           });
         }
+        emitSpark(p.pos.x, p.pos.y, "#ffd24a", 3, 70, 2);
         atkTarget.aggro = true;
         const avgRocketRate = rocketIds.reduce((sum, rid) => {
           const ri = p.inventory.find((m) => m.instanceId === rid);
