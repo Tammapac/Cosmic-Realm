@@ -566,7 +566,7 @@ export type Particle = {
   size: number;
   rot?: number;
   rotVel?: number;
-  kind?: "trail" | "spark" | "ring" | "engine" | "flash" | "debris" | "fireball" | "smoke";
+  kind?: "trail" | "spark" | "ring" | "engine" | "flash" | "debris" | "fireball" | "smoke" | "ember";
 };
 
 export type StationKind = "hub" | "trade" | "mining" | "military" | "outpost";

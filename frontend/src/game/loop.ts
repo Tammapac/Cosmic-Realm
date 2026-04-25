@@ -536,6 +536,22 @@ function emitDeath(x: number, y: number, color: string, big = false): void {
   emitSpark(x, y, "#ffd24a", B ? 60 : 24, B ? 280 : 200, B ? 4 : 3);
   emitSpark(x, y, "#ff8c00", B ? 40 : 18, B ? 320 : 220, B ? 4 : 3);
   emitSpark(x, y, "#ff5cf0", B ? 24 : 10, B ? 240 : 160, B ? 3 : 2);
+
+  // Burning embers — glowing fire dots that fly far in random directions
+  const emberCount = B ? 35 : 18;
+  const emberColors = ["#ff8c00", "#ff4500", "#ffd700", "#ffaa00", "#ff6600", "#ff2244", color];
+  for (let i = 0; i < emberCount; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const spd = (100 + Math.random() * 250) * (B ? 1.4 : 1);
+    state.particles.push({
+      id: `em-${Math.random().toString(36).slice(2, 8)}`,
+      pos: { x: x + (Math.random() - 0.5) * 12, y: y + (Math.random() - 0.5) * 12 },
+      vel: { x: Math.cos(a) * spd, y: Math.sin(a) * spd },
+      ttl: 0.6 + Math.random() * 0.8, maxTtl: 1.4,
+      color: emberColors[Math.floor(Math.random() * emberColors.length)],
+      size: B ? (4 + Math.random() * 6) : (3 + Math.random() * 4), kind: "ember",
+    });
+  }
 }
 
 // ── PROJECTILES ───────────────────────────────────────────────────────────
@@ -1281,10 +1297,10 @@ function tickWorld(dt: number): void {
           e.hull -= dmg;
           e.hitFlash = 1;
           e.aggro = true;
-          emitSpark(pr.pos.x, pr.pos.y, e.color, pr.crit ? 28 : 16, pr.crit ? 280 : 200, pr.crit ? 4 : 3);
-          emitSpark(pr.pos.x, pr.pos.y, "#ffffff", pr.crit ? 14 : 8, pr.crit ? 200 : 140, 2);
-          emitSpark(pr.pos.x, pr.pos.y, "#ffd24a", pr.crit ? 12 : 6, pr.crit ? 180 : 120, 3);
-          emitSpark(pr.pos.x, pr.pos.y, "#ff8c00", pr.crit ? 8 : 4, pr.crit ? 160 : 100, 2);
+          emitSpark(pr.pos.x, pr.pos.y, e.color, pr.crit ? 28 : 16, pr.crit ? 280 : 200, pr.crit ? 6 : 4);
+          emitSpark(pr.pos.x, pr.pos.y, "#ffffff", pr.crit ? 14 : 8, pr.crit ? 200 : 140, pr.crit ? 5 : 3);
+          emitSpark(pr.pos.x, pr.pos.y, "#ffd24a", pr.crit ? 12 : 6, pr.crit ? 180 : 120, pr.crit ? 5 : 4);
+          emitSpark(pr.pos.x, pr.pos.y, "#ff8c00", pr.crit ? 8 : 4, pr.crit ? 160 : 100, pr.crit ? 4 : 3);
           emitRing(pr.pos.x, pr.pos.y, pr.color, pr.crit ? 60 : 38);
           emitRing(pr.pos.x, pr.pos.y, "#ffffff", pr.crit ? 45 : 25);
           // Hit flash — big bright burst
@@ -1310,6 +1326,21 @@ function tickWorld(dt: number): void {
             color: pr.crit ? "#ff4500" : "#ff8c00",
             size: pr.crit ? 35 : 22, kind: "fireball",
           });
+          // Burning embers flying away from enemy on hit
+          const emberCount = pr.crit ? 10 : 6;
+          for (let ei = 0; ei < emberCount; ei++) {
+            const ea = Math.random() * Math.PI * 2;
+            const es = (80 + Math.random() * 160) * (pr.crit ? 1.3 : 1);
+            const eColors = ["#ff8c00", "#ff4500", "#ffd700", "#ffaa00", "#ff6600", e.color];
+            state.particles.push({
+              id: `em-${Math.random().toString(36).slice(2, 8)}`,
+              pos: { x: pr.pos.x + (Math.random() - 0.5) * 6, y: pr.pos.y + (Math.random() - 0.5) * 6 },
+              vel: { x: Math.cos(ea) * es, y: Math.sin(ea) * es },
+              ttl: 0.4 + Math.random() * 0.4, maxTtl: 0.8,
+              color: eColors[Math.floor(Math.random() * eColors.length)],
+              size: 3 + Math.random() * 4, kind: "ember",
+            });
+          }
           // Camera shake on hit — strong
           const hitDist = Math.hypot(pr.pos.x - state.player.pos.x, pr.pos.y - state.player.pos.y);
           const hitShake = pr.crit ? 0.3 : 0.16;

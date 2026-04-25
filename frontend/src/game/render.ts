@@ -1368,10 +1368,34 @@ function drawParticle(ctx: CanvasRenderingContext2D, pa: Particle): void {
     ctx.restore();
     return;
   }
+  if (pa.kind === "ember") {
+    ctx.save();
+    ctx.globalAlpha = a * 0.9;
+    ctx.shadowColor = pa.color;
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = pa.color;
+    const r = pa.size * (0.3 + a * 0.7);
+    ctx.beginPath();
+    ctx.arc(pa.pos.x, pa.pos.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = a * 0.5;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.arc(pa.pos.x, pa.pos.y, r * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+  ctx.save();
   ctx.globalAlpha = a;
+  ctx.shadowColor = pa.color;
+  ctx.shadowBlur = pa.size > 2 ? 6 : 3;
   ctx.fillStyle = pa.color;
-  ctx.fillRect(pa.pos.x - pa.size / 2, pa.pos.y - pa.size / 2, pa.size, pa.size);
-  ctx.globalAlpha = 1;
+  const sz = pa.size * (0.3 + a * 0.7);
+  ctx.beginPath();
+  ctx.arc(pa.pos.x, pa.pos.y, sz, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
 }
 
 // ── STATIONS ──────────────────────────────────────────────────────────────
