@@ -68,6 +68,7 @@ export type ModuleStats = {
   hullMax?: number;
   speed?: number;
   damageReduction?: number; // 0..1
+  shieldAbsorb?: number;   // additive, base 0.5 + this = shield absorption %
   cargoBonus?: number;
   lootBonus?: number;
   aoeRadius?: number;
@@ -916,31 +917,31 @@ export const ENEMY_DEFS: Record<
 > = {
   scout: {
     type: "scout", behavior: "fast",
-    hullMax: 70, damage: 4, speed: 130, exp: 5, credits: 10, honor: 0,
+    hullMax: 70, damage: 12, speed: 130, exp: 5, credits: 10, honor: 0,
     color: "#ff8866", size: 10,
     loot: { resourceId: "scrap", qty: 1 },
   },
   raider: {
     type: "raider", behavior: "chaser",
-    hullMax: 170, damage: 7, speed: 75, exp: 12, credits: 25, honor: 1,
+    hullMax: 170, damage: 22, speed: 75, exp: 12, credits: 25, honor: 1,
     color: "#ff4466", size: 13,
     loot: { resourceId: "plasma", qty: 1 },
   },
   destroyer: {
     type: "destroyer", behavior: "tank",
-    hullMax: 500, damage: 14, speed: 50, exp: 30, credits: 75, honor: 3,
+    hullMax: 500, damage: 40, speed: 50, exp: 30, credits: 75, honor: 3,
     color: "#aa44ff", size: 18,
     loot: { resourceId: "warp", qty: 1 },
   },
   voidling: {
     type: "voidling", behavior: "ranged",
-    hullMax: 280, damage: 12, speed: 90, exp: 40, credits: 100, honor: 5,
+    hullMax: 280, damage: 35, speed: 90, exp: 40, credits: 100, honor: 5,
     color: "#44ffe2", size: 14,
     loot: { resourceId: "void", qty: 1 },
   },
   dread: {
     type: "dread", behavior: "tank",
-    hullMax: 850, damage: 20, speed: 45, exp: 75, credits: 200, honor: 10,
+    hullMax: 850, damage: 55, speed: 45, exp: 75, credits: 200, honor: 10,
     color: "#ffaa22", size: 24,
     loot: { resourceId: "dread", qty: 1 },
   },
@@ -1384,17 +1385,17 @@ export const MODULE_DEFS: Record<string, ModuleDef> = {
   "wp-hellfire":  { id: "wp-hellfire",  slot: "weapon", weaponKind: "rocket", name: "Hellfire Barrage",     description: "Rapid-fire mini rockets. Trades damage for fire rate.",     rarity: "epic",      color: "#ff5cf0", glyph: "⇑", tier: 4, price: 420000, stats: { damage: 35, fireRate: 0.85, aoeRadius: 18, critChance: 0.06 } },
 
   // ── GENERATORS (shields + regen, speed-focused, hybrid) ──────────────────
-  "gn-core-1":    { id: "gn-core-1",    slot: "generator", name: "Core Generator Mk-I",   description: "Stock reactor. Modest shield + regen.",               rarity: "common",    color: "#8aa0c0", glyph: "◈", tier: 1, price: 2500,   stats: { shieldMax: 30,  shieldRegen: 2 } },
-  "gn-core-2":    { id: "gn-core-2",    slot: "generator", name: "Core Generator Mk-II",  description: "Improved reactor. Better shield & hull.",             rarity: "uncommon",  color: "#5cff8a", glyph: "◈", tier: 2, price: 12000,  stats: { shieldMax: 70,  shieldRegen: 4,  hullMax: 20 } },
-  "gn-sprint":    { id: "gn-sprint",    slot: "generator", name: "Sprint Drive",          description: "Speed-focused reactor. Big speed boost, light shield.", rarity: "uncommon",  color: "#aaff5c", glyph: "➤", tier: 2, price: 16000,  stats: { speed: 45,      shieldMax: 30,   shieldRegen: 2 } },
-  "gn-aegis":     { id: "gn-aegis",     slot: "generator", name: "Aegis Reactor",         description: "Shield-focused core. Big shield bonus.",              rarity: "rare",      color: "#4ee2ff", glyph: "◇", tier: 3, price: 45000,  stats: { shieldMax: 140, shieldRegen: 7 } },
-  "gn-fortify":   { id: "gn-fortify",   slot: "generator", name: "Fortify Reactor",       description: "Hull-focused core. Tanky.",                           rarity: "rare",      color: "#ff8a4e", glyph: "▣", tier: 3, price: 45000,  stats: { hullMax: 90,    shieldMax: 60,   damageReduction: 0.05 } },
-  "gn-hyper":     { id: "gn-hyper",     slot: "generator", name: "Hyperdrive Core",       description: "Massive speed boost. Trade shields for velocity.",    rarity: "rare",      color: "#5cff8a", glyph: "≫", tier: 3, price: 60000, stats: { speed: 90,      shieldMax: 50,   shieldRegen: 3 } },
-  "gn-prism":     { id: "gn-prism",     slot: "generator", name: "Prism Reactor",         description: "Balanced: speed + damage + some shield.",             rarity: "rare",      color: "#ffd24a", glyph: "◉", tier: 3, price: 55000, stats: { speed: 40,      damage: 8,       shieldMax: 80,   shieldRegen: 4 } },
-  "gn-quantum":   { id: "gn-quantum",   slot: "generator", name: "Quantum Reactor",       description: "Endgame core. Massive shield & regen.",               rarity: "epic",      color: "#ff5cf0", glyph: "⌬", tier: 4, price: 130000, stats: { shieldMax: 240, shieldRegen: 12, hullMax: 80 } },
-  "gn-warp-drive":{ id: "gn-warp-drive",slot: "generator", name: "Warp Drive Core",       description: "Speed-endgame: fastest generator available.",         rarity: "epic",      color: "#aaff5c", glyph: "⇒", tier: 4, price: 150000, stats: { speed: 130,     shieldMax: 100,  shieldRegen: 6 } },
-  "gn-leviathan": { id: "gn-leviathan", slot: "generator", name: "Leviathan Core",        description: "Legendary generator. Max survivability.",             rarity: "legendary", color: "#ff5c6c", glyph: "✸", tier: 5, price: 475000, stats: { shieldMax: 400, shieldRegen: 20, hullMax: 160, damageReduction: 0.08 } },
-  "gn-phase-drive":{ id:"gn-phase-drive",slot:"generator", name: "Phase Drive",           description: "Legendary speed gen. Insane velocity + some shields.", rarity: "legendary", color: "#b06cff", glyph: "✺", tier: 5, price: 450000, stats: { speed: 180,     shieldMax: 160,  shieldRegen: 8,  hullMax: 40 } },
+  "gn-core-1":    { id: "gn-core-1",    slot: "generator", name: "Core Generator Mk-I",   description: "Stock reactor. Modest shield + regen. 55% absorb.",    rarity: "common",    color: "#8aa0c0", glyph: "◈", tier: 1, price: 2500,   stats: { shieldMax: 30,  shieldRegen: 2, shieldAbsorb: 0.05 } },
+  "gn-core-2":    { id: "gn-core-2",    slot: "generator", name: "Core Generator Mk-II",  description: "Improved reactor. Better shield & hull. 60% absorb.",  rarity: "uncommon",  color: "#5cff8a", glyph: "◈", tier: 2, price: 12000,  stats: { shieldMax: 70,  shieldRegen: 4,  hullMax: 20, shieldAbsorb: 0.10 } },
+  "gn-sprint":    { id: "gn-sprint",    slot: "generator", name: "Sprint Drive",          description: "Speed-focused reactor. Light shield, 55% absorb.",     rarity: "uncommon",  color: "#aaff5c", glyph: "➤", tier: 2, price: 16000,  stats: { speed: 45,      shieldMax: 30,   shieldRegen: 2, shieldAbsorb: 0.05 } },
+  "gn-aegis":     { id: "gn-aegis",     slot: "generator", name: "Aegis Reactor",         description: "Shield-focused core. 65% absorb.",                    rarity: "rare",      color: "#4ee2ff", glyph: "◇", tier: 3, price: 45000,  stats: { shieldMax: 140, shieldRegen: 7, shieldAbsorb: 0.15 } },
+  "gn-fortify":   { id: "gn-fortify",   slot: "generator", name: "Fortify Reactor",       description: "Hull-focused core. Tanky, 60% absorb.",               rarity: "rare",      color: "#ff8a4e", glyph: "▣", tier: 3, price: 45000,  stats: { hullMax: 90,    shieldMax: 60,   damageReduction: 0.05, shieldAbsorb: 0.10 } },
+  "gn-hyper":     { id: "gn-hyper",     slot: "generator", name: "Hyperdrive Core",       description: "Massive speed boost. 58% absorb.",                    rarity: "rare",      color: "#5cff8a", glyph: "≫", tier: 3, price: 60000, stats: { speed: 90,      shieldMax: 50,   shieldRegen: 3, shieldAbsorb: 0.08 } },
+  "gn-prism":     { id: "gn-prism",     slot: "generator", name: "Prism Reactor",         description: "Balanced: speed + damage + shield. 60% absorb.",      rarity: "rare",      color: "#ffd24a", glyph: "◉", tier: 3, price: 55000, stats: { speed: 40,      damage: 8,       shieldMax: 80,   shieldRegen: 4, shieldAbsorb: 0.10 } },
+  "gn-quantum":   { id: "gn-quantum",   slot: "generator", name: "Quantum Reactor",       description: "Endgame core. Massive shield & regen. 75% absorb.",   rarity: "epic",      color: "#ff5cf0", glyph: "⌬", tier: 4, price: 130000, stats: { shieldMax: 240, shieldRegen: 12, hullMax: 80, shieldAbsorb: 0.25 } },
+  "gn-warp-drive":{ id: "gn-warp-drive",slot: "generator", name: "Warp Drive Core",       description: "Speed-endgame: fastest gen. 62% absorb.",             rarity: "epic",      color: "#aaff5c", glyph: "⇒", tier: 4, price: 150000, stats: { speed: 130,     shieldMax: 100,  shieldRegen: 6, shieldAbsorb: 0.12 } },
+  "gn-leviathan": { id: "gn-leviathan", slot: "generator", name: "Leviathan Core",        description: "Legendary generator. Max survivability. 80% absorb.", rarity: "legendary", color: "#ff5c6c", glyph: "✸", tier: 5, price: 475000, stats: { shieldMax: 400, shieldRegen: 20, hullMax: 160, damageReduction: 0.08, shieldAbsorb: 0.30 } },
+  "gn-phase-drive":{ id:"gn-phase-drive",slot:"generator", name: "Phase Drive",           description: "Legendary speed gen. 65% absorb.",                    rarity: "legendary", color: "#b06cff", glyph: "✺", tier: 5, price: 450000, stats: { speed: 180,     shieldMax: 160,  shieldRegen: 8,  hullMax: 40, shieldAbsorb: 0.15 } },
 
   // ── MODULES (utility: speed, cargo, loot, crit, AoE, armor, etc.) ────────
   "md-thrust-1":  { id: "md-thrust-1",  slot: "module", name: "Ion Thruster Mk-I",      description: "Boosts top speed by 30.",                               rarity: "common",    color: "#5cff8a", glyph: "➤", tier: 1, price: 3000,   stats: { speed: 30 } },

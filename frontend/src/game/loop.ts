@@ -29,7 +29,7 @@ function sumEquippedStats(): ModuleStats {
   const p = state.player;
   const acc: Required<ModuleStats> = {
     damage: 0, fireRate: 1, critChance: 0, shieldMax: 0, shieldRegen: 0,
-    hullMax: 0, speed: 0, damageReduction: 0, cargoBonus: 0, lootBonus: 0, aoeRadius: 0,
+    hullMax: 0, speed: 0, damageReduction: 0, shieldAbsorb: 0, cargoBonus: 0, lootBonus: 0, aoeRadius: 0,
     ammoCapacity: 0,
   };
   let weaponDmg = 0, weaponFireRate = 1, weaponCrit = 0, weaponAoe = 0, weaponCount = 0;
@@ -64,6 +64,7 @@ function sumEquippedStats(): ModuleStats {
     acc.hullMax         += s.hullMax ?? 0;
     acc.speed           += s.speed ?? 0;
     acc.damageReduction += s.damageReduction ?? 0;
+    acc.shieldAbsorb    += s.shieldAbsorb ?? 0;
     acc.cargoBonus      += s.cargoBonus ?? 0;
     acc.lootBonus       += s.lootBonus ?? 0;
     acc.aoeRadius       = Math.max(acc.aoeRadius, s.aoeRadius ?? 0);
@@ -191,7 +192,7 @@ function updateNpcShips(dt: number): void {
 // ── PLAYER STATS (with drone bonuses + skills + faction) ─────────────────
 export function effectiveStats(): {
   damage: number; speed: number; hullMax: number; shieldMax: number;
-  fireRate: number; critChance: number; aoeRadius: number; damageReduction: number; shieldRegen: number; lootBonus: number;
+  fireRate: number; critChance: number; aoeRadius: number; damageReduction: number; shieldAbsorb: number; shieldRegen: number; lootBonus: number;
 } {
   const p = state.player;
   const cls = SHIP_CLASSES[p.shipClass];
@@ -213,6 +214,7 @@ export function effectiveStats(): {
   let speed = (cls.baseSpeed + (mod.speed ?? 0)) * (1 + skUtThrust * 0.03);
   let shieldRegen = 5 + (mod.shieldRegen ?? 0);
   let damageReduction = (skDefBulw * 0.03) + (mod.damageReduction ?? 0);
+  let shieldAbsorb = Math.min(0.5, mod.shieldAbsorb ?? 0);
   let aoeRadius = (skOffPierce * 3) + (mod.aoeRadius ?? 0);
   let critChance = 0.03 + skOffCrit * 0.02 + (mod.critChance ?? 0);
   let fireRate = (1 + skOffRapid * 0.03) * (mod.fireRate ?? 1);
@@ -228,7 +230,7 @@ export function effectiveStats(): {
   // Faction bonuses disabled
   shieldRegen *= (1 + skDefRegen * 0.15);
 
-  return { damage, speed, hullMax, shieldMax, fireRate, critChance, aoeRadius, damageReduction, shieldRegen, lootBonus };
+  return { damage, speed, hullMax, shieldMax, fireRate, critChance, aoeRadius, damageReduction, shieldAbsorb, shieldRegen, lootBonus };
 }
 
 export function queueAttackTarget(enemyId: string): void {
@@ -742,10 +744,13 @@ function damagePlayer(amount: number): void {
   const stats = effectiveStats();
   amount *= Math.max(0.2, 1 - stats.damageReduction);
 
+  // Shield absorbs a percentage of damage (base 50%, generators increase up to 80%)
+  const absorbPct = Math.min(0.95, 0.5 + stats.shieldAbsorb);
   if (p.shield > 0) {
-    const absorbed = Math.min(p.shield, amount);
-    p.shield -= absorbed;
-    amount -= absorbed;
+    const shieldDmg = Math.min(p.shield, amount * absorbPct);
+    p.shield -= shieldDmg;
+    const hullBleed = amount - shieldDmg;
+    amount = hullBleed;
     emitRing(p.pos.x, p.pos.y, "#4ee2ff");
     sfx.shieldHit();
   }
@@ -897,6 +902,13 @@ function tickWorld(dt: number): void {
     const accel = stats.speed * 4;
     p.vel.x += Math.cos(p.angle) * accel * dt;
     p.vel.y += Math.sin(p.angle) * accel * dt;
+  }
+  // Face attack target when fighting (DarkOrbit style)
+  if (state.isAttacking && state.attackTargetId) {
+    const atk = state.enemies.find(e => e.id === state.attackTargetId);
+    if (atk) {
+      p.angle = Math.atan2(atk.pos.y - p.pos.y, atk.pos.x - p.pos.x);
+    }
   }
   const v = Math.sqrt(p.vel.x * p.vel.x + p.vel.y * p.vel.y);
   const speedCap = state.afterburnUntil > state.tick ? stats.speed * 3 : stats.speed;

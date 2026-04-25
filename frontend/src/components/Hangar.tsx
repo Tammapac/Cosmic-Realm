@@ -566,7 +566,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
             <Stat label="REG"  v={`${stats.shieldRegen.toFixed(1)}/s`} />
             <Stat label="SPD"  v={Math.round(stats.speed)} />
             <Stat label="DR"   v={`${Math.round(stats.damageReduction * 100)}%`} />
-            <Stat label="AOE"  v={Math.round(stats.aoeRadius)} />
+            <Stat label="ABS"  v={`${Math.round(Math.min(0.95, 0.5 + (stats.shieldAbsorb ?? 0)) * 100)}%`} />
           </div>
         </div>
       </div>
