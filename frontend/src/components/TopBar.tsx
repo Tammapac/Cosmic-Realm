@@ -1,25 +1,15 @@
 import { useGame, state, bump, save, pushNotification, maxDroneSlots, cargoCapacity } from "../game/store";
 import { EXP_FOR_LEVEL, FACTIONS, MODULE_DEFS, SHIP_CLASSES, ZONES, rankFor, HONOR_RANKS, DRONE_DEFS } from "../game/types";
+import { effectiveStats } from "../game/loop";
 import { setMuted, getMuted, setVolume, getVolume } from "../game/sound";
 import { useState } from "react";
 
 export function TopBar() {
   const player = useGame((s) => s.player);
   const cls = SHIP_CLASSES[player.shipClass];
-  let shieldMax = cls.shieldMax;
-  let hullMax = cls.hullMax;
-  for (const id of [...player.equipped.weapon, ...player.equipped.generator, ...player.equipped.module]) {
-    if (!id) continue;
-    const item = player.inventory.find((m) => m.instanceId === id);
-    const def = item ? MODULE_DEFS[item.defId] : null;
-    if (!def) continue;
-    shieldMax += def.stats.shieldMax ?? 0;
-    hullMax += def.stats.hullMax ?? 0;
-  }
-  for (const d of player.drones) {
-    shieldMax += DRONE_DEFS[d.kind].shieldBonus;
-    hullMax += DRONE_DEFS[d.kind].hullBonus;
-  }
+  const es = effectiveStats();
+  const shieldMax = es.shieldMax;
+  const hullMax = es.hullMax;
   const expNeeded = EXP_FOR_LEVEL(player.level);
   const zone = ZONES[player.zone];
   const rank = rankFor(player.honor);

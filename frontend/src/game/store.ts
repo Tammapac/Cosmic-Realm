@@ -92,6 +92,7 @@ export type GameState = {
   pendingIdleReward: { credits: number; exp: number; secondsAway: number } | null;
   dungeon: DungeonRun | null;
   // consumable effects (game-time seconds)
+  lastHitTick: number;            // game-tick when player was last damaged (for regen delay)
   repairBotUntil: number;        // gradual hull heal active until this game-time
   afterburnUntil: number;        // speed boost active until this game-time
   miningTargetId: string | null; // asteroid being mined (for beam visual)
@@ -421,6 +422,7 @@ export const state: GameState = {
   bossSpawnTimer: 240, // first boss event ~4 minutes in
   pendingIdleReward,
   dungeon: null,
+  lastHitTick: 0,
   repairBotUntil: 0,
   afterburnUntil: 0,
   miningTargetId: null,

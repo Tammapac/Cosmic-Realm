@@ -742,6 +742,7 @@ function applyKill(e: Enemy, killerCrit: boolean): void {
 function damagePlayer(amount: number): void {
   const p = state.player;
   const stats = effectiveStats();
+  state.lastHitTick = state.tick;
   amount *= Math.max(0.2, 1 - stats.damageReduction);
 
   // Shield absorbs a percentage of damage (base 50%, generators increase up to 80%)
@@ -854,11 +855,11 @@ function tickWorld(dt: number): void {
   tickHotbarCooldowns(dt);
   const p = state.player;
   const stats = effectiveStats();
+  const outOfCombatFor = state.tick - state.lastHitTick;
 
-  // ── Consumable: Repair Bot HoT
-  if (state.repairBotUntil > 0 && state.tick < state.repairBotUntil) {
-    const cls = SHIP_CLASSES[p.shipClass];
-    p.hull = Math.min(p.hull + (40 / 8) * dt, cls.hullMax);
+  // ── Consumable: Repair Bot HoT (paused while in combat)
+  if (state.repairBotUntil > 0 && state.tick < state.repairBotUntil && outOfCombatFor >= 5) {
+    p.hull = Math.min(p.hull + (40 / 8) * dt, stats.hullMax);
   }
 
   // ── Consumable: Pending Rocket Salvo
@@ -942,8 +943,8 @@ function tickWorld(dt: number): void {
     }
   }
 
-  // ── Shield regen
-  if (p.shield < stats.shieldMax) {
+  // ── Shield regen (only after 5s out of combat)
+  if (outOfCombatFor >= 5 && p.shield < stats.shieldMax) {
     p.shield = Math.min(stats.shieldMax, p.shield + stats.shieldRegen * dt);
   }
 

@@ -3,6 +3,7 @@ import {
   PORTALS, Projectile, SHIP_CLASSES, STATIONS, ShipClassId, Station, ZONES, rankFor,
 } from "./types";
 import { state } from "./store";
+import { effectiveStats } from "./loop";
 
 // ── STAR FIELDS ────────────────────────────────────────────────────────────
 const STAR_LAYERS = [
@@ -2015,16 +2016,11 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
   if (state.playerRespawnTimer <= 0) {
     drawShip(ctx, p.pos.x, p.pos.y, p.angle, p.shipClass, 1, true);
     // mini hull/shield bars over player ship
-    const cls = SHIP_CLASSES[p.shipClass];
-    let hullMax = cls.hullMax, shieldMax = cls.shieldMax;
-    for (const dr of p.drones) {
-      hullMax += DRONE_DEFS[dr.kind].hullBonus;
-      shieldMax += DRONE_DEFS[dr.kind].shieldBonus;
-    }
+    const es = effectiveStats();
     drawHullShieldBars(
       ctx, p.pos.x, p.pos.y - 26,
-      Math.max(0, p.hull / hullMax),
-      Math.max(0, p.shield / shieldMax),
+      Math.max(0, p.hull / es.hullMax),
+      Math.max(0, p.shield / es.shieldMax),
     );
     // Player name + rank symbol below ship
     const rank = rankFor(p.honor);
