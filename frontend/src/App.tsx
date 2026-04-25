@@ -464,6 +464,7 @@ function GameApp() {
         state.showMap = false;
         state.showClan = false;
         state.showAmmoSelector = false;
+        state.showRocketAmmoSelector = false;
         state.showFullZoneMap = false;
         bump();
       } else if (e.key === "1") {
@@ -473,9 +474,15 @@ function GameApp() {
             bump();
           }
         }
-      } else if (e.key >= "2" && e.key <= "9") {
+      } else if (e.key === "2") {
         if (!state.dockedAt) {
-          useConsumable(parseInt(e.key) - 2);
+          state.showRocketAmmoSelector = !state.showRocketAmmoSelector;
+          state.showAmmoSelector = false;
+          bump();
+        }
+      } else if (e.key >= "3" && e.key <= "9") {
+        if (!state.dockedAt) {
+          useConsumable(parseInt(e.key) - 3);
         }
       }
     };

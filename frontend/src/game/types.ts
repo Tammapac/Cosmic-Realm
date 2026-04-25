@@ -268,8 +268,10 @@ export type Player = {
   // Consumables & hotbar
   consumables: Partial<Record<ConsumableId, number>>;
   hotbar: (ConsumableId | null)[];   // 8 slots
-  ammo: Record<RocketAmmoType, number>; // global ammo pool per type
-  activeAmmoType: RocketAmmoType;        // one global active ammo type for all weapons
+  ammo: Record<RocketAmmoType, number>; // laser ammo pool per type
+  activeAmmoType: RocketAmmoType;        // active laser ammo type
+  rocketAmmo: Record<RocketMissileType, number>; // rocket ammo pool per type
+  activeRocketAmmoType: RocketMissileType;       // active rocket ammo type
   autoRestock: boolean;
   autoRepairHull: boolean;
   autoShieldRecharge: boolean;
@@ -515,6 +517,44 @@ export const ROCKET_AMMO_TYPE_DEFS: Record<RocketAmmoType, RocketAmmoTypeDef> = 
 };
 
 export const LASER_AMMO_TYPE_ORDER: RocketAmmoType[] = ["x1", "x2", "x3", "x4"];
+
+export type RocketMissileType = "cl1" | "cl2" | "bm3" | "drock";
+
+export type RocketMissileTypeDef = {
+  id: RocketMissileType;
+  name: string;
+  shortName: string;
+  description: string;
+  color: string;
+  costPerRound: number;
+  damageMul: number;
+  glyph: string;
+};
+
+export const ROCKET_MISSILE_TYPE_DEFS: Record<RocketMissileType, RocketMissileTypeDef> = {
+  "cl1": {
+    id: "cl1", name: "CL-1 Rocket", shortName: "CL-1",
+    description: "Standard warhead rocket.",
+    color: "#ff8a4e", costPerRound: 25, damageMul: 1.0, glyph: "①",
+  },
+  "cl2": {
+    id: "cl2", name: "CL-2 Rocket", shortName: "CL-2",
+    description: "Enhanced explosive payload.",
+    color: "#ff5c6c", costPerRound: 50, damageMul: 2.0, glyph: "②",
+  },
+  "bm3": {
+    id: "bm3", name: "BM-3 Rocket", shortName: "BM-3",
+    description: "Heavy blast warhead. Devastating impact.",
+    color: "#ffd24a", costPerRound: 90, damageMul: 3.0, glyph: "③",
+  },
+  "drock": {
+    id: "drock", name: "D-ROCK", shortName: "D-ROCK",
+    description: "Destroyer-class missile. Maximum destruction.",
+    color: "#ff5cf0", costPerRound: 160, damageMul: 4.0, glyph: "④",
+  },
+};
+
+export const ROCKET_MISSILE_TYPE_ORDER: RocketMissileType[] = ["cl1", "cl2", "bm3", "drock"];
 
 export type Projectile = {
   id: string;
