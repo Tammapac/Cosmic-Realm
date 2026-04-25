@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { state, bump, useGame, save, pushNotification, abandonDungeon, useConsumable, getAmmoWeaponIds, rocketAmmoMax, getActiveAmmoType, getAmmoCountForType, runDockingServices, loadServerPlayer } from "./game/store";
+import { state, bump, useGame, save, pushNotification, abandonDungeon, useConsumable, getAmmoWeaponIds, rocketAmmoMax, getActiveAmmoType, getAmmoCountForType, runDockingServices, loadServerPlayer, collectCargoBox } from "./game/store";
 import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats } from "./game/loop";
 import { render } from "./game/render";
 import { TopBar, WorldTargetHud } from "./components/TopBar";
@@ -90,6 +90,13 @@ function GameCanvas() {
       };
       state.miningTargetId = asteroid.id;
       bump();
+      return;
+    }
+
+    // Check if clicking on cargo box — collect it
+    const cargoBox = state.cargoBoxes.find((cb) => Math.hypot(cb.pos.x - wx, cb.pos.y - wy) < 24);
+    if (cargoBox) {
+      collectCargoBox(cargoBox.id);
       return;
     }
 
@@ -425,7 +432,11 @@ function GameApp() {
           runDockingServices(stats.hullMax, stats.shieldMax);
         }
       } else if (e.key === "m" || e.key === "M") {
-        state.showMap = !state.showMap; bump();
+        state.showFullZoneMap = !state.showFullZoneMap; bump();
+      } else if (e.key === "+" || e.key === "=") {
+        state.minimapScale = Math.min(3, state.minimapScale + 0.25); bump();
+      } else if (e.key === "-" || e.key === "_") {
+        state.minimapScale = Math.max(0.5, state.minimapScale - 0.25); bump();
       } else if (e.key === "c" || e.key === "C") {
         state.showClan = !state.showClan; bump();
       } else if (e.key === "h" || e.key === "H") {
@@ -434,11 +445,14 @@ function GameApp() {
         state.showMap = false;
         state.showClan = false;
         state.showAmmoSelector = false;
+        state.showFullZoneMap = false;
         bump();
       } else if (e.key === "1") {
         if (!state.dockedAt) {
-          state.showAmmoSelector = !state.showAmmoSelector;
-          bump();
+          if (state.selectedWorldTarget?.kind === "enemy") {
+            state.isAttacking = !state.isAttacking;
+            bump();
+          }
         }
       } else if (e.key >= "2" && e.key <= "9") {
         if (!state.dockedAt) {

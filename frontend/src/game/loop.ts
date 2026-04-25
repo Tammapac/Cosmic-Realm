@@ -438,7 +438,7 @@ function fireProjectile(
   x: number, y: number, angle: number, damage: number, color: string, size = 3,
   opts?: { crit?: boolean; aoeRadius?: number; speedMul?: number; homing?: boolean; empStun?: number; armorPiercing?: boolean; weaponKind?: WeaponKind },
 ): void {
-  const speedBase = from === "player" ? 560 : from === "drone" ? 480 : 320;
+  const speedBase = from === "player" ? 360 : from === "drone" ? 340 : 280;
   const speed = speedBase * (opts?.speedMul ?? 1);
   state.projectiles.push({
     id: `pr-${Math.random().toString(36).slice(2, 8)}`,
@@ -537,23 +537,39 @@ function applyKill(e: Enemy, killerCrit: boolean): void {
   const credGain = e.credits + (state.player.skills["ut-salvage"] ?? 0) * Math.max(1, Math.floor(e.honor));
   const honorGain = e.honor;
 
+  // Grant exp, credits, honor directly on kill
+  const p2 = state.player;
+  p2.exp += expGain;
+  p2.credits += credGain;
+  p2.honor += honorGain;
+  while (p2.exp >= EXP_FOR_LEVEL(p2.level)) {
+    p2.exp -= EXP_FOR_LEVEL(p2.level);
+    p2.level++;
+    state.levelUpFlash = 2;
+  }
+  pushFloater({ text: `+${expGain} XP`, color: "#ff5cf0", x: e.pos.x, y: e.pos.y - 20, scale: 0.9, bold: false });
+  pushFloater({ text: `+${credGain} CR`, color: "#ffd24a", x: e.pos.x + 20, y: e.pos.y - 8, scale: 0.9, bold: false });
+  if (honorGain > 0) pushFloater({ text: `+${honorGain} ✪`, color: "#c8a0ff", x: e.pos.x - 20, y: e.pos.y - 8, scale: 0.8, bold: false });
+
+  // Loot box only contains resources (no exp/credits/honor)
   const hasSalvage = state.player.drones.some((d) => d.kind === "salvage");
   const lootQty = e.loot ? e.loot.qty + (hasSalvage ? 1 : 0) + stats.lootBonus : 0;
 
-  const box: CargoBox = {
-    id: `cb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-    pos: { x: e.pos.x + (Math.random() - 0.5) * 30, y: e.pos.y + (Math.random() - 0.5) * 30 },
-    resourceId: e.loot?.resourceId ?? "scrap",
-    qty: lootQty,
-    credits: credGain,
-    exp: expGain,
-    honor: honorGain,
-    ttl: 30,
-    color: e.isBoss ? "#ffd24a" : "#5cff8a",
-  };
-  state.cargoBoxes.push(box);
-
-  pushFloater({ text: "LOOT ▼", color: box.color, x: e.pos.x, y: e.pos.y - 12, scale: 1, bold: true });
+  if (lootQty > 0) {
+    const box: CargoBox = {
+      id: `cb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      pos: { x: e.pos.x + (Math.random() - 0.5) * 30, y: e.pos.y + (Math.random() - 0.5) * 30 },
+      resourceId: e.loot?.resourceId ?? "scrap",
+      qty: lootQty,
+      credits: 0,
+      exp: 0,
+      honor: 0,
+      ttl: 30,
+      color: e.isBoss ? "#ffd24a" : "#5cff8a",
+    };
+    state.cargoBoxes.push(box);
+    pushFloater({ text: "LOOT ▼", color: box.color, x: e.pos.x, y: e.pos.y - 12, scale: 1, bold: true });
+  }
 
   // Quest progress
   for (const q of state.player.activeQuests) {
@@ -962,7 +978,7 @@ function tickWorld(dt: number): void {
       const primaryWeaponId = weaponIds[0] ?? "";
       const ammoType = getActiveAmmoType(primaryWeaponId);
       const typeDef = ROCKET_AMMO_TYPE_DEFS[ammoType];
-      const dmgMul = typeDef?.damageMul ?? 1.0;
+      const dmgMul = (typeDef?.damageMul ?? 1.0) * 0.8;
       const projColor = typeDef?.color ?? "#4ee2ff";
       let firedAny = false;
       const ammoCount = ammoType === "x1"
@@ -977,17 +993,34 @@ function tickWorld(dt: number): void {
           if (!p.ammoByType[primaryWeaponId]) p.ammoByType[primaryWeaponId] = {};
           p.ammoByType[primaryWeaponId][ammoType] = (p.ammoByType[primaryWeaponId][ammoType] ?? 0) - ammoNeeded;
         }
-        const projDmg = Math.round(stats.damage * dmgMul / weaponIds.length);
-        for (let wi = 0; wi < weaponIds.length; wi++) {
-          const wItem = p.inventory.find((m) => m.instanceId === weaponIds[wi]);
-          const wDef = wItem ? MODULE_DEFS[wItem.defId] : null;
-          const wKind: WeaponKind = wDef?.weaponKind ?? "laser";
-          const spread = weaponIds.length > 1 ? (wi - (weaponIds.length - 1) / 2) * 0.06 : 0;
-          const isRocket = wKind === "rocket";
-          fireProjectile("player", p.pos.x, p.pos.y, ang + spread, projDmg, projColor, isRocket ? 5 : 4, {
-            weaponKind: wKind,
-            homing: isRocket,
-            speedMul: isRocket ? 0.55 : undefined,
+        const totalDmg = stats.damage * dmgMul;
+        const laserIds: string[] = [];
+        const rocketIds: string[] = [];
+        for (const wid of weaponIds) {
+          const wi = p.inventory.find((m) => m.instanceId === wid);
+          const wd = wi ? MODULE_DEFS[wi.defId] : null;
+          if (wd?.weaponKind === "rocket") rocketIds.push(wid);
+          else laserIds.push(wid);
+        }
+        const perpAng = ang + Math.PI / 2;
+        if (laserIds.length > 0) {
+          const laserShare = totalDmg * laserIds.length / weaponIds.length;
+          const perShot = Math.round(laserShare / 2);
+          for (let si = 0; si < 2; si++) {
+            const side = si === 0 ? -1 : 1;
+            const ox = p.pos.x + Math.cos(perpAng) * 14 * side;
+            const oy = p.pos.y + Math.sin(perpAng) * 14 * side;
+            fireProjectile("player", ox, oy, ang - side * 0.03, perShot, projColor, 4, {
+              weaponKind: "laser",
+            });
+          }
+        }
+        for (const rId of rocketIds) {
+          const rDmg = Math.round(totalDmg / weaponIds.length);
+          fireProjectile("player", p.pos.x, p.pos.y, ang, rDmg, projColor, 5, {
+            weaponKind: "rocket",
+            homing: true,
+            speedMul: 0.55,
           });
         }
         firedAny = true;
@@ -1012,7 +1045,7 @@ function tickWorld(dt: number): void {
   // ── Update drones (formation behind player)
   const droneCount = p.drones.length;
   let nearest: Enemy | null = null;
-  let nearestD = 600;
+  let nearestD = 400;
   for (const e of state.enemies) {
     const d = distance(p.pos.x, p.pos.y, e.pos.x, e.pos.y);
     const adj = d * (e.isBoss ? 0.6 : 1);
@@ -1028,7 +1061,7 @@ function tickWorld(dt: number): void {
     const cols = Math.min(4, droneCount);
     const row = Math.floor(i / cols);
     const col = i % cols;
-    const spacing = 22;
+    const spacing = 38;
     const rowOffset = (row + 1) * spacing;
     const colOffset = (col - (Math.min(cols, droneCount - row * cols) - 1) / 2) * spacing;
     const perpAngle = behindAngle + Math.PI / 2;
@@ -1042,7 +1075,7 @@ function tickWorld(dt: number): void {
       d.fireCd -= dt;
       if (d.fireCd <= 0 && nearest) {
         const dpos = (d as Drone & { anchor: { x: number; y: number } }).anchor;
-        const fireRange = d.mode === "defensive" ? 280 : 720;
+        const fireRange = d.mode === "defensive" ? 200 : 380;
         if (distance(dpos.x, dpos.y, nearest.pos.x, nearest.pos.y) < fireRange) {
           const dang = Math.atan2(nearest.pos.y - dpos.y, nearest.pos.x - dpos.x);
           fireProjectile("drone", dpos.x, dpos.y, dang, def.damageBonus, def.color, 2);
@@ -1207,38 +1240,6 @@ function tickWorld(dt: number): void {
   // ── Cargo box TTL + pickup
   for (const cb of state.cargoBoxes) cb.ttl -= dt;
   state.cargoBoxes = state.cargoBoxes.filter((cb) => cb.ttl > 0);
-  const PICKUP_RANGE = 80;
-  for (let i = state.cargoBoxes.length - 1; i >= 0; i--) {
-    const cb = state.cargoBoxes[i];
-    const dx = cb.pos.x - p.pos.x;
-    const dy = cb.pos.y - p.pos.y;
-    if (dx * dx + dy * dy < PICKUP_RANGE * PICKUP_RANGE) {
-      state.player.exp += cb.exp;
-      state.player.credits += cb.credits;
-      const prevCredEarned = state.player.milestones.totalCreditsEarned;
-      state.player.milestones.totalCreditsEarned += cb.credits;
-      checkMilestoneTier("totalCreditsEarned", prevCredEarned, state.player.milestones.totalCreditsEarned);
-      const prevRank = rankFor(state.player.honor).index;
-      state.player.honor += cb.honor;
-      pushHonor(cb.honor);
-      const newRank = rankFor(state.player.honor).index;
-      if (newRank > prevRank) {
-        pushNotification(`PROMOTED → ${rankFor(state.player.honor).name}`, "good");
-        pushChat("system", "SYSTEM", `You earned the rank of ${rankFor(state.player.honor).name}.`);
-      }
-      if (cb.qty > 0) {
-        const got = addCargo(cb.resourceId, cb.qty);
-        if (got > 0) pushFloater({ text: `+${got} loot`, color: "#5cff8a", x: cb.pos.x, y: cb.pos.y + 18, scale: 0.85, ttl: 0.9 });
-        else pushNotification("Cargo bay full", "bad");
-      }
-      pushFloater({ text: `+${cb.exp} XP`, color: "#ff5cf0", x: cb.pos.x, y: cb.pos.y - 12, scale: 1.1, bold: true });
-      pushFloater({ text: `+${cb.credits}cr`, color: "#ffd24a", x: cb.pos.x + 14, y: cb.pos.y, scale: 1, ttl: 0.9 });
-      if (cb.honor > 0) pushFloater({ text: `+${cb.honor} ✪`, color: rankFor(state.player.honor).color, x: cb.pos.x - 14, y: cb.pos.y + 12, ttl: 1, scale: 0.9 });
-      sfx.pickup();
-      tryLevelUp();
-      state.cargoBoxes.splice(i, 1);
-    }
-  }
 
   // ── Floaters update
   for (const f of state.floaters) {
