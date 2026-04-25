@@ -112,6 +112,7 @@ export type GameState = {
   showAmmoSelector: boolean;
   minimapScale: number;
   showFullZoneMap: boolean;
+  cameraZoom: number;
 };
 
 const STORAGE_KEY = "stellar-frontier-save-v5";
@@ -188,12 +189,11 @@ function makeInitialPlayer(): Player {
     lastSeen: Date.now(),
     consumables: { "repair-bot": 2, "shield-charge": 1 },
     hotbar: ["repair-bot", "shield-charge", null, null, null, null, null, null],
-    ammo: {},
+    ammo: { x1: 0, x2: 0, x3: 0, x4: 0 },
+    activeAmmoType: "x1" as RocketAmmoType,
     autoRestock: false,
     autoRepairHull: false,
     autoShieldRecharge: false,
-    rocketAmmoType: {},
-    ammoByType: {},
     dungeonClears: {},
     dungeonBestTimes: {},
   };
@@ -238,10 +238,10 @@ function makeOthers(zone: ZoneId): OtherPlayer[] {
 
 function makeAsteroids(zone: ZoneId): Asteroid[] {
   const countMap: Partial<Record<ZoneId, number>> = {
-    alpha: 40, nebula: 35, crimson: 30, void: 25, forge: 20,
-    corona: 40, fracture: 35, abyss: 30, marsdepth: 25, maelstrom: 20,
-    venus1: 40, venus2: 35, venus3: 30, venus4: 25, venus5: 20,
-    danger1: 15, danger2: 15, danger3: 15, danger4: 12, danger5: 10,
+    alpha: 80, nebula: 70, crimson: 60, void: 50, forge: 40,
+    corona: 80, fracture: 70, abyss: 60, marsdepth: 50, maelstrom: 40,
+    venus1: 80, venus2: 70, venus3: 60, venus4: 50, venus5: 40,
+    danger1: 30, danger2: 30, danger3: 30, danger4: 25, danger5: 20,
   };
   const count = countMap[zone] ?? 20;
   const out: Asteroid[] = [];
@@ -284,7 +284,19 @@ if (Array.isArray(initialPlayer.cargo)) {
 }
 if (!Array.isArray(initialPlayer.drones)) initialPlayer.drones = [];
 for (const d of initialPlayer.drones) if (!d.mode) d.mode = "orbit";
-if (!initialPlayer.ammo || typeof initialPlayer.ammo !== "object") initialPlayer.ammo = {};
+if (!initialPlayer.ammo || typeof initialPlayer.ammo !== "object" || Array.isArray(initialPlayer.ammo)) {
+  initialPlayer.ammo = { x1: 0, x2: 0, x3: 0, x4: 0 };
+} else {
+  // Migrate from old per-weapon ammo to global pool
+  const a = initialPlayer.ammo as any;
+  if (typeof a.x1 !== "number") {
+    const oldTotal = Object.values(a).reduce((s: number, v: any) => s + (typeof v === "number" ? v : 0), 0);
+    initialPlayer.ammo = { x1: oldTotal as number, x2: 0, x3: 0, x4: 0 };
+  }
+}
+if (!initialPlayer.activeAmmoType || !["x1","x2","x3","x4"].includes(initialPlayer.activeAmmoType)) {
+  initialPlayer.activeAmmoType = "x1" as RocketAmmoType;
+}
 if (!initialPlayer.milestones) initialPlayer.milestones = newMilestones();
 if (!initialPlayer.skills) initialPlayer.skills = {};
 if (typeof initialPlayer.skillPoints !== "number") initialPlayer.skillPoints = Math.max(0, (initialPlayer.level ?? 1) - 1);
@@ -353,8 +365,9 @@ if (!Array.isArray(initialPlayer.hotbar) || initialPlayer.hotbar.length !== 8) {
 if (typeof initialPlayer.autoRestock !== "boolean") initialPlayer.autoRestock = false;
 if (typeof initialPlayer.autoRepairHull !== "boolean") initialPlayer.autoRepairHull = false;
 if (typeof initialPlayer.autoShieldRecharge !== "boolean") initialPlayer.autoShieldRecharge = false;
-if (!initialPlayer.rocketAmmoType || typeof initialPlayer.rocketAmmoType !== "object") initialPlayer.rocketAmmoType = {};
-if (!initialPlayer.ammoByType || typeof initialPlayer.ammoByType !== "object") initialPlayer.ammoByType = {};
+// Clean up old per-weapon ammo fields
+delete (initialPlayer as any).rocketAmmoType;
+delete (initialPlayer as any).ammoByType;
 
 // Daily reset: if >24h since last reset, refresh missions
 const dayMs = 24 * 60 * 60 * 1000;
@@ -422,6 +435,7 @@ export const state: GameState = {
   showAmmoSelector: false,
   minimapScale: 1,
   showFullZoneMap: false,
+  cameraZoom: 1,
 };
 
 const listeners = new Set<() => void>();
@@ -479,11 +493,10 @@ export function save(): void {
       lastDailyReset: p.lastDailyReset,
       lastSeen: p.lastSeen,
       ammo: p.ammo,
+      activeAmmoType: p.activeAmmoType,
       autoRestock: p.autoRestock,
       autoRepairHull: p.autoRepairHull,
       autoShieldRecharge: p.autoShieldRecharge,
-      rocketAmmoType: p.rocketAmmoType,
-      ammoByType: p.ammoByType,
       dungeonClears: p.dungeonClears,
       dungeonBestTimes: p.dungeonBestTimes,
     };
@@ -530,9 +543,8 @@ export function loadServerPlayer(data: any): void {
   if (data.drones) p.drones = data.drones;
   if (data.consumables) p.consumables = data.consumables;
   if (data.hotbar) p.hotbar = data.hotbar;
-  if (data.ammo) p.ammo = data.ammo;
-  if (data.rocketAmmoType) p.rocketAmmoType = data.rocketAmmoType;
-  if (data.ammoByType) p.ammoByType = data.ammoByType;
+  if (data.ammo && typeof data.ammo === "object" && typeof data.ammo.x1 === "number") p.ammo = data.ammo;
+  if (data.activeAmmoType && ["x1","x2","x3","x4"].includes(data.activeAmmoType)) p.activeAmmoType = data.activeAmmoType;
   if (data.autoRestock != null) p.autoRestock = data.autoRestock;
   if (data.autoRepairHull != null) p.autoRepairHull = data.autoRepairHull;
   if (data.autoShieldRecharge != null) p.autoShieldRecharge = data.autoShieldRecharge;
@@ -674,8 +686,8 @@ export function removeCargo(resourceId: ResourceId, qty: number): number {
 }
 
 // ── CARGO BOX PICKUP (proximity-based with tractor beam) ─────────────────
-const COLLECT_RANGE = 60;
-const TRACTOR_RANGE = 120;
+const COLLECT_RANGE = 40;
+const TRACTOR_RANGE = 80;
 
 export function tryCollectNearbyBoxes(): void {
   const p = state.player;
@@ -775,55 +787,58 @@ export function getAmmoWeaponIds(): string[] {
 export function ensureAmmoInitialized(): void {
   const p = state.player;
   const max = rocketAmmoMax();
-  if (!p.rocketAmmoType) p.rocketAmmoType = {};
-  if (!p.ammoByType) p.ammoByType = {};
-  for (const id of getAmmoWeaponIds()) {
-    if (typeof p.ammo[id] !== "number") {
-      p.ammo[id] = max;
-    } else {
-      p.ammo[id] = Math.min(p.ammo[id], max);
-    }
-    if (!p.rocketAmmoType[id]) p.rocketAmmoType[id] = "x1";
-    if (!p.ammoByType[id]) p.ammoByType[id] = {};
+  if (!p.ammo || typeof p.ammo !== "object") p.ammo = { x1: 0, x2: 0, x3: 0, x4: 0 };
+  for (const t of ["x1", "x2", "x3", "x4"] as RocketAmmoType[]) {
+    if (typeof p.ammo[t] !== "number") p.ammo[t] = 0;
+    p.ammo[t] = Math.min(p.ammo[t], max);
   }
-  // Clean up ammo entries for unequipped weapons
-  for (const key of Object.keys(p.ammo)) {
-    if (!p.equipped.weapon.includes(key)) delete p.ammo[key];
-  }
-  for (const key of Object.keys(p.rocketAmmoType)) {
-    if (!p.equipped.weapon.includes(key)) delete p.rocketAmmoType[key];
-  }
-  for (const key of Object.keys(p.ammoByType)) {
-    if (!p.equipped.weapon.includes(key)) delete p.ammoByType[key];
-  }
+  if (!p.activeAmmoType || !["x1","x2","x3","x4"].includes(p.activeAmmoType)) p.activeAmmoType = "x1";
 }
 
 export function restockAmmo(): void {
   const p = state.player;
   const max = rocketAmmoMax();
   ensureAmmoInitialized();
-  const rocketIds = getAmmoWeaponIds();
-  if (rocketIds.length === 0) {
-    pushNotification("No weapons equipped", "info");
-    return;
-  }
-  let totalMissing = 0;
-  for (const id of rocketIds) {
-    totalMissing += Math.max(0, max - (p.ammo[id] ?? 0));
-  }
-  if (totalMissing === 0) {
+  const type = p.activeAmmoType;
+  const cur = p.ammo[type] ?? 0;
+  const missing = Math.max(0, max - cur);
+  if (missing === 0) {
     pushNotification("Ammo already full", "info");
     return;
   }
-  const cost = totalMissing * ROCKET_AMMO_COST_PER;
+  const def = ROCKET_AMMO_TYPE_DEFS[type];
+  const cost = missing * def.costPerRound;
   if (p.credits < cost) {
     pushNotification(`Need ${cost}cr to restock ammo`, "bad");
     return;
   }
   p.credits -= cost;
-  for (const id of rocketIds) p.ammo[id] = max;
+  p.ammo[type] = max;
   bumpMission("spend-credits", cost);
-  pushNotification(`Ammo restocked · -${cost}cr`, "good");
+  pushNotification(`${def.shortName} ammo restocked · -${cost}cr`, "good");
+  save(); bump();
+}
+
+export function purchaseAmmoAmount(type: RocketAmmoType, amount: number): void {
+  const p = state.player;
+  const max = rocketAmmoMax();
+  ensureAmmoInitialized();
+  const cur = p.ammo[type] ?? 0;
+  const canBuy = Math.min(amount, max - cur);
+  if (canBuy <= 0) {
+    pushNotification("Ammo already full", "info");
+    return;
+  }
+  const def = ROCKET_AMMO_TYPE_DEFS[type];
+  const cost = canBuy * def.costPerRound;
+  if (p.credits < cost) {
+    pushNotification(`Need ${cost}cr for ${canBuy} ${def.shortName} rounds`, "bad");
+    return;
+  }
+  p.credits -= cost;
+  p.ammo[type] = cur + canBuy;
+  bumpMission("spend-credits", cost);
+  pushNotification(`Bought ${canBuy} ${def.shortName} · -${cost}cr`, "good");
   save(); bump();
 }
 
@@ -876,87 +891,47 @@ export function autoShieldIfEnabled(shieldMax: number, collect?: DockServiceEntr
 
 // ── AMMO TYPE HELPERS ──────────────────────────────────────────────────────
 
-/** Get the active ammo type for a given rocket weapon instance. */
-export function getActiveAmmoType(weaponId: string): RocketAmmoType {
-  return state.player.rocketAmmoType?.[weaponId] ?? "x1";
+/** Get the global active ammo type. */
+export function getActiveAmmoType(): RocketAmmoType {
+  return state.player.activeAmmoType ?? "x1";
 }
 
-/** Get the current ammo count for the active type of a weapon. */
-export function getAmmoCountForType(weaponId: string, type: RocketAmmoType): number {
-  if (type === "x1") return state.player.ammo[weaponId] ?? 0;
-  return state.player.ammoByType?.[weaponId]?.[type] ?? 0;
+/** Get the current global ammo count for a type. */
+export function getAmmoCount(type?: RocketAmmoType): number {
+  const t = type ?? state.player.activeAmmoType ?? "x1";
+  return state.player.ammo[t] ?? 0;
 }
 
-/** Switch the active ammo type for a rocket weapon. */
-export function switchRocketAmmoType(weaponId: string, type: RocketAmmoType): void {
+/** Switch the global active ammo type. */
+export function switchAmmoType(type: RocketAmmoType): void {
   ensureAmmoInitialized();
-  const p = state.player;
-  if (!p.rocketAmmoType) p.rocketAmmoType = {};
-  p.rocketAmmoType[weaponId] = type;
+  state.player.activeAmmoType = type;
   const def = ROCKET_AMMO_TYPE_DEFS[type];
   pushNotification(`Ammo switched to ${def.name}`, "good");
-  save(); bump();
-}
-
-/** Purchase a batch of typed ammo (fills up to max for the given type). */
-export function purchaseTypedAmmo(weaponId: string, type: RocketAmmoType): void {
-  ensureAmmoInitialized();
-  const p = state.player;
-  const def = ROCKET_AMMO_TYPE_DEFS[type];
-  const max = rocketAmmoMax();
-  if (!p.ammoByType) p.ammoByType = {};
-  if (!p.ammoByType[weaponId]) p.ammoByType[weaponId] = {};
-
-  if (type === "x1") {
-    // Delegate to regular restockAmmo for a single weapon
-    const cur = p.ammo[weaponId] ?? 0;
-    const missing = Math.max(0, max - cur);
-    if (missing === 0) { pushNotification("Ammo already full", "info"); return; }
-    const cost = missing * def.costPerRound;
-    if (p.credits < cost) { pushNotification(`Need ${cost}cr to restock ammo`, "bad"); return; }
-    p.credits -= cost;
-    p.ammo[weaponId] = max;
-    bumpMission("spend-credits", cost);
-    pushNotification(`Restocked ${missing} X1 · -${cost}cr`, "good");
-    save(); bump();
-    return;
-  }
-
-  const cur = p.ammoByType[weaponId][type] ?? 0;
-  const missing = Math.max(0, max - cur);
-  if (missing === 0) { pushNotification("Ammo already full", "info"); return; }
-  const cost = missing * def.costPerRound;
-  if (p.credits < cost) { pushNotification(`Need ${cost}cr for ${def.shortName} ammo`, "bad"); return; }
-  p.credits -= cost;
-  p.ammoByType[weaponId][type] = max;
-  bumpMission("spend-credits", cost);
-  pushNotification(`Restocked ${missing} ${def.shortName} · -${cost}cr`, "good");
   save(); bump();
 }
 
 export function autoRestockIfEnabled(collect?: DockServiceEntry[]): void {
   const p = state.player;
   if (!p.autoRestock) return;
-  const rocketIds = getAmmoWeaponIds();
-  if (rocketIds.length === 0) return;
   const max = rocketAmmoMax();
   ensureAmmoInitialized();
-  let totalMissing = 0;
-  for (const id of rocketIds) {
-    totalMissing += Math.max(0, max - (p.ammo[id] ?? 0));
-  }
-  if (totalMissing === 0) return;
-  const cost = totalMissing * ROCKET_AMMO_COST_PER;
+  const type = p.activeAmmoType;
+  const cur = p.ammo[type] ?? 0;
+  const missing = Math.max(0, max - cur);
+  if (missing === 0) return;
+  const def = ROCKET_AMMO_TYPE_DEFS[type];
+  const cost = missing * def.costPerRound;
   if (p.credits < cost) {
     if (collect) collect.push({ kind: "failed", label: `Ammo restock — insufficient credits (need ${cost}cr)`, cost: 0 });
     else pushNotification(`Auto-Restock: need ${cost}cr to restock ammo`, "bad");
     return;
   }
   p.credits -= cost;
-  for (const id of rocketIds) p.ammo[id] = max;
+  p.ammo[type] = max;
   bumpMission("spend-credits", cost);
-  if (collect) collect.push({ kind: "ammo", label: `Rocket ammo restocked (${totalMissing} rounds)`, cost });
-  else pushNotification(`Auto-Restock: ammo topped up · -${cost}cr`, "good");
+  if (collect) collect.push({ kind: "ammo", label: `${def.shortName} ammo restocked (${missing} rounds)`, cost });
+  else pushNotification(`Auto-Restock: ${def.shortName} topped up · -${cost}cr`, "good");
   save(); bump();
 }
 
@@ -1201,11 +1176,20 @@ export function completeDungeon(): void {
     if (taken < m.qty) pushNotification(`Cargo overflow: lost ${m.qty - taken} ${RESOURCES[m.resourceId].name}`, "bad");
   }
   // Pick random module(s) from the pool (2 if featured, 1 normally)
+  // Rarer items have lower drop weight
+  const rarityWeight: Record<string, number> = { common: 1, uncommon: 0.8, rare: 0.5, epic: 0.2, legendary: 0.08 };
   const modulesToDrop = isFeatured ? 1 + DAILY_DUNGEON_BONUS.extraModules : 1;
   const droppedModuleNames: string[] = [];
   const pool = [...def.rewardModules];
+  const weights = pool.map((id) => rarityWeight[MODULE_DEFS[id]?.rarity ?? "common"] ?? 1);
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
   for (let i = 0; i < modulesToDrop; i++) {
-    const pickId = pool[Math.floor(Math.random() * pool.length)];
+    let roll = Math.random() * totalWeight;
+    let pickId = pool[0];
+    for (let j = 0; j < pool.length; j++) {
+      roll -= weights[j];
+      if (roll <= 0) { pickId = pool[j]; break; }
+    }
     const item = addInventoryItem(pickId);
     if (item) droppedModuleNames.push(MODULE_DEFS[pickId].name);
   }

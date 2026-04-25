@@ -18,9 +18,9 @@ export function QuestTracker() {
   return (
     <div
       className="absolute z-30 pointer-events-none"
-      style={{ top: 58, left: 12, display: "flex", flexDirection: "column", gap: 6, maxWidth: 300 }}
+      style={{ top: 58, left: 12, display: "flex", flexDirection: "column", gap: 8, maxWidth: 360 }}
     >
-      <div className="text-[11px] tracking-[0.25em] text-mute mb-0.5">
+      <div className="text-[14px] tracking-[0.25em] text-mute mb-0.5">
         ▸ ACTIVE BOUNTIES
       </div>
       {activeQuests.slice(0, 5).map((q) => {
@@ -40,17 +40,17 @@ export function QuestTracker() {
           >
             <div className="flex items-center justify-between gap-3">
               <div
-                className="text-[11px] tracking-wide truncate flex items-center gap-1.5"
+                className="text-[14px] tracking-wide truncate flex items-center gap-1.5"
                 style={{ color }}
               >
                 <span style={{ opacity: 0.8 }}>{glyph}</span>
                 <span className="truncate">{q.title}</span>
               </div>
-              <div className="text-[12px] font-bold tabular-nums shrink-0" style={{ color }}>
+              <div className="text-[15px] font-bold tabular-nums shrink-0" style={{ color }}>
                 {Math.min(q.progress, q.killCount)}/{q.killCount}
               </div>
             </div>
-            <div className="mt-1 h-[4px] rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
+            <div className="mt-1.5 h-[6px] rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
               <div
                 className="h-full rounded-full"
                 style={{
@@ -61,7 +61,7 @@ export function QuestTracker() {
               />
             </div>
             {done && (
-              <div className="text-[10px] tracking-widest mt-0.5" style={{ color: "#5cff8a" }}>
+              <div className="text-[13px] tracking-widest mt-0.5" style={{ color: "#5cff8a" }}>
                 ✓ READY TO TURN IN
               </div>
             )}

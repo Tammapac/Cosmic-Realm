@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { state, bump, useGame, save, pushNotification, abandonDungeon, useConsumable, getAmmoWeaponIds, rocketAmmoMax, getActiveAmmoType, getAmmoCountForType, runDockingServices, loadServerPlayer, collectCargoBox } from "./game/store";
+import { state, bump, useGame, save, pushNotification, abandonDungeon, useConsumable, getAmmoWeaponIds, rocketAmmoMax, getActiveAmmoType, getAmmoCount, runDockingServices, loadServerPlayer, collectCargoBox, enterDungeon } from "./game/store";
 import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats } from "./game/loop";
 import { render } from "./game/render";
 import { TopBar, WorldTargetHud } from "./components/TopBar";
@@ -54,9 +54,10 @@ function GameCanvas() {
     const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
     const cx = e.clientX - rect.left;
     const cy = e.clientY - rect.top;
+    const zoom = state.cameraZoom;
     return {
-      x: state.player.pos.x + (cx - rect.width / 2),
-      y: state.player.pos.y + (cy - rect.height / 2),
+      x: state.player.pos.x + (cx - rect.width / 2) / zoom,
+      y: state.player.pos.y + (cy - rect.height / 2) / zoom,
     };
   };
 
@@ -101,6 +102,22 @@ function GameCanvas() {
       return;
     }
 
+    // Check if clicking on dungeon rift — enter if close enough, otherwise fly to it
+    for (const d of Object.values(DUNGEONS)) {
+      if (d.zone !== state.player.zone) continue;
+      if (Math.hypot(d.pos.x - wx, d.pos.y - wy) < 50) {
+        const playerDist = Math.hypot(d.pos.x - state.player.pos.x, d.pos.y - state.player.pos.y);
+        if (playerDist < 120) {
+          enterDungeon(d.id);
+        } else {
+          state.cameraTarget = { x: d.pos.x, y: d.pos.y };
+          pushNotification(`Fly closer to enter ${d.name}`, "info");
+        }
+        bump();
+        return;
+      }
+    }
+
     // Clicked on free space — move ship there, keep target lock
     state.cameraTarget = { x: wx, y: wy };
     state.miningTargetId = null;
@@ -141,9 +158,16 @@ function GameCanvas() {
     const cx = e.clientX - rect.left;
     const cy = e.clientY - rect.top;
     state.cameraTarget = {
-      x: state.player.pos.x + (cx - rect.width / 2),
-      y: state.player.pos.y + (cy - rect.height / 2),
+      x: state.player.pos.x + (cx - rect.width / 2) / state.cameraZoom,
+      y: state.player.pos.y + (cy - rect.height / 2) / state.cameraZoom,
     };
+  };
+
+  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    state.cameraZoom = Math.max(0.4, Math.min(2.5, state.cameraZoom + delta));
+    bump();
   };
 
   return (
@@ -152,6 +176,7 @@ function GameCanvas() {
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onMouseMove={handleMouseMove}
+      onWheel={handleWheel}
       onContextMenu={(e) => e.preventDefault()}
       className="absolute inset-0 w-full h-full"
       style={{ cursor: "crosshair", display: "block" }}
@@ -162,11 +187,11 @@ function GameCanvas() {
 function Notifications() {
   const items = useGame((s) => s.notifications);
   return (
-    <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 pointer-events-none z-40" style={{ bottom: 96 }}>
+    <div className="absolute flex flex-col items-start gap-1 pointer-events-none z-40" style={{ bottom: 80, left: 12 }}>
       {items.slice(-4).map((n) => (
         <div
           key={n.id}
-          className="panel px-2.5 py-1 text-[10px] font-bold tracking-widest"
+          className="panel px-3 py-1.5 text-[14px] font-bold tracking-widest"
           style={{
             opacity: Math.min(1, n.ttl),
             color: n.kind === "good" ? "#5cff8a" : n.kind === "bad" ? "#ff5c6c" : "#4ee2ff",
@@ -262,17 +287,13 @@ function AmmoHud() {
 
   if (docked) return null;
 
-  const rocketIds = getAmmoWeaponIds();
-  if (rocketIds.length === 0) return null;
+  const weaponIds = getAmmoWeaponIds();
+  if (weaponIds.length === 0) return null;
 
-  // Show primary (first) weapon's active ammo type
-  const primaryId = rocketIds[0];
-  const item = player.inventory.find((m) => m.instanceId === primaryId);
-  const def = item ? MODULE_DEFS[item.defId] : null;
-  const activeType = getActiveAmmoType(primaryId);
+  const activeType = getActiveAmmoType();
   const typeDef = ROCKET_AMMO_TYPE_DEFS[activeType];
   const ammoMax = rocketAmmoMax();
-  const cur = getAmmoCountForType(primaryId, activeType);
+  const cur = getAmmoCount(activeType);
   const pct = ammoMax > 0 ? cur / ammoMax : 0;
   const isEmpty = cur === 0;
   const isLow = cur > 0 && cur <= 10;
@@ -298,11 +319,8 @@ function AmmoHud() {
         onClick={handleClick}
       >
         <div className="flex items-center justify-between gap-2">
-          <div className="text-[9px] tracking-widest truncate" style={{ color: def?.color ?? barColor }}>
-            {typeDef.glyph} {def?.name ?? "Laser"}
-            {rocketIds.length > 1 && (
-              <span className="text-mute"> ×{rocketIds.length}</span>
-            )}
+          <div className="text-[9px] tracking-widest truncate" style={{ color: typeDef.color }}>
+            {typeDef.glyph} {typeDef.shortName} AMMO
           </div>
           <div className="text-[10px] font-bold tabular-nums" style={{ color: barColor }}>
             {isEmpty ? "EMPTY" : isLow ? `${cur} LOW` : cur}
@@ -509,6 +527,18 @@ function GameApp() {
       <Hotbar />
       <IdleRewardModal />
       <FactionPicker />
+      <button
+        onClick={() => { clearToken(); disconnectSocket(); window.location.reload(); }}
+        style={{
+          position: "fixed", top: 8, right: 8, zIndex: 60,
+          background: "rgba(255,60,80,0.12)", border: "1px solid #ff3b4d55",
+          color: "#ff8a9a", fontSize: 10, letterSpacing: "0.12em",
+          padding: "3px 10px", borderRadius: 4, cursor: "pointer",
+          fontFamily: "'Courier New', monospace",
+        }}
+      >
+        LOGOUT
+      </button>
       <div className="crt-overlay" />
     </div>
   );

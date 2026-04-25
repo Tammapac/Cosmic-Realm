@@ -117,15 +117,15 @@ export function effectiveStats(): {
   const skUtThrust  = p.skills["ut-thrust"]  ?? 0;
 
   const mod = sumEquippedStats() as Required<ModuleStats>;
-  let damage = (cls.baseDamage + mod.damage) * (1 + skOffPower * 0.05);
-  let hullMax = (cls.hullMax + (mod.hullMax ?? 0)) * (1 + skDefArmor * 0.08);
-  let shieldMax = (cls.shieldMax + (mod.shieldMax ?? 0)) * (1 + skDefShield * 0.08);
-  let speed = (cls.baseSpeed + (mod.speed ?? 0)) * (1 + skUtThrust * 0.05);
+  let damage = (cls.baseDamage + mod.damage) * (1 + skOffPower * 0.03);
+  let hullMax = (cls.hullMax + (mod.hullMax ?? 0)) * (1 + skDefArmor * 0.05);
+  let shieldMax = (cls.shieldMax + (mod.shieldMax ?? 0)) * (1 + skDefShield * 0.05);
+  let speed = (cls.baseSpeed + (mod.speed ?? 0)) * (1 + skUtThrust * 0.03);
   let shieldRegen = 5 + (mod.shieldRegen ?? 0);
-  let damageReduction = (skDefBulw * 0.04) + (mod.damageReduction ?? 0);
-  let aoeRadius = (skOffPierce * 4) + (mod.aoeRadius ?? 0);
-  let critChance = 0.05 + skOffCrit * 0.03 + (mod.critChance ?? 0);
-  let fireRate = (1 + skOffRapid * 0.05) * (mod.fireRate ?? 1);
+  let damageReduction = (skDefBulw * 0.03) + (mod.damageReduction ?? 0);
+  let aoeRadius = (skOffPierce * 3) + (mod.aoeRadius ?? 0);
+  let critChance = 0.03 + skOffCrit * 0.02 + (mod.critChance ?? 0);
+  let fireRate = (1 + skOffRapid * 0.03) * (mod.fireRate ?? 1);
   let lootBonus = mod.lootBonus ?? 0;
 
   for (const d of p.drones) {
@@ -152,7 +152,7 @@ export function queueAttackTarget(enemyId: string): void {
 // ── SPAWN ──────────────────────────────────────────────────────────────────
 function spawnEnemy(): void {
   const z = ZONES[state.player.zone];
-  if (state.enemies.filter((e) => !e.isBoss).length >= 12 + z.enemyTier * 3) return;
+  if (state.enemies.filter((e) => !e.isBoss).length >= 18 + z.enemyTier * 4) return;
   const type: EnemyType = z.enemyTypes[Math.floor(Math.random() * z.enemyTypes.length)];
   const def = ENEMY_DEFS[type];
   const angle = Math.random() * Math.PI * 2;
@@ -168,7 +168,7 @@ function spawnEnemy(): void {
     px = (Math.random() - 0.5) * 2 * mapR;
     py = (Math.random() - 0.5) * 2 * mapR;
   }
-  const tierMult = 1 + (z.enemyTier - 1) * 0.25;
+  const tierMult = 1 + (z.enemyTier - 1) * 0.5;
   const namePool = ENEMY_NAMES[type];
   const eName = namePool[Math.floor(Math.random() * namePool.length)];
   // Apply faction-specific stat/color overrides
@@ -269,7 +269,7 @@ function updateDungeon(dt: number): void {
 
 function spawnBoss(): void {
   const z = ZONES[state.player.zone];
-  const tierMult = 1 + (z.enemyTier - 1) * 0.25;
+  const tierMult = 1 + (z.enemyTier - 1) * 0.5;
   const angle = Math.random() * Math.PI * 2;
   const dist = 600;
   const px = state.player.pos.x + Math.cos(angle) * dist;
@@ -371,24 +371,24 @@ function emitDeath(x: number, y: number, color: string, big = false): void {
   }
 
   // Fireballs — orange/red/blue blobs that linger and expand
-  const fbColors = ["#ff8c00", "#ff4500", "#ffd700", "#ff6600", "#4488ff", "#ff2244"];
-  const fbCount = B ? 8 : 5;
+  const fbColors = ["#ff8c00", "#ff4500", "#ffd700", "#ff6600", "#4488ff", "#ff2244", "#ff0066"];
+  const fbCount = B ? 14 : 8;
   for (let i = 0; i < fbCount; i++) {
     const a = Math.random() * Math.PI * 2;
-    const spd = (0.2 + Math.random() * 0.5) * (B ? 70 : 50);
+    const spd = (0.2 + Math.random() * 0.6) * (B ? 90 : 60);
     state.particles.push({
       id: `fb-${Math.random().toString(36).slice(2, 8)}`,
-      pos: { x: x + (Math.random() - 0.5) * 8, y: y + (Math.random() - 0.5) * 8 },
+      pos: { x: x + (Math.random() - 0.5) * 12, y: y + (Math.random() - 0.5) * 12 },
       vel: { x: Math.cos(a) * spd, y: Math.sin(a) * spd },
-      ttl: 0.4 + Math.random() * 0.35, maxTtl: 0.75,
+      ttl: 0.5 + Math.random() * 0.4, maxTtl: 0.9,
       color: fbColors[Math.floor(Math.random() * fbColors.length)],
-      size: B ? (55 + Math.random() * 35) : (28 + Math.random() * 18),
+      size: B ? (60 + Math.random() * 45) : (32 + Math.random() * 22),
       kind: "fireball",
     });
   }
 
   // Smoke puffs — dark expanding circles that billow and linger
-  const smokeCount = B ? 8 : 4;
+  const smokeCount = B ? 12 : 6;
   for (let i = 0; i < smokeCount; i++) {
     const a = Math.random() * Math.PI * 2;
     const spd = (0.1 + Math.random() * 0.35) * (B ? 40 : 25);
@@ -404,7 +404,7 @@ function emitDeath(x: number, y: number, color: string, big = false): void {
   }
 
   // Spinning hull debris chunks
-  const debrisCount = B ? 18 : 8;
+  const debrisCount = B ? 24 : 12;
   const debrisColors = [color, "#ff8a4e", "#ffd24a", "#ffccaa", "#cccccc"];
   for (let i = 0; i < debrisCount; i++) {
     const a = Math.random() * Math.PI * 2;
@@ -423,10 +423,10 @@ function emitDeath(x: number, y: number, color: string, big = false): void {
   }
 
   // Sparks — three tiers (more for space feel)
-  emitSpark(x, y, "#ffffff", B ? 28 : 12, B ? 320 : 240, B ? 3 : 2);
-  emitSpark(x, y, color, B ? 50 : 20, B ? 220 : 160, B ? 4 : 3);
-  emitSpark(x, y, "#ffd24a", B ? 30 : 10, B ? 140 : 90, B ? 3 : 2);
-  emitSpark(x, y, "#4488ff", B ? 15 : 6, B ? 180 : 120, B ? 2 : 2);
+  emitSpark(x, y, "#ffffff", B ? 40 : 18, B ? 380 : 280, B ? 3 : 2);
+  emitSpark(x, y, color, B ? 60 : 28, B ? 260 : 200, B ? 4 : 3);
+  emitSpark(x, y, "#ffd24a", B ? 40 : 16, B ? 180 : 120, B ? 3 : 2);
+  emitSpark(x, y, "#4488ff", B ? 20 : 10, B ? 220 : 150, B ? 2 : 2);
 }
 
 // ── PROJECTILES ───────────────────────────────────────────────────────────
@@ -567,6 +567,11 @@ function applyKill(e: Enemy, killerCrit: boolean): void {
     state.cargoBoxes.push(box);
     pushFloater({ text: "LOOT ▼", color: box.color, x: e.pos.x, y: e.pos.y - 12, scale: 1, bold: true });
   }
+
+  // Ammo drop (x1 basic ammo)
+  const ammoDrop = 1 + Math.floor(Math.random() * 3);
+  p2.ammo.x1 = (p2.ammo.x1 ?? 0) + ammoDrop;
+  pushFloater({ text: `+${ammoDrop} x1 ammo`, color: "#aabbcc", x: e.pos.x + 30, y: e.pos.y - 20, scale: 0.7, bold: false });
 
   // Quest progress
   for (const q of state.player.activeQuests) {
@@ -814,7 +819,7 @@ function tickWorld(dt: number): void {
     enemySpawnTimer -= dt;
     if (enemySpawnTimer <= 0) {
       spawnEnemy();
-      enemySpawnTimer = 1.6 + Math.random() * 1.4;
+      enemySpawnTimer = 0.8 + Math.random() * 1.0;
     }
   }
 
@@ -919,44 +924,41 @@ function tickWorld(dt: number): void {
     if (!e.aggro) continue;
     if (e.isBoss) {
       if (e.fireCd <= 0 && ed < 600) {
-        // 5-shot spread
         for (let i = -2; i <= 2; i++) {
-          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.18, e.damage, e.color, 4, { speedMul: 0.9 });
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.1, e.damage, e.color, 4, { speedMul: 0.95 });
         }
-        e.fireCd = 1.6;
-        // burst follow-up: 3 quick shots after a beat
+        e.fireCd = 1.4;
         e.burstShots = 3;
-        e.burstCd = 0.2;
+        e.burstCd = 0.15;
       }
       if ((e.burstShots ?? 0) > 0) {
         e.burstCd = (e.burstCd ?? 0) - dt;
         if ((e.burstCd ?? 0) <= 0) {
           fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage * 0.7, e.color, 3);
           e.burstShots = (e.burstShots ?? 0) - 1;
-          e.burstCd = 0.18;
+          e.burstCd = 0.15;
         }
       }
     } else if (e.behavior === "ranged") {
-      if (e.fireCd <= 0 && ed < 460) {
-        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage, e.color);
-        e.fireCd = 0.8 + Math.random() * 0.6;
-      }
-    } else if (e.behavior === "tank") {
-      if (e.fireCd <= 0 && ed < 420) {
-        // small burst of 2
-        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle - 0.08, e.damage * 0.9, e.color);
-        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + 0.08, e.damage * 0.9, e.color);
-        e.fireCd = 1.8 + Math.random() * 0.8;
-      }
-    } else if (e.behavior === "fast") {
-      if (e.fireCd <= 0 && ed < 220) {
-        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage, e.color, 2);
-        e.fireCd = 0.7 + Math.random() * 0.6;
-      }
-    } else {
       if (e.fireCd <= 0 && ed < 480) {
         fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage, e.color);
-        e.fireCd = 1.4 + Math.random() * 1.2;
+        e.fireCd = 0.6 + Math.random() * 0.4;
+      }
+    } else if (e.behavior === "tank") {
+      if (e.fireCd <= 0 && ed < 440) {
+        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle - 0.04, e.damage * 0.9, e.color);
+        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + 0.04, e.damage * 0.9, e.color);
+        e.fireCd = 1.4 + Math.random() * 0.6;
+      }
+    } else if (e.behavior === "fast") {
+      if (e.fireCd <= 0 && ed < 280) {
+        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage, e.color, 2);
+        e.fireCd = 0.5 + Math.random() * 0.4;
+      }
+    } else {
+      if (e.fireCd <= 0 && ed < 500) {
+        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage, e.color);
+        e.fireCd = 1.0 + Math.random() * 0.8;
       }
     }
   }
@@ -972,29 +974,15 @@ function tickWorld(dt: number): void {
     const atkDist = Math.sqrt((atkTarget.pos.x - p.pos.x) ** 2 + (atkTarget.pos.y - p.pos.y) ** 2);
     if (atkDist < FIRE_RANGE) {
       const weaponIds = p.equipped.weapon.filter(Boolean) as string[];
-      const primaryWeaponId = weaponIds[0] ?? "";
-      const ammoType = getActiveAmmoType(primaryWeaponId);
+      const ammoType = getActiveAmmoType();
       const typeDef = ROCKET_AMMO_TYPE_DEFS[ammoType];
-      const dmgMul = (typeDef?.damageMul ?? 1.0) * 0.5;
+      const dmgMul = (typeDef?.damageMul ?? 1.0) * 0.4;
       const projColor = typeDef?.color ?? "#4ee2ff";
       let firedAny = false;
-      // Check each weapon has at least 1 ammo in its own pool
-      let canFire = true;
-      for (const wid of weaponIds) {
-        const wAmmo = ammoType === "x1" ? (p.ammo[wid] ?? 0) : (p.ammoByType?.[wid]?.[ammoType] ?? 0);
-        if (wAmmo < 1) { canFire = false; break; }
-      }
+      const globalAmmo = p.ammo[ammoType] ?? 0;
+      const canFire = globalAmmo >= 1;
       if (canFire) {
-        // Consume 1 ammo from each weapon's own pool
-        for (const wid of weaponIds) {
-          if (ammoType === "x1") {
-            p.ammo[wid] = (p.ammo[wid] ?? 0) - 1;
-          } else {
-            if (!p.ammoByType) p.ammoByType = {};
-            if (!p.ammoByType[wid]) p.ammoByType[wid] = {};
-            p.ammoByType[wid][ammoType] = (p.ammoByType[wid][ammoType] ?? 0) - 1;
-          }
-        }
+        p.ammo[ammoType] = globalAmmo - 1;
         const totalDmg = stats.damage * dmgMul;
         const laserIds: string[] = [];
         const rocketIds: string[] = [];
