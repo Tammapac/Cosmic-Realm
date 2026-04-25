@@ -18,7 +18,6 @@ const TABS: { id: HangarTab; label: string; glyph: string }[] = [
   { id: "dungeons", label: "Dungeons", glyph: "▼" },
   { id: "drones",   label: "Drones",   glyph: "✦" },
   { id: "market",   label: "Market",   glyph: "$" },
-  { id: "ammo",     label: "Ammo",     glyph: "⟁" },
   { id: "cargo",    label: "Cargo",    glyph: "▤" },
   { id: "repair",   label: "Services", glyph: "✚" },
 ];
@@ -80,7 +79,7 @@ export function Hangar({ stationId }: { stationId: string }) {
           {tab === "ships" && <ShipsTab />}
           {tab === "drones" && <DronesTab />}
           {tab === "market" && <MarketTab stationId={stationId} />}
-          {tab === "ammo" && <AmmoTab />}
+          {tab === "ammo" && <AmmoTab />}  {/* kept for loadout inline popup */}
           {tab === "cargo" && <CargoTab />}
           {tab === "repair" && <RepairTab stationId={stationId} />}
         </div>
@@ -507,6 +506,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
   const stats = effectiveStats();
   const [filter, setFilter] = useState<ModuleSlot | "all">("all");
   const [showShop, setShowShop] = useState(false);
+  const [showAmmoPopup, setShowAmmoPopup] = useState(false);
   const [hoveredShopDefId, setHoveredShopDefId] = useState<string | null>(null);
   const hoveredShopDef = hoveredShopDefId ? MODULE_DEFS[hoveredShopDefId] ?? null : null;
   const [hoveredInvInstanceId, setHoveredInvInstanceId] = useState<string | null>(null);
@@ -608,8 +608,8 @@ function LoadoutTab({ stationId }: { stationId: string }) {
             <button className="btn" style={{ padding: "2px 6px", fontSize: 9 }} onClick={() => { setShowShop((v) => !v); setHoveredShopDefId(null); setHoveredInvInstanceId(null); }}>
               {showShop ? "Show Inventory" : `Shop @ ${station.name}`}
             </button>
-            <button className="btn btn-amber" style={{ padding: "2px 6px", fontSize: 9 }} onClick={() => { state.hangarTab = "ammo"; bump(); }}>
-              Ammo
+            <button className="btn btn-amber" style={{ padding: "2px 6px", fontSize: 9 }} onClick={() => setShowAmmoPopup((v) => !v)}>
+              {showAmmoPopup ? "Close Ammo" : "Ammo"}
             </button>
           </div>
         </div>
@@ -728,6 +728,11 @@ function LoadoutTab({ stationId }: { stationId: string }) {
           )}
         </div>
       </div>
+      {showAmmoPopup && (
+        <div className="col-span-2">
+          <AmmoTab />
+        </div>
+      )}
     </div>
   );
 }

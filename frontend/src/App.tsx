@@ -93,10 +93,11 @@ function GameCanvas() {
       return;
     }
 
-    // Check if clicking on cargo box — collect it
+    // Check if clicking on cargo box — fly to it to collect
     const cargoBox = state.cargoBoxes.find((cb) => Math.hypot(cb.pos.x - wx, cb.pos.y - wy) < 24);
     if (cargoBox) {
-      collectCargoBox(cargoBox.id);
+      state.cameraTarget = { x: cargoBox.pos.x, y: cargoBox.pos.y };
+      bump();
       return;
     }
 

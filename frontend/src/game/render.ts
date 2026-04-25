@@ -431,6 +431,71 @@ function drawShipPixels(
       ell("#b06cff",  2.5,12.5, 1, 0.7);
       break;
     }
+    case "colossus": {
+      // Massive double-hulled battleship
+      poly(c,  [[0,-22],[10,-16],[16,-4],[18,6],[14,16],[0,20],[-14,16],[-18,6],[-16,-4],[-10,-16]]);
+      poly(a,  [[-6,-18],[6,-18],[8,4],[6,16],[-6,16],[-8,4]]);
+      poly(hi, [[-3,-17],[3,-17],[3,-12],[-3,-12]]);
+      poly(dk, [[0,14],[14,16],[0,20],[-14,16]]);
+      poly(dk, [[-17,0],[-14,0],[-14,6],[-17,6]]);
+      poly(dk, [[14,0],[17,0],[17,6],[14,6]]);
+      for (let i = -3; i <= 3; i++) ell(a, i*3.5, 18, 2.2, 1.3);
+      for (let i = -3; i <= 3; i++) ell("#ff4444", i*3.5, 20, 1.2, 0.8);
+      break;
+    }
+    case "harbinger": {
+      // Sleek stealth hull with swept wings
+      poly(c,  [[0,-20],[3,-14],[10,-4],[12,4],[8,12],[0,16],[-8,12],[-12,4],[-10,-4],[-3,-14]]);
+      poly(a,  [[-2,-16],[2,-16],[3,2],[-3,2]]);
+      poly(hi, [[-1,-15],[1,-15],[1,-11],[-1,-11]]);
+      poly(c,  [[-3,2],[-14,0],[-10,8],[-4,6]]);
+      poly(c,  [[3,2],[14,0],[10,8],[4,6]]);
+      poly(dk, [[-3,8],[-6,14],[-2,12]]);
+      poly(dk, [[3,8],[6,14],[2,12]]);
+      ell(a, -4, 14, 2, 1.2);
+      ell(a,  4, 14, 2, 1.2);
+      ell("#44ffaa", -4, 16, 1.2, 0.7);
+      ell("#44ffaa",  4, 16, 1.2, 0.7);
+      break;
+    }
+    case "eclipse": {
+      // Wide destroyer with heavy armor plating
+      poly(c,  [[0,-20],[12,-14],[20,-2],[20,8],[14,16],[0,20],[-14,16],[-20,8],[-20,-2],[-12,-14]]);
+      poly(a,  [[-8,-16],[8,-16],[10,6],[8,14],[-8,14],[-10,6]]);
+      poly(hi, [[-4,-15],[4,-15],[4,-10],[-4,-10]]);
+      poly(dk, [[0,14],[12,16],[0,20],[-12,16]]);
+      poly(dk, [[-19,-1],[-16,-1],[-16,6],[-19,6]]);
+      poly(dk, [[16,-1],[19,-1],[19,6],[16,6]]);
+      for (let i = -4; i <= 4; i++) ell(a, i*3, 18, 2.5, 1.4);
+      for (let i = -4; i <= 4; i++) ell("#ff8800", i*3, 20, 1.4, 0.9);
+      break;
+    }
+    case "sovereign": {
+      // Command flagship with tower bridge
+      poly(c,  [[0,-22],[14,-16],[22,-4],[22,10],[16,18],[0,22],[-16,18],[-22,10],[-22,-4],[-14,-16]]);
+      poly(a,  [[-10,-18],[10,-18],[12,8],[10,16],[-10,16],[-12,8]]);
+      poly(hi, [[-5,-17],[5,-17],[5,-12],[-5,-12]]);
+      poly(c,  [[-1,-22],[1,-22],[0,-26]]);
+      poly(dk, [[0,16],[16,18],[0,22],[-16,18]]);
+      for (let i = -5; i <= 5; i++) ell(a, i*3, 20, 2.5, 1.4);
+      for (let i = -5; i <= 5; i++) ell("#ffdd00", i*3, 22, 1.4, 0.9);
+      break;
+    }
+    case "apex": {
+      // The ultimate ship - angular predator design
+      poly(c,  [[0,-24],[16,-18],[24,-6],[24,12],[18,20],[0,24],[-18,20],[-24,12],[-24,-6],[-16,-18]]);
+      poly(a,  [[-12,-20],[12,-20],[14,10],[12,18],[-12,18],[-14,10]]);
+      poly(hi, [[-6,-19],[6,-19],[6,-14],[-6,-14]]);
+      poly(c,  [[-1,-24],[1,-24],[0,-28]]);
+      poly(dk, [[0,18],[18,20],[0,24],[-18,20]]);
+      poly(dk, [[-23,-4],[-20,-4],[-20,8],[-23,8]]);
+      poly(dk, [[20,-4],[23,-4],[23,8],[20,8]]);
+      ell("#ffffff", 0, -4, 3, 3);
+      ell("#ffcc00", 0, -4, 1.5, 1.5);
+      for (let i = -6; i <= 6; i++) ell(a, i*2.8, 22, 2.4, 1.3);
+      for (let i = -6; i <= 6; i++) ell("#ffffff", i*2.8, 24, 1.2, 0.8);
+      break;
+    }
   }
 }
 
@@ -1690,8 +1755,27 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
     drawRift(ctx, d.pos.x, d.pos.y, d.color, d.name, state.tick, state.dungeon?.id === d.id);
   }
 
-  // Cargo boxes
-  for (const cb of state.cargoBoxes) drawCargoBox(ctx, cb, state.tick);
+  // Cargo boxes + tractor beam
+  const pl = state.player;
+  for (const cb of state.cargoBoxes) {
+    drawCargoBox(ctx, cb, state.tick);
+    const dist = Math.hypot(cb.pos.x - pl.pos.x, cb.pos.y - pl.pos.y);
+    if (dist < 120 && dist > 10) {
+      ctx.save();
+      ctx.globalAlpha = 0.4 * (1 - dist / 120);
+      ctx.strokeStyle = cb.color;
+      ctx.lineWidth = 2;
+      ctx.shadowColor = cb.color;
+      ctx.shadowBlur = 8;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(pl.pos.x, pl.pos.y + 10);
+      ctx.lineTo(cb.pos.x, cb.pos.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+  }
 
   // Other players
   for (const o of state.others) drawOtherPlayer(ctx, o);
@@ -1798,7 +1882,7 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
       Math.max(0, p.hull / hullMax),
       Math.max(0, p.shield / shieldMax),
     );
-    // Player name + rank symbol above ship
+    // Player name + rank symbol below ship
     const rank = rankFor(p.honor);
     const factionColor = p.faction ? FACTIONS[p.faction].color : "#7a8ad8";
     ctx.font = "bold 13px 'Courier New', monospace";
@@ -1806,7 +1890,7 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
     ctx.fillStyle = "#e8f0ff";
     ctx.shadowColor = "#000";
     ctx.shadowBlur = 3;
-    const nameY = p.pos.y - 38;
+    const nameY = p.pos.y + 34;
     ctx.fillText(p.name, p.pos.x, nameY);
     // Rank symbol next to name
     ctx.fillStyle = rank.color;

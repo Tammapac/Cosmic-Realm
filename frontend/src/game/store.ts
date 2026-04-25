@@ -23,6 +23,7 @@ import {
   Floater,
   GameEvent,
   Milestones,
+  MAP_RADIUS,
   MODULE_DEFS,
   ModuleItem,
   ModuleSlot,
@@ -49,6 +50,7 @@ import { sfx } from "./sound";
 
 export type HangarTab =
   | "bounties" | "loadout" | "ships" | "drones" | "market" | "ammo" | "cargo" | "repair" | "skills" | "missions" | "dungeons";
+// "ammo" kept as valid value for internal use by loadout popup
 
 export type DockServiceEntry = {
   kind: "repair" | "shield" | "ammo" | "failed";
@@ -236,20 +238,22 @@ function makeOthers(zone: ZoneId): OtherPlayer[] {
 
 function makeAsteroids(zone: ZoneId): Asteroid[] {
   const countMap: Partial<Record<ZoneId, number>> = {
-    alpha: 14, nebula: 12, crimson: 10, void: 8, forge: 6,
-    corona: 14, fracture: 12, abyss: 10, marsdepth: 8, maelstrom: 6,
-    venus1: 14, venus2: 12, venus3: 10, venus4: 8, venus5: 6,
+    alpha: 40, nebula: 35, crimson: 30, void: 25, forge: 20,
+    corona: 40, fracture: 35, abyss: 30, marsdepth: 25, maelstrom: 20,
+    venus1: 40, venus2: 35, venus3: 30, venus4: 25, venus5: 20,
+    danger1: 15, danger2: 15, danger3: 15, danger4: 12, danger5: 10,
   };
-  const count = countMap[zone] ?? 6;
+  const count = countMap[zone] ?? 20;
   const out: Asteroid[] = [];
+  const mapR = MAP_RADIUS * 0.8;
   for (let i = 0; i < count; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const dist = 600 + Math.random() * 1500;
-    const size = 14 + Math.random() * 18;
+    const x = (Math.random() - 0.5) * 2 * mapR;
+    const y = (Math.random() - 0.5) * 2 * mapR;
+    const size = 14 + Math.random() * 22;
     const yieldsLumenite = Math.random() < 0.18;
     out.push({
       id: `ast-${i}-${Math.random().toString(36).slice(2, 6)}`,
-      pos: { x: Math.cos(angle) * dist, y: Math.sin(angle) * dist },
+      pos: { x, y },
       hp: size * 4,
       hpMax: size * 4,
       size,
@@ -363,22 +367,8 @@ const cls = SHIP_CLASSES[initialPlayer.shipClass];
 initialPlayer.hull = Math.min(initialPlayer.hull || cls.hullMax, cls.hullMax);
 initialPlayer.shield = cls.shieldMax;
 
-// Compute idle reward (only if 5min+ away)
+// Idle engine disabled
 let pendingIdleReward: GameState["pendingIdleReward"] = null;
-if (saved) {
-  const secondsAway = Math.max(0, (Date.now() - prevLastSeen) / 1000);
-  if (secondsAway > 300) {
-    // cap at 8 hours
-    const cappedSec = Math.min(secondsAway, 8 * 3600);
-    const baseRate = 6 + initialPlayer.level * 2; // credits/sec
-    const expRate = 2 + initialPlayer.level * 0.6;
-    pendingIdleReward = {
-      credits: Math.floor(baseRate * cappedSec),
-      exp: Math.floor(expRate * cappedSec),
-      secondsAway: Math.floor(cappedSec),
-    };
-  }
-}
 
 export const state: GameState = {
   player: initialPlayer,
@@ -640,12 +630,7 @@ export function stationPrice(stationId: string, resourceId: ResourceId): number 
   if (!station) return RESOURCES[resourceId].basePrice;
   const mod = station.prices[resourceId];
   let price = RESOURCES[resourceId].basePrice * (mod ?? 1.0);
-  // Faction discount (own faction OR aurora-aligned discount)
-  const p = state.player;
-  if (p.faction && station.controlledBy === p.faction) {
-    const f = FACTIONS[p.faction];
-    if (f.bonus.tradeDiscount) price *= (1 - f.bonus.tradeDiscount);
-  }
+  // Faction discounts disabled
   return Math.max(1, Math.round(price));
 }
 
@@ -688,15 +673,43 @@ export function removeCargo(resourceId: ResourceId, qty: number): number {
   return take;
 }
 
-// ── CARGO BOX PICKUP ─────────────────────────────────────────────────────
+// ── CARGO BOX PICKUP (proximity-based with tractor beam) ─────────────────
+const COLLECT_RANGE = 60;
+const TRACTOR_RANGE = 120;
+
+export function tryCollectNearbyBoxes(): void {
+  const p = state.player;
+  for (let i = state.cargoBoxes.length - 1; i >= 0; i--) {
+    const cb = state.cargoBoxes[i];
+    const dist = Math.hypot(cb.pos.x - p.pos.x, cb.pos.y - p.pos.y);
+    if (dist < COLLECT_RANGE) {
+      if (cb.qty > 0) {
+        const got = addCargo(cb.resourceId, cb.qty);
+        if (got > 0) {
+          pushFloater({ text: `+${got} ${RESOURCES[cb.resourceId].name}`, color: "#5cff8a", x: cb.pos.x, y: cb.pos.y - 12, scale: 1, bold: true });
+          sfx.pickup();
+          state.cargoBoxes.splice(i, 1);
+        }
+      } else {
+        state.cargoBoxes.splice(i, 1);
+      }
+    } else if (dist < TRACTOR_RANGE) {
+      const pull = 120;
+      const ang = Math.atan2(p.pos.y - cb.pos.y, p.pos.x - cb.pos.x);
+      cb.pos.x += Math.cos(ang) * pull * 0.016;
+      cb.pos.y += Math.sin(ang) * pull * 0.016;
+    }
+  }
+}
+
 export function collectCargoBox(boxId: string): void {
   const idx = state.cargoBoxes.findIndex((cb) => cb.id === boxId);
   if (idx < 0) return;
   const cb = state.cargoBoxes[idx];
   const p = state.player;
   const dist = Math.hypot(cb.pos.x - p.pos.x, cb.pos.y - p.pos.y);
-  if (dist > 200) {
-    pushNotification("Too far away", "bad");
+  if (dist > COLLECT_RANGE) {
+    pushNotification("Fly closer to collect", "bad");
     return;
   }
   if (cb.qty > 0) {

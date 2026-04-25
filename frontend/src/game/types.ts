@@ -32,7 +32,12 @@ export type ShipClassId =
   | "phalanx"
   | "titan"
   | "leviathan"
-  | "specter";
+  | "specter"
+  | "colossus"
+  | "harbinger"
+  | "eclipse"
+  | "sovereign"
+  | "apex";
 
 export type ShipClass = {
   id: ShipClassId;
@@ -144,7 +149,13 @@ export type ResourceId =
   | "medical-serum"
   | "fusion-lattice"
   | "star-map"
-  | "blackglass";
+  | "blackglass"
+  | "titanium"
+  | "cryo-fluid"
+  | "neural-chip"
+  | "dark-matter"
+  | "plasma-coil"
+  | "bio-crystal";
 
 export type Resource = {
   id: ResourceId;
@@ -782,7 +793,7 @@ export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
     id: "obsidian",
     name: "Obsidian Reaver",
     hullMax: 220, shieldMax: 180, baseSpeed: 200, baseDamage: 22,
-    cargoMax: 30, droneSlots: 3, price: 280000,
+    cargoMax: 30, droneSlots: 3, price: 65000,
     slots: { weapon: 3, generator: 3, module: 3 },
     description: "Predator of the deep lanes.",
     color: "#ff5cf0", accent: "#2a0a30",
@@ -810,7 +821,7 @@ export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
     name: "Titan Bulwark",
     hullMax: 400, shieldMax: 300, baseSpeed: 130, baseDamage: 30,
     cargoMax: 80, droneSlots: 5, price: 1500000,
-    slots: { weapon: 5, generator: 4, module: 5 },
+    slots: { weapon: 6, generator: 5, module: 5 },
     description: "Walking fortress. Slow but devastating.",
     color: "#ffd24a", accent: "#3a2a08",
   },
@@ -819,7 +830,7 @@ export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
     name: "Leviathan Dreadnought",
     hullMax: 600, shieldMax: 480, baseSpeed: 110, baseDamage: 42,
     cargoMax: 120, droneSlots: 6, price: 3200000,
-    slots: { weapon: 6, generator: 5, module: 6 },
+    slots: { weapon: 7, generator: 6, module: 7 },
     description: "Capital-class warship. Sectors part before it.",
     color: "#ff5c6c", accent: "#3a0810",
   },
@@ -828,9 +839,54 @@ export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
     name: "Specter Phaseframe",
     hullMax: 220, shieldMax: 360, baseSpeed: 220, baseDamage: 34,
     cargoMax: 40, droneSlots: 6, price: 5000000,
-    slots: { weapon: 6, generator: 5, module: 6 },
+    slots: { weapon: 7, generator: 6, module: 7 },
     description: "Phase-shifted void hull. The endgame chassis.",
     color: "#b06cff", accent: "#15083a",
+  },
+  colossus: {
+    id: "colossus",
+    name: "Colossus Mk-X",
+    hullMax: 800, shieldMax: 600, baseSpeed: 100, baseDamage: 50,
+    cargoMax: 150, droneSlots: 7, price: 8000000,
+    slots: { weapon: 9, generator: 8, module: 8 },
+    description: "Massive capital ship. Bristling with weapon banks.",
+    color: "#ff4444", accent: "#2a0505",
+  },
+  harbinger: {
+    id: "harbinger",
+    name: "Harbinger Class",
+    hullMax: 500, shieldMax: 700, baseSpeed: 160, baseDamage: 44,
+    cargoMax: 80, droneSlots: 7, price: 12000000,
+    slots: { weapon: 10, generator: 9, module: 9 },
+    description: "Advanced stealth dreadnought. Speed and firepower combined.",
+    color: "#44ffaa", accent: "#082a18",
+  },
+  eclipse: {
+    id: "eclipse",
+    name: "Eclipse Destroyer",
+    hullMax: 1000, shieldMax: 800, baseSpeed: 90, baseDamage: 60,
+    cargoMax: 200, droneSlots: 8, price: 20000000,
+    slots: { weapon: 12, generator: 10, module: 10 },
+    description: "Endgame destroyer. Unstoppable broadside.",
+    color: "#ff8800", accent: "#3a2208",
+  },
+  sovereign: {
+    id: "sovereign",
+    name: "Sovereign Flagship",
+    hullMax: 1400, shieldMax: 1100, baseSpeed: 80, baseDamage: 70,
+    cargoMax: 250, droneSlots: 8, price: 35000000,
+    slots: { weapon: 14, generator: 12, module: 12 },
+    description: "Fleet command ship. The ultimate in raw power.",
+    color: "#ffdd00", accent: "#3a3008",
+  },
+  apex: {
+    id: "apex",
+    name: "Apex Predator",
+    hullMax: 2000, shieldMax: 1600, baseSpeed: 70, baseDamage: 85,
+    cargoMax: 300, droneSlots: 10, price: 60000000,
+    slots: { weapon: 16, generator: 16, module: 14 },
+    description: "The final ship. 16 weapon slots. Nothing survives.",
+    color: "#ffffff", accent: "#1a1a1a",
   },
 };
 
@@ -964,14 +1020,19 @@ export const RESOURCES: Record<ResourceId, Resource> = {
   "fusion-lattice": { id: "fusion-lattice", name: "Fusion Lattice", basePrice: 210, glyph: "⧉", color: "#ffee88", description: "Precision reactor parts for elite shipyards." },
   "star-map": { id: "star-map", name: "Star Map", basePrice: 120, glyph: "✦", color: "#7ad8ff", description: "Chart fragments that improve route planning." },
   blackglass:  { id: "blackglass",  name: "Blackglass",       basePrice: 310, glyph: "▣", color: "#9a88ff", description: "Dark translucent material used in luxury hull design." },
+  titanium:    { id: "titanium",    name: "Titanium Alloy",   basePrice: 48,  glyph: "▰", color: "#c0c8d8", description: "High-grade structural alloy for advanced ship hulls." },
+  "cryo-fluid":{ id: "cryo-fluid",  name: "Cryo Fluid",      basePrice: 92,  glyph: "≈", color: "#88ddff", description: "Super-cooled coolant for reactor cores and weapons." },
+  "neural-chip":{ id: "neural-chip", name: "Neural Chip",     basePrice: 280, glyph: "⌬", color: "#ff88cc", description: "Bio-mechanical processor. Powers advanced targeting systems." },
+  "dark-matter":{ id: "dark-matter", name: "Dark Matter",     basePrice: 450, glyph: "●", color: "#8844cc", description: "Unstable exotic matter. Used in warp drive construction." },
+  "plasma-coil":{ id: "plasma-coil", name: "Plasma Coil",     basePrice: 65,  glyph: "◎", color: "#ff6644", description: "Compact energy coil for weapon charging systems." },
+  "bio-crystal":{ id: "bio-crystal", name: "Bio Crystal",     basePrice: 195, glyph: "◇", color: "#44ff88", description: "Living crystalline organisms. Medical and research value." },
 };
 
 export const STATIONS: Station[] = [
   // alpha
   { id: "helix",   name: "Helix Station",  pos: { x: 0, y: 0 },     zone: "alpha",   kind: "hub",
     description: "Capital hub of the Alpha Frontier.", controlledBy: "earth",
-    prices: { scrap: 1.0, plasma: 1.0, iron: 0.95, synth: 0.9, medpack: 1.1, lumenite: 1.0, warp: 1.1, void: 1.2, dread: 1.1, quantum: 1.0,
-              food: 0.7, medicine: 0.8, luxury: 1.4, "fuel-cell": 0.8, "bio-matter": 1.2, spice: 0.85, "data-core": 1.3 } },
+    prices: { scrap: 1.0, plasma: 1.0, iron: 0.95, synth: 0.9, medpack: 1.1, lumenite: 1.0, food: 0.8, "fuel-cell": 0.9 } },
   { id: "iron-belt", name: "Iron Belt Refinery", pos: { x: -1800, y: -400 }, zone: "alpha", kind: "mining",
     description: "Refinery sitting on a rich mineral belt.", controlledBy: "earth",
     prices: { iron: 0.6, lumenite: 0.7, scrap: 1.2, synth: 1.0, medpack: 1.1, plasma: 1.05,
@@ -1006,7 +1067,7 @@ export const STATIONS: Station[] = [
   // forge
   { id: "ironclad",    name: "Ironclad Bastion",   pos: { x: 0, y: 0 },       zone: "forge",    kind: "military",
     description: "Heavily fortified military hub. Sells advanced weapons at a premium.", controlledBy: "mars",
-    prices: { dread: 1.5, warp: 1.4, plasma: 1.6, iron: 0.7, scrap: 0.8, lumenite: 1.0, quantum: 1.3 } },
+    prices: { dread: 1.5, warp: 1.4, plasma: 1.6, iron: 0.7, scrap: 0.8 } },
   { id: "forge-gate",  name: "Forge Gate Depot",   pos: { x: -1600, y: 1800 },  zone: "forge",    kind: "trade",
     description: "Industrial depot trading raw ore and components.", controlledBy: "venus",
     prices: { iron: 0.5, scrap: 0.6, lumenite: 0.75, quantum: 0.9, dread: 1.2, void: 1.3, blackglass: 0.6, ore: 0.55 } },
@@ -1095,6 +1156,64 @@ export const STATIONS: Station[] = [
   { id: "singularity-dock", name: "Singularity Dock", pos: { x: 2500, y: -900 }, zone: "venus5", kind: "military",
     description: "A blackglass dock for elite escorts and endgame merchants.", controlledBy: "mars",
     prices: { dread: 1.5, warp: 1.6, plasma: 1.8, quantum: 1.0, relic: 0.95, exotic: 0.9, lumenite: 1.1 } },
+  // ── EXTRA TRADING POSTS ──────────────────────────────────────────────────
+  { id: "alpha-bazaar", name: "Alpha Bazaar",       pos: { x: 2800, y: -1600 }, zone: "alpha", kind: "trade",
+    description: "Busy frontier market. Traders flock here for bulk deals.", controlledBy: "earth",
+    prices: { scrap: 1.3, iron: 1.2, plasma: 0.8, food: 0.6, medicine: 0.7, titanium: 0.8, "cryo-fluid": 1.1, luxury: 1.5, spice: 0.7, "plasma-coil": 0.75 } },
+  { id: "nebula-exchange", name: "Nebula Exchange", pos: { x: 2600, y: 1800 }, zone: "nebula", kind: "trade",
+    description: "Hidden exchange deep in the nebula clouds.", controlledBy: "venus",
+    prices: { quantum: 0.75, void: 0.8, warp: 1.2, contraband: 0.5, "neural-chip": 0.7, "dark-matter": 1.3, "bio-crystal": 0.8, exotic: 1.4 } },
+  { id: "crimson-market", name: "Crimson Market",   pos: { x: -2800, y: 2200 }, zone: "crimson", kind: "trade",
+    description: "War-zone black market. Weapons and rare goods.", controlledBy: "mars",
+    prices: { dread: 0.8, plasma: 1.3, iron: 1.4, "fuel-cell": 1.3, titanium: 0.7, "plasma-coil": 0.6, contraband: 0.5, "neural-chip": 1.2 } },
+  { id: "void-trade", name: "Void Trade Nexus",     pos: { x: -2400, y: -2000 }, zone: "void", kind: "trade",
+    description: "Nexus point where void traders gather.", controlledBy: "venus",
+    prices: { void: 0.5, quantum: 0.6, dread: 1.3, "dark-matter": 0.6, "bio-crystal": 0.7, relic: 0.7, exotic: 1.2, blackglass: 0.65 } },
+  { id: "forge-market", name: "Forge Market",       pos: { x: 2800, y: -1200 }, zone: "forge", kind: "trade",
+    description: "Industrial market for refined materials.", controlledBy: "mars",
+    prices: { iron: 0.4, scrap: 0.5, titanium: 0.55, "plasma-coil": 0.5, lumenite: 0.7, "cryo-fluid": 0.8, dread: 1.4, void: 1.5 } },
+  { id: "corona-exchange", name: "Corona Exchange", pos: { x: -2200, y: -2000 }, zone: "corona", kind: "trade",
+    description: "High-energy trade hub near the solar corona.", controlledBy: "earth",
+    prices: { lumenite: 0.4, "cryo-fluid": 0.5, plasma: 0.6, "plasma-coil": 0.55, quantum: 1.1, dread: 1.3, "dark-matter": 1.4 } },
+  { id: "fracture-bazaar", name: "Fracture Bazaar", pos: { x: 2600, y: 1400 }, zone: "fracture", kind: "trade",
+    description: "Dimensional rift bazaar. Strange goods at strange prices.", controlledBy: "venus",
+    prices: { void: 0.4, "dark-matter": 0.5, "neural-chip": 0.6, quantum: 0.65, dread: 1.6, lumenite: 1.5, "bio-crystal": 0.55, relic: 0.6 } },
+  { id: "abyss-exchange", name: "Abyss Exchange",   pos: { x: 2800, y: -1800 }, zone: "abyss", kind: "trade",
+    description: "Deep-space exchange post. Ultimate trade goods.", controlledBy: "venus",
+    prices: { quantum: 0.35, void: 1.6, dread: 2.0, "dark-matter": 0.4, exotic: 0.5, precursor: 0.5, relic: 0.55, "neural-chip": 0.5 } },
+  { id: "mars-trade", name: "Martian Trade Hub",    pos: { x: -2600, y: -1600 }, zone: "marsdepth", kind: "trade",
+    description: "Remote Martian trading hub for rare salvage.", controlledBy: "mars",
+    prices: { iron: 0.5, titanium: 0.6, "plasma-coil": 0.55, dread: 1.6, warp: 1.5, "cryo-fluid": 0.7, contraband: 0.4, "fusion-lattice": 0.8 } },
+  { id: "storm-bazaar", name: "Storm Bazaar",       pos: { x: 2800, y: -800 }, zone: "maelstrom", kind: "trade",
+    description: "Floating bazaar in the storm's edge. Everything for sale.", controlledBy: "venus",
+    prices: { iron: 0.4, scrap: 0.45, titanium: 0.5, lumenite: 0.6, quantum: 0.8, void: 1.4, dread: 1.8, exotic: 0.6, "dark-matter": 0.7 } },
+  { id: "venus2-trade", name: "Sulphur Exchange",   pos: { x: 2800, y: 1600 }, zone: "venus2", kind: "trade",
+    description: "Secondary trade post in the sulphur corridors.", controlledBy: "venus",
+    prices: { "bio-matter": 0.6, nanite: 0.7, "bio-crystal": 0.65, food: 1.4, medicine: 1.3, luxury: 0.8, "cryo-fluid": 0.75, "neural-chip": 1.1 } },
+  { id: "venus3-trade", name: "Deep Acid Market",   pos: { x: -2800, y: -2400 }, zone: "venus3", kind: "trade",
+    description: "Market at the acid layer boundary. Hazardous but lucrative.", controlledBy: "mars",
+    prices: { titanium: 0.6, "plasma-coil": 0.55, iron: 1.3, dread: 0.85, contraband: 0.5, "dark-matter": 1.2, blackglass: 0.6, "fusion-lattice": 0.9 } },
+  { id: "venus4-trade", name: "Core Trade Post",    pos: { x: -2600, y: -1200 }, zone: "venus4", kind: "trade",
+    description: "Trade post near the crushing core. Extreme prices.", controlledBy: "venus",
+    prices: { quantum: 0.45, void: 1.5, dread: 1.6, "dark-matter": 0.55, exotic: 1.3, relic: 0.6, "neural-chip": 0.55, "bio-crystal": 0.6 } },
+  { id: "venus5-trade", name: "Eye Trade Ring",     pos: { x: 2800, y: 1200 }, zone: "venus5", kind: "trade",
+    description: "Ring station orbiting the Eye of Venus. Legendary goods.", controlledBy: "venus",
+    prices: { quantum: 0.4, void: 1.6, dread: 2.1, exotic: 0.55, precursor: 0.45, "dark-matter": 0.5, "neural-chip": 0.5, blackglass: 0.55 } },
+  { id: "danger1-trade", name: "Rift Market",       pos: { x: 2400, y: -1800 }, zone: "danger1", kind: "trade",
+    description: "Lawless market in the rift zone. No rules, no refunds.", controlledBy: "earth",
+    prices: { contraband: 0.3, dread: 2.0, void: 1.8, exotic: 0.5, "dark-matter": 0.4, "neural-chip": 0.45, relic: 0.45, precursor: 0.5 } },
+  { id: "danger2-trade", name: "Dead Zone Bazaar",  pos: { x: 2600, y: 1400 }, zone: "danger2", kind: "trade",
+    description: "Ghost station bazaar. Deals that shouldn't exist.", controlledBy: "venus",
+    prices: { contraband: 0.25, exotic: 0.4, "dark-matter": 0.35, relic: 0.4, precursor: 0.45, dread: 2.4, void: 2.2, quantum: 1.8 } },
+  { id: "danger3-trade", name: "Pirate Freeport",   pos: { x: -2400, y: 1600 }, zone: "danger3", kind: "trade",
+    description: "Pirate-run freeport. Everything has a price.", controlledBy: "venus",
+    prices: { contraband: 0.15, luxury: 0.3, exotic: 0.45, "dark-matter": 0.4, dread: 2.8, void: 2.5, quantum: 2.0, blackglass: 0.4 } },
+  { id: "danger4-trade", name: "Null Zone Exchange", pos: { x: 2200, y: -1400 }, zone: "danger4", kind: "trade",
+    description: "Exchange post in null space. Reality is optional.", controlledBy: "earth",
+    prices: { "dark-matter": 0.3, precursor: 0.35, exotic: 0.35, relic: 0.35, dread: 2.8, void: 2.8, quantum: 2.2, "neural-chip": 0.4 } },
+  { id: "danger5-trade", name: "Abyss Gate Bazaar", pos: { x: 2000, y: 1800 }, zone: "danger5", kind: "trade",
+    description: "The deepest market. Prices beyond comprehension.", controlledBy: "mars",
+    prices: { "dark-matter": 0.2, precursor: 0.25, exotic: 0.25, relic: 0.25, "neural-chip": 0.3, dread: 3.5, void: 3.5, quantum: 3.0 } },
   // ── DANGER ZONES ──────────────────────────────────────────────────────────
   { id: "rift-outpost", name: "Rift Outpost",      pos: { x: 0, y: 0 },     zone: "danger1", kind: "outpost",
     description: "A lawless outpost in contested space. No faction protection.", controlledBy: "earth",
@@ -1115,60 +1234,60 @@ export const STATIONS: Station[] = [
 
 export const PORTALS: Portal[] = [
   // Earth chain: alpha ↔ nebula ↔ crimson ↔ void ↔ forge (top-right / bottom-left corners)
-  { id: "p-a-n",   pos: { x:  28000, y: -28000 }, fromZone: "alpha",    toZone: "nebula"   },
-  { id: "p-n-a",   pos: { x: -28000, y:  28000 }, fromZone: "nebula",   toZone: "alpha"    },
-  { id: "p-n-c",   pos: { x:  28000, y:  28000 }, fromZone: "nebula",   toZone: "crimson"  },
-  { id: "p-c-n",   pos: { x: -28000, y: -28000 }, fromZone: "crimson",  toZone: "nebula"   },
-  { id: "p-c-v",   pos: { x:  28000, y: -28000 }, fromZone: "crimson",  toZone: "void"     },
-  { id: "p-v-c",   pos: { x: -28000, y:  28000 }, fromZone: "void",     toZone: "crimson"  },
-  { id: "p-v-f",   pos: { x:  28000, y:  28000 }, fromZone: "void",     toZone: "forge"    },
-  { id: "p-f-v",   pos: { x: -28000, y: -28000 }, fromZone: "forge",    toZone: "void"     },
+  { id: "p-a-n",   pos: { x:  6500, y: -6500 }, fromZone: "alpha",    toZone: "nebula"   },
+  { id: "p-n-a",   pos: { x: -6500, y:  6500 }, fromZone: "nebula",   toZone: "alpha"    },
+  { id: "p-n-c",   pos: { x:  6500, y:  6500 }, fromZone: "nebula",   toZone: "crimson"  },
+  { id: "p-c-n",   pos: { x: -6500, y: -6500 }, fromZone: "crimson",  toZone: "nebula"   },
+  { id: "p-c-v",   pos: { x:  6500, y: -6500 }, fromZone: "crimson",  toZone: "void"     },
+  { id: "p-v-c",   pos: { x: -6500, y:  6500 }, fromZone: "void",     toZone: "crimson"  },
+  { id: "p-v-f",   pos: { x:  6500, y:  6500 }, fromZone: "void",     toZone: "forge"    },
+  { id: "p-f-v",   pos: { x: -6500, y: -6500 }, fromZone: "forge",    toZone: "void"     },
   // Cross-faction: Earth endgame → Mars entry
-  { id: "p-f-co",  pos: { x: -28000, y:  28000 }, fromZone: "forge",    toZone: "corona"   },
-  { id: "p-co-f",  pos: { x:  28000, y: -28000 }, fromZone: "corona",   toZone: "forge"    },
+  { id: "p-f-co",  pos: { x: -6500, y:  6500 }, fromZone: "forge",    toZone: "corona"   },
+  { id: "p-co-f",  pos: { x:  6500, y: -6500 }, fromZone: "corona",   toZone: "forge"    },
   // Mars chain: corona ↔ fracture ↔ abyss ↔ marsdepth ↔ maelstrom
-  { id: "p-co-fr", pos: { x: -28000, y: -28000 }, fromZone: "corona",   toZone: "fracture" },
-  { id: "p-fr-co", pos: { x:  28000, y:  28000 }, fromZone: "fracture", toZone: "corona"   },
-  { id: "p-fr-ab", pos: { x: -28000, y:  28000 }, fromZone: "fracture", toZone: "abyss"    },
-  { id: "p-ab-fr", pos: { x:  28000, y: -28000 }, fromZone: "abyss",    toZone: "fracture" },
-  { id: "p-ab-md", pos: { x: -28000, y: -28000 }, fromZone: "abyss",    toZone: "marsdepth"},
-  { id: "p-md-ab", pos: { x:  28000, y:  28000 }, fromZone: "marsdepth",toZone: "abyss"    },
-  { id: "p-md-ml", pos: { x: -28000, y:  28000 }, fromZone: "marsdepth",toZone: "maelstrom"},
-  { id: "p-ml-md", pos: { x:  28000, y: -28000 }, fromZone: "maelstrom",toZone: "marsdepth"},
+  { id: "p-co-fr", pos: { x: -6500, y: -6500 }, fromZone: "corona",   toZone: "fracture" },
+  { id: "p-fr-co", pos: { x:  6500, y:  6500 }, fromZone: "fracture", toZone: "corona"   },
+  { id: "p-fr-ab", pos: { x: -6500, y:  6500 }, fromZone: "fracture", toZone: "abyss"    },
+  { id: "p-ab-fr", pos: { x:  6500, y: -6500 }, fromZone: "abyss",    toZone: "fracture" },
+  { id: "p-ab-md", pos: { x: -6500, y: -6500 }, fromZone: "abyss",    toZone: "marsdepth"},
+  { id: "p-md-ab", pos: { x:  6500, y:  6500 }, fromZone: "marsdepth",toZone: "abyss"    },
+  { id: "p-md-ml", pos: { x: -6500, y:  6500 }, fromZone: "marsdepth",toZone: "maelstrom"},
+  { id: "p-ml-md", pos: { x:  6500, y: -6500 }, fromZone: "maelstrom",toZone: "marsdepth"},
   // Cross-faction: Mars endgame → Venus entry
-  { id: "p-ml-v1", pos: { x: -28000, y: -28000 }, fromZone: "maelstrom",toZone: "venus1"   },
-  { id: "p-v1-ml", pos: { x:  28000, y:  28000 }, fromZone: "venus1",   toZone: "maelstrom"},
+  { id: "p-ml-v1", pos: { x: -6500, y: -6500 }, fromZone: "maelstrom",toZone: "venus1"   },
+  { id: "p-v1-ml", pos: { x:  6500, y:  6500 }, fromZone: "venus1",   toZone: "maelstrom"},
   // Venus chain: venus1 ↔ venus2 ↔ venus3 ↔ venus4 ↔ venus5
-  { id: "p-v1-v2", pos: { x:  28000, y: -28000 }, fromZone: "venus1",   toZone: "venus2"   },
-  { id: "p-v2-v1", pos: { x: -28000, y:  28000 }, fromZone: "venus2",   toZone: "venus1"   },
-  { id: "p-v2-v3", pos: { x:  28000, y:  28000 }, fromZone: "venus2",   toZone: "venus3"   },
-  { id: "p-v3-v2", pos: { x: -28000, y: -28000 }, fromZone: "venus3",   toZone: "venus2"   },
-  { id: "p-v3-v4", pos: { x:  28000, y: -28000 }, fromZone: "venus3",   toZone: "venus4"   },
-  { id: "p-v4-v3", pos: { x: -28000, y:  28000 }, fromZone: "venus4",   toZone: "venus3"   },
-  { id: "p-v4-v5", pos: { x:  28000, y:  28000 }, fromZone: "venus4",   toZone: "venus5"   },
-  { id: "p-v5-v4", pos: { x: -28000, y: -28000 }, fromZone: "venus5",   toZone: "venus4"   },
+  { id: "p-v1-v2", pos: { x:  6500, y: -6500 }, fromZone: "venus1",   toZone: "venus2"   },
+  { id: "p-v2-v1", pos: { x: -6500, y:  6500 }, fromZone: "venus2",   toZone: "venus1"   },
+  { id: "p-v2-v3", pos: { x:  6500, y:  6500 }, fromZone: "venus2",   toZone: "venus3"   },
+  { id: "p-v3-v2", pos: { x: -6500, y: -6500 }, fromZone: "venus3",   toZone: "venus2"   },
+  { id: "p-v3-v4", pos: { x:  6500, y: -6500 }, fromZone: "venus3",   toZone: "venus4"   },
+  { id: "p-v4-v3", pos: { x: -6500, y:  6500 }, fromZone: "venus4",   toZone: "venus3"   },
+  { id: "p-v4-v5", pos: { x:  6500, y:  6500 }, fromZone: "venus4",   toZone: "venus5"   },
+  { id: "p-v5-v4", pos: { x: -6500, y: -6500 }, fromZone: "venus5",   toZone: "venus4"   },
   // Cross-faction: Venus endgame → Earth entry (completing the triangle)
-  { id: "p-v5-a",  pos: { x:  28000, y: -28000 }, fromZone: "venus5",   toZone: "alpha"    },
-  { id: "p-a-v5",  pos: { x: -28000, y:  28000 }, fromZone: "alpha",    toZone: "venus5"   },
+  { id: "p-v5-a",  pos: { x:  6500, y: -6500 }, fromZone: "venus5",   toZone: "alpha"    },
+  { id: "p-a-v5",  pos: { x: -6500, y:  6500 }, fromZone: "alpha",    toZone: "venus5"   },
   // Danger zone portals — accessible from faction endgame zones
-  { id: "p-f-d1",  pos: { x:  28000, y:  28000 }, fromZone: "forge",    toZone: "danger1"  },
-  { id: "p-d1-f",  pos: { x: -28000, y: -28000 }, fromZone: "danger1",  toZone: "forge"    },
-  { id: "p-ml-d1", pos: { x:  28000, y:  28000 }, fromZone: "maelstrom",toZone: "danger1"  },
-  { id: "p-d1-ml", pos: { x: -28000, y:  28000 }, fromZone: "danger1",  toZone: "maelstrom"},
-  { id: "p-v5-d1", pos: { x: -28000, y:  28000 }, fromZone: "venus5",   toZone: "danger1"  },
-  { id: "p-d1-v5", pos: { x:  28000, y:  28000 }, fromZone: "danger1",  toZone: "venus5"   },
+  { id: "p-f-d1",  pos: { x:  6500, y:  6500 }, fromZone: "forge",    toZone: "danger1"  },
+  { id: "p-d1-f",  pos: { x: -6500, y: -6500 }, fromZone: "danger1",  toZone: "forge"    },
+  { id: "p-ml-d1", pos: { x:  6500, y:  6500 }, fromZone: "maelstrom",toZone: "danger1"  },
+  { id: "p-d1-ml", pos: { x: -6500, y:  6500 }, fromZone: "danger1",  toZone: "maelstrom"},
+  { id: "p-v5-d1", pos: { x: -6500, y:  6500 }, fromZone: "venus5",   toZone: "danger1"  },
+  { id: "p-d1-v5", pos: { x:  6500, y:  6500 }, fromZone: "danger1",  toZone: "venus5"   },
   // Danger zone chain: danger1 ↔ danger2 ↔ danger3 ↔ danger4 ↔ danger5
-  { id: "p-d1-d2", pos: { x:  28000, y: -28000 }, fromZone: "danger1",  toZone: "danger2"  },
-  { id: "p-d2-d1", pos: { x: -28000, y:  28000 }, fromZone: "danger2",  toZone: "danger1"  },
-  { id: "p-d2-d3", pos: { x:  28000, y:  28000 }, fromZone: "danger2",  toZone: "danger3"  },
-  { id: "p-d3-d2", pos: { x: -28000, y: -28000 }, fromZone: "danger3",  toZone: "danger2"  },
-  { id: "p-d3-d4", pos: { x:  28000, y: -28000 }, fromZone: "danger3",  toZone: "danger4"  },
-  { id: "p-d4-d3", pos: { x: -28000, y:  28000 }, fromZone: "danger4",  toZone: "danger3"  },
-  { id: "p-d4-d5", pos: { x:  28000, y:  28000 }, fromZone: "danger4",  toZone: "danger5"  },
-  { id: "p-d5-d4", pos: { x: -28000, y: -28000 }, fromZone: "danger5",  toZone: "danger4"  },
+  { id: "p-d1-d2", pos: { x:  6500, y: -6500 }, fromZone: "danger1",  toZone: "danger2"  },
+  { id: "p-d2-d1", pos: { x: -6500, y:  6500 }, fromZone: "danger2",  toZone: "danger1"  },
+  { id: "p-d2-d3", pos: { x:  6500, y:  6500 }, fromZone: "danger2",  toZone: "danger3"  },
+  { id: "p-d3-d2", pos: { x: -6500, y: -6500 }, fromZone: "danger3",  toZone: "danger2"  },
+  { id: "p-d3-d4", pos: { x:  6500, y: -6500 }, fromZone: "danger3",  toZone: "danger4"  },
+  { id: "p-d4-d3", pos: { x: -6500, y:  6500 }, fromZone: "danger4",  toZone: "danger3"  },
+  { id: "p-d4-d5", pos: { x:  6500, y:  6500 }, fromZone: "danger4",  toZone: "danger5"  },
+  { id: "p-d5-d4", pos: { x: -6500, y: -6500 }, fromZone: "danger5",  toZone: "danger4"  },
 ];
 
-export const MAP_RADIUS = 32000;
+export const MAP_RADIUS = 8000;
 
 export const FAKE_NAMES = [
   "Nyx_77","VoidPilot","StarbornAce","RogueComet","Hex.Drift","Aurora",
@@ -1368,7 +1487,7 @@ export const DUNGEONS: Record<DungeonId, DungeonDef> = {
     description: "Reality-bent hunters swarming a dying star's corona. Voidlings and Dreads orbit the plasma jets.",
     enemyTypes: ["voidling", "dread"], enemyHpMul: 2.7, enemyDmgMul: 2.3,
     waves: 5, enemiesPerWave: 7,
-    rewardCredits: 100000, rewardExp: 28000,
+    rewardCredits: 100000, rewardExp: 6500,
     rewardModules: ["wp-void-lance", "wp-singular", "wp-hellfire", "wp-sniper", "gn-leviathan", "gn-phase-drive", "md-singularity", "md-voidframe", "md-targeter-2", "md-overclock"],
     rewardMaterials: [{ resourceId: "void", qty: 10 }, { resourceId: "dread", qty: 7 }, { resourceId: "quantum", qty: 10 }],
     color: "#ffd24a", unlockLevel: 22,
