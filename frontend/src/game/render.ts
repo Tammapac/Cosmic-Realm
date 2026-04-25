@@ -1359,29 +1359,45 @@ function drawParticle(ctx: CanvasRenderingContext2D, pa: Particle): void {
     ctx.globalAlpha = a;
     ctx.translate(pa.pos.x, pa.pos.y);
     ctx.rotate(pa.rot ?? 0);
-    ctx.fillStyle = pa.color;
-    ctx.shadowColor = pa.color;
-    ctx.shadowBlur = 5;
     const s = pa.size * (0.4 + a * 0.6);
+    // Fire glow behind the fragment
+    ctx.shadowColor = "#ff6600";
+    ctx.shadowBlur = 10 + s;
+    ctx.fillStyle = pa.color;
     ctx.fillRect(-s, -s * 0.4, s * 2, s * 0.8);
     ctx.fillRect(-s * 0.4, -s, s * 0.8, s * 0.9);
+    // Bright hot edge
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = a * 0.6;
+    ctx.fillStyle = "#ffd24a";
+    ctx.fillRect(-s * 0.6, -s * 0.2, s * 1.2, s * 0.4);
     ctx.restore();
     return;
   }
   if (pa.kind === "ember") {
     ctx.save();
-    ctx.globalAlpha = a * 0.9;
+    const r = pa.size * (0.3 + a * 0.7);
+    // Outer fire glow
+    ctx.globalAlpha = a * 0.5;
     ctx.shadowColor = pa.color;
+    ctx.shadowBlur = 14;
+    ctx.fillStyle = pa.color;
+    ctx.beginPath();
+    ctx.arc(pa.pos.x, pa.pos.y, r * 1.8, 0, Math.PI * 2);
+    ctx.fill();
+    // Core bright dot
+    ctx.globalAlpha = a * 0.95;
     ctx.shadowBlur = 8;
     ctx.fillStyle = pa.color;
-    const r = pa.size * (0.3 + a * 0.7);
     ctx.beginPath();
     ctx.arc(pa.pos.x, pa.pos.y, r, 0, Math.PI * 2);
     ctx.fill();
-    ctx.globalAlpha = a * 0.5;
+    // White-hot center
+    ctx.globalAlpha = a * 0.7;
+    ctx.shadowBlur = 0;
     ctx.fillStyle = "#ffffff";
     ctx.beginPath();
-    ctx.arc(pa.pos.x, pa.pos.y, r * 0.4, 0, Math.PI * 2);
+    ctx.arc(pa.pos.x, pa.pos.y, r * 0.45, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
     return;

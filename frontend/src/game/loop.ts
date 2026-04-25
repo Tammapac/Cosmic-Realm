@@ -511,21 +511,21 @@ function emitDeath(x: number, y: number, color: string, big = false): void {
     });
   }
 
-  // Spinning hull debris — small tiles of the destroyed ship
-  const debrisCount = B ? 40 : 22;
-  const debrisColors = [color, "#ff8a4e", "#ffd24a", "#ffccaa", "#cccccc", "#ff5c6c", "#888888"];
+  // Large burning hull fragments — big chunks flying far in all directions
+  const debrisCount = B ? 24 : 14;
+  const debrisColors = [color, "#ff8a4e", "#ffd24a", "#ffccaa", "#cccccc", "#ff5c6c"];
   for (let i = 0; i < debrisCount; i++) {
     const a = Math.random() * Math.PI * 2;
-    const spd = (0.3 + Math.random() * 0.7) * (B ? 200 : 130);
+    const spd = (0.4 + Math.random() * 0.6) * (B ? 300 : 200);
     state.particles.push({
       id: `db-${Math.random().toString(36).slice(2, 8)}`,
-      pos: { x: x + (Math.random() - 0.5) * 8, y: y + (Math.random() - 0.5) * 8 },
+      pos: { x: x + (Math.random() - 0.5) * 10, y: y + (Math.random() - 0.5) * 10 },
       vel: { x: Math.cos(a) * spd, y: Math.sin(a) * spd },
-      ttl: 0.8 + Math.random() * 0.8, maxTtl: 1.6,
+      ttl: 1.0 + Math.random() * 1.0, maxTtl: 2.0,
       color: debrisColors[Math.floor(Math.random() * debrisColors.length)],
-      size: B ? (7 + Math.random() * 11) : (4 + Math.random() * 7),
+      size: B ? (12 + Math.random() * 18) : (8 + Math.random() * 12),
       rot: Math.random() * Math.PI * 2,
-      rotVel: (Math.random() - 0.5) * 20,
+      rotVel: (Math.random() - 0.5) * 18,
       kind: "debris",
     });
   }
@@ -537,19 +537,19 @@ function emitDeath(x: number, y: number, color: string, big = false): void {
   emitSpark(x, y, "#ff8c00", B ? 40 : 18, B ? 320 : 220, B ? 4 : 3);
   emitSpark(x, y, "#ff5cf0", B ? 24 : 10, B ? 240 : 160, B ? 3 : 2);
 
-  // Burning embers — glowing fire dots that fly far in random directions
-  const emberCount = B ? 35 : 18;
+  // Burning embers — big glowing fire chunks flying far in all directions
+  const emberCount = B ? 40 : 22;
   const emberColors = ["#ff8c00", "#ff4500", "#ffd700", "#ffaa00", "#ff6600", "#ff2244", color];
   for (let i = 0; i < emberCount; i++) {
     const a = Math.random() * Math.PI * 2;
-    const spd = (100 + Math.random() * 250) * (B ? 1.4 : 1);
+    const spd = (180 + Math.random() * 350) * (B ? 1.5 : 1);
     state.particles.push({
       id: `em-${Math.random().toString(36).slice(2, 8)}`,
-      pos: { x: x + (Math.random() - 0.5) * 12, y: y + (Math.random() - 0.5) * 12 },
+      pos: { x: x + (Math.random() - 0.5) * 14, y: y + (Math.random() - 0.5) * 14 },
       vel: { x: Math.cos(a) * spd, y: Math.sin(a) * spd },
-      ttl: 0.6 + Math.random() * 0.8, maxTtl: 1.4,
+      ttl: 0.8 + Math.random() * 1.0, maxTtl: 1.8,
       color: emberColors[Math.floor(Math.random() * emberColors.length)],
-      size: B ? (4 + Math.random() * 6) : (3 + Math.random() * 4), kind: "ember",
+      size: B ? (5 + Math.random() * 8) : (4 + Math.random() * 5), kind: "ember",
     });
   }
 }
@@ -1326,19 +1326,19 @@ function tickWorld(dt: number): void {
             color: pr.crit ? "#ff4500" : "#ff8c00",
             size: pr.crit ? 35 : 22, kind: "fireball",
           });
-          // Burning embers flying away from enemy on hit
-          const emberCount = pr.crit ? 10 : 6;
+          // Burning embers flying FAR from enemy on hit
+          const emberCount = pr.crit ? 14 : 8;
           for (let ei = 0; ei < emberCount; ei++) {
             const ea = Math.random() * Math.PI * 2;
-            const es = (80 + Math.random() * 160) * (pr.crit ? 1.3 : 1);
+            const es = (200 + Math.random() * 350) * (pr.crit ? 1.4 : 1);
             const eColors = ["#ff8c00", "#ff4500", "#ffd700", "#ffaa00", "#ff6600", e.color];
             state.particles.push({
               id: `em-${Math.random().toString(36).slice(2, 8)}`,
               pos: { x: pr.pos.x + (Math.random() - 0.5) * 6, y: pr.pos.y + (Math.random() - 0.5) * 6 },
               vel: { x: Math.cos(ea) * es, y: Math.sin(ea) * es },
-              ttl: 0.4 + Math.random() * 0.4, maxTtl: 0.8,
+              ttl: 0.6 + Math.random() * 0.6, maxTtl: 1.2,
               color: eColors[Math.floor(Math.random() * eColors.length)],
-              size: 3 + Math.random() * 4, kind: "ember",
+              size: 4 + Math.random() * 5, kind: "ember",
             });
           }
           // Camera shake on hit — strong
@@ -1430,8 +1430,9 @@ function tickWorld(dt: number): void {
   for (const pa of state.particles) {
     pa.pos.x += pa.vel.x * dt;
     pa.pos.y += pa.vel.y * dt;
-    pa.vel.x *= 0.95;
-    pa.vel.y *= 0.95;
+    const drag = (pa.kind === "ember" || pa.kind === "debris") ? 0.985 : 0.95;
+    pa.vel.x *= drag;
+    pa.vel.y *= drag;
     if (pa.rotVel !== undefined && pa.rot !== undefined) {
       pa.rot += pa.rotVel * dt;
     }
