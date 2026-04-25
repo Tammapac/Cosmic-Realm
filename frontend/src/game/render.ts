@@ -532,10 +532,24 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
   }
   const c = e.color;
   const dk = shadeHex(c, -0.5);
+  const md = shadeHex(c, -0.25);
+  const lt = shadeHex(c, 0.35);
   const hi = "#ffffff";
   const s = e.size / 10;
   const t = state.tick;
   const pulse = 1 + Math.sin(t * 3.5 + e.size * 0.7) * 0.07;
+  // Body gradient: nose-to-tail lighting for 3D depth on main hull
+  const bodyGrad = ctx.createLinearGradient(0, -16 * s, 0, 12 * s);
+  bodyGrad.addColorStop(0, lt);
+  bodyGrad.addColorStop(0.25, c);
+  bodyGrad.addColorStop(0.65, md);
+  bodyGrad.addColorStop(1, dk);
+  // Wing gradient: side-lit for panel contrast
+  const wingGrad = ctx.createLinearGradient(-12 * s, 0, 12 * s, 0);
+  wingGrad.addColorStop(0, md);
+  wingGrad.addColorStop(0.3, c);
+  wingGrad.addColorStop(0.7, c);
+  wingGrad.addColorStop(1, md);
 
   if (e.type === "scout") {
     // ── SCOUT: Sleek dart/fighter shapes ──
@@ -543,7 +557,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
     if (variant === 0) {
       // Dart interceptor — narrow pointed nose, swept-back fins
       // Main fuselage
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.beginPath();
       ctx.moveTo(0, -14 * s * pulse);
       ctx.lineTo(2 * s, -8 * s);
@@ -598,7 +612,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
       ctx.closePath();
       ctx.fill();
       // Engine exhaust glow
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.globalAlpha = 0.4 + 0.3 * Math.sin(t * 8);
       ctx.beginPath();
       ctx.moveTo(-1.5 * s, 7 * s);
@@ -618,7 +632,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
     } else if (variant === 1) {
       // Needle fighter — ultra-slim with angled stabilizers
       // Main hull
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.beginPath();
       ctx.moveTo(0, -13 * s * pulse);
       ctx.lineTo(1.8 * s, -6 * s);
@@ -665,7 +679,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
       ctx.moveTo(-3 * s, 2 * s); ctx.lineTo(-7 * s, 5.5 * s);
       ctx.stroke();
       // Engine glow
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 7);
       ctx.beginPath();
       ctx.moveTo(-1 * s, 8 * s);
@@ -685,7 +699,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
     } else {
       // Arrowhead striker — broad arrow shape, aggressive silhouette
       // Main body
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.beginPath();
       ctx.moveTo(0, -12 * s * pulse);
       ctx.lineTo(3 * s, -5 * s);
@@ -711,7 +725,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
       ctx.closePath();
       ctx.fill();
       // Sharp wingtip extensions
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.beginPath();
       ctx.moveTo(7 * s, 1 * s);
       ctx.lineTo(12 * s, -1 * s);
@@ -727,7 +741,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
       ctx.closePath();
       ctx.fill();
       // Engine exhaust
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.globalAlpha = 0.4 + 0.35 * Math.sin(t * 9);
       ctx.beginPath();
       ctx.moveTo(-1 * s, 7 * s);
@@ -751,7 +765,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
     if (variant === 0) {
       // Scimitar raider — curved forward-swept blades
       // Central hull
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.beginPath();
       ctx.moveTo(0, -10 * s * pulse);
       ctx.lineTo(4 * s, -6 * s);
@@ -808,7 +822,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
       ctx.closePath();
       ctx.fill();
       // Engine exhaust (twin)
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.globalAlpha = 0.4 + 0.3 * Math.sin(t * 7);
       ctx.beginPath();
       ctx.moveTo(-1.5 * s, 8 * s); ctx.lineTo(-0.5 * s, 8 * s);
@@ -831,7 +845,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
     } else if (variant === 1) {
       // Mantis raider — forward-angled prongs with wide body
       // Central body
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.beginPath();
       ctx.moveTo(0, -8 * s * pulse);
       ctx.lineTo(6 * s, -4 * s);
@@ -893,7 +907,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
       ctx.moveTo(-7 * s, -4 * s); ctx.lineTo(-12 * s, -8 * s);
       ctx.stroke();
       // Engine glow
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.globalAlpha = 0.45 + 0.3 * Math.sin(t * 6);
       ctx.beginPath();
       ctx.moveTo(-1.5 * s, 8 * s);
@@ -913,7 +927,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
     } else {
       // Falchion raider — angular wedge with weapon hardpoints
       // Main wedge hull
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.beginPath();
       ctx.moveTo(0, -9 * s * pulse);
       ctx.lineTo(8 * s, -2 * s);
@@ -969,7 +983,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
       ctx.closePath();
       ctx.fill();
       // Twin engine exhaust
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.globalAlpha = 0.4 + 0.35 * Math.sin(t * 7);
       ctx.beginPath();
       ctx.moveTo(-2 * s, 8 * s); ctx.lineTo(-0.5 * s, 8 * s);
@@ -997,7 +1011,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
     if (variant === 0) {
       // Bulwark destroyer — thick armored hull, side turret nacelles
       // Main hull
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.beginPath();
       ctx.moveTo(0, -14 * s * pulse);
       ctx.lineTo(6 * s, -11 * s);
@@ -1081,7 +1095,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
       ctx.moveTo(-3 * s, 8 * s); ctx.lineTo(3 * s, 8 * s);
       ctx.stroke();
       // Engine exhaust (wide)
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.globalAlpha = 0.35 + 0.3 * Math.sin(t * 6);
       ctx.beginPath();
       ctx.moveTo(-4 * s, 13 * s);
@@ -1101,7 +1115,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
     } else if (variant === 1) {
       // Hammer destroyer — broad flat hull, underslung weapon bays
       // Main hull — broad and flat
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.beginPath();
       ctx.moveTo(0, -12 * s * pulse);
       ctx.lineTo(8 * s, -9 * s);
@@ -1166,7 +1180,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
       ctx.moveTo(-8 * s, 2 * s); ctx.lineTo(8 * s, 2 * s);
       ctx.stroke();
       // Triple engine exhaust
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.globalAlpha = 0.35 + 0.3 * Math.sin(t * 6);
       ctx.beginPath();
       ctx.moveTo(-5 * s, 11 * s); ctx.lineTo(-3 * s, 11 * s);
@@ -1194,7 +1208,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
     } else {
       // Anvil destroyer — angular slab hull, forward-mounted gun platforms
       // Main slab hull
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.beginPath();
       ctx.moveTo(0, -11 * s * pulse);
       ctx.lineTo(9 * s, -8 * s);
@@ -1259,7 +1273,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
       ctx.moveTo(-4 * s, 4 * s); ctx.lineTo(4 * s, 4 * s);
       ctx.stroke();
       // Engine exhaust
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.globalAlpha = 0.35 + 0.3 * Math.sin(t * 6);
       ctx.beginPath();
       ctx.moveTo(-3 * s, 13 * s);
@@ -1284,7 +1298,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
     if (variant === 0) {
       // Crystal shard drone — angular diamond shape with faceted panels
       const shimmer = Math.sin(t * 3 + e.size) * 0.15;
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.globalAlpha = 0.85;
       ctx.beginPath();
       ctx.moveTo(0, -12 * s * pulse);
@@ -1319,7 +1333,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
       ctx.fill();
       ctx.globalAlpha = 1;
       // Angular wing spines (right)
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.beginPath();
       ctx.moveTo(7 * s, -3 * s);
       ctx.lineTo(13 * s, -6 * s);
@@ -1356,7 +1370,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
     } else if (variant === 1) {
       // Scarab drone — insectoid carapace with folded limb-wings
       const twitch = Math.sin(t * 4 + e.size) * s * 0.3;
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.globalAlpha = 0.85;
       // Carapace body
       ctx.beginPath();
@@ -1374,7 +1388,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
       ctx.fill();
       ctx.globalAlpha = 1;
       // Folded limb-wings (right, 2 segments)
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.beginPath();
       ctx.moveTo(7 * s, -4 * s);
       ctx.lineTo(12 * s, -7 * s + twitch);
@@ -1433,7 +1447,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
     } else {
       // Prism sentinel — hexagonal alien drone with energy vanes
       const vaneAngle = Math.sin(t * 2.5 + e.size) * 0.15;
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.globalAlpha = 0.8;
       // Hexagonal body
       ctx.beginPath();
@@ -1512,7 +1526,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
       // Leviathan dread — long capital ship, segmented hull, side hangars
       const breathe = 1 + Math.sin(t * 2 + e.size * 0.3) * 0.04;
       // Main hull — elongated angular shape
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.beginPath();
       ctx.moveTo(0, -20 * s * breathe);
       ctx.lineTo(6 * s, -16 * s);
@@ -1603,7 +1617,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
       ctx.closePath();
       ctx.fill();
       // Engine bank (4 exhausts)
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.globalAlpha = 0.35 + 0.3 * Math.sin(t * 5);
       for (let ex = -3; ex <= 3; ex += 2) {
         ctx.beginPath();
@@ -1630,7 +1644,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
     } else if (variant === 1) {
       // Sovereign dread — arrow-shaped capital, heavy forward prow
       // Main hull — arrow prow
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.beginPath();
       ctx.moveTo(0, -18 * s * pulse);
       ctx.lineTo(8 * s, -12 * s);
@@ -1708,7 +1722,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
       ctx.moveTo(-5 * s, 9 * s); ctx.lineTo(5 * s, 9 * s);
       ctx.stroke();
       // Engine bank
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.globalAlpha = 0.35 + 0.3 * Math.sin(t * 5);
       for (let ex = -4; ex <= 4; ex += 2) {
         ctx.beginPath();
@@ -1730,7 +1744,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
     } else {
       // Colossus dread — wide carrier silhouette, multi-section hull
       // Central spine
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.beginPath();
       ctx.moveTo(0, -16 * s * pulse);
       ctx.lineTo(5 * s, -13 * s);
@@ -1827,7 +1841,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
       ctx.moveTo(-3 * s, 12 * s); ctx.lineTo(3 * s, 12 * s);
       ctx.stroke();
       // Engine bank (5 exhausts)
-      ctx.fillStyle = c;
+      ctx.fillStyle = bodyGrad;
       ctx.globalAlpha = 0.35 + 0.3 * Math.sin(t * 5);
       for (let ex = -4; ex <= 4; ex += 2) {
         ctx.beginPath();
@@ -1847,6 +1861,50 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
       ctx.fill();
       ctx.globalAlpha = 1;
     }
+  }
+  // ── Shading overlay: adds depth, metallic sheen, and panel definition ──
+  {
+    const prevComp = ctx.globalCompositeOperation;
+    ctx.globalCompositeOperation = "source-atop";
+    const r = e.size * 1.8;
+    // Top-down lighting gradient (lighter top, darker bottom)
+    ctx.globalAlpha = 0.3;
+    const topLight = ctx.createLinearGradient(0, -r, 0, r);
+    topLight.addColorStop(0, lt);
+    topLight.addColorStop(0.25, "transparent");
+    topLight.addColorStop(0.75, "transparent");
+    topLight.addColorStop(1, "#000000");
+    ctx.fillStyle = topLight;
+    ctx.fillRect(-r, -r, r * 2, r * 2);
+    // Radial edge darkening for rounded depth
+    ctx.globalAlpha = 0.4;
+    const shadow = ctx.createRadialGradient(0, -s * 2, r * 0.12, 0, 0, r);
+    shadow.addColorStop(0, "transparent");
+    shadow.addColorStop(0.5, "transparent");
+    shadow.addColorStop(0.8, "#00000044");
+    shadow.addColorStop(1, "#000000");
+    ctx.fillStyle = shadow;
+    ctx.fillRect(-r, -r, r * 2, r * 2);
+    // Specular highlight (metallic sheen on upper hull)
+    ctx.globalAlpha = 0.22;
+    const sheen = ctx.createRadialGradient(-s * 1, -s * 4, 0, 0, -s * 2, r * 0.55);
+    sheen.addColorStop(0, "#ffffff");
+    sheen.addColorStop(0.3, lt + "66");
+    sheen.addColorStop(0.7, "transparent");
+    sheen.addColorStop(1, "transparent");
+    ctx.fillStyle = sheen;
+    ctx.fillRect(-r, -r, r * 2, r * 2);
+    // Secondary rim highlight (subtle side rim)
+    ctx.globalAlpha = 0.12;
+    const rimLight = ctx.createLinearGradient(-r, 0, r, 0);
+    rimLight.addColorStop(0, lt);
+    rimLight.addColorStop(0.15, "transparent");
+    rimLight.addColorStop(0.85, "transparent");
+    rimLight.addColorStop(1, lt);
+    ctx.fillStyle = rimLight;
+    ctx.fillRect(-r, -r, r * 2, r * 2);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = prevComp;
   }
   // hit flash overlay (circular glow, no square)
   if (e.hitFlash !== undefined && e.hitFlash > 0) {
