@@ -114,6 +114,8 @@ export type GameState = {
   } | null;
   attackTargetId: string | null;
   isAttacking: boolean;
+  isLaserFiring: boolean;
+  isRocketFiring: boolean;
   cargoBoxes: CargoBox[];
   showAmmoSelector: boolean;
   showRocketAmmoSelector: boolean;
@@ -451,6 +453,8 @@ export const state: GameState = {
   selectedWorldTarget: null,
   attackTargetId: null,
   isAttacking: false,
+  isLaserFiring: false,
+  isRocketFiring: false,
   cargoBoxes: [],
   showAmmoSelector: false,
   showRocketAmmoSelector: false,

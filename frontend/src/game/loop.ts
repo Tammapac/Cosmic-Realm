@@ -906,7 +906,7 @@ function tickWorld(dt: number): void {
     p.vel.y += Math.sin(p.angle) * accel * dt;
   }
   // Face attack target when fighting (DarkOrbit style)
-  if (state.isAttacking && state.attackTargetId) {
+  if ((state.isLaserFiring || state.isRocketFiring) && state.attackTargetId) {
     const atk = state.enemies.find(e => e.id === state.attackTargetId);
     if (atk) {
       p.angle = Math.atan2(atk.pos.y - p.pos.y, atk.pos.x - p.pos.x);
@@ -1130,7 +1130,7 @@ function tickWorld(dt: number): void {
     ? state.enemies.find((e) => e.id === state.attackTargetId)
     : null;
   const FIRE_RANGE = 400;
-  if (state.isAttacking && atkTarget) {
+  if ((state.isLaserFiring || state.isRocketFiring) && atkTarget) {
     const ang = Math.atan2(atkTarget.pos.y - p.pos.y, atkTarget.pos.x - p.pos.x);
     const atkDist = Math.sqrt((atkTarget.pos.x - p.pos.x) ** 2 + (atkTarget.pos.y - p.pos.y) ** 2);
     if (atkDist < FIRE_RANGE) {
@@ -1153,9 +1153,9 @@ function tickWorld(dt: number): void {
       }
       const perpAng = ang + Math.PI / 2;
 
-      // Fire lasers on laser cooldown (uses laser ammo)
+      // Fire lasers on laser cooldown (uses laser ammo) - only when laser firing is active
       const laserAmmo = p.ammo[laserAmmoType] ?? 0;
-      if (playerFireCd.value <= 0 && laserIds.length > 0 && laserAmmo >= 1) {
+      if (state.isLaserFiring && playerFireCd.value <= 0 && laserIds.length > 0 && laserAmmo >= 1) {
         p.ammo[laserAmmoType] = laserAmmo - 1;
         const laserDmg = stats.damage * laserDmgMul;
         const perShot = Math.round(laserDmg / 2);
@@ -1189,9 +1189,9 @@ function tickWorld(dt: number): void {
         state.attackCooldownDuration = cd;
       }
 
-      // Fire rockets on separate slower cooldown (uses rocket ammo, higher damage)
+      // Fire rockets on separate slower cooldown (uses rocket ammo, higher damage) - only when rocket firing is active
       const rocketAmmo = p.rocketAmmo[rocketAmmoType] ?? 0;
-      if (rocketFireCd.value <= 0 && rocketIds.length > 0 && rocketAmmo >= 1) {
+      if (state.isRocketFiring && rocketFireCd.value <= 0 && rocketIds.length > 0 && rocketAmmo >= 1) {
         p.rocketAmmo[rocketAmmoType] = rocketAmmo - 1;
         for (const rId of rocketIds) {
           const ri = p.inventory.find((m) => m.instanceId === rId);
@@ -1246,6 +1246,8 @@ function tickWorld(dt: number): void {
     state.attackTargetId = null;
     state.selectedWorldTarget = null;
     state.isAttacking = false;
+    state.isLaserFiring = false;
+    state.isRocketFiring = false;
     bump();
   }
 
@@ -1300,7 +1302,7 @@ function tickWorld(dt: number): void {
     };
     if (def.fireRate > 0) {
       d.fireCd -= dt;
-      if (d.fireCd <= 0 && nearest && state.isAttacking) {
+      if (d.fireCd <= 0 && nearest && (state.isLaserFiring || state.isRocketFiring)) {
         const dpos = (d as Drone & { anchor: { x: number; y: number } }).anchor;
         const fireRange = d.mode === "defensive" ? 200 : 380;
         if (distance(dpos.x, dpos.y, nearest.pos.x, nearest.pos.y) < fireRange) {

@@ -15,6 +15,8 @@ export function Hotbar() {
   const docked = useGame((s) => s.dockedAt);
   const selectedTarget = useGame((s) => s.selectedWorldTarget);
   const isAttacking = useGame((s) => s.isAttacking);
+  const isLaserFiring = useGame((s) => s.isLaserFiring);
+  const isRocketFiring = useGame((s) => s.isRocketFiring);
   const showAmmoSelector = useGame((s) => s.showAmmoSelector);
   const showRocketAmmoSelector = useGame((s) => s.showRocketAmmoSelector);
   const player = useGame((s) => s.player);
@@ -33,7 +35,10 @@ export function Hotbar() {
       pushNotification("Target lost", "bad");
       return;
     }
-    state.isAttacking = !state.isAttacking;
+    const newVal = !(state.isLaserFiring || state.isRocketFiring);
+    state.isLaserFiring = newVal;
+    state.isRocketFiring = newVal;
+    state.isAttacking = newVal;
     bump();
   };
 

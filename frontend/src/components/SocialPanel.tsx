@@ -4,36 +4,15 @@ import { FAKE_CLANS } from "../game/types";
 
 export function SocialPanel() {
   const [collapsed, setCollapsed] = useState(false);
-  const [tab, setTab] = useState<"players" | "chat">("players");
   const others = useGame((s) => s.others);
   const player = useGame((s) => s.player);
-  const chat = useGame((s) => s.chat);
 
   return (
-    <div className="panel" style={{ position: "absolute", right: 12, bottom: 12, width: collapsed ? 40 : 320, height: collapsed ? 40 : 360 }}>
+    <div className="panel" style={{ position: "absolute", right: 12, top: 42, width: collapsed ? 40 : 280, height: collapsed ? 40 : 300, zIndex: 55 }}>
       <div className="flex items-center justify-between p-2 border-b" style={{ borderColor: "var(--border-soft)" }}>
         {!collapsed && (
-          <div className="flex gap-1">
-            <button
-              className="px-3 py-1 text-[10px] tracking-widest uppercase"
-              style={{
-                color: tab === "players" ? "var(--accent-cyan)" : "var(--text-dim)",
-                borderBottom: tab === "players" ? "1px solid var(--accent-cyan)" : "1px solid transparent",
-              }}
-              onClick={() => setTab("players")}
-            >
-              ◉ Pilots ({others.length})
-            </button>
-            <button
-              className="px-3 py-1 text-[10px] tracking-widest uppercase"
-              style={{
-                color: tab === "chat" ? "var(--accent-cyan)" : "var(--text-dim)",
-                borderBottom: tab === "chat" ? "1px solid var(--accent-cyan)" : "1px solid transparent",
-              }}
-              onClick={() => setTab("chat")}
-            >
-              ✉ Comms
-            </button>
+          <div className="text-[10px] tracking-widest uppercase" style={{ color: "var(--accent-cyan)" }}>
+            ◉ Pilots ({others.length})
           </div>
         )}
         <button
@@ -44,7 +23,7 @@ export function SocialPanel() {
         </button>
       </div>
 
-      {!collapsed && tab === "players" && (
+      {!collapsed && (
         <div className="overflow-y-auto" style={{ height: "calc(100% - 40px)" }}>
           {others.map((o) => (
             <div key={o.id} className="px-3 py-2 border-b flex items-center gap-2 hover:bg-white/5" style={{ borderColor: "var(--border-soft)" }}>
@@ -94,16 +73,18 @@ export function SocialPanel() {
           ))}
         </div>
       )}
-
-      {!collapsed && tab === "chat" && <ChatBox chat={chat} />}
     </div>
   );
 }
 
-function ChatBox({ chat }: { chat: ReturnType<typeof useGame<typeof state.chat>> }) {
+export function BattleLog() {
   const [input, setInput] = useState("");
   const [channel, setChannel] = useState<"local" | "party" | "clan">("local");
+  const chat = useGame((s) => s.chat);
+  const docked = useGame((s) => s.dockedAt);
   const player = state.player;
+
+  if (docked) return null;
 
   const send = () => {
     if (!input.trim()) return;
@@ -112,7 +93,7 @@ function ChatBox({ chat }: { chat: ReturnType<typeof useGame<typeof state.chat>>
   };
 
   return (
-    <div className="flex flex-col" style={{ height: "calc(100% - 40px)" }}>
+    <div className="panel" style={{ position: "fixed", left: 12, bottom: 72, width: 320, height: 200, zIndex: 40, display: "flex", flexDirection: "column" }}>
       <div className="overflow-y-auto flex-1 p-2 text-[10px] space-y-1">
         {chat.map((c) => (
           <div key={c.id}>
@@ -161,6 +142,7 @@ function ChatBox({ chat }: { chat: ReturnType<typeof useGame<typeof state.chat>>
     </div>
   );
 }
+
 
 export function ClanPanel() {
   const player = useGame((s) => s.player);
