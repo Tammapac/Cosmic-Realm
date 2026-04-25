@@ -476,9 +476,10 @@ function GameApp() {
         }
       } else if (e.key === "2") {
         if (!state.dockedAt) {
-          state.showRocketAmmoSelector = !state.showRocketAmmoSelector;
-          state.showAmmoSelector = false;
-          bump();
+          if (state.selectedWorldTarget?.kind === "enemy") {
+            state.isAttacking = !state.isAttacking;
+            bump();
+          }
         }
       } else if (e.key >= "3" && e.key <= "9") {
         if (!state.dockedAt) {

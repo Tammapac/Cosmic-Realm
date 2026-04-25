@@ -1166,6 +1166,14 @@ function tickWorld(dt: number): void {
           fireProjectile("player", ox, oy, ang - side * 0.03, perShot, laserColor, 4, {
             weaponKind: "laser",
           });
+          // Muzzle flash at gun port
+          state.particles.push({
+            id: `mf-${Math.random().toString(36).slice(2, 8)}`,
+            pos: { x: ox, y: oy }, vel: { x: 0, y: 0 },
+            ttl: 0.08, maxTtl: 0.08,
+            color: laserColor, size: 18, kind: "flash",
+          });
+          emitSpark(ox, oy, laserColor, 2, 60, 1.5);
         }
         atkTarget.aggro = true;
         const cd = Math.max(0.2, 0.85 / stats.fireRate);
@@ -1187,6 +1195,24 @@ function tickWorld(dt: number): void {
             weaponKind: "rocket",
             homing: true,
             speedMul: 0.55,
+          });
+        }
+        // Fire/smoke puff at launch point
+        state.particles.push({
+          id: `rl-${Math.random().toString(36).slice(2, 8)}`,
+          pos: { x: p.pos.x, y: p.pos.y }, vel: { x: 0, y: 0 },
+          ttl: 0.12, maxTtl: 0.12,
+          color: "#ff8a4e", size: 24, kind: "flash",
+        });
+        for (let si = 0; si < 4; si++) {
+          const sa = Math.random() * Math.PI * 2;
+          const ss = 15 + Math.random() * 30;
+          state.particles.push({
+            id: `rls-${Math.random().toString(36).slice(2, 8)}`,
+            pos: { x: p.pos.x, y: p.pos.y },
+            vel: { x: Math.cos(sa) * ss, y: Math.sin(sa) * ss },
+            ttl: 0.2 + Math.random() * 0.15, maxTtl: 0.35,
+            color: Math.random() > 0.5 ? "#ff8a4e" : "#aaaaaa", size: 2 + Math.random() * 2, kind: "smoke",
           });
         }
         atkTarget.aggro = true;
