@@ -3,12 +3,12 @@ import {
   pushEvent, bumpMission, state, travelToZone, completeDungeon,
   tickHotbarCooldowns,
   ensureAmmoInitialized, getAmmoWeaponIds, rocketAmmoMax,
-  getActiveAmmoType,
+  getActiveAmmoType, tryCollectNearbyBoxes,
 } from "./store";
 import {
   CargoBox, DRONE_DEFS, Drone, DUNGEONS, ENEMY_DEFS, ENEMY_NAMES, EXP_FOR_LEVEL,
   Enemy, EnemyType, FACTION_ENEMY_MODS, FACTIONS, MODULE_DEFS, ModuleStats,
-  PORTALS, ROCKET_AMMO_TYPE_DEFS, WeaponKind,
+  MAP_RADIUS, PORTALS, ROCKET_AMMO_TYPE_DEFS, WeaponKind,
   SHIP_CLASSES, STATIONS, ZONES, ZoneId,
   rankFor,
 } from "./types";
@@ -135,13 +135,7 @@ export function effectiveStats(): {
     shieldMax += def.shieldBonus;
   }
 
-  if (p.faction) {
-    const f = FACTIONS[p.faction].bonus;
-    if (f.damage)      damage *= (1 + f.damage);
-    if (f.speed)       speed *= (1 + f.speed);
-    if (f.shieldRegen) shieldRegen *= f.shieldRegen;
-    if (f.lootBonus)   lootBonus += f.lootBonus;
-  }
+  // Faction bonuses disabled
   shieldRegen *= (1 + skDefRegen * 0.15);
 
   return { damage, speed, hullMax, shieldMax, fireRate, critChance, aoeRadius, damageReduction, shieldRegen, lootBonus };
@@ -158,13 +152,22 @@ export function queueAttackTarget(enemyId: string): void {
 // ── SPAWN ──────────────────────────────────────────────────────────────────
 function spawnEnemy(): void {
   const z = ZONES[state.player.zone];
-  if (state.enemies.filter((e) => !e.isBoss).length >= 8 + z.enemyTier * 2) return;
+  if (state.enemies.filter((e) => !e.isBoss).length >= 12 + z.enemyTier * 3) return;
   const type: EnemyType = z.enemyTypes[Math.floor(Math.random() * z.enemyTypes.length)];
   const def = ENEMY_DEFS[type];
   const angle = Math.random() * Math.PI * 2;
-  const dist = 700 + Math.random() * 400;
-  const px = state.player.pos.x + Math.cos(angle) * dist;
-  const py = state.player.pos.y + Math.sin(angle) * dist;
+  // Spawn across the whole map, not just near player
+  const nearPlayer = Math.random() < 0.4;
+  let px: number, py: number;
+  if (nearPlayer) {
+    const dist = 500 + Math.random() * 500;
+    px = state.player.pos.x + Math.cos(angle) * dist;
+    py = state.player.pos.y + Math.sin(angle) * dist;
+  } else {
+    const mapR = MAP_RADIUS * 0.85;
+    px = (Math.random() - 0.5) * 2 * mapR;
+    py = (Math.random() - 0.5) * 2 * mapR;
+  }
   const tierMult = 1 + (z.enemyTier - 1) * 0.25;
   const namePool = ENEMY_NAMES[type];
   const eName = namePool[Math.floor(Math.random() * namePool.length)];
@@ -351,28 +354,33 @@ function emitDeath(x: number, y: number, color: string, big = false): void {
   state.particles.push({
     id: `fl-${Math.random().toString(36).slice(2, 8)}`,
     pos: { x, y }, vel: { x: 0, y: 0 },
-    ttl: B ? 0.22 : 0.15, maxTtl: B ? 0.22 : 0.15,
-    color: B ? "#ffffff" : "#ffcc66",
-    size: B ? 80 : 40, kind: "flash",
+    ttl: B ? 0.28 : 0.2, maxTtl: B ? 0.28 : 0.2,
+    color: "#ffffff",
+    size: B ? 100 : 55, kind: "flash",
   });
   state.particles.push({
     id: `fl2-${Math.random().toString(36).slice(2, 8)}`,
     pos: { x, y }, vel: { x: 0, y: 0 },
-    ttl: B ? 0.18 : 0.12, maxTtl: B ? 0.18 : 0.12,
-    color, size: B ? 60 : 28, kind: "flash",
+    ttl: B ? 0.22 : 0.16, maxTtl: B ? 0.22 : 0.16,
+    color, size: B ? 70 : 35, kind: "flash",
   });
 
-  // Fireballs — orange/red blobs that linger and expand
-  const fbColors = ["#ff8c00", "#ff4500", "#ffd700", "#ff6600"];
-  const fbCount = B ? 5 : 3;
+  // Expanding shockwave rings
+  for (let i = 0; i < (B ? 3 : 2); i++) {
+    setTimeout(() => emitRing(x, y, i === 0 ? "#ffffff" : color), i * 60);
+  }
+
+  // Fireballs — orange/red/blue blobs that linger and expand
+  const fbColors = ["#ff8c00", "#ff4500", "#ffd700", "#ff6600", "#4488ff", "#ff2244"];
+  const fbCount = B ? 8 : 5;
   for (let i = 0; i < fbCount; i++) {
     const a = Math.random() * Math.PI * 2;
-    const spd = (0.2 + Math.random() * 0.5) * (B ? 55 : 35);
+    const spd = (0.2 + Math.random() * 0.5) * (B ? 70 : 50);
     state.particles.push({
       id: `fb-${Math.random().toString(36).slice(2, 8)}`,
-      pos: { x: x + (Math.random() - 0.5) * 6, y: y + (Math.random() - 0.5) * 6 },
+      pos: { x: x + (Math.random() - 0.5) * 8, y: y + (Math.random() - 0.5) * 8 },
       vel: { x: Math.cos(a) * spd, y: Math.sin(a) * spd },
-      ttl: 0.35 + Math.random() * 0.25, maxTtl: 0.6,
+      ttl: 0.4 + Math.random() * 0.35, maxTtl: 0.75,
       color: fbColors[Math.floor(Math.random() * fbColors.length)],
       size: B ? (55 + Math.random() * 35) : (28 + Math.random() * 18),
       kind: "fireball",
@@ -414,22 +422,11 @@ function emitDeath(x: number, y: number, color: string, big = false): void {
     });
   }
 
-  // Sparks — three tiers
-  emitSpark(x, y, "#ffffff", B ? 20 : 8, B ? 280 : 210, B ? 3 : 2);
-  emitSpark(x, y, color, B ? 40 : 16, B ? 190 : 140, B ? 4 : 3);
-  emitSpark(x, y, "#ffd24a", B ? 25 : 8, B ? 110 : 75, B ? 3 : 2);
-
-  // Rings — staggered
-  emitRing(x, y, "#ffffff");
-  emitRing(x, y, color);
-  if (B) {
-    setTimeout(() => emitRing(x, y, "#ffd24a"), 80);
-    setTimeout(() => emitRing(x, y, color), 160);
-    setTimeout(() => emitRing(x, y, "#ffffff"), 280);
-    setTimeout(() => emitRing(x, y, "#ff8a4e"), 400);
-  } else {
-    setTimeout(() => emitRing(x, y, "#ffd24a"), 80);
-  }
+  // Sparks — three tiers (more for space feel)
+  emitSpark(x, y, "#ffffff", B ? 28 : 12, B ? 320 : 240, B ? 3 : 2);
+  emitSpark(x, y, color, B ? 50 : 20, B ? 220 : 160, B ? 4 : 3);
+  emitSpark(x, y, "#ffd24a", B ? 30 : 10, B ? 140 : 90, B ? 3 : 2);
+  emitSpark(x, y, "#4488ff", B ? 15 : 6, B ? 180 : 120, B ? 2 : 2);
 }
 
 // ── PROJECTILES ───────────────────────────────────────────────────────────
@@ -438,7 +435,7 @@ function fireProjectile(
   x: number, y: number, angle: number, damage: number, color: string, size = 3,
   opts?: { crit?: boolean; aoeRadius?: number; speedMul?: number; homing?: boolean; empStun?: number; armorPiercing?: boolean; weaponKind?: WeaponKind },
 ): void {
-  const speedBase = from === "player" ? 360 : from === "drone" ? 340 : 280;
+  const speedBase = from === "player" ? 280 : from === "drone" ? 260 : 220;
   const speed = speedBase * (opts?.speedMul ?? 1);
   state.projectiles.push({
     id: `pr-${Math.random().toString(36).slice(2, 8)}`,
@@ -529,7 +526,7 @@ function applyKill(e: Enemy, killerCrit: boolean): void {
     // baseShake: large=0.32 (~0.2 s), small=0.16 (~0.1 s) at decay rate 1.6/s.
     const dist = Math.hypot(e.pos.x - state.player.pos.x, e.pos.y - state.player.pos.y);
     const proximity = Math.max(0, 1 - dist / 700);
-    const baseShake = e.size > 16 ? 0.32 : 0.16;
+    const baseShake = e.size > 16 ? 0.55 : 0.35;
     state.cameraShake = Math.max(state.cameraShake, baseShake * proximity);
   }
 
@@ -545,7 +542,7 @@ function applyKill(e: Enemy, killerCrit: boolean): void {
   while (p2.exp >= EXP_FOR_LEVEL(p2.level)) {
     p2.exp -= EXP_FOR_LEVEL(p2.level);
     p2.level++;
-    state.levelUpFlash = 2;
+    state.levelUpFlash = 1.6;
   }
   pushFloater({ text: `+${expGain} XP`, color: "#ff5cf0", x: e.pos.x, y: e.pos.y - 20, scale: 0.9, bold: false });
   pushFloater({ text: `+${credGain} CR`, color: "#ffd24a", x: e.pos.x + 20, y: e.pos.y - 8, scale: 0.9, bold: false });
@@ -978,20 +975,25 @@ function tickWorld(dt: number): void {
       const primaryWeaponId = weaponIds[0] ?? "";
       const ammoType = getActiveAmmoType(primaryWeaponId);
       const typeDef = ROCKET_AMMO_TYPE_DEFS[ammoType];
-      const dmgMul = (typeDef?.damageMul ?? 1.0) * 0.8;
+      const dmgMul = (typeDef?.damageMul ?? 1.0) * 0.5;
       const projColor = typeDef?.color ?? "#4ee2ff";
       let firedAny = false;
-      const ammoCount = ammoType === "x1"
-        ? (p.ammo[primaryWeaponId] ?? 0)
-        : (p.ammoByType?.[primaryWeaponId]?.[ammoType] ?? 0);
-      const ammoNeeded = weaponIds.length;
-      if (ammoCount >= ammoNeeded) {
-        if (ammoType === "x1") {
-          p.ammo[primaryWeaponId] -= ammoNeeded;
-        } else {
-          if (!p.ammoByType) p.ammoByType = {};
-          if (!p.ammoByType[primaryWeaponId]) p.ammoByType[primaryWeaponId] = {};
-          p.ammoByType[primaryWeaponId][ammoType] = (p.ammoByType[primaryWeaponId][ammoType] ?? 0) - ammoNeeded;
+      // Check each weapon has at least 1 ammo in its own pool
+      let canFire = true;
+      for (const wid of weaponIds) {
+        const wAmmo = ammoType === "x1" ? (p.ammo[wid] ?? 0) : (p.ammoByType?.[wid]?.[ammoType] ?? 0);
+        if (wAmmo < 1) { canFire = false; break; }
+      }
+      if (canFire) {
+        // Consume 1 ammo from each weapon's own pool
+        for (const wid of weaponIds) {
+          if (ammoType === "x1") {
+            p.ammo[wid] = (p.ammo[wid] ?? 0) - 1;
+          } else {
+            if (!p.ammoByType) p.ammoByType = {};
+            if (!p.ammoByType[wid]) p.ammoByType[wid] = {};
+            p.ammoByType[wid][ammoType] = (p.ammoByType[wid][ammoType] ?? 0) - 1;
+          }
         }
         const totalDmg = stats.damage * dmgMul;
         const laserIds: string[] = [];
@@ -1027,7 +1029,7 @@ function tickWorld(dt: number): void {
         atkTarget.aggro = true;
       }
       if (firedAny) {
-        const cd = Math.max(0.15, 0.55 / stats.fireRate);
+        const cd = Math.max(0.2, 0.85 / stats.fireRate);
         playerFireCd.value = cd;
         state.attackCooldownUntil = state.tick + cd;
         state.attackCooldownDuration = cd;
@@ -1040,6 +1042,21 @@ function tickWorld(dt: number): void {
     state.selectedWorldTarget = null;
     state.isAttacking = false;
     bump();
+  }
+
+  // ── Mining: fire at selected asteroid if no enemy target
+  if (state.miningTargetId && !state.attackTargetId && playerFireCd.value <= 0) {
+    const mAst = state.asteroids.find((a) => a.id === state.miningTargetId && a.zone === p.zone);
+    if (mAst) {
+      const mDist = distance(p.pos.x, p.pos.y, mAst.pos.x, mAst.pos.y);
+      if (mDist < 450) {
+        const mAng = Math.atan2(mAst.pos.y - p.pos.y, mAst.pos.x - p.pos.x);
+        fireProjectile("player", p.pos.x, p.pos.y, mAng, Math.round(stats.damage * 0.3), "#5cff8a", 3, { weaponKind: "laser" });
+        playerFireCd.value = Math.max(0.3, 0.6 / stats.fireRate);
+      }
+    } else {
+      state.miningTargetId = null;
+    }
   }
 
   // ── Update drones (formation behind player)
@@ -1073,7 +1090,7 @@ function tickWorld(dt: number): void {
     };
     if (def.fireRate > 0) {
       d.fireCd -= dt;
-      if (d.fireCd <= 0 && nearest) {
+      if (d.fireCd <= 0 && nearest && state.isAttacking) {
         const dpos = (d as Drone & { anchor: { x: number; y: number } }).anchor;
         const fireRange = d.mode === "defensive" ? 200 : 380;
         if (distance(dpos.x, dpos.y, nearest.pos.x, nearest.pos.y) < fireRange) {
@@ -1237,9 +1254,10 @@ function tickWorld(dt: number): void {
     state.particles.splice(0, state.particles.length - 320);
   }
 
-  // ── Cargo box TTL + pickup
+  // ── Cargo box TTL + proximity pickup
   for (const cb of state.cargoBoxes) cb.ttl -= dt;
   state.cargoBoxes = state.cargoBoxes.filter((cb) => cb.ttl > 0);
+  tryCollectNearbyBoxes();
 
   // ── Floaters update
   for (const f of state.floaters) {
@@ -1287,8 +1305,19 @@ function tickWorld(dt: number): void {
   for (const h of state.recentHonor) h.ttl -= dt;
   state.recentHonor = state.recentHonor.filter((h) => h.ttl > 0);
 
-  // ── Asteroid rotation
-  for (const a of state.asteroids) a.rotation += a.rotSpeed * dt;
+  // ── Asteroid rotation + player collision
+  for (const a of state.asteroids) {
+    a.rotation += a.rotSpeed * dt;
+    if (a.zone !== state.player.zone) continue;
+    const adist = distance(p.pos.x, p.pos.y, a.pos.x, a.pos.y);
+    if (adist < a.size + 10) {
+      const pushAng = Math.atan2(p.pos.y - a.pos.y, p.pos.x - a.pos.x);
+      p.pos.x = a.pos.x + Math.cos(pushAng) * (a.size + 12);
+      p.pos.y = a.pos.y + Math.sin(pushAng) * (a.size + 12);
+      damagePlayer(Math.round(a.size * 0.3));
+      emitSpark(p.pos.x, p.pos.y, "#c69060", 3, 50, 2);
+    }
+  }
 
   // ── Save periodically
   saveTimer -= dt;
