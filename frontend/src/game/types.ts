@@ -3,7 +3,8 @@ export type Vec2 = { x: number; y: number };
 export type ZoneId =
   | "alpha" | "nebula" | "crimson" | "void" | "forge"
   | "corona" | "fracture" | "abyss" | "marsdepth" | "maelstrom"
-  | "venus1" | "venus2" | "venus3" | "venus4" | "venus5";
+  | "venus1" | "venus2" | "venus3" | "venus4" | "venus5"
+  | "danger1" | "danger2" | "danger3" | "danger4" | "danger5";
 
 export type Zone = {
   id: ZoneId;
@@ -707,6 +708,37 @@ export const ZONES: Record<ZoneId, Zone> = {
     enemyTypes: ["dread"],
     description: "The heart of Venusian mystery. Legendary endgame territory.", unlockLevel: 32,
   },
+  // ── DANGER ZONES (4-1 → 4-5) — center, free PvP, no faction ─────────────
+  danger1: {
+    id: "danger1", name: "Outer Rift", label: "4-1", faction: "earth",
+    bgHueA: "#1a0000", bgHueB: "#0a0000", enemyTier: 4,
+    enemyTypes: ["destroyer", "voidling", "dread"],
+    description: "Contested space. All factions fight here. PvP enabled.", unlockLevel: 20,
+  },
+  danger2: {
+    id: "danger2", name: "Dead Zone", label: "4-2", faction: "mars",
+    bgHueA: "#200008", bgHueB: "#0c0004", enemyTier: 5,
+    enemyTypes: ["voidling", "dread"],
+    description: "Wrecked fleets drift here. Extreme danger, extreme loot.", unlockLevel: 26,
+  },
+  danger3: {
+    id: "danger3", name: "Pirate Haven", label: "4-3", faction: "venus",
+    bgHueA: "#180018", bgHueB: "#08000a", enemyTier: 5,
+    enemyTypes: ["dread", "voidling"],
+    description: "Pirate stronghold. High-value loot crates and deadly ambushes.", unlockLevel: 30,
+  },
+  danger4: {
+    id: "danger4", name: "Null Sector", label: "4-4", faction: "earth",
+    bgHueA: "#0a0a1a", bgHueB: "#020208", enemyTier: 6,
+    enemyTypes: ["dread"],
+    description: "Reality collapses. Only the strongest survive. Premium loot.", unlockLevel: 36,
+  },
+  danger5: {
+    id: "danger5", name: "The Abyss Gate", label: "4-5", faction: "mars",
+    bgHueA: "#100005", bgHueB: "#050002", enemyTier: 7,
+    enemyTypes: ["dread"],
+    description: "The deepest point. Legendary enemies and endgame rewards.", unlockLevel: 42,
+  },
 };
 
 export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
@@ -1063,6 +1095,22 @@ export const STATIONS: Station[] = [
   { id: "singularity-dock", name: "Singularity Dock", pos: { x: 2500, y: -900 }, zone: "venus5", kind: "military",
     description: "A blackglass dock for elite escorts and endgame merchants.", controlledBy: "mars",
     prices: { dread: 1.5, warp: 1.6, plasma: 1.8, quantum: 1.0, relic: 0.95, exotic: 0.9, lumenite: 1.1 } },
+  // ── DANGER ZONES ──────────────────────────────────────────────────────────
+  { id: "rift-outpost", name: "Rift Outpost",      pos: { x: 0, y: 0 },     zone: "danger1", kind: "outpost",
+    description: "A lawless outpost in contested space. No faction protection.", controlledBy: "earth",
+    prices: { dread: 1.8, void: 1.5, quantum: 1.3, scrap: 0.5, iron: 0.6, contraband: 0.4, exotic: 0.7 } },
+  { id: "dead-market", name: "Dead Zone Market",   pos: { x: -800, y: 1200 }, zone: "danger2", kind: "trade",
+    description: "Black market deep in the Dead Zone. Extreme prices, extreme goods.", controlledBy: "mars",
+    prices: { dread: 2.2, void: 2.0, quantum: 0.4, contraband: 0.3, relic: 0.5, exotic: 0.5, precursor: 0.6, luxury: 0.4 } },
+  { id: "pirate-dock", name: "Pirate Stronghold",  pos: { x: 600, y: -600 }, zone: "danger3", kind: "outpost",
+    description: "Pirate-run dock. They'll sell to anyone with credits.", controlledBy: "venus",
+    prices: { contraband: 0.2, relic: 0.6, exotic: 0.6, dread: 2.5, void: 2.2, quantum: 1.8, luxury: 0.3 } },
+  { id: "null-station", name: "Null Station",      pos: { x: 0, y: 800 },   zone: "danger4", kind: "military",
+    description: "Abandoned military station, now a neutral ground for all factions.", controlledBy: "earth",
+    prices: { dread: 2.5, void: 2.5, quantum: 2.0, precursor: 0.4, relic: 0.4, exotic: 0.4, "star-map": 0.3 } },
+  { id: "abyss-gate", name: "Abyss Gate Station",  pos: { x: -400, y: -400 }, zone: "danger5", kind: "trade",
+    description: "The deepest station in known space. Legendary equipment and resources.", controlledBy: "mars",
+    prices: { dread: 3.0, void: 3.0, quantum: 2.5, precursor: 0.3, relic: 0.3, exotic: 0.3, "fusion-lattice": 0.2, "star-map": 0.2 } },
 ];
 
 export const PORTALS: Portal[] = [
@@ -1099,6 +1147,25 @@ export const PORTALS: Portal[] = [
   { id: "p-v4-v3", pos: { x: -28000, y:  28000 }, fromZone: "venus4",   toZone: "venus3"   },
   { id: "p-v4-v5", pos: { x:  28000, y:  28000 }, fromZone: "venus4",   toZone: "venus5"   },
   { id: "p-v5-v4", pos: { x: -28000, y: -28000 }, fromZone: "venus5",   toZone: "venus4"   },
+  // Cross-faction: Venus endgame → Earth entry (completing the triangle)
+  { id: "p-v5-a",  pos: { x:  28000, y: -28000 }, fromZone: "venus5",   toZone: "alpha"    },
+  { id: "p-a-v5",  pos: { x: -28000, y:  28000 }, fromZone: "alpha",    toZone: "venus5"   },
+  // Danger zone portals — accessible from faction endgame zones
+  { id: "p-f-d1",  pos: { x:  28000, y:  28000 }, fromZone: "forge",    toZone: "danger1"  },
+  { id: "p-d1-f",  pos: { x: -28000, y: -28000 }, fromZone: "danger1",  toZone: "forge"    },
+  { id: "p-ml-d1", pos: { x:  28000, y:  28000 }, fromZone: "maelstrom",toZone: "danger1"  },
+  { id: "p-d1-ml", pos: { x: -28000, y:  28000 }, fromZone: "danger1",  toZone: "maelstrom"},
+  { id: "p-v5-d1", pos: { x: -28000, y:  28000 }, fromZone: "venus5",   toZone: "danger1"  },
+  { id: "p-d1-v5", pos: { x:  28000, y:  28000 }, fromZone: "danger1",  toZone: "venus5"   },
+  // Danger zone chain: danger1 ↔ danger2 ↔ danger3 ↔ danger4 ↔ danger5
+  { id: "p-d1-d2", pos: { x:  28000, y: -28000 }, fromZone: "danger1",  toZone: "danger2"  },
+  { id: "p-d2-d1", pos: { x: -28000, y:  28000 }, fromZone: "danger2",  toZone: "danger1"  },
+  { id: "p-d2-d3", pos: { x:  28000, y:  28000 }, fromZone: "danger2",  toZone: "danger3"  },
+  { id: "p-d3-d2", pos: { x: -28000, y: -28000 }, fromZone: "danger3",  toZone: "danger2"  },
+  { id: "p-d3-d4", pos: { x:  28000, y: -28000 }, fromZone: "danger3",  toZone: "danger4"  },
+  { id: "p-d4-d3", pos: { x: -28000, y:  28000 }, fromZone: "danger4",  toZone: "danger3"  },
+  { id: "p-d4-d5", pos: { x:  28000, y:  28000 }, fromZone: "danger4",  toZone: "danger5"  },
+  { id: "p-d5-d4", pos: { x: -28000, y: -28000 }, fromZone: "danger5",  toZone: "danger4"  },
 ];
 
 export const MAP_RADIUS = 32000;

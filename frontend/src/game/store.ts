@@ -48,7 +48,7 @@ import {
 import { sfx } from "./sound";
 
 export type HangarTab =
-  | "bounties" | "loadout" | "ships" | "drones" | "market" | "cargo" | "repair" | "skills" | "missions" | "dungeons";
+  | "bounties" | "loadout" | "ships" | "drones" | "market" | "ammo" | "cargo" | "repair" | "skills" | "missions" | "dungeons";
 
 export type DockServiceEntry = {
   kind: "repair" | "shield" | "ammo" | "failed";
@@ -108,6 +108,8 @@ export type GameState = {
   isAttacking: boolean;
   cargoBoxes: CargoBox[];
   showAmmoSelector: boolean;
+  minimapScale: number;
+  showFullZoneMap: boolean;
 };
 
 const STORAGE_KEY = "stellar-frontier-save-v5";
@@ -428,6 +430,8 @@ export const state: GameState = {
   isAttacking: false,
   cargoBoxes: [],
   showAmmoSelector: false,
+  minimapScale: 1,
+  showFullZoneMap: false,
 };
 
 const listeners = new Set<() => void>();
@@ -682,6 +686,31 @@ export function removeCargo(resourceId: ResourceId, qty: number): number {
     state.player.cargo = state.player.cargo.filter((c) => c.resourceId !== resourceId);
   }
   return take;
+}
+
+// ── CARGO BOX PICKUP ─────────────────────────────────────────────────────
+export function collectCargoBox(boxId: string): void {
+  const idx = state.cargoBoxes.findIndex((cb) => cb.id === boxId);
+  if (idx < 0) return;
+  const cb = state.cargoBoxes[idx];
+  const p = state.player;
+  const dist = Math.hypot(cb.pos.x - p.pos.x, cb.pos.y - p.pos.y);
+  if (dist > 200) {
+    pushNotification("Too far away", "bad");
+    return;
+  }
+  if (cb.qty > 0) {
+    const got = addCargo(cb.resourceId, cb.qty);
+    if (got > 0) {
+      pushFloater({ text: `+${got} ${RESOURCES[cb.resourceId].name}`, color: "#5cff8a", x: cb.pos.x, y: cb.pos.y - 12, scale: 1, bold: true });
+    } else {
+      pushNotification("Cargo bay full", "bad");
+      return;
+    }
+  }
+  sfx.pickup();
+  state.cargoBoxes.splice(idx, 1);
+  save(); bump();
 }
 
 // ── DRONES ────────────────────────────────────────────────────────────────

@@ -18,6 +18,7 @@ const TABS: { id: HangarTab; label: string; glyph: string }[] = [
   { id: "dungeons", label: "Dungeons", glyph: "▼" },
   { id: "drones",   label: "Drones",   glyph: "✦" },
   { id: "market",   label: "Market",   glyph: "$" },
+  { id: "ammo",     label: "Ammo",     glyph: "⟁" },
   { id: "cargo",    label: "Cargo",    glyph: "▤" },
   { id: "repair",   label: "Services", glyph: "✚" },
 ];
@@ -79,6 +80,7 @@ export function Hangar({ stationId }: { stationId: string }) {
           {tab === "ships" && <ShipsTab />}
           {tab === "drones" && <DronesTab />}
           {tab === "market" && <MarketTab stationId={stationId} />}
+          {tab === "ammo" && <AmmoTab />}
           {tab === "cargo" && <CargoTab />}
           {tab === "repair" && <RepairTab stationId={stationId} />}
         </div>
@@ -606,7 +608,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
             <button className="btn" style={{ padding: "2px 6px", fontSize: 9 }} onClick={() => { setShowShop((v) => !v); setHoveredShopDefId(null); setHoveredInvInstanceId(null); }}>
               {showShop ? "Show Inventory" : `Shop @ ${station.name}`}
             </button>
-            <button className="btn btn-amber" style={{ padding: "2px 6px", fontSize: 9 }}>
+            <button className="btn btn-amber" style={{ padding: "2px 6px", fontSize: 9 }} onClick={() => { state.hangarTab = "ammo"; bump(); }}>
               Ammo
             </button>
           </div>
@@ -1094,7 +1096,7 @@ function MarketTab({ stationId }: { stationId: string }) {
   };
 
   const allRes = Object.values(RESOURCES);
-  const isTrade = station.kind === "trade";
+  const isTrade = true;
 
   const sellAll = () => {
     let totalEarn = 0;

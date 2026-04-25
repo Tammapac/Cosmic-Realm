@@ -306,6 +306,12 @@ const MAP_NODES: MapNode[] = [
   { id: "venus3",  cx: 530, cy: 475, faction: "venus", color: "#c86cff" },
   { id: "venus4",  cx: 310, cy: 395, faction: "venus", color: "#c86cff" },
   { id: "venus5",  cx: 450, cy: 395, faction: "venus", color: "#c86cff" },
+  // Danger Zones (center, red — PvP)
+  { id: "danger1", cx: 380, cy: 300, faction: "danger", color: "#ff3b3b" },
+  { id: "danger2", cx: 335, cy: 345, faction: "danger", color: "#ff3b3b" },
+  { id: "danger3", cx: 425, cy: 345, faction: "danger", color: "#ff3b3b" },
+  { id: "danger4", cx: 355, cy: 260, faction: "danger", color: "#ff3b3b" },
+  { id: "danger5", cx: 405, cy: 260, faction: "danger", color: "#ff3b3b" },
 ];
 
 const MAP_LINKS: [ZoneIdType, ZoneIdType][] = [
@@ -315,14 +321,18 @@ const MAP_LINKS: [ZoneIdType, ZoneIdType][] = [
   ["corona", "fracture"], ["corona", "abyss"], ["fracture", "marsdepth"], ["abyss", "marsdepth"], ["marsdepth", "maelstrom"],
   // Venus internal
   ["venus1", "venus4"], ["venus2", "venus4"], ["venus2", "venus5"], ["venus3", "venus5"], ["venus4", "venus5"],
-  // Cross-faction bridges (center triangle)
-  ["forge", "maelstrom"], ["forge", "venus4"], ["maelstrom", "venus5"],
+  // Cross-faction bridges to danger zones
+  ["forge", "danger1"], ["maelstrom", "danger1"], ["venus5", "danger1"],
+  // Danger zone internal
+  ["danger1", "danger2"], ["danger1", "danger3"], ["danger2", "danger3"],
+  ["danger1", "danger4"], ["danger1", "danger5"], ["danger4", "danger5"],
 ];
 
 const FACTION_LABELS: { text: string; x: number; y: number; color: string }[] = [
   { text: "EARTH [EIC]", x: 122, y: 50, color: "#4ee2ff" },
   { text: "MARS [MMO]", x: 638, y: 50, color: "#ff8a4e" },
-  { text: "VENUS [VRU]", x: 380, y: 510, color: "#c86cff" },
+  { text: "VENUS [VRU]", x: 380, y: 530, color: "#c86cff" },
+  { text: "DANGER ZONES", x: 380, y: 225, color: "#ff3b3b" },
 ];
 
 export function GalaxyMap() {
@@ -348,7 +358,8 @@ export function GalaxyMap() {
             {/* Faction territory backgrounds */}
             <polygon points="10,40 300,40 310,350 180,350 10,260" fill="#4ee2ff06" stroke="#4ee2ff15" strokeWidth={1} />
             <polygon points="460,40 750,40 750,260 580,350 450,350" fill="#ff8a4e06" stroke="#ff8a4e15" strokeWidth={1} />
-            <polygon points="180,360 580,360 580,510 180,510" fill="#c86cff06" stroke="#c86cff15" strokeWidth={1} />
+            <polygon points="180,360 580,360 580,530 180,530" fill="#c86cff06" stroke="#c86cff15" strokeWidth={1} />
+            <polygon points="320,235 440,235 440,370 320,370" fill="#ff3b3b0a" stroke="#ff3b3b22" strokeWidth={1} strokeDasharray="4 3" />
 
             {/* Faction labels */}
             {FACTION_LABELS.map((f) => (
