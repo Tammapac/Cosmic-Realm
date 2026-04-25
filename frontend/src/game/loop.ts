@@ -419,12 +419,12 @@ function emitSpark(x: number, y: number, color: string, count = 6, speed = 90, s
   }
 }
 
-function emitRing(x: number, y: number, color: string): void {
+function emitRing(x: number, y: number, color: string, radius = 20): void {
   state.particles.push({
     id: `r-${Math.random().toString(36).slice(2, 8)}`,
     pos: { x, y }, vel: { x: 0, y: 0 },
-    ttl: 0.35, maxTtl: 0.35,
-    color, size: 4, kind: "ring",
+    ttl: 0.45, maxTtl: 0.45,
+    color, size: radius, kind: "ring",
   });
 }
 
@@ -440,90 +440,93 @@ function emitTrail(x: number, y: number, color: string): void {
 function emitDeath(x: number, y: number, color: string, big = false): void {
   const B = big;
 
-  // Central white flash bloom
+  // Central white flash bloom — huge and bright
   state.particles.push({
     id: `fl-${Math.random().toString(36).slice(2, 8)}`,
     pos: { x, y }, vel: { x: 0, y: 0 },
-    ttl: B ? 0.35 : 0.25, maxTtl: B ? 0.35 : 0.25,
+    ttl: B ? 0.5 : 0.35, maxTtl: B ? 0.5 : 0.35,
     color: "#ffffff",
-    size: B ? 140 : 75, kind: "flash",
+    size: B ? 220 : 120, kind: "flash",
   });
   state.particles.push({
     id: `fl2-${Math.random().toString(36).slice(2, 8)}`,
     pos: { x, y }, vel: { x: 0, y: 0 },
-    ttl: B ? 0.28 : 0.18, maxTtl: B ? 0.28 : 0.18,
-    color, size: B ? 100 : 50, kind: "flash",
+    ttl: B ? 0.4 : 0.28, maxTtl: B ? 0.4 : 0.28,
+    color, size: B ? 160 : 90, kind: "flash",
   });
-  // Extra colored flash
   state.particles.push({
     id: `fl3-${Math.random().toString(36).slice(2, 8)}`,
     pos: { x, y }, vel: { x: 0, y: 0 },
-    ttl: B ? 0.2 : 0.14, maxTtl: B ? 0.2 : 0.14,
-    color: "#ffd24a", size: B ? 80 : 40, kind: "flash",
+    ttl: B ? 0.3 : 0.2, maxTtl: B ? 0.3 : 0.2,
+    color: "#ffd24a", size: B ? 120 : 70, kind: "flash",
   });
 
-  // Expanding shockwave rings
-  for (let i = 0; i < (B ? 3 : 2); i++) {
-    setTimeout(() => emitRing(x, y, i === 0 ? "#ffffff" : color), i * 60);
+  // Expanding shockwave rings — large and staggered
+  const ringR = B ? 160 : 90;
+  for (let i = 0; i < (B ? 5 : 3); i++) {
+    const ringColor = i === 0 ? "#ffffff" : i === 1 ? color : "#ffd24a";
+    const rSize = ringR * (1 - i * 0.15);
+    setTimeout(() => emitRing(x, y, ringColor, rSize), i * 80);
   }
 
   // Fireballs — orange/red/blue blobs that linger and expand
-  const fbColors = ["#ff8c00", "#ff4500", "#ffd700", "#ff6600", "#4488ff", "#ff2244", "#ff0066"];
-  const fbCount = B ? 14 : 8;
+  const fbColors = ["#ff8c00", "#ff4500", "#ffd700", "#ff6600", "#4488ff", "#ff2244", "#ff0066", "#ffaa00"];
+  const fbCount = B ? 20 : 12;
   for (let i = 0; i < fbCount; i++) {
     const a = Math.random() * Math.PI * 2;
-    const spd = (0.2 + Math.random() * 0.6) * (B ? 90 : 60);
+    const spd = (0.2 + Math.random() * 0.6) * (B ? 120 : 80);
     state.particles.push({
       id: `fb-${Math.random().toString(36).slice(2, 8)}`,
-      pos: { x: x + (Math.random() - 0.5) * 12, y: y + (Math.random() - 0.5) * 12 },
+      pos: { x: x + (Math.random() - 0.5) * 16, y: y + (Math.random() - 0.5) * 16 },
       vel: { x: Math.cos(a) * spd, y: Math.sin(a) * spd },
-      ttl: 0.5 + Math.random() * 0.4, maxTtl: 0.9,
+      ttl: 0.6 + Math.random() * 0.5, maxTtl: 1.1,
       color: fbColors[Math.floor(Math.random() * fbColors.length)],
-      size: B ? (60 + Math.random() * 45) : (32 + Math.random() * 22),
+      size: B ? (80 + Math.random() * 60) : (45 + Math.random() * 30),
       kind: "fireball",
     });
   }
 
-  // Smoke puffs — dark expanding circles that billow and linger
-  const smokeCount = B ? 12 : 6;
+  // Smoke puffs — dark expanding circles
+  const smokeCount = B ? 16 : 8;
   for (let i = 0; i < smokeCount; i++) {
     const a = Math.random() * Math.PI * 2;
-    const spd = (0.1 + Math.random() * 0.35) * (B ? 40 : 25);
+    const spd = (0.1 + Math.random() * 0.35) * (B ? 50 : 35);
     state.particles.push({
       id: `sm-${Math.random().toString(36).slice(2, 8)}`,
-      pos: { x: x + (Math.random() - 0.5) * 8, y: y + (Math.random() - 0.5) * 8 },
+      pos: { x: x + (Math.random() - 0.5) * 10, y: y + (Math.random() - 0.5) * 10 },
       vel: { x: Math.cos(a) * spd, y: Math.sin(a) * spd },
-      ttl: 0.7 + Math.random() * 0.5, maxTtl: 1.2,
-      color: i % 2 === 0 ? "#222" : "#444",
-      size: B ? (30 + Math.random() * 25) : (16 + Math.random() * 14),
+      ttl: 0.8 + Math.random() * 0.6, maxTtl: 1.4,
+      color: i % 3 === 0 ? "#111" : i % 3 === 1 ? "#333" : "#555",
+      size: B ? (40 + Math.random() * 35) : (22 + Math.random() * 18),
       kind: "smoke",
     });
   }
 
   // Spinning hull debris chunks
-  const debrisCount = B ? 24 : 12;
-  const debrisColors = [color, "#ff8a4e", "#ffd24a", "#ffccaa", "#cccccc"];
+  const debrisCount = B ? 30 : 16;
+  const debrisColors = [color, "#ff8a4e", "#ffd24a", "#ffccaa", "#cccccc", "#ff5c6c"];
   for (let i = 0; i < debrisCount; i++) {
     const a = Math.random() * Math.PI * 2;
-    const spd = (0.3 + Math.random() * 0.7) * (B ? 100 : 65);
+    const spd = (0.3 + Math.random() * 0.7) * (B ? 140 : 90);
     state.particles.push({
       id: `db-${Math.random().toString(36).slice(2, 8)}`,
       pos: { x, y },
       vel: { x: Math.cos(a) * spd, y: Math.sin(a) * spd },
-      ttl: 0.5 + Math.random() * 0.5, maxTtl: 1.0,
+      ttl: 0.6 + Math.random() * 0.6, maxTtl: 1.2,
       color: debrisColors[Math.floor(Math.random() * debrisColors.length)],
-      size: B ? (5 + Math.random() * 7) : (3 + Math.random() * 4),
+      size: B ? (6 + Math.random() * 9) : (4 + Math.random() * 5),
       rot: Math.random() * Math.PI * 2,
-      rotVel: (Math.random() - 0.5) * 14,
+      rotVel: (Math.random() - 0.5) * 16,
       kind: "debris",
     });
   }
 
-  // Sparks — three tiers (more for space feel)
-  emitSpark(x, y, "#ffffff", B ? 40 : 18, B ? 380 : 280, B ? 3 : 2);
-  emitSpark(x, y, color, B ? 60 : 28, B ? 260 : 200, B ? 4 : 3);
-  emitSpark(x, y, "#ffd24a", B ? 40 : 16, B ? 180 : 120, B ? 3 : 2);
-  emitSpark(x, y, "#4488ff", B ? 20 : 10, B ? 220 : 150, B ? 2 : 2);
+  // Sparks — four tiers, fast and bright
+  emitSpark(x, y, "#ffffff", B ? 50 : 24, B ? 420 : 320, B ? 4 : 3);
+  emitSpark(x, y, color, B ? 70 : 35, B ? 300 : 240, B ? 5 : 3);
+  emitSpark(x, y, "#ffd24a", B ? 50 : 20, B ? 220 : 160, B ? 4 : 2);
+  emitSpark(x, y, "#4488ff", B ? 30 : 14, B ? 260 : 180, B ? 3 : 2);
+  emitSpark(x, y, "#ff5cf0", B ? 20 : 8, B ? 200 : 140, B ? 3 : 2);
 }
 
 // ── PROJECTILES ───────────────────────────────────────────────────────────
@@ -948,13 +951,13 @@ function tickWorld(dt: number): void {
     updateNpcShips(dt);
   }
 
-  // ── Update enemies (patrol near spawn, aggro only when player attacks them)
+  // ── Update enemies (patrol near spawn, aggro when attacked or NPC nearby)
   const LEASH_RANGE = 800;
   const MIN_DIST = 60;
   for (const e of state.enemies) {
     const exd = p.pos.x - e.pos.x;
     const eyd = p.pos.y - e.pos.y;
-    const ed = Math.sqrt(exd * exd + eyd * eyd);
+    let ed = Math.sqrt(exd * exd + eyd * eyd);
     e.angle = Math.atan2(eyd, exd);
     if (e.hitFlash !== undefined && e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt * 4);
     if (e.combo) {
@@ -968,11 +971,24 @@ function tickWorld(dt: number): void {
       continue;
     }
 
-    // Aggro: only enters aggro when player attacks, drops aggro when too far from spawn
+    // Check for nearby NPC ships — enemies aggro and target them
+    let npcTarget: NpcShip | null = null;
+    let npcDist = 400;
+    for (const npc of state.npcShips) {
+      const nd = Math.hypot(npc.pos.x - e.pos.x, npc.pos.y - e.pos.y);
+      if (nd < npcDist) { npcTarget = npc; npcDist = nd; }
+    }
+    if (npcTarget && npcDist < ed) {
+      e.aggro = true;
+      e.angle = Math.atan2(npcTarget.pos.y - e.pos.y, npcTarget.pos.x - e.pos.x);
+      ed = npcDist;
+    }
+
+    // Aggro: enters aggro when hit or NPC nearby, drops aggro when too far from spawn
     const distFromSpawn = Math.sqrt(
       (e.pos.x - e.spawnPos.x) ** 2 + (e.pos.y - e.spawnPos.y) ** 2
     );
-    if (e.aggro && distFromSpawn > LEASH_RANGE) e.aggro = false;
+    if (e.aggro && distFromSpawn > LEASH_RANGE && !npcTarget) e.aggro = false;
     if (e.isBoss) e.aggro = ed < 800;
 
     if (!e.aggro) {
@@ -1257,21 +1273,31 @@ function tickWorld(dt: number): void {
           const dmg = pr.damage * comboMul;
           e.hull -= dmg;
           e.hitFlash = 1;
-          emitSpark(pr.pos.x, pr.pos.y, e.color, pr.crit ? 14 : 8, pr.crit ? 180 : 120, 2);
-          emitSpark(pr.pos.x, pr.pos.y, "#ffffff", pr.crit ? 6 : 3, pr.crit ? 120 : 80, 1);
-          emitRing(pr.pos.x, pr.pos.y, pr.color);
-          // Hit flash particle
+          e.aggro = true;
+          emitSpark(pr.pos.x, pr.pos.y, e.color, pr.crit ? 20 : 12, pr.crit ? 220 : 160, pr.crit ? 3 : 2);
+          emitSpark(pr.pos.x, pr.pos.y, "#ffffff", pr.crit ? 10 : 6, pr.crit ? 160 : 100, 2);
+          emitSpark(pr.pos.x, pr.pos.y, "#ffd24a", pr.crit ? 8 : 4, pr.crit ? 140 : 90, 2);
+          emitRing(pr.pos.x, pr.pos.y, pr.color, pr.crit ? 45 : 28);
+          if (pr.crit) emitRing(pr.pos.x, pr.pos.y, "#ffffff", 35);
+          // Hit flash particle — bright burst
           state.particles.push({
             id: `hf-${Math.random().toString(36).slice(2, 8)}`,
             pos: { x: pr.pos.x, y: pr.pos.y }, vel: { x: 0, y: 0 },
-            ttl: 0.12, maxTtl: 0.12,
+            ttl: 0.18, maxTtl: 0.18,
             color: pr.crit ? "#ffd24a" : "#ffffff",
-            size: pr.crit ? 30 : 18, kind: "flash",
+            size: pr.crit ? 55 : 35, kind: "flash",
           });
-          // Micro camera shake on hit
+          state.particles.push({
+            id: `hf2-${Math.random().toString(36).slice(2, 8)}`,
+            pos: { x: pr.pos.x, y: pr.pos.y }, vel: { x: 0, y: 0 },
+            ttl: 0.14, maxTtl: 0.14,
+            color: pr.color,
+            size: pr.crit ? 40 : 25, kind: "flash",
+          });
+          // Camera shake on hit — noticeable
           const hitDist = Math.hypot(pr.pos.x - state.player.pos.x, pr.pos.y - state.player.pos.y);
-          const hitShake = pr.crit ? 0.12 : 0.06;
-          state.cameraShake = Math.max(state.cameraShake, hitShake * Math.max(0, 1 - hitDist / 500));
+          const hitShake = pr.crit ? 0.22 : 0.12;
+          state.cameraShake = Math.max(state.cameraShake, hitShake * Math.max(0, 1 - hitDist / 600));
           // damage floater
           pushFloater({
             text: pr.crit ? `${Math.round(dmg)}!` : `${Math.round(dmg)}`,
@@ -1313,7 +1339,21 @@ function tickWorld(dt: number): void {
       }
       // Projectiles pass through asteroids (mining is beam-only now)
     } else {
-      // enemy projectile -> hit drones first, then player
+      // enemy projectile -> hit NPC ships, drones, then player
+      for (const npc of state.npcShips) {
+        if (distance(pr.pos.x, pr.pos.y, npc.pos.x, npc.pos.y) < npc.size + 4) {
+          npc.hull -= pr.damage;
+          emitSpark(pr.pos.x, pr.pos.y, npc.color, 6, 100, 2);
+          emitRing(pr.pos.x, pr.pos.y, pr.color, 20);
+          state.particles.push({
+            id: `nhf-${Math.random().toString(36).slice(2, 8)}`,
+            pos: { x: pr.pos.x, y: pr.pos.y }, vel: { x: 0, y: 0 },
+            ttl: 0.12, maxTtl: 0.12,
+            color: "#ffffff", size: 20, kind: "flash",
+          });
+          return false;
+        }
+      }
       for (const dr of p.drones) {
         const anchor = (dr as Drone & { anchor?: { x: number; y: number } }).anchor;
         if (!anchor) continue;
@@ -1351,8 +1391,8 @@ function tickWorld(dt: number): void {
     pa.ttl -= dt;
   }
   state.particles = state.particles.filter((pa) => pa.ttl > 0);
-  if (state.particles.length > 320) {
-    state.particles.splice(0, state.particles.length - 320);
+  if (state.particles.length > 600) {
+    state.particles.splice(0, state.particles.length - 600);
   }
 
   // ── Cargo box TTL + proximity pickup

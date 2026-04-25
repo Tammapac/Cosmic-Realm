@@ -141,11 +141,11 @@ export function WorldTargetHud() {
         padding: "8px 10px",
       }}
     >
-      <div className="text-[9px] tracking-widest text-mute">TARGET</div>
-      <div className="text-[12px] font-bold" style={{ color: target.kind === "enemy" ? "#ff5c6c" : "#c69060" }}>
+      <div className="text-[13px] tracking-widest text-mute">TARGET</div>
+      <div className="text-[15px] font-bold" style={{ color: target.kind === "enemy" ? "#ff5c6c" : "#c69060" }}>
         {target.name}
       </div>
-      <div className="text-[10px] text-dim mt-1">{target.detail}</div>
+      <div className="text-[13px] text-dim mt-1">{target.detail}</div>
     </div>
   );
 }

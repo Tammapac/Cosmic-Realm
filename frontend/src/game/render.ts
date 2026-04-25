@@ -1279,14 +1279,16 @@ function drawProjectile(ctx: CanvasRenderingContext2D, pr: Projectile): void {
 function drawParticle(ctx: CanvasRenderingContext2D, pa: Particle): void {
   const a = Math.max(0, Math.min(1, pa.ttl / pa.maxTtl));
   if (pa.kind === "ring") {
+    const t = 1 - a;
+    const maxR = pa.size;
+    const r = t * maxR;
     ctx.save();
-    ctx.globalAlpha = a;
+    ctx.globalAlpha = a * 0.9;
     ctx.strokeStyle = pa.color;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = Math.max(1.5, 3 * a);
     ctx.shadowColor = pa.color;
-    ctx.shadowBlur = 6;
+    ctx.shadowBlur = 12 * a;
     ctx.beginPath();
-    const r = (1 - a) * 16 + 4;
     ctx.arc(pa.pos.x, pa.pos.y, r, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
