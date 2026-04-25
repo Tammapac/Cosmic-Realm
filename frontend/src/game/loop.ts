@@ -545,7 +545,7 @@ function applyKill(e: Enemy, killerCrit: boolean): void {
   while (p2.exp >= EXP_FOR_LEVEL(p2.level)) {
     p2.exp -= EXP_FOR_LEVEL(p2.level);
     p2.level++;
-    state.levelUpFlash = 2;
+    state.levelUpFlash = 1.6;
   }
   pushFloater({ text: `+${expGain} XP`, color: "#ff5cf0", x: e.pos.x, y: e.pos.y - 20, scale: 0.9, bold: false });
   pushFloater({ text: `+${credGain} CR`, color: "#ffd24a", x: e.pos.x + 20, y: e.pos.y - 8, scale: 0.9, bold: false });
