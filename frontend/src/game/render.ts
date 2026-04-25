@@ -1113,29 +1113,29 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
   drawHealthBar(ctx, e.pos.x, e.pos.y - e.size - 10, barW, e.hull / e.hullMax);
   if (e.isBoss) {
     ctx.fillStyle = "#ff8a4e";
-    ctx.font = "bold 12px 'Courier New', monospace";
+    ctx.font = "bold 20px 'Courier New', monospace";
     ctx.textAlign = "center";
     ctx.shadowColor = "#000";
     ctx.shadowBlur = 4;
-    ctx.fillText("◆ DREADNOUGHT ◆", e.pos.x, e.pos.y - e.size - 18);
+    ctx.fillText("◆ DREADNOUGHT ◆", e.pos.x, e.pos.y - e.size - 22);
     ctx.shadowBlur = 0;
   } else if (e.name) {
     ctx.fillStyle = e.color;
-    ctx.font = "bold 11px 'Courier New', monospace";
+    ctx.font = "bold 18px 'Courier New', monospace";
     ctx.textAlign = "center";
     ctx.shadowColor = "#000000";
     ctx.shadowBlur = 3;
-    ctx.fillText(e.name, e.pos.x, e.pos.y - e.size - 16);
+    ctx.fillText(e.name, e.pos.x, e.pos.y - e.size - 20);
     ctx.shadowBlur = 0;
   }
   // combo indicator
   if (e.combo && e.combo.stacks > 1) {
     ctx.fillStyle = "#ff5cf0";
-    ctx.font = "bold 12px 'Courier New', monospace";
+    ctx.font = "bold 18px 'Courier New', monospace";
     ctx.textAlign = "center";
     ctx.shadowColor = "#ff5cf0";
     ctx.shadowBlur = 4;
-    ctx.fillText(`COMBO x${e.combo.stacks}`, e.pos.x, e.pos.y + e.size + 16);
+    ctx.fillText(`COMBO x${e.combo.stacks}`, e.pos.x, e.pos.y + e.size + 20);
     ctx.shadowBlur = 0;
   }
 }
@@ -1460,20 +1460,20 @@ function drawStation(
 
   // labels
   ctx.fillStyle = "#e8f0ff";
-  ctx.font = "bold 14px 'Courier New', monospace";
+  ctx.font = "bold 22px 'Courier New', monospace";
   ctx.textAlign = "center";
   ctx.shadowColor = "#000";
   ctx.shadowBlur = 4;
-  ctx.fillText(name, x, y - 64);
+  ctx.fillText(name, x, y - 70);
   ctx.fillStyle = accent;
-  ctx.font = "11px 'Courier New', monospace";
+  ctx.font = "16px 'Courier New', monospace";
   ctx.fillText(`${STATION_GLYPH[kind] || "□"} ${kind.toUpperCase()}`, x, y - 50);
-  ctx.fillText("[ DOCK ]", x, y + 70);
+  ctx.fillText("[ DOCK ]", x, y + 76);
   if (station) {
     const fc = FACTIONS[station.controlledBy];
     ctx.fillStyle = fc.color;
-    ctx.font = "10px 'Courier New', monospace";
-    ctx.fillText(`◆ ${fc.name.toUpperCase()}`, x, y + 82);
+    ctx.font = "16px 'Courier New', monospace";
+    ctx.fillText(`◆ ${fc.name.toUpperCase()}`, x, y + 94);
   }
   ctx.shadowBlur = 0;
 }
@@ -1481,7 +1481,7 @@ function drawStation(
 // ── FLOATERS ──────────────────────────────────────────────────────────────
 function drawFloater(ctx: CanvasRenderingContext2D, f: Floater): void {
   const a = Math.max(0, Math.min(1, f.ttl / f.maxTtl));
-  const sz = Math.round(14 * f.scale);
+  const sz = Math.round(20 * f.scale);
   ctx.save();
   ctx.globalAlpha = a;
   ctx.font = `${f.bold ? "bold " : ""}${sz}px 'Courier New', monospace`;
@@ -1529,13 +1529,13 @@ function drawRift(ctx: CanvasRenderingContext2D, x: number, y: number, color: st
   ctx.arc(0, 0, 12, 0, Math.PI * 2);
   ctx.fill();
   // label
-  ctx.font = "bold 12px 'Courier New', monospace";
+  ctx.font = "bold 18px 'Courier New', monospace";
   ctx.fillStyle = color;
   ctx.textAlign = "center";
-  ctx.fillText("▼ " + name.toUpperCase(), 0, -r - 14);
-  ctx.font = "10px 'Courier New', monospace";
+  ctx.fillText("▼ " + name.toUpperCase(), 0, -r - 18);
+  ctx.font = "16px 'Courier New', monospace";
   ctx.fillStyle = "#aab";
-  ctx.fillText(active ? "ACTIVE" : "DUNGEON RIFT", 0, r + 18);
+  ctx.fillText(active ? "ACTIVE" : "DUNGEON RIFT", 0, r + 24);
   ctx.restore();
 }
 
@@ -1564,11 +1564,11 @@ function drawPortal(ctx: CanvasRenderingContext2D, x: number, y: number, toName:
   ctx.restore();
 
   ctx.fillStyle = "#ff5cf0";
-  ctx.font = "bold 12px 'Courier New', monospace";
+  ctx.font = "bold 18px 'Courier New', monospace";
   ctx.textAlign = "center";
   ctx.shadowColor = "#000";
   ctx.shadowBlur = 4;
-  ctx.fillText(`▶ ${toName}`, x, y - 50);
+  ctx.fillText(`▶ ${toName}`, x, y - 54);
   ctx.shadowBlur = 0;
 }
 
@@ -1589,7 +1589,7 @@ function drawCargoBox(ctx: CanvasRenderingContext2D, cb: CargoBox, t: number): v
   ctx.fill();
   ctx.stroke();
   ctx.fillStyle = cb.color;
-  ctx.font = "bold 12px Courier";
+  ctx.font = "bold 18px Courier";
   ctx.textAlign = "center";
   ctx.fillText("▼", 0, 4);
   ctx.shadowBlur = 0;
@@ -1653,15 +1653,15 @@ function drawDrone(ctx: CanvasRenderingContext2D, d: Drone): void {
 function drawOtherPlayer(ctx: CanvasRenderingContext2D, o: OtherPlayer): void {
   drawShip(ctx, o.pos.x, o.pos.y, o.angle, o.shipClass, 0.85);
   ctx.fillStyle = o.inParty ? "#5cff8a" : "#8a9ac8";
-  ctx.font = "11px 'Courier New', monospace";
+  ctx.font = "18px 'Courier New', monospace";
   ctx.textAlign = "center";
   ctx.shadowColor = "#000";
   ctx.shadowBlur = 3;
-  ctx.fillText(`${o.name} [${o.level}]`, o.pos.x, o.pos.y - 22);
+  ctx.fillText(`${o.name} [${o.level}]`, o.pos.x, o.pos.y - 26);
   if (o.clan) {
     ctx.fillStyle = "#4ee2ff";
-    ctx.font = "10px 'Courier New', monospace";
-    ctx.fillText(`<${o.clan}>`, o.pos.x, o.pos.y - 34);
+    ctx.font = "16px 'Courier New', monospace";
+    ctx.fillText(`<${o.clan}>`, o.pos.x, o.pos.y - 42);
   }
   ctx.shadowBlur = 0;
 }
@@ -1885,12 +1885,12 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
     // Player name + rank symbol below ship
     const rank = rankFor(p.honor);
     const factionColor = p.faction ? FACTIONS[p.faction].color : "#7a8ad8";
-    ctx.font = "bold 13px 'Courier New', monospace";
+    ctx.font = "bold 20px 'Courier New', monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = "#e8f0ff";
     ctx.shadowColor = "#000";
     ctx.shadowBlur = 3;
-    const nameY = p.pos.y + 34;
+    const nameY = p.pos.y + 38;
     ctx.fillText(p.name, p.pos.x, nameY);
     // Rank symbol next to name
     ctx.fillStyle = rank.color;
@@ -1927,7 +1927,7 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
   }
 
   // Floating honor numbers near player
-  ctx.font = "bold 12px 'Courier New', monospace";
+  ctx.font = "bold 18px 'Courier New', monospace";
   ctx.textAlign = "center";
   let hi = 0;
   for (const honor of state.recentHonor) {
@@ -1936,7 +1936,7 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
     ctx.fillStyle = "#ff5cf0";
     ctx.shadowColor = "#ff5cf0";
     ctx.shadowBlur = 6;
-    ctx.fillText(`+${honor.amount} ✪`, p.pos.x, p.pos.y - 50 - hi * 12 - (1 - a) * 24);
+    ctx.fillText(`+${honor.amount} ✪`, p.pos.x, p.pos.y - 54 - hi * 16 - (1 - a) * 24);
     hi++;
   }
   ctx.globalAlpha = 1;
@@ -1999,7 +1999,7 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
     ctx.textAlign = "center";
     ctx.fillText("LEVEL UP", cx, cy - 80);
     ctx.fillStyle = `rgba(255, 92, 240, ${t})`;
-    ctx.font = "bold 14px 'Courier New', monospace";
+    ctx.font = "bold 20px 'Courier New', monospace";
     ctx.fillText(`+1 SKILL POINT`, cx, cy - 56);
     ctx.restore();
   }
