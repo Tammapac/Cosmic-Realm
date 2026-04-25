@@ -1459,21 +1459,23 @@ function drawStation(
   ctx.restore();
 
   // labels
-  ctx.fillStyle = "#e8f0ff";
-  ctx.font = "bold 22px 'Courier New', monospace";
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "bold 24px 'Courier New', monospace";
   ctx.textAlign = "center";
-  ctx.shadowColor = "#000";
-  ctx.shadowBlur = 4;
+  ctx.shadowColor = accent;
+  ctx.shadowBlur = 10;
   ctx.fillText(name, x, y - 70);
   ctx.fillStyle = accent;
-  ctx.font = "16px 'Courier New', monospace";
-  ctx.fillText(`${STATION_GLYPH[kind] || "□"} ${kind.toUpperCase()}`, x, y - 50);
-  ctx.fillText("[ DOCK ]", x, y + 76);
+  ctx.font = "bold 18px 'Courier New', monospace";
+  ctx.fillText(`${STATION_GLYPH[kind] || "□"} ${kind.toUpperCase()}`, x, y - 48);
+  ctx.fillText("[ DOCK ]", x, y + 78);
   if (station) {
     const fc = FACTIONS[station.controlledBy];
     ctx.fillStyle = fc.color;
-    ctx.font = "16px 'Courier New', monospace";
-    ctx.fillText(`◆ ${fc.name.toUpperCase()}`, x, y + 94);
+    ctx.shadowColor = fc.color;
+    ctx.shadowBlur = 8;
+    ctx.font = "bold 18px 'Courier New', monospace";
+    ctx.fillText(`◆ ${fc.name.toUpperCase()}`, x, y + 98);
   }
   ctx.shadowBlur = 0;
 }
@@ -1717,7 +1719,10 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
     sx = (Math.random() - 0.5) * m;
     sy = (Math.random() - 0.5) * m;
   }
-  ctx.translate(w / 2 - cam.x + sx, h / 2 - cam.y + sy);
+  const zoom = state.cameraZoom;
+  ctx.translate(w / 2 + sx, h / 2 + sy);
+  ctx.scale(zoom, zoom);
+  ctx.translate(-cam.x, -cam.y);
 
   // Map boundary
   ctx.strokeStyle = "rgba(78, 226, 255, 0.15)";
@@ -1794,65 +1799,105 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
   // Player drones
   for (const d of state.player.drones) drawDrone(ctx, d);
 
-  // Mining laser beam (player → target asteroid)
+  // Mining laser beam (player → target asteroid) — animated energy beam
   if (state.miningTargetId) {
     const ta = state.asteroids.find((a) => a.id === state.miningTargetId);
     if (ta) {
       const pp = state.player.pos;
-      const pulse = 0.55 + 0.45 * Math.abs(Math.sin(state.tick * 18));
+      const t = state.tick;
+      const pulse = 0.55 + 0.45 * Math.abs(Math.sin(t * 18));
       const dx = ta.pos.x - pp.x;
       const dy = ta.pos.y - pp.y;
       const dist = Math.max(1, Math.hypot(dx, dy));
-      const ox = -dy / dist;
-      const oy = dx / dist;
+      const nx = dx / dist;
+      const ny = dy / dist;
+      const ox = -ny;
+      const oy = nx;
+
       ctx.save();
       ctx.lineCap = "round";
-      ctx.lineJoin = "round";
+
+      // Outer glow beam (wide, transparent)
       ctx.shadowColor = "#44ffcc";
-      ctx.shadowBlur = 18;
-      ctx.setLineDash([7, 5]);
-      ctx.lineDashOffset = -state.tick * 2.5;
-      ctx.globalAlpha = 0.95;
-      ctx.strokeStyle = "rgba(68,255,204,0.18)";
-      ctx.lineWidth = 11;
-      ctx.beginPath();
-      ctx.moveTo(pp.x + ox * 2, pp.y + oy * 2);
-      ctx.lineTo(ta.pos.x + ox * 2, ta.pos.y + oy * 2);
-      ctx.stroke();
-      ctx.strokeStyle = "rgba(255,255,255,0.75)";
-      ctx.lineWidth = 4;
-      ctx.shadowColor = "#ffffff";
-      ctx.shadowBlur = 10;
-      ctx.beginPath();
-      ctx.moveTo(pp.x, pp.y);
-      ctx.lineTo(ta.pos.x, ta.pos.y);
-      ctx.stroke();
+      ctx.shadowBlur = 24;
+      ctx.globalAlpha = 0.3 + 0.15 * Math.sin(t * 12);
       ctx.strokeStyle = "#44ffcc";
-      ctx.lineWidth = 2;
-      ctx.shadowColor = "#44ffcc";
-      ctx.shadowBlur = 14;
+      ctx.lineWidth = 14;
       ctx.beginPath();
       ctx.moveTo(pp.x, pp.y);
       ctx.lineTo(ta.pos.x, ta.pos.y);
       ctx.stroke();
-      ctx.setLineDash([]);
+
+      // Animated energy particles flowing along beam
       ctx.shadowBlur = 0;
-      ctx.restore();
-      ctx.save();
-      ctx.fillStyle = "#ffffff";
+      const segCount = Math.floor(dist / 18);
+      for (let i = 0; i < segCount; i++) {
+        const progress = ((i / segCount) + t * 3.0) % 1.0;
+        const bx = pp.x + dx * progress;
+        const by = pp.y + dy * progress;
+        const wobble = Math.sin(progress * 20 + t * 14) * (3 + pulse);
+        const px = bx + ox * wobble;
+        const py = by + oy * wobble;
+        const alpha = 0.5 + 0.5 * Math.sin(progress * Math.PI);
+        ctx.globalAlpha = alpha * 0.8;
+        ctx.fillStyle = i % 3 === 0 ? "#ffffff" : "#44ffcc";
+        ctx.beginPath();
+        ctx.arc(px, py, 1.5 + pulse * 0.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Core beam (bright white center)
+      ctx.globalAlpha = 0.85;
+      ctx.strokeStyle = "rgba(255,255,255,0.8)";
+      ctx.lineWidth = 3 + pulse;
+      ctx.shadowColor = "#ffffff";
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.moveTo(pp.x, pp.y);
+      ctx.lineTo(ta.pos.x, ta.pos.y);
+      ctx.stroke();
+
+      // Inner cyan beam
+      ctx.strokeStyle = "#44ffcc";
+      ctx.lineWidth = 1.5 + pulse * 0.5;
       ctx.shadowColor = "#44ffcc";
       ctx.shadowBlur = 12;
       ctx.beginPath();
-      ctx.arc(ta.pos.x, ta.pos.y, 4 + pulse * 2, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = "#44ffcc";
-      ctx.globalAlpha = 0.7;
+      ctx.moveTo(pp.x, pp.y);
+      ctx.lineTo(ta.pos.x, ta.pos.y);
+      ctx.stroke();
+
+      ctx.shadowBlur = 0;
+      ctx.restore();
+
+      // Impact point — pulsing rings + sparks
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = "#ffffff";
+      ctx.shadowColor = "#44ffcc";
+      ctx.shadowBlur = 16;
       ctx.beginPath();
-      ctx.arc(ta.pos.x, ta.pos.y, 8 + pulse * 2, 0, Math.PI * 2);
+      ctx.arc(ta.pos.x, ta.pos.y, 3 + pulse * 2, 0, Math.PI * 2);
       ctx.fill();
+
+      // Expanding ring at impact
+      const ringR = 6 + pulse * 4 + Math.sin(t * 20) * 2;
+      ctx.strokeStyle = "#44ffcc";
+      ctx.lineWidth = 1.5;
+      ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 15);
+      ctx.beginPath();
+      ctx.arc(ta.pos.x, ta.pos.y, ringR, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Second ring
+      ctx.globalAlpha = 0.3;
+      ctx.beginPath();
+      ctx.arc(ta.pos.x, ta.pos.y, ringR + 4, 0, Math.PI * 2);
+      ctx.stroke();
+
       ctx.restore();
     } else {
-      state.miningTargetId = null;  // asteroid gone, clear
+      state.miningTargetId = null;
     }
   }
 

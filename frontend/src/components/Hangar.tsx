@@ -15,7 +15,6 @@ const TABS: { id: HangarTab; label: string; glyph: string }[] = [
   { id: "skills",   label: "Skills",   glyph: "✦" },
   { id: "ships",    label: "Shipyard", glyph: "▲" },
   { id: "loadout",  label: "Loadout",  glyph: "⚙" },
-  { id: "dungeons", label: "Dungeons", glyph: "▼" },
   { id: "drones",   label: "Drones",   glyph: "✦" },
   { id: "market",   label: "Market",   glyph: "$" },
   { id: "cargo",    label: "Cargo",    glyph: "▤" },
@@ -917,11 +916,18 @@ function DronesTab() {
   const totalSlots = maxDroneSlots();
   const slotsLeft = totalSlots - player.drones.length;
 
+  const dronePrice = (kind: DroneKind) => {
+    const def = DRONE_DEFS[kind];
+    const owned = player.drones.filter((d) => d.kind === kind).length;
+    return def.price * Math.pow(2, owned);
+  };
+
   const buy = (kind: DroneKind) => {
     const def = DRONE_DEFS[kind];
-    if (player.credits < def.price) { pushNotification("Not enough credits", "bad"); return; }
+    const price = dronePrice(kind);
+    if (player.credits < price) { pushNotification("Not enough credits", "bad"); return; }
     if (slotsLeft <= 0) { pushNotification("No drone slots free", "bad"); return; }
-    player.credits -= def.price;
+    player.credits -= price;
     player.drones.push({
       id: `dr-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
       kind,
@@ -1016,28 +1022,32 @@ function DronesTab() {
       <div>
         <div className="text-cyan tracking-widest text-xs mb-3">▶ DRONE CATALOG</div>
         <div className="space-y-2">
-          {Object.values(DRONE_DEFS).map((def) => (
-            <div key={def.id} className="panel p-3">
-              <div className="flex items-center justify-between mb-1">
-                <div className="font-bold text-xs" style={{ color: def.color }}>{def.name}</div>
-                <div className="text-amber text-xs font-bold">{def.price.toLocaleString()}cr</div>
+          {Object.values(DRONE_DEFS).map((def) => {
+            const price = dronePrice(def.id);
+            const owned = player.drones.filter((d) => d.kind === def.id).length;
+            return (
+              <div key={def.id} className="panel p-3">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="font-bold text-xs" style={{ color: def.color }}>{def.name}</div>
+                  <div className="text-amber text-xs font-bold">{price.toLocaleString()}cr {owned > 0 && <span className="text-mute text-[9px]">(x{owned} owned)</span>}</div>
+                </div>
+                <div className="text-dim text-[10px] mb-2">{def.description}</div>
+                <div className="flex gap-3 text-[10px] mb-2">
+                  {def.damageBonus > 0 && <span className="text-red">+{def.damageBonus} dmg</span>}
+                  {def.shieldBonus > 0 && <span className="text-cyan">+{def.shieldBonus} shield</span>}
+                  {def.hullBonus > 0 && <span className="text-green">+{def.hullBonus} hull</span>}
+                  {def.fireRate > 0 && <span className="text-amber">{def.fireRate.toFixed(1)} shots/s</span>}
+                </div>
+                <button
+                  className="btn btn-primary w-full"
+                  disabled={player.credits < price || slotsLeft <= 0}
+                  onClick={() => buy(def.id)}
+                >
+                  {slotsLeft <= 0 ? "No slots" : `Deploy · ${price.toLocaleString()}cr`}
+                </button>
               </div>
-              <div className="text-dim text-[10px] mb-2">{def.description}</div>
-              <div className="flex gap-3 text-[10px] mb-2">
-                {def.damageBonus > 0 && <span className="text-red">+{def.damageBonus} dmg</span>}
-                {def.shieldBonus > 0 && <span className="text-cyan">+{def.shieldBonus} shield</span>}
-                {def.hullBonus > 0 && <span className="text-green">+{def.hullBonus} hull</span>}
-                {def.fireRate > 0 && <span className="text-amber">{def.fireRate.toFixed(1)} shots/s</span>}
-              </div>
-              <button
-                className="btn btn-primary w-full"
-                disabled={player.credits < def.price || slotsLeft <= 0}
-                onClick={() => buy(def.id)}
-              >
-                {slotsLeft <= 0 ? "No slots" : `Deploy · ${def.price.toLocaleString()}cr`}
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
