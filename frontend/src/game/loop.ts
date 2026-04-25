@@ -440,93 +440,102 @@ function emitTrail(x: number, y: number, color: string): void {
 function emitDeath(x: number, y: number, color: string, big = false): void {
   const B = big;
 
-  // Central white flash bloom — huge and bright
+  // Central white flash bloom — massive
   state.particles.push({
     id: `fl-${Math.random().toString(36).slice(2, 8)}`,
     pos: { x, y }, vel: { x: 0, y: 0 },
-    ttl: B ? 0.5 : 0.35, maxTtl: B ? 0.5 : 0.35,
+    ttl: B ? 0.6 : 0.4, maxTtl: B ? 0.6 : 0.4,
     color: "#ffffff",
-    size: B ? 220 : 120, kind: "flash",
+    size: B ? 300 : 180, kind: "flash",
   });
   state.particles.push({
     id: `fl2-${Math.random().toString(36).slice(2, 8)}`,
     pos: { x, y }, vel: { x: 0, y: 0 },
-    ttl: B ? 0.4 : 0.28, maxTtl: B ? 0.4 : 0.28,
-    color, size: B ? 160 : 90, kind: "flash",
+    ttl: B ? 0.5 : 0.32, maxTtl: B ? 0.5 : 0.32,
+    color, size: B ? 220 : 130, kind: "flash",
   });
   state.particles.push({
     id: `fl3-${Math.random().toString(36).slice(2, 8)}`,
     pos: { x, y }, vel: { x: 0, y: 0 },
-    ttl: B ? 0.3 : 0.2, maxTtl: B ? 0.3 : 0.2,
-    color: "#ffd24a", size: B ? 120 : 70, kind: "flash",
+    ttl: B ? 0.35 : 0.24, maxTtl: B ? 0.35 : 0.24,
+    color: "#ffd24a", size: B ? 180 : 100, kind: "flash",
   });
+  // Delayed secondary flash
+  setTimeout(() => {
+    state.particles.push({
+      id: `fl4-${Math.random().toString(36).slice(2, 8)}`,
+      pos: { x, y }, vel: { x: 0, y: 0 },
+      ttl: 0.2, maxTtl: 0.2,
+      color: "#ff8c00", size: B ? 150 : 80, kind: "flash",
+    });
+  }, 120);
 
-  // Expanding shockwave rings — large and staggered
-  const ringR = B ? 160 : 90;
-  for (let i = 0; i < (B ? 5 : 3); i++) {
-    const ringColor = i === 0 ? "#ffffff" : i === 1 ? color : "#ffd24a";
-    const rSize = ringR * (1 - i * 0.15);
-    setTimeout(() => emitRing(x, y, ringColor, rSize), i * 80);
+  // Expanding shockwave rings — huge and staggered
+  const ringR = B ? 220 : 130;
+  for (let i = 0; i < (B ? 6 : 4); i++) {
+    const ringColor = i === 0 ? "#ffffff" : i === 1 ? color : i === 2 ? "#ffd24a" : "#ff8c00";
+    const rSize = ringR * (1 - i * 0.12);
+    setTimeout(() => emitRing(x, y, ringColor, rSize), i * 70);
   }
 
-  // Fireballs — orange/red/blue blobs that linger and expand
-  const fbColors = ["#ff8c00", "#ff4500", "#ffd700", "#ff6600", "#4488ff", "#ff2244", "#ff0066", "#ffaa00"];
-  const fbCount = B ? 20 : 12;
+  // Fireballs — large fire blobs that fly outward
+  const fbColors = ["#ff8c00", "#ff4500", "#ffd700", "#ff6600", "#ff2244", "#ff0066", "#ffaa00", "#ff7700"];
+  const fbCount = B ? 28 : 16;
   for (let i = 0; i < fbCount; i++) {
     const a = Math.random() * Math.PI * 2;
-    const spd = (0.2 + Math.random() * 0.6) * (B ? 120 : 80);
+    const spd = (0.3 + Math.random() * 0.7) * (B ? 160 : 110);
     state.particles.push({
       id: `fb-${Math.random().toString(36).slice(2, 8)}`,
-      pos: { x: x + (Math.random() - 0.5) * 16, y: y + (Math.random() - 0.5) * 16 },
+      pos: { x: x + (Math.random() - 0.5) * 20, y: y + (Math.random() - 0.5) * 20 },
       vel: { x: Math.cos(a) * spd, y: Math.sin(a) * spd },
-      ttl: 0.6 + Math.random() * 0.5, maxTtl: 1.1,
+      ttl: 0.7 + Math.random() * 0.6, maxTtl: 1.3,
       color: fbColors[Math.floor(Math.random() * fbColors.length)],
-      size: B ? (80 + Math.random() * 60) : (45 + Math.random() * 30),
+      size: B ? (100 + Math.random() * 80) : (55 + Math.random() * 40),
       kind: "fireball",
     });
   }
 
-  // Smoke puffs — dark expanding circles
-  const smokeCount = B ? 16 : 8;
+  // Smoke puffs — dark billowing clouds
+  const smokeCount = B ? 20 : 10;
   for (let i = 0; i < smokeCount; i++) {
     const a = Math.random() * Math.PI * 2;
-    const spd = (0.1 + Math.random() * 0.35) * (B ? 50 : 35);
+    const spd = (0.1 + Math.random() * 0.4) * (B ? 60 : 40);
     state.particles.push({
       id: `sm-${Math.random().toString(36).slice(2, 8)}`,
-      pos: { x: x + (Math.random() - 0.5) * 10, y: y + (Math.random() - 0.5) * 10 },
+      pos: { x: x + (Math.random() - 0.5) * 14, y: y + (Math.random() - 0.5) * 14 },
       vel: { x: Math.cos(a) * spd, y: Math.sin(a) * spd },
-      ttl: 0.8 + Math.random() * 0.6, maxTtl: 1.4,
+      ttl: 0.9 + Math.random() * 0.7, maxTtl: 1.6,
       color: i % 3 === 0 ? "#111" : i % 3 === 1 ? "#333" : "#555",
-      size: B ? (40 + Math.random() * 35) : (22 + Math.random() * 18),
+      size: B ? (50 + Math.random() * 45) : (28 + Math.random() * 22),
       kind: "smoke",
     });
   }
 
-  // Spinning hull debris chunks
-  const debrisCount = B ? 30 : 16;
-  const debrisColors = [color, "#ff8a4e", "#ffd24a", "#ffccaa", "#cccccc", "#ff5c6c"];
+  // Spinning hull debris — small tiles of the destroyed ship
+  const debrisCount = B ? 40 : 22;
+  const debrisColors = [color, "#ff8a4e", "#ffd24a", "#ffccaa", "#cccccc", "#ff5c6c", "#888888"];
   for (let i = 0; i < debrisCount; i++) {
     const a = Math.random() * Math.PI * 2;
-    const spd = (0.3 + Math.random() * 0.7) * (B ? 140 : 90);
+    const spd = (0.3 + Math.random() * 0.7) * (B ? 200 : 130);
     state.particles.push({
       id: `db-${Math.random().toString(36).slice(2, 8)}`,
-      pos: { x, y },
+      pos: { x: x + (Math.random() - 0.5) * 8, y: y + (Math.random() - 0.5) * 8 },
       vel: { x: Math.cos(a) * spd, y: Math.sin(a) * spd },
-      ttl: 0.6 + Math.random() * 0.6, maxTtl: 1.2,
+      ttl: 0.8 + Math.random() * 0.8, maxTtl: 1.6,
       color: debrisColors[Math.floor(Math.random() * debrisColors.length)],
-      size: B ? (6 + Math.random() * 9) : (4 + Math.random() * 5),
+      size: B ? (7 + Math.random() * 11) : (4 + Math.random() * 7),
       rot: Math.random() * Math.PI * 2,
-      rotVel: (Math.random() - 0.5) * 16,
+      rotVel: (Math.random() - 0.5) * 20,
       kind: "debris",
     });
   }
 
-  // Sparks — four tiers, fast and bright
-  emitSpark(x, y, "#ffffff", B ? 50 : 24, B ? 420 : 320, B ? 4 : 3);
-  emitSpark(x, y, color, B ? 70 : 35, B ? 300 : 240, B ? 5 : 3);
-  emitSpark(x, y, "#ffd24a", B ? 50 : 20, B ? 220 : 160, B ? 4 : 2);
-  emitSpark(x, y, "#4488ff", B ? 30 : 14, B ? 260 : 180, B ? 3 : 2);
-  emitSpark(x, y, "#ff5cf0", B ? 20 : 8, B ? 200 : 140, B ? 3 : 2);
+  // Sparks — five tiers, fast and bright, flying far from explosion
+  emitSpark(x, y, "#ffffff", B ? 60 : 30, B ? 500 : 380, B ? 5 : 3);
+  emitSpark(x, y, color, B ? 80 : 40, B ? 360 : 280, B ? 5 : 4);
+  emitSpark(x, y, "#ffd24a", B ? 60 : 24, B ? 280 : 200, B ? 4 : 3);
+  emitSpark(x, y, "#ff8c00", B ? 40 : 18, B ? 320 : 220, B ? 4 : 3);
+  emitSpark(x, y, "#ff5cf0", B ? 24 : 10, B ? 240 : 160, B ? 3 : 2);
 }
 
 // ── PROJECTILES ───────────────────────────────────────────────────────────
@@ -622,11 +631,9 @@ function applyKill(e: Enemy, killerCrit: boolean): void {
     state.cameraShake = Math.max(state.cameraShake, 1);
   } else {
     sfx.explosion(e.size > 16);
-    // Scale shake by proximity — enemies > 700 u away don't shake the camera.
-    // baseShake: large=0.32 (~0.2 s), small=0.16 (~0.1 s) at decay rate 1.6/s.
     const dist = Math.hypot(e.pos.x - state.player.pos.x, e.pos.y - state.player.pos.y);
-    const proximity = Math.max(0, 1 - dist / 700);
-    const baseShake = e.size > 16 ? 0.55 : 0.35;
+    const proximity = Math.max(0, 1 - dist / 800);
+    const baseShake = e.size > 16 ? 0.75 : 0.5;
     state.cameraShake = Math.max(state.cameraShake, baseShake * proximity);
   }
 
@@ -1274,29 +1281,38 @@ function tickWorld(dt: number): void {
           e.hull -= dmg;
           e.hitFlash = 1;
           e.aggro = true;
-          emitSpark(pr.pos.x, pr.pos.y, e.color, pr.crit ? 20 : 12, pr.crit ? 220 : 160, pr.crit ? 3 : 2);
-          emitSpark(pr.pos.x, pr.pos.y, "#ffffff", pr.crit ? 10 : 6, pr.crit ? 160 : 100, 2);
-          emitSpark(pr.pos.x, pr.pos.y, "#ffd24a", pr.crit ? 8 : 4, pr.crit ? 140 : 90, 2);
-          emitRing(pr.pos.x, pr.pos.y, pr.color, pr.crit ? 45 : 28);
-          if (pr.crit) emitRing(pr.pos.x, pr.pos.y, "#ffffff", 35);
-          // Hit flash particle — bright burst
+          emitSpark(pr.pos.x, pr.pos.y, e.color, pr.crit ? 28 : 16, pr.crit ? 280 : 200, pr.crit ? 4 : 3);
+          emitSpark(pr.pos.x, pr.pos.y, "#ffffff", pr.crit ? 14 : 8, pr.crit ? 200 : 140, 2);
+          emitSpark(pr.pos.x, pr.pos.y, "#ffd24a", pr.crit ? 12 : 6, pr.crit ? 180 : 120, 3);
+          emitSpark(pr.pos.x, pr.pos.y, "#ff8c00", pr.crit ? 8 : 4, pr.crit ? 160 : 100, 2);
+          emitRing(pr.pos.x, pr.pos.y, pr.color, pr.crit ? 60 : 38);
+          emitRing(pr.pos.x, pr.pos.y, "#ffffff", pr.crit ? 45 : 25);
+          // Hit flash — big bright burst
           state.particles.push({
             id: `hf-${Math.random().toString(36).slice(2, 8)}`,
             pos: { x: pr.pos.x, y: pr.pos.y }, vel: { x: 0, y: 0 },
-            ttl: 0.18, maxTtl: 0.18,
+            ttl: 0.22, maxTtl: 0.22,
             color: pr.crit ? "#ffd24a" : "#ffffff",
-            size: pr.crit ? 55 : 35, kind: "flash",
+            size: pr.crit ? 80 : 50, kind: "flash",
           });
           state.particles.push({
             id: `hf2-${Math.random().toString(36).slice(2, 8)}`,
             pos: { x: pr.pos.x, y: pr.pos.y }, vel: { x: 0, y: 0 },
-            ttl: 0.14, maxTtl: 0.14,
+            ttl: 0.16, maxTtl: 0.16,
             color: pr.color,
-            size: pr.crit ? 40 : 25, kind: "flash",
+            size: pr.crit ? 55 : 35, kind: "flash",
           });
-          // Camera shake on hit — noticeable
+          // Small fireball on hit for that fire look
+          state.particles.push({
+            id: `hfb-${Math.random().toString(36).slice(2, 8)}`,
+            pos: { x: pr.pos.x, y: pr.pos.y }, vel: { x: (Math.random() - 0.5) * 40, y: (Math.random() - 0.5) * 40 },
+            ttl: 0.3, maxTtl: 0.3,
+            color: pr.crit ? "#ff4500" : "#ff8c00",
+            size: pr.crit ? 35 : 22, kind: "fireball",
+          });
+          // Camera shake on hit — strong
           const hitDist = Math.hypot(pr.pos.x - state.player.pos.x, pr.pos.y - state.player.pos.y);
-          const hitShake = pr.crit ? 0.22 : 0.12;
+          const hitShake = pr.crit ? 0.3 : 0.16;
           state.cameraShake = Math.max(state.cameraShake, hitShake * Math.max(0, 1 - hitDist / 600));
           // damage floater
           pushFloater({

@@ -1099,11 +1099,17 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
       ctx.fill();
     }
   }
-  // hit flash overlay
+  // hit flash overlay (circular glow, no square)
   if (e.hitFlash !== undefined && e.hitFlash > 0) {
-    ctx.globalAlpha = Math.min(0.55, e.hitFlash * 0.55);
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(-e.size, -e.size, e.size * 2, e.size * 2);
+    ctx.globalAlpha = Math.min(0.6, e.hitFlash * 0.6);
+    const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, e.size * 1.3);
+    grd.addColorStop(0, "#ffffff");
+    grd.addColorStop(0.5, e.color + "aa");
+    grd.addColorStop(1, "transparent");
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(0, 0, e.size * 1.3, 0, Math.PI * 2);
+    ctx.fill();
     ctx.globalAlpha = 1;
   }
   ctx.restore();
