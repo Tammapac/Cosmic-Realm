@@ -8,7 +8,7 @@ import {
 import {
   CargoBox, DRONE_DEFS, Drone, DUNGEONS, ENEMY_DEFS, ENEMY_NAMES, EXP_FOR_LEVEL,
   Enemy, EnemyType, FACTION_ENEMY_MODS, FACTIONS, MODULE_DEFS, ModuleStats,
-  MAP_RADIUS, PORTALS, ROCKET_AMMO_TYPE_DEFS, WeaponKind,
+  MAP_RADIUS, NpcShip, PORTALS, ROCKET_AMMO_TYPE_DEFS, WeaponKind,
   SHIP_CLASSES, STATIONS, ZONES, ZoneId,
   rankFor,
 } from "./types";
@@ -74,6 +74,7 @@ function sumEquippedStats(): ModuleStats {
 let last = performance.now();
 let raf = 0;
 let enemySpawnTimer = 0;
+let npcSpawnTimer = 0;
 let saveTimer = 0;
 let chatTimer = 6;
 let aiUpdateTimer = 0;
@@ -97,6 +98,95 @@ const CHAT_LINES = [
   "boss event spawned, headed there now",
   "syndicate just took echo anchorage lol",
 ];
+
+// ── NPC SHIPS ─────────────────────────────────────────────────────────────
+const NPC_NAMES = [
+  "Trader Vex", "Patrol Hawk", "Cargo Runner", "Scout Nova", "Enforcer",
+  "Merchant Iris", "Hauler Kain", "Sentinel Ray", "Courier Ash", "Marshal",
+  "Freighter Bo", "Ranger Kel", "Supply Runner", "Warden Pax", "Navigator",
+];
+const NPC_COLORS = ["#4ee2ff", "#5cff8a", "#ffd24a", "#ff8a4e", "#c8a0ff", "#7ad8ff"];
+
+function spawnNpcShip(): void {
+  const zone = state.player.zone;
+  const zoneStations = STATIONS.filter((s) => s.zone === zone);
+  if (zoneStations.length === 0) return;
+  if (state.npcShips.filter((n) => n.zone === zone).length >= 5) return;
+  const start = zoneStations[Math.floor(Math.random() * zoneStations.length)];
+  const dest = zoneStations.length > 1
+    ? zoneStations.filter((s) => s.id !== start.id)[Math.floor(Math.random() * (zoneStations.length - 1))]
+    : start;
+  const name = NPC_NAMES[Math.floor(Math.random() * NPC_NAMES.length)];
+  const color = NPC_COLORS[Math.floor(Math.random() * NPC_COLORS.length)];
+  state.npcShips.push({
+    id: `npc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    name, color, size: 12,
+    pos: { x: start.pos.x + (Math.random() - 0.5) * 60, y: start.pos.y + (Math.random() - 0.5) * 60 },
+    vel: { x: 0, y: 0 }, angle: 0,
+    hull: 200, hullMax: 200, speed: 80 + Math.random() * 40,
+    damage: 8 + Math.random() * 6, fireCd: 0,
+    targetPos: { x: dest.pos.x, y: dest.pos.y },
+    state: "patrol", targetEnemyId: null, zone,
+  });
+}
+
+function updateNpcShips(dt: number): void {
+  for (let i = state.npcShips.length - 1; i >= 0; i--) {
+    const npc = state.npcShips[i];
+    if (npc.zone !== state.player.zone) { state.npcShips.splice(i, 1); continue; }
+    npc.fireCd = Math.max(0, npc.fireCd - dt);
+
+    // Check for nearby enemies to fight
+    let nearestEnemy: Enemy | null = null;
+    let nearestDist = 350;
+    for (const e of state.enemies) {
+      const d = Math.hypot(e.pos.x - npc.pos.x, e.pos.y - npc.pos.y);
+      if (d < nearestDist) { nearestEnemy = e; nearestDist = d; }
+    }
+
+    if (nearestEnemy) {
+      npc.state = "fight";
+      npc.targetEnemyId = nearestEnemy.id;
+      const dx = nearestEnemy.pos.x - npc.pos.x;
+      const dy = nearestEnemy.pos.y - npc.pos.y;
+      const dist = Math.max(1, Math.hypot(dx, dy));
+      npc.angle = Math.atan2(dy, dx);
+      if (dist > 120) {
+        npc.vel.x = (dx / dist) * npc.speed;
+        npc.vel.y = (dy / dist) * npc.speed;
+      } else {
+        npc.vel.x *= 0.9;
+        npc.vel.y *= 0.9;
+      }
+      if (npc.fireCd <= 0 && dist < 300) {
+        fireProjectile("player", npc.pos.x, npc.pos.y, npc.angle + (Math.random() - 0.5) * 0.1, npc.damage, npc.color, 2);
+        npc.fireCd = 0.8 + Math.random() * 0.4;
+      }
+    } else {
+      npc.state = "patrol";
+      npc.targetEnemyId = null;
+      const dx = npc.targetPos.x - npc.pos.x;
+      const dy = npc.targetPos.y - npc.pos.y;
+      const dist = Math.max(1, Math.hypot(dx, dy));
+      npc.angle = Math.atan2(dy, dx);
+      if (dist < 50) {
+        const zoneStations = STATIONS.filter((s) => s.zone === npc.zone);
+        const next = zoneStations[Math.floor(Math.random() * zoneStations.length)];
+        npc.targetPos = { x: next.pos.x + (Math.random() - 0.5) * 80, y: next.pos.y + (Math.random() - 0.5) * 80 };
+      }
+      npc.vel.x = (dx / dist) * npc.speed * 0.6;
+      npc.vel.y = (dy / dist) * npc.speed * 0.6;
+    }
+
+    npc.pos.x += npc.vel.x * dt;
+    npc.pos.y += npc.vel.y * dt;
+
+    if (npc.hull <= 0) {
+      emitDeath(npc.pos.x, npc.pos.y, npc.color, false);
+      state.npcShips.splice(i, 1);
+    }
+  }
+}
 
 // ── PLAYER STATS (with drone bonuses + skills + faction) ─────────────────
 export function effectiveStats(): {
@@ -354,15 +444,22 @@ function emitDeath(x: number, y: number, color: string, big = false): void {
   state.particles.push({
     id: `fl-${Math.random().toString(36).slice(2, 8)}`,
     pos: { x, y }, vel: { x: 0, y: 0 },
-    ttl: B ? 0.28 : 0.2, maxTtl: B ? 0.28 : 0.2,
+    ttl: B ? 0.35 : 0.25, maxTtl: B ? 0.35 : 0.25,
     color: "#ffffff",
-    size: B ? 100 : 55, kind: "flash",
+    size: B ? 140 : 75, kind: "flash",
   });
   state.particles.push({
     id: `fl2-${Math.random().toString(36).slice(2, 8)}`,
     pos: { x, y }, vel: { x: 0, y: 0 },
-    ttl: B ? 0.22 : 0.16, maxTtl: B ? 0.22 : 0.16,
-    color, size: B ? 70 : 35, kind: "flash",
+    ttl: B ? 0.28 : 0.18, maxTtl: B ? 0.28 : 0.18,
+    color, size: B ? 100 : 50, kind: "flash",
+  });
+  // Extra colored flash
+  state.particles.push({
+    id: `fl3-${Math.random().toString(36).slice(2, 8)}`,
+    pos: { x, y }, vel: { x: 0, y: 0 },
+    ttl: B ? 0.2 : 0.14, maxTtl: B ? 0.2 : 0.14,
+    color: "#ffd24a", size: B ? 80 : 40, kind: "flash",
   });
 
   // Expanding shockwave rings
@@ -841,6 +938,16 @@ function tickWorld(dt: number): void {
     }
   }
 
+  // ── NPC ships spawn and update
+  if (!state.dungeon) {
+    npcSpawnTimer -= dt;
+    if (npcSpawnTimer <= 0) {
+      spawnNpcShip();
+      npcSpawnTimer = 8 + Math.random() * 12;
+    }
+    updateNpcShips(dt);
+  }
+
   // ── Update enemies (patrol near spawn, aggro only when player attacks them)
   const LEASH_RANGE = 800;
   const MIN_DIST = 60;
@@ -1032,15 +1139,20 @@ function tickWorld(dt: number): void {
     bump();
   }
 
-  // ── Mining: fire at selected asteroid if no enemy target
-  if (state.miningTargetId && !state.attackTargetId && playerFireCd.value <= 0) {
+  // ── Mining: beam damages asteroid continuously (no projectiles)
+  if (state.miningTargetId && !state.attackTargetId) {
     const mAst = state.asteroids.find((a) => a.id === state.miningTargetId && a.zone === p.zone);
     if (mAst) {
       const mDist = distance(p.pos.x, p.pos.y, mAst.pos.x, mAst.pos.y);
       if (mDist < 450) {
-        const mAng = Math.atan2(mAst.pos.y - p.pos.y, mAst.pos.x - p.pos.x);
-        fireProjectile("player", p.pos.x, p.pos.y, mAng, Math.round(stats.damage * 0.3), "#5cff8a", 3, { weaponKind: "laser" });
-        playerFireCd.value = Math.max(0.3, 0.6 / stats.fireRate);
+        const miningDps = stats.damage * 0.25;
+        mAst.hp -= miningDps * dt;
+        if (Math.random() < dt * 3) {
+          emitSpark(mAst.pos.x + (Math.random() - 0.5) * mAst.size, mAst.pos.y + (Math.random() - 0.5) * mAst.size, "#c69060", 2, 40, 1);
+        }
+        if (mAst.hp <= 0) { state.miningTargetId = null; destroyAsteroid(mAst.id); }
+      } else {
+        state.miningTargetId = null;
       }
     } else {
       state.miningTargetId = null;
@@ -1145,8 +1257,21 @@ function tickWorld(dt: number): void {
           const dmg = pr.damage * comboMul;
           e.hull -= dmg;
           e.hitFlash = 1;
-          emitSpark(pr.pos.x, pr.pos.y, e.color, pr.crit ? 8 : 4, pr.crit ? 140 : 80, 2);
+          emitSpark(pr.pos.x, pr.pos.y, e.color, pr.crit ? 14 : 8, pr.crit ? 180 : 120, 2);
+          emitSpark(pr.pos.x, pr.pos.y, "#ffffff", pr.crit ? 6 : 3, pr.crit ? 120 : 80, 1);
           emitRing(pr.pos.x, pr.pos.y, pr.color);
+          // Hit flash particle
+          state.particles.push({
+            id: `hf-${Math.random().toString(36).slice(2, 8)}`,
+            pos: { x: pr.pos.x, y: pr.pos.y }, vel: { x: 0, y: 0 },
+            ttl: 0.12, maxTtl: 0.12,
+            color: pr.crit ? "#ffd24a" : "#ffffff",
+            size: pr.crit ? 30 : 18, kind: "flash",
+          });
+          // Micro camera shake on hit
+          const hitDist = Math.hypot(pr.pos.x - state.player.pos.x, pr.pos.y - state.player.pos.y);
+          const hitShake = pr.crit ? 0.12 : 0.06;
+          state.cameraShake = Math.max(state.cameraShake, hitShake * Math.max(0, 1 - hitDist / 500));
           // damage floater
           pushFloater({
             text: pr.crit ? `${Math.round(dmg)}!` : `${Math.round(dmg)}`,
@@ -1186,19 +1311,7 @@ function tickWorld(dt: number): void {
           return false;
         }
       }
-      // hit asteroids
-      for (const a of state.asteroids) {
-        if (a.zone !== state.player.zone) continue;
-        if (distance(pr.pos.x, pr.pos.y, a.pos.x, a.pos.y) < a.size + 2) {
-          a.hp -= pr.damage;
-          emitSpark(pr.pos.x, pr.pos.y, "#c69060", 3, 60, 2);
-          state.miningTargetId = a.id;   // track for laser beam visual
-          if (a.hp <= 0) { state.miningTargetId = null; destroyAsteroid(a.id); }
-          return false;
-        }
-      }
-      // Clear stale mining target if no projectile hit this frame
-      // (cleared each ~300ms naturally since miningTargetId only updates on hit)
+      // Projectiles pass through asteroids (mining is beam-only now)
     } else {
       // enemy projectile -> hit drones first, then player
       for (const dr of p.drones) {

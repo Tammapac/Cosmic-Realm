@@ -603,6 +603,25 @@ export type Portal = {
   toZone: ZoneId;
 };
 
+export type NpcShip = {
+  id: string;
+  name: string;
+  pos: Vec2;
+  vel: Vec2;
+  angle: number;
+  color: string;
+  size: number;
+  hull: number;
+  hullMax: number;
+  speed: number;
+  damage: number;
+  fireCd: number;
+  targetPos: Vec2;
+  state: "patrol" | "fight";
+  targetEnemyId: string | null;
+  zone: ZoneId;
+};
+
 export type OtherPlayer = {
   id: string;
   name: string;

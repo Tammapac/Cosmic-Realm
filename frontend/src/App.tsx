@@ -166,7 +166,7 @@ function GameCanvas() {
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? -0.1 : 0.1;
-    state.cameraZoom = Math.max(0.4, Math.min(2.5, state.cameraZoom + delta));
+    state.cameraZoom = Math.max(1.0, Math.min(2.5, state.cameraZoom + delta));
     bump();
   };
 

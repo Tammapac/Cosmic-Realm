@@ -11,9 +11,9 @@
   --accent-amber: #ffd24a;
   --accent-green: #5cff8a;
   --accent-red: #ff5c6c;
-  --text-bright: #e8f0ff;
-  --text-dim: #8a9ac8;
-  --text-mute: #5a6a98;
+  --text-bright: #ffffff;
+  --text-dim: #d0d8f0;
+  --text-mute: #a0b0d8;
 }
 
 * {

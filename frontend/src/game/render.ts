@@ -1,5 +1,5 @@
 import {
-  Asteroid, CargoBox, DRONE_DEFS, Drone, DUNGEONS, Enemy, FACTIONS, Floater, MAP_RADIUS, OtherPlayer, Particle,
+  Asteroid, CargoBox, DRONE_DEFS, Drone, DUNGEONS, Enemy, FACTIONS, Floater, MAP_RADIUS, NpcShip, OtherPlayer, Particle,
   PORTALS, Projectile, SHIP_CLASSES, STATIONS, ShipClassId, Station, ZONES, rankFor,
 } from "./types";
 import { state } from "./store";
@@ -1668,6 +1668,41 @@ function drawOtherPlayer(ctx: CanvasRenderingContext2D, o: OtherPlayer): void {
   ctx.shadowBlur = 0;
 }
 
+function drawNpcShip(ctx: CanvasRenderingContext2D, npc: NpcShip): void {
+  ctx.save();
+  ctx.translate(npc.pos.x, npc.pos.y);
+  ctx.rotate(npc.angle);
+  // Ship body — small triangle
+  ctx.fillStyle = npc.color;
+  ctx.shadowColor = npc.color;
+  ctx.shadowBlur = 8;
+  ctx.beginPath();
+  ctx.moveTo(14, 0);
+  ctx.lineTo(-8, -7);
+  ctx.lineTo(-5, 0);
+  ctx.lineTo(-8, 7);
+  ctx.closePath();
+  ctx.fill();
+  // Engine glow
+  ctx.fillStyle = "#ffffff";
+  ctx.shadowBlur = 6;
+  ctx.beginPath();
+  ctx.arc(-7, 0, 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  // Name label
+  ctx.fillStyle = npc.color;
+  ctx.font = "14px 'Courier New', monospace";
+  ctx.textAlign = "center";
+  ctx.shadowColor = "#000";
+  ctx.shadowBlur = 3;
+  ctx.fillText(npc.name, npc.pos.x, npc.pos.y - 20);
+  ctx.fillStyle = npc.state === "fight" ? "#ff5c6c" : "#a0b0d8";
+  ctx.font = "10px 'Courier New', monospace";
+  ctx.fillText(npc.state === "fight" ? "COMBAT" : "PATROL", npc.pos.x, npc.pos.y - 8);
+  ctx.shadowBlur = 0;
+}
+
 // ── MAIN RENDER ───────────────────────────────────────────────────────────
 export function render(ctx: CanvasRenderingContext2D, w: number, h: number): void {
   if (lastZone !== state.player.zone) {
@@ -1784,6 +1819,7 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
 
   // Other players
   for (const o of state.others) drawOtherPlayer(ctx, o);
+  for (const npc of state.npcShips) drawNpcShip(ctx, npc);
 
   // Enemies
   for (const e of state.enemies) drawEnemy(ctx, e);

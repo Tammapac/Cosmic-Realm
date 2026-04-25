@@ -27,6 +27,7 @@ import {
   MODULE_DEFS,
   ModuleItem,
   ModuleSlot,
+  NpcShip,
   OtherPlayer,
   Particle,
   Player,
@@ -66,6 +67,7 @@ export type GameState = {
   floaters: Floater[];
   asteroids: Asteroid[];
   others: OtherPlayer[];
+  npcShips: NpcShip[];
   chat: ChatMessage[];
   events: GameEvent[];
   cameraTarget: { x: number; y: number };
@@ -391,6 +393,7 @@ export const state: GameState = {
   floaters: [],
   asteroids: makeAsteroids(initialPlayer.zone),
   others: makeOthers(initialPlayer.zone),
+  npcShips: [],
   chat: [
     { id: "c0", channel: "system", from: "SYSTEM", text: "Welcome to Stellar Frontier, Captain.", time: Date.now() },
     { id: "c1", channel: "local", from: "Aurora", text: "anyone running nebula bounties?", time: Date.now() },
@@ -629,6 +632,7 @@ export function travelToZone(zoneId: ZoneId): void {
   state.projectiles = [];
   state.particles = [];
   state.cargoBoxes = [];
+  state.npcShips = [];
   refreshOthers(zoneId);
   pushNotification(`Warped to ${ZONES[zoneId].name}`, "good");
   pushChat("system", "SYSTEM", `You entered ${ZONES[zoneId].name}.`);

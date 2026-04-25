@@ -704,7 +704,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
         </div>
       </div>
       {showAmmoPopup && (
-        <div className="col-span-2">
+        <div style={{ gridColumn: "1 / -1" }}>
           <AmmoTab />
         </div>
       )}
