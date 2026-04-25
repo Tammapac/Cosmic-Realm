@@ -1862,50 +1862,6 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
       ctx.globalAlpha = 1;
     }
   }
-  // ── Shading overlay: adds depth, metallic sheen, and panel definition ──
-  {
-    const prevComp = ctx.globalCompositeOperation;
-    ctx.globalCompositeOperation = "source-atop";
-    const r = e.size * 1.8;
-    // Top-down lighting gradient (lighter top, darker bottom)
-    ctx.globalAlpha = 0.3;
-    const topLight = ctx.createLinearGradient(0, -r, 0, r);
-    topLight.addColorStop(0, lt);
-    topLight.addColorStop(0.25, "transparent");
-    topLight.addColorStop(0.75, "transparent");
-    topLight.addColorStop(1, "#000000");
-    ctx.fillStyle = topLight;
-    ctx.fillRect(-r, -r, r * 2, r * 2);
-    // Radial edge darkening for rounded depth
-    ctx.globalAlpha = 0.4;
-    const shadow = ctx.createRadialGradient(0, -s * 2, r * 0.12, 0, 0, r);
-    shadow.addColorStop(0, "transparent");
-    shadow.addColorStop(0.5, "transparent");
-    shadow.addColorStop(0.8, "#00000044");
-    shadow.addColorStop(1, "#000000");
-    ctx.fillStyle = shadow;
-    ctx.fillRect(-r, -r, r * 2, r * 2);
-    // Specular highlight (metallic sheen on upper hull)
-    ctx.globalAlpha = 0.22;
-    const sheen = ctx.createRadialGradient(-s * 1, -s * 4, 0, 0, -s * 2, r * 0.55);
-    sheen.addColorStop(0, "#ffffff");
-    sheen.addColorStop(0.3, lt.replace("rgb(", "rgba(").replace(")", ",0.4)"));
-    sheen.addColorStop(0.7, "transparent");
-    sheen.addColorStop(1, "transparent");
-    ctx.fillStyle = sheen;
-    ctx.fillRect(-r, -r, r * 2, r * 2);
-    // Secondary rim highlight (subtle side rim)
-    ctx.globalAlpha = 0.12;
-    const rimLight = ctx.createLinearGradient(-r, 0, r, 0);
-    rimLight.addColorStop(0, lt);
-    rimLight.addColorStop(0.15, "transparent");
-    rimLight.addColorStop(0.85, "transparent");
-    rimLight.addColorStop(1, lt);
-    ctx.fillStyle = rimLight;
-    ctx.fillRect(-r, -r, r * 2, r * 2);
-    ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = prevComp;
-  }
   // hit flash overlay (circular glow, no square)
   if (e.hitFlash !== undefined && e.hitFlash > 0) {
     ctx.globalAlpha = Math.min(0.6, e.hitFlash * 0.6);
