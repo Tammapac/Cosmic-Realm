@@ -322,13 +322,14 @@ export class GameEngine {
         enemies: new Map(),
         asteroids: new Map(),
         npcShips: new Map(),
-        spawnTimer: randRange(2, 5),
+        spawnTimer: randRange(0.5, 1.5),
         bossTimer: randRange(120, 300),
         bossActive: false,
         npcSpawnTimer: randRange(5, 15),
       };
       this.zones.set(zone.id, zs);
       this.spawnInitialAsteroids(zone.id, zs);
+      this.spawnInitialEnemies(zone.id, zs);
     }
   }
 
@@ -566,7 +567,7 @@ export class GameEngine {
   private tickEnemySpawns(zoneId: string, zs: ZoneState, players: OnlinePlayer[], dt: number, events: GameEvent[]): void {
     zs.spawnTimer -= dt;
     if (zs.spawnTimer > 0) return;
-    zs.spawnTimer = randRange(1.5, 4);
+    zs.spawnTimer = randRange(0.5, 1.5);
 
     const zoneDef = ZONES[zoneId as ZoneId];
     if (!zoneDef) return;
@@ -972,6 +973,46 @@ export class GameEngine {
         respawnAt: 0,
       };
       zs.asteroids.set(ast.id, ast);
+    }
+  }
+
+  private spawnInitialEnemies(zoneId: string, zs: ZoneState): void {
+    const zoneDef = ZONES[zoneId as ZoneId];
+    if (!zoneDef) return;
+    const initialCount = 8 + zoneDef.enemyTier * 2;
+    const tierMult = 1 + (zoneDef.enemyTier - 1) * 0.5;
+    for (let i = 0; i < initialCount; i++) {
+      const enemyType = zoneDef.enemyTypes[Math.floor(Math.random() * zoneDef.enemyTypes.length)];
+      const baseDef = ENEMY_DEFS[enemyType];
+      if (!baseDef) continue;
+      const fMods = FACTION_ENEMY_MODS[zoneDef.faction]?.[enemyType];
+      const hullMul = (fMods?.hullMul ?? 1) * tierMult;
+      const dmgMul = (fMods?.damageMul ?? 1) * tierMult;
+      const spdMul = fMods?.speedMul ?? 1;
+      const color = fMods?.color ?? baseDef.color;
+      const spawnPos: Vec2 = {
+        x: randRange(-MAP_RADIUS * 0.9, MAP_RADIUS * 0.9),
+        y: randRange(-MAP_RADIUS * 0.9, MAP_RADIUS * 0.9),
+      };
+      const names = ENEMY_NAMES[enemyType];
+      const name = names[Math.floor(Math.random() * names.length)];
+      const enemy: ServerEnemy = {
+        id: eid("e"), type: enemyType, behavior: baseDef.behavior, name,
+        pos: { ...spawnPos }, vel: { x: 0, y: 0 },
+        angle: Math.random() * Math.PI * 2,
+        hull: Math.round(baseDef.hullMax * hullMul),
+        hullMax: Math.round(baseDef.hullMax * hullMul),
+        damage: Math.round(baseDef.damage * dmgMul),
+        speed: Math.round(baseDef.speed * spdMul),
+        exp: baseDef.exp, credits: baseDef.credits, honor: baseDef.honor,
+        loot: baseDef.loot ? { ...baseDef.loot } : undefined,
+        color, size: baseDef.size,
+        isBoss: false, bossPhase: 0, phaseTimer: 0,
+        fireTimer: randRange(1, 3), burstCd: 0, burstShots: 0,
+        aggroTarget: null, aggroRange: 400,
+        spawnPos: { ...spawnPos }, stunUntil: 0, combo: new Map(),
+      };
+      zs.enemies.set(enemy.id, enemy);
     }
   }
 
