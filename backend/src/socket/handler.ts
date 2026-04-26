@@ -99,6 +99,13 @@ export function setupSocket(io: Server) {
     socket.join(`zone:${online.zone}`);
     addPlayer(online);
 
+    socket.emit("welcome", {
+      playerId: dbPlayer.id,
+      tickRate: TICK_RATE,
+      friction: 0.96,
+      frictionRefFps: 60,
+    });
+
     socket.to(`zone:${online.zone}`).emit("player:join", toClientPlayer(online));
     io.emit("online:count", getOnlineCount());
 
@@ -250,11 +257,13 @@ export function setupSocket(io: Server) {
   const TICK_MS = 1000 / TICK_RATE;
   const CULL_RADIUS_SQ = CULL_RADIUS * CULL_RADIUS;
   let nextTickAt = Date.now() + TICK_MS;
+  let tickCounter = 0;
 
   const runTick = () => {
     try {
       const events = engine.tick(FIXED_DT, getPlayersInZone);
       broadcastEvents(io, events);
+      tickCounter++;
 
       for (const [, playersMap] of getAllZones()) {
         if (playersMap.size === 0) continue;
@@ -291,6 +300,47 @@ export function setupSocket(io: Server) {
             players: nearbyPlayers,
             enemies: culled.enemies,
             npcs: culled.npcs,
+          });
+
+          const entities: any[] = [];
+          for (const o of nearbyPlayers) {
+            entities.push({
+              id: `p-${o.id}`, entityType: "player",
+              x: o.x, y: o.y, vx: o.vx, vy: o.vy, angle: o.a,
+              hp: o.hp, shield: o.sp, version: tickCounter,
+              name: o.name, shipClass: o.shipClass, level: o.level, faction: o.faction,
+            });
+          }
+          for (const e of culled.enemies as any[]) {
+            entities.push({
+              id: e.id, entityType: "enemy",
+              x: e.x, y: e.y, vx: e.vx, vy: e.vy, angle: e.a,
+              hp: e.hp, hpMax: e.hpMax, version: tickCounter,
+              type: e.type, behavior: e.behavior, name: e.name,
+              damage: e.damage, speed: e.speed, color: e.color, size: e.size,
+              isBoss: e.isBoss, bossPhase: e.bossPhase,
+            });
+          }
+          for (const n of culled.npcs as any[]) {
+            entities.push({
+              id: n.id, entityType: "npc",
+              x: n.x, y: n.y, vx: n.vx, vy: n.vy, angle: n.a,
+              hp: n.hp, hpMax: n.hpMax, version: tickCounter,
+              name: n.name, color: n.color, size: n.size, state: n.state,
+            });
+          }
+
+          sock.emit("snapshot", {
+            tick: tickCounter,
+            self: {
+              id: p.playerId,
+              x: culled.self.x, y: culled.self.y,
+              vx: culled.self.vx, vy: culled.self.vy,
+              hp: culled.self.hp, hpMax: culled.self.hpMax,
+              shield: culled.self.sp, shieldMax: culled.self.spMax,
+              lastProcessedInput: 0,
+            },
+            entities,
           });
         }
       }
