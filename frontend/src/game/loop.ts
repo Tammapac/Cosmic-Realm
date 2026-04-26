@@ -134,7 +134,10 @@ function spawnNpcShip(): void {
 
 function updateNpcShips(dt: number): void {
   if (serverEnemiesReceived && !state.dungeon) {
-    // Server-authoritative: positions come from onServerState, no local movement
+    for (const npc of state.npcShips) {
+      npc.pos.x += npc.vel.x * dt;
+      npc.pos.y += npc.vel.y * dt;
+    }
     return;
   }
   // Local fallback: full NPC AI
@@ -932,7 +935,36 @@ function tickWorld(dt: number): void {
     p.pos.x += p.vel.x * dt;
     p.pos.y += p.vel.y * dt;
   }
-  // When server-authoritative: position comes from onServerState lerp, no local extrapolation
+  // When server-authoritative: client-side prediction (same physics as server)
+  if (serverEnemiesReceived && !state.dungeon) {
+    const dx = state.cameraTarget.x - p.pos.x;
+    const dy = state.cameraTarget.y - p.pos.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > 6) {
+      const toTargetAngle = Math.atan2(dy, dx);
+      if (dist > 40) p.angle = toTargetAngle;
+      const accel = stats.speed * 4;
+      p.vel.x += Math.cos(toTargetAngle) * accel * dt;
+      p.vel.y += Math.sin(toTargetAngle) * accel * dt;
+    }
+    if ((state.isLaserFiring || state.isRocketFiring) && state.attackTargetId) {
+      const atk = state.enemies.find(e => e.id === state.attackTargetId);
+      if (atk) p.angle = Math.atan2(atk.pos.y - p.pos.y, atk.pos.x - p.pos.x);
+    }
+    const v = Math.sqrt(p.vel.x * p.vel.x + p.vel.y * p.vel.y);
+    const speedCap = state.afterburnUntil > state.tick ? stats.speed * 3 : stats.speed;
+    if (v > speedCap) {
+      p.vel.x = (p.vel.x / v) * speedCap;
+      p.vel.y = (p.vel.y / v) * speedCap;
+    }
+    const friction = Math.pow(0.96, dt * 20);
+    p.vel.x *= friction;
+    p.vel.y *= friction;
+    p.pos.x += p.vel.x * dt;
+    p.pos.y += p.vel.y * dt;
+    p.pos.x = Math.max(-8000, Math.min(8000, p.pos.x));
+    p.pos.y = Math.max(-8000, Math.min(8000, p.pos.y));
+  }
 
   // ── Engine particles + 16-bit trail + thruster sound
   const cls = SHIP_CLASSES[p.shipClass];
@@ -999,10 +1031,12 @@ function tickWorld(dt: number): void {
 
   // ── Update enemies
   if (serverEnemiesReceived && !state.dungeon) {
-    // Server-authoritative: positions come from onServerState, just decay local VFX timers
+    // Server-authoritative: extrapolate between ticks + decay VFX timers
     for (const e of state.enemies) {
       if (e.hitFlash !== undefined && e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt * 4);
       if (e.combo) { e.combo.ttl -= dt; if (e.combo.ttl <= 0) e.combo = undefined; }
+      e.pos.x += e.vel.x * dt;
+      e.pos.y += e.vel.y * dt;
     }
   } else {
     // Local fallback: full AI (patrol, aggro, firing)
@@ -2068,26 +2102,40 @@ export function onServerState(s: ServerState): void {
   if (state.dungeon) return;
 
   const p = state.player;
-  const lerpFactor = 0.5;
+  const SNAP = 80;
+  const SMOOTH = 0.15;
 
-  // Server-authoritative player position
-  p.pos.x += (s.self.x - p.pos.x) * lerpFactor;
-  p.pos.y += (s.self.y - p.pos.y) * lerpFactor;
-  p.vel.x = s.self.vx;
-  p.vel.y = s.self.vy;
+  // Reconcile player position: small error -> smooth correction, large -> snap
+  const pdx = s.self.x - p.pos.x;
+  const pdy = s.self.y - p.pos.y;
+  const pErr = Math.sqrt(pdx * pdx + pdy * pdy);
+  if (pErr > SNAP) {
+    p.pos.x = s.self.x; p.pos.y = s.self.y;
+    p.vel.x = s.self.vx; p.vel.y = s.self.vy;
+  } else if (pErr > 2) {
+    p.pos.x += pdx * 0.1; p.pos.y += pdy * 0.1;
+    p.vel.x += (s.self.vx - p.vel.x) * 0.3;
+    p.vel.y += (s.self.vy - p.vel.y) * 0.3;
+  }
   p.angle = s.self.a;
   p.hull = s.self.hp;
   p.shield = s.self.sp;
 
-  // Other players
+  // Other players: reconcile with interpolation
   const seenPlayerIds = new Set<string>();
   for (const sp of s.players) {
     const sid = String(sp.id);
     seenPlayerIds.add(sid);
     const o = state.others.find((op) => op.id === sid);
     if (o) {
-      o.pos.x += (sp.x - o.pos.x) * lerpFactor;
-      o.pos.y += (sp.y - o.pos.y) * lerpFactor;
+      const odx = sp.x - o.pos.x;
+      const ody = sp.y - o.pos.y;
+      const oErr = Math.sqrt(odx * odx + ody * ody);
+      if (oErr > SNAP) {
+        o.pos.x = sp.x; o.pos.y = sp.y;
+      } else if (oErr > 2) {
+        o.pos.x += odx * SMOOTH; o.pos.y += ody * SMOOTH;
+      }
       o.vel.x = sp.vx; o.vel.y = sp.vy;
       o.angle = sp.a;
     } else {
@@ -2101,14 +2149,20 @@ export function onServerState(s: ServerState): void {
   }
   state.others = state.others.filter((o) => seenPlayerIds.has(o.id));
 
-  // Enemies: update existing, add new, remove culled-out
+  // Enemies: reconcile with snap threshold
   const seenEnemyIds = new Set<string>();
   for (const se of s.enemies) {
     seenEnemyIds.add(se.id);
     const e = state.enemies.find((en) => en.id === se.id);
     if (e) {
-      e.pos.x += (se.x - e.pos.x) * lerpFactor;
-      e.pos.y += (se.y - e.pos.y) * lerpFactor;
+      const edx = se.x - e.pos.x;
+      const edy = se.y - e.pos.y;
+      const eErr = Math.sqrt(edx * edx + edy * edy);
+      if (eErr > SNAP) {
+        e.pos.x = se.x; e.pos.y = se.y;
+      } else if (eErr > 2) {
+        e.pos.x += edx * SMOOTH; e.pos.y += edy * SMOOTH;
+      }
       e.vel.x = se.vx; e.vel.y = se.vy;
       e.angle = se.a; e.hull = se.hp; e.hullMax = se.hpMax;
       if (se.isBoss !== undefined) e.isBoss = se.isBoss;
@@ -2132,14 +2186,20 @@ export function onServerState(s: ServerState): void {
   }
   state.enemies = state.enemies.filter((e) => seenEnemyIds.has(e.id));
 
-  // NPCs
+  // NPCs: reconcile with snap threshold
   const seenNpcIds = new Set<string>();
   for (const sn of s.npcs) {
     seenNpcIds.add(sn.id);
     const n = state.npcShips.find((ns) => ns.id === sn.id);
     if (n) {
-      n.pos.x += (sn.x - n.pos.x) * lerpFactor;
-      n.pos.y += (sn.y - n.pos.y) * lerpFactor;
+      const ndx = sn.x - n.pos.x;
+      const ndy = sn.y - n.pos.y;
+      const nErr = Math.sqrt(ndx * ndx + ndy * ndy);
+      if (nErr > SNAP) {
+        n.pos.x = sn.x; n.pos.y = sn.y;
+      } else if (nErr > 2) {
+        n.pos.x += ndx * SMOOTH; n.pos.y += ndy * SMOOTH;
+      }
       n.vel.x = sn.vx; n.vel.y = sn.vy;
       n.angle = sn.a; n.hull = sn.hp; n.hullMax = sn.hpMax;
       n.state = sn.state as any;
