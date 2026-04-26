@@ -16,11 +16,11 @@ import { travelToZone, state as gameState } from "./game/store";
 import AuthScreen from "./components/AuthScreen";
 import { hasToken, getPlayer, clearToken } from "./net/api";
 import {
-  connectSocket, disconnectSocket, setSocketListeners, sendPosition,
-  type ZoneTickPayload, type ServerEnemy, type ServerAsteroid, type ServerNpc,
-  type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent,
+  connectSocket, disconnectSocket, setSocketListeners, sendInputMove, sendInputAttack, sendInputMine,
+  type ZoneTickPayload, type ServerEnemy, type ServerAsteroid, type ServerNpc, type ServerState,
+  type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent, type PlayerHitEvent,
 } from "./net/socket";
-import { onEnemyHit, onEnemyDie, onEnemyAttack, onEnemySpawn, onBossWarn, onAsteroidMine, onAsteroidDestroy, onAsteroidRespawn, onServerZoneEnemies, onServerZoneAsteroids, onServerZoneNpcs, onNpcSpawn, onNpcDie } from "./game/loop";
+import { onEnemyHit, onEnemyDie, onEnemyAttack, onEnemySpawn, onBossWarn, onAsteroidMine, onAsteroidDestroy, onAsteroidRespawn, onServerZoneEnemies, onServerZoneAsteroids, onServerZoneNpcs, onNpcSpawn, onNpcDie, onPlayerHit, onServerState, serverEnemiesReceived } from "./game/loop";
 
 function GameCanvas() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -81,6 +81,9 @@ function GameCanvas() {
       };
       state.attackTargetId = enemy.id;
       state.miningTargetId = null;
+      sendInputMine(null);
+      sendInputAttack(enemy.id, state.isLaserFiring, state.isRocketFiring,
+        state.player.activeAmmoType ?? "x1", state.player.activeRocketAmmoType ?? "cl1");
       bump();
       return;
     }
@@ -95,6 +98,7 @@ function GameCanvas() {
         detail: `${asteroid.yields.toUpperCase()} · ${Math.round(asteroid.hp)}/${Math.round(asteroid.hpMax)} HP`,
       };
       state.miningTargetId = asteroid.id;
+      sendInputMine(asteroid.id);
       bump();
       return;
     }
@@ -126,6 +130,7 @@ function GameCanvas() {
     // Clicked on free space — move ship there, keep target lock
     state.cameraTarget = { x: wx, y: wy };
     state.miningTargetId = null;
+    sendInputMine(null);
 
     // Snap to station if clicked nearby
     for (const s of STATIONS) {
@@ -135,6 +140,8 @@ function GameCanvas() {
         break;
       }
     }
+    // ROTMG: send move target to server
+    sendInputMove(state.cameraTarget.x, state.cameraTarget.y);
     bump();
   };
 
@@ -151,10 +158,12 @@ function GameCanvas() {
       };
       state.attackTargetId = enemy.id;
       state.miningTargetId = null;
-      // Double-click starts both lasers and rockets
       state.isLaserFiring = true;
       state.isRocketFiring = true;
       state.isAttacking = true;
+      sendInputMine(null);
+      sendInputAttack(enemy.id, true, true,
+        state.player.activeAmmoType ?? "x1", state.player.activeRocketAmmoType ?? "cl1");
       bump();
     }
   };
@@ -168,6 +177,7 @@ function GameCanvas() {
       x: state.player.pos.x + (cx - rect.width / 2) / state.cameraZoom,
       y: state.player.pos.y + (cy - rect.height / 2) / state.cameraZoom,
     };
+    sendInputMove(state.cameraTarget.x, state.cameraTarget.y);
   };
 
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
@@ -467,22 +477,10 @@ function GameApp() {
       onBossWarn: () => onBossWarn(),
       onNpcSpawn: (npc: ServerNpc) => onNpcSpawn(npc),
       onNpcDie: (data) => onNpcDie(data),
+      onState: (serverState: ServerState) => onServerState(serverState),
+      onPlayerHit: (event: PlayerHitEvent) => onPlayerHit(event),
     });
     return () => setSocketListeners({});
-  }, []);
-
-  // Send position to server every 100ms for other players
-  useEffect(() => {
-    const id = setInterval(() => {
-      sendPosition(
-        state.player.pos.x,
-        state.player.pos.y,
-        state.player.vel.x,
-        state.player.vel.y,
-        state.player.angle
-      );
-    }, 100);
-    return () => clearInterval(id);
   }, []);
 
   // Keyboard shortcuts
@@ -523,6 +521,8 @@ function GameApp() {
           if (state.selectedWorldTarget?.kind === "enemy") {
             state.isLaserFiring = !state.isLaserFiring;
             state.isAttacking = state.isLaserFiring || state.isRocketFiring;
+            sendInputAttack(state.attackTargetId, state.isLaserFiring, state.isRocketFiring,
+              state.player.activeAmmoType ?? "x1", state.player.activeRocketAmmoType ?? "cl1");
             bump();
           }
         }
@@ -531,6 +531,8 @@ function GameApp() {
           if (state.selectedWorldTarget?.kind === "enemy") {
             state.isRocketFiring = !state.isRocketFiring;
             state.isAttacking = state.isLaserFiring || state.isRocketFiring;
+            sendInputAttack(state.attackTargetId, state.isLaserFiring, state.isRocketFiring,
+              state.player.activeAmmoType ?? "x1", state.player.activeRocketAmmoType ?? "cl1");
             bump();
           }
         }

@@ -6,8 +6,41 @@ import {
   FACTIONS, DRONE_DEFS, SKILL_NODES, ENEMY_NAMES,
   ROCKET_AMMO_TYPE_DEFS, ROCKET_MISSILE_TYPE_DEFS,
   MAP_RADIUS, EXP_FOR_LEVEL,
+  MINING_RANGE, MINING_DPS_FACTOR,
 } from "./data.js";
 import type { OnlinePlayer } from "../socket/state.js";
+
+// ── CULLING ──────────────────────────────────────────────────────────────
+
+const CULL_RADIUS = 2000;
+
+function inView(px: number, py: number, ex: number, ey: number): boolean {
+  const dx = px - ex;
+  const dy = py - ey;
+  return dx * dx + dy * dy < CULL_RADIUS * CULL_RADIUS;
+}
+
+// ── SERVER PROJECTILE ───────────────────────────────────────────────────
+
+export type ServerProjectile = {
+  id: string;
+  zone: string;
+  fromPlayerId: number | null;
+  fromEnemyId: string | null;
+  pos: Vec2;
+  vel: Vec2;
+  damage: number;
+  ttl: number;
+  color: string;
+  size: number;
+  crit: boolean;
+  weaponKind: "laser" | "rocket";
+  homing: boolean;
+  homingTargetId: string | null;
+  aoeRadius: number;
+  empStun: number;
+  armorPiercing: boolean;
+};
 
 // ── SERVER ENTITY TYPES ──────────────────────────────────────────────────
 
@@ -89,7 +122,8 @@ export type GameEvent =
   | { type: "asteroid:respawn"; zone: string; asteroid: ClientAsteroid }
   | { type: "boss:warn"; zone: string }
   | { type: "npc:spawn"; zone: string; npc: ClientNpc }
-  | { type: "npc:die"; zone: string; npcId: string };
+  | { type: "npc:die"; zone: string; npcId: string }
+  | { type: "player:hit"; playerId: number; damage: number; zone: string };
 
 export type ClientEnemy = {
   id: string;
@@ -129,6 +163,19 @@ export type ClientNpc = {
   color: string;
   size: number;
   state: string;
+};
+
+export type ClientProjectile = {
+  id: string;
+  x: number; y: number;
+  vx: number; vy: number;
+  damage: number;
+  color: string;
+  size: number;
+  fromPlayer: boolean;
+  crit: boolean;
+  weaponKind: "laser" | "rocket";
+  homing: boolean;
 };
 
 // ── PLAYER STATS COMPUTATION ─────────────────────────────────────────────
@@ -271,6 +318,7 @@ type ZoneState = {
   enemies: Map<string, ServerEnemy>;
   asteroids: Map<string, ServerAsteroid>;
   npcShips: Map<string, ServerNpc>;
+  projectiles: Map<string, ServerProjectile>;
   spawnTimer: number;
   bossTimer: number;
   bossActive: boolean;
@@ -322,6 +370,7 @@ export class GameEngine {
         enemies: new Map(),
         asteroids: new Map(),
         npcShips: new Map(),
+        projectiles: new Map(),
         spawnTimer: randRange(0.5, 1.5),
         bossTimer: randRange(120, 300),
         bossActive: false,
@@ -348,8 +397,19 @@ export class GameEngine {
     for (const [zoneId, zs] of this.zones) {
       const players = getPlayersInZone(zoneId);
 
-      // Only tick zones that have players or active entities
       if (players.length === 0 && zs.enemies.size === 0 && zs.npcShips.size === 0) continue;
+
+      // Server-authoritative player movement
+      this.tickPlayerMovement(players, dt);
+
+      // Server-authoritative player combat (fire cooldowns, spawn projectiles)
+      this.tickPlayerCombat(zoneId, zs, players, dt, events);
+
+      // Server-authoritative player mining
+      this.tickPlayerMining(zoneId, zs, players, dt, events);
+
+      // Shield regen for players
+      this.tickPlayerShieldRegen(players, dt);
 
       if (players.length > 0) {
         this.tickEnemySpawns(zoneId, zs, players, dt, events);
@@ -359,6 +419,7 @@ export class GameEngine {
 
       this.tickEnemyAI(zoneId, zs, players, dt, events);
       this.tickNpcAI(zoneId, zs, dt, events);
+      this.tickProjectiles(zoneId, zs, players, dt, events);
       this.tickAsteroidRespawn(zoneId, zs, dt, events);
 
       // Decay combos
@@ -371,6 +432,411 @@ export class GameEngine {
     }
 
     return events;
+  }
+
+  // ── SERVER-AUTHORITATIVE PLAYER MOVEMENT ────────────────────────────────
+
+  private tickPlayerMovement(players: OnlinePlayer[], dt: number): void {
+    for (const p of players) {
+      if (p.targetX !== null && p.targetY !== null) {
+        const dx = p.targetX - p.posX;
+        const dy = p.targetY - p.posY;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d > 6) {
+          const toAngle = Math.atan2(dy, dx);
+          if (d > 40) p.angle = toAngle;
+          const accel = p.speed * 4;
+          p.velX += Math.cos(toAngle) * accel * dt;
+          p.velY += Math.sin(toAngle) * accel * dt;
+        }
+      }
+      // Speed cap
+      const v = Math.sqrt(p.velX * p.velX + p.velY * p.velY);
+      const now = Date.now() / 1000;
+      const speedCap = p.afterburnUntil > now ? p.speed * 3 : p.speed;
+      if (v > speedCap) {
+        p.velX = (p.velX / v) * speedCap;
+        p.velY = (p.velY / v) * speedCap;
+      }
+      // Friction
+      p.velX *= 0.96;
+      p.velY *= 0.96;
+      // Position update
+      p.posX += p.velX * dt;
+      p.posY += p.velY * dt;
+      // Clamp to map
+      p.posX = clamp(p.posX, -MAP_RADIUS, MAP_RADIUS);
+      p.posY = clamp(p.posY, -MAP_RADIUS, MAP_RADIUS);
+
+      // Face attack target
+      if (p.attackTargetId) {
+        const zs = this.zones.get(p.zone);
+        if (zs) {
+          const enemy = zs.enemies.get(p.attackTargetId);
+          if (enemy) {
+            p.angle = angleFromTo({ x: p.posX, y: p.posY }, enemy.pos);
+          }
+        }
+      }
+    }
+  }
+
+  // ── SERVER-AUTHORITATIVE PLAYER COMBAT ──────────────────────────────────
+
+  private tickPlayerCombat(zoneId: string, zs: ZoneState, players: OnlinePlayer[], dt: number, events: GameEvent[]): void {
+    for (const p of players) {
+      p.laserFireCd -= dt;
+      p.rocketFireCd -= dt;
+
+      const target = p.attackTargetId ? zs.enemies.get(p.attackTargetId) : null;
+      if (!target) {
+        if (p.attackTargetId) p.attackTargetId = null;
+        continue;
+      }
+
+      const atkDist = dist({ x: p.posX, y: p.posY }, target.pos);
+      if (atkDist > 400) continue;
+
+      const pData = this.playerDataCache.get(p.playerId);
+      if (!pData) continue;
+      const stats = computeStats(pData);
+      const ang = angleFromTo({ x: p.posX, y: p.posY }, target.pos);
+
+      // Fire laser
+      if (p.isLaserFiring && p.laserFireCd <= 0) {
+        const ammoDef = ROCKET_AMMO_TYPE_DEFS[p.laserAmmoType as RocketAmmoType];
+        const mul = ammoDef ? ammoDef.damageMul : 1;
+        const laserDmg = stats.damage * mul * 0.4;
+        const perShot = Math.round(laserDmg / 2);
+        const perpAng = ang + Math.PI / 2;
+        const crit = Math.random() < stats.critChance;
+        const laserColor = "#4ee2ff";
+
+        for (let si = 0; si < 2; si++) {
+          const side = si === 0 ? -1 : 1;
+          const ox = p.posX + Math.cos(perpAng) * 14 * side;
+          const oy = p.posY + Math.sin(perpAng) * 14 * side;
+          const projSpeed = 600;
+          const proj: ServerProjectile = {
+            id: eid("proj"),
+            zone: zoneId,
+            fromPlayerId: p.playerId,
+            fromEnemyId: null,
+            pos: { x: ox, y: oy },
+            vel: { x: Math.cos(ang - side * 0.03) * projSpeed, y: Math.sin(ang - side * 0.03) * projSpeed },
+            damage: perShot,
+            ttl: 1.5,
+            color: laserColor,
+            size: 4,
+            crit,
+            weaponKind: "laser",
+            homing: false,
+            homingTargetId: null,
+            aoeRadius: stats.aoeRadius,
+            empStun: 0,
+            armorPiercing: false,
+          };
+          zs.projectiles.set(proj.id, proj);
+        }
+
+        const cd = Math.max(0.2, 0.85 / stats.fireRate);
+        p.laserFireCd = cd;
+      }
+
+      // Fire rocket
+      if (p.isRocketFiring && p.rocketFireCd <= 0) {
+        const missileDef = ROCKET_MISSILE_TYPE_DEFS[p.rocketAmmoType as RocketMissileType];
+        const mul = missileDef ? missileDef.damageMul : 1;
+        const rocketDmg = Math.round(stats.damage * mul * 0.4 * 2.5);
+        const crit = Math.random() < stats.critChance;
+        const rocketColor = "#ff8a4e";
+        const projSpeed = 330;
+
+        const proj: ServerProjectile = {
+          id: eid("proj"),
+          zone: zoneId,
+          fromPlayerId: p.playerId,
+          fromEnemyId: null,
+          pos: { x: p.posX, y: p.posY },
+          vel: { x: Math.cos(ang) * projSpeed, y: Math.sin(ang) * projSpeed },
+          damage: rocketDmg,
+          ttl: 3.0,
+          color: rocketColor,
+          size: 5,
+          crit,
+          weaponKind: "rocket",
+          homing: true,
+          homingTargetId: target.id,
+          aoeRadius: stats.aoeRadius,
+          empStun: 0,
+          armorPiercing: false,
+        };
+        zs.projectiles.set(proj.id, proj);
+
+        const rCd = 1.5 / (stats.fireRate * 0.5);
+        p.rocketFireCd = rCd;
+      }
+    }
+  }
+
+  // ── SERVER-AUTHORITATIVE MINING ─────────────────────────────────────────
+
+  private tickPlayerMining(zoneId: string, zs: ZoneState, players: OnlinePlayer[], dt: number, events: GameEvent[]): void {
+    for (const p of players) {
+      if (!p.miningTargetId) continue;
+      const ast = zs.asteroids.get(p.miningTargetId);
+      if (!ast || ast.respawnAt > 0) { p.miningTargetId = null; continue; }
+
+      const mDist = dist({ x: p.posX, y: p.posY }, ast.pos);
+      if (mDist > MINING_RANGE) { p.miningTargetId = null; continue; }
+
+      const pData = this.playerDataCache.get(p.playerId);
+      if (!pData) continue;
+      const stats = computeStats(pData);
+      const miningDps = stats.damage * MINING_DPS_FACTOR;
+      ast.hp -= miningDps * dt;
+
+      if (ast.hp <= 0) {
+        const qty = 2 + Math.floor(Math.random() * 3);
+        events.push({
+          type: "asteroid:destroy", zone: zoneId,
+          asteroidId: ast.id, playerId: p.playerId,
+          ore: { resourceId: ast.yields, qty },
+        });
+        ast.hp = 0;
+        ast.respawnAt = Date.now() + 6000;
+        p.miningTargetId = null;
+      } else {
+        events.push({
+          type: "asteroid:mine", zone: zoneId,
+          asteroidId: ast.id, hp: ast.hp, hpMax: ast.hpMax,
+        });
+      }
+    }
+  }
+
+  // ── SHIELD REGEN ────────────────────────────────────────────────────────
+
+  private tickPlayerShieldRegen(players: OnlinePlayer[], dt: number): void {
+    const now = Date.now() / 1000;
+    for (const p of players) {
+      if (now - p.lastHitTick < 5) continue;
+      if (p.shield >= p.shieldMax) continue;
+      p.shield = Math.min(p.shieldMax, p.shield + p.shieldRegen * dt);
+    }
+  }
+
+  // ── PROJECTILE PHYSICS + COLLISION ──────────────────────────────────────
+
+  private tickProjectiles(zoneId: string, zs: ZoneState, players: OnlinePlayer[], dt: number, events: GameEvent[]): void {
+    for (const [projId, proj] of zs.projectiles) {
+      // Homing
+      if (proj.homing && proj.homingTargetId) {
+        const target = zs.enemies.get(proj.homingTargetId);
+        if (target) {
+          const desiredAng = angleFromTo(proj.pos, target.pos);
+          const curAng = Math.atan2(proj.vel.y, proj.vel.x);
+          let diff = desiredAng - curAng;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          const turnRate = 3.5 * dt;
+          const newAng = curAng + Math.sign(diff) * Math.min(Math.abs(diff), turnRate);
+          const spd = Math.sqrt(proj.vel.x * proj.vel.x + proj.vel.y * proj.vel.y);
+          proj.vel.x = Math.cos(newAng) * spd;
+          proj.vel.y = Math.sin(newAng) * spd;
+        }
+      }
+
+      proj.pos.x += proj.vel.x * dt;
+      proj.pos.y += proj.vel.y * dt;
+      proj.ttl -= dt;
+      if (proj.ttl <= 0) { zs.projectiles.delete(projId); continue; }
+
+      if (proj.fromPlayerId !== null) {
+        // Player projectile -> hit enemies
+        for (const e of zs.enemies.values()) {
+          if (dist(proj.pos, e.pos) < e.size + 4) {
+            // Combo system
+            let combo = e.combo.get(proj.fromPlayerId);
+            const stacks = combo ? Math.min(5, combo.stacks + 1) : 1;
+            e.combo.set(proj.fromPlayerId, { stacks, ttl: 3 });
+            const comboMul = 1 + (stacks - 1) * 0.10;
+
+            const pData = this.playerDataCache.get(proj.fromPlayerId);
+            const sk = (id: SkillId) => (pData?.skills?.[id] ?? 0) as number;
+            const execMul = (e.hull / e.hullMax < 0.25 && sk("off-execute") > 0) ? (1 + sk("off-execute") * 0.20) : 1;
+            const voidMul = ((e.type === "dread" || e.type === "voidling") && sk("off-void") > 0) ? (1 + sk("off-void") * 0.08) : 1;
+            const critMul = proj.crit ? 1.5 : 1;
+
+            let dmg = Math.round(proj.damage * comboMul * critMul * execMul * voidMul);
+            if (dmg < 1) dmg = 1;
+            e.hull -= dmg;
+            e.aggroTarget = proj.fromPlayerId;
+
+            if (e.hull <= 0) {
+              const tierMult = this.getZoneTierMult(zoneId);
+              const loot: LootDrop = {
+                credits: Math.round(e.credits * tierMult) + Math.round((pData ? computeStats(pData).lootBonus : 0) * 2),
+                exp: Math.round(e.exp * tierMult * (e.isBoss ? 2 : 1)),
+                honor: e.honor,
+                resource: e.loot ? { ...e.loot } : undefined,
+              };
+              events.push({ type: "enemy:die", zone: zoneId, enemyId: e.id, killerId: proj.fromPlayerId, loot, pos: { ...e.pos } });
+              zs.enemies.delete(e.id);
+              if (e.isBoss) { zs.bossActive = false; zs.bossTimer = randRange(180, 420); }
+            } else {
+              events.push({
+                type: "enemy:hit", zone: zoneId, enemyId: e.id,
+                damage: dmg, hp: e.hull, hpMax: e.hullMax,
+                crit: proj.crit, attackerId: proj.fromPlayerId,
+              });
+              // AOE splash
+              if (proj.aoeRadius > 0) {
+                const splashRange = proj.aoeRadius * 8;
+                const splashDmg = Math.round(dmg * 0.4);
+                for (const e2 of zs.enemies.values()) {
+                  if (e2.id === e.id) continue;
+                  if (dist(e.pos, e2.pos) < splashRange) {
+                    e2.hull -= splashDmg;
+                    if (e2.hull <= 0) {
+                      const loot2: LootDrop = {
+                        credits: Math.round(e2.credits * this.getZoneTierMult(zoneId)),
+                        exp: Math.round(e2.exp * this.getZoneTierMult(zoneId)),
+                        honor: e2.honor,
+                        resource: e2.loot ? { ...e2.loot } : undefined,
+                      };
+                      events.push({ type: "enemy:die", zone: zoneId, enemyId: e2.id, killerId: proj.fromPlayerId, loot: loot2, pos: { ...e2.pos } });
+                      zs.enemies.delete(e2.id);
+                    } else {
+                      events.push({ type: "enemy:hit", zone: zoneId, enemyId: e2.id, damage: splashDmg, hp: e2.hull, hpMax: e2.hullMax, crit: false, attackerId: proj.fromPlayerId });
+                    }
+                  }
+                }
+              }
+            }
+            zs.projectiles.delete(projId);
+            break;
+          }
+        }
+      } else if (proj.fromEnemyId !== null) {
+        // Enemy projectile -> hit players
+        for (const p of players) {
+          if (dist(proj.pos, { x: p.posX, y: p.posY }) < 12) {
+            this.damagePlayer(p, proj.damage);
+            events.push({ type: "player:hit", playerId: p.playerId, damage: proj.damage, zone: zoneId });
+            zs.projectiles.delete(projId);
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // ── DAMAGE PLAYER (server-authoritative) ────────────────────────────────
+
+  private damagePlayer(p: OnlinePlayer, rawDamage: number): void {
+    const pData = this.playerDataCache.get(p.playerId);
+    const stats = pData ? computeStats(pData) : null;
+    const reduction = stats ? stats.damageReduction : 0;
+    const absorb = stats ? stats.shieldAbsorb : 0.5;
+    let dmg = Math.round(rawDamage * (1 - Math.min(0.8, reduction)));
+    if (dmg < 1) dmg = 1;
+    const shieldDmg = Math.round(dmg * absorb);
+    const hullDmg = dmg - shieldDmg;
+    p.shield = Math.max(0, p.shield - shieldDmg);
+    p.hull = Math.max(0, p.hull - hullDmg);
+    p.lastHitTick = Date.now() / 1000;
+  }
+
+  // ── CULLED STATE PER PLAYER ─────────────────────────────────────────────
+
+  getCulledStateForPlayer(p: OnlinePlayer): {
+    self: { x: number; y: number; vx: number; vy: number; a: number; hp: number; hpMax: number; sp: number; spMax: number };
+    players: { id: number; x: number; y: number; vx: number; vy: number; a: number; hp: number; sp: number; name: string; shipClass: string; level: number; faction: string | null }[];
+    enemies: any[];
+    npcs: any[];
+    projectiles: ClientProjectile[];
+    asteroids: { id: string; x: number; y: number; hp: number; hpMax: number; size: number; yields: string }[];
+  } {
+    const zs = this.zones.get(p.zone);
+    const px = p.posX, py = p.posY;
+
+    const pData = this.playerDataCache.get(p.playerId);
+    const stats = pData ? computeStats(pData) : null;
+
+    const self = {
+      x: px, y: py,
+      vx: p.velX, vy: p.velY,
+      a: p.angle,
+      hp: p.hull, hpMax: stats ? stats.hullMax : p.hullMax,
+      sp: p.shield, spMax: stats ? stats.shieldMax : p.shieldMax,
+    };
+
+    if (!zs) return { self, players: [], enemies: [], npcs: [], projectiles: [], asteroids: [] };
+
+    // Culled players
+    const playersResult: any[] = [];
+    // We need all players in the zone - get from handler via callback
+    // For now, we'll return empty and let handler fill this in
+
+    // Culled enemies
+    const enemies: any[] = [];
+    for (const e of zs.enemies.values()) {
+      if (!inView(px, py, e.pos.x, e.pos.y)) continue;
+      enemies.push({
+        id: e.id, x: e.pos.x, y: e.pos.y,
+        vx: e.vel.x, vy: e.vel.y, a: e.angle,
+        hp: e.hull, hpMax: e.hullMax,
+        type: e.type, size: e.size, color: e.color,
+        isBoss: e.isBoss, bossPhase: e.bossPhase,
+        aggro: e.aggroTarget !== null,
+        damage: e.damage, speed: e.speed,
+        behavior: e.behavior, name: e.name,
+      });
+    }
+
+    // Culled NPCs
+    const npcs: any[] = [];
+    for (const n of zs.npcShips.values()) {
+      if (!inView(px, py, n.pos.x, n.pos.y)) continue;
+      npcs.push({
+        id: n.id, x: n.pos.x, y: n.pos.y,
+        vx: n.vel.x, vy: n.vel.y, a: n.angle,
+        hp: n.hull, hpMax: n.hullMax,
+        state: n.state, color: n.color, size: n.size, name: n.name,
+      });
+    }
+
+    // Culled projectiles
+    const projectiles: ClientProjectile[] = [];
+    for (const proj of zs.projectiles.values()) {
+      if (!inView(px, py, proj.pos.x, proj.pos.y)) continue;
+      projectiles.push({
+        id: proj.id,
+        x: proj.pos.x, y: proj.pos.y,
+        vx: proj.vel.x, vy: proj.vel.y,
+        damage: proj.damage,
+        color: proj.color, size: proj.size,
+        fromPlayer: proj.fromPlayerId !== null,
+        crit: proj.crit,
+        weaponKind: proj.weaponKind,
+        homing: proj.homing,
+      });
+    }
+
+    // Culled asteroids
+    const asteroids: any[] = [];
+    for (const a of zs.asteroids.values()) {
+      if (a.respawnAt > 0) continue;
+      if (!inView(px, py, a.pos.x, a.pos.y)) continue;
+      asteroids.push({
+        id: a.id, x: a.pos.x, y: a.pos.y,
+        hp: a.hp, hpMax: a.hpMax, size: a.size,
+        yields: a.yields,
+      });
+    }
+
+    return { self, players: playersResult, enemies, npcs, projectiles, asteroids };
   }
 
   // ── ZONE STATE QUERIES ───────────────────────────────────────────────
@@ -763,19 +1229,33 @@ export class GameEngine {
           e.fireTimer = e.isBoss ? this.bossFireCd(e) : (e.behavior === "fast" ? randRange(0.6, 1.0) : randRange(0.8, 1.5));
 
           const dmg = this.calcEnemyDamage(e, target);
+          const tPos = { x: target.posX, y: target.posY };
+          const projAng = angleFromTo(e.pos, tPos);
+
+          // Spawn server projectile(s) - ROTMG style
+          if (e.isBoss) {
+            const shotCount = e.bossPhase === 0 ? 5 : e.bossPhase === 1 ? 7 : 12;
+            const spread = e.bossPhase === 2 ? Math.PI * 2 : (shotCount * 0.1);
+            for (let i = 0; i < shotCount; i++) {
+              const shotAng = e.bossPhase === 2
+                ? (Math.PI * 2 / shotCount) * i
+                : projAng + (i - (shotCount - 1) / 2) * 0.1;
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg / shotCount), shotAng, e.color);
+            }
+          } else if (e.behavior === "tank") {
+            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.9), projAng - 0.04, e.color);
+            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.9), projAng + 0.04, e.color);
+          } else {
+            this.spawnEnemyProjectile(zoneId, zs, e, dmg, projAng, e.color);
+          }
+
+          // Also emit the event for VFX purposes
           events.push({
             type: "enemy:attack", zone: zoneId,
             enemyId: e.id, targetId: target.playerId,
             damage: dmg, pos: { ...e.pos },
-            targetPos: { x: target.posX, y: target.posY },
+            targetPos: tPos,
           });
-
-          // Boss multi-shot
-          if (e.isBoss) {
-            const shotCount = e.bossPhase === 0 ? 5 : e.bossPhase === 1 ? 7 : 12;
-            // Spread damage across shots
-            // (handled client-side for visuals, server sends total damage per volley)
-          }
         }
 
         // Boss phase cycling
@@ -813,6 +1293,30 @@ export class GameEngine {
       e.pos.x = clamp(e.pos.x, -MAP_RADIUS, MAP_RADIUS);
       e.pos.y = clamp(e.pos.y, -MAP_RADIUS, MAP_RADIUS);
     }
+  }
+
+  private spawnEnemyProjectile(zoneId: string, zs: ZoneState, e: ServerEnemy, damage: number, angle: number, color: string): void {
+    const projSpeed = 300;
+    const proj: ServerProjectile = {
+      id: eid("ep"),
+      zone: zoneId,
+      fromPlayerId: null,
+      fromEnemyId: e.id,
+      pos: { x: e.pos.x, y: e.pos.y },
+      vel: { x: Math.cos(angle) * projSpeed, y: Math.sin(angle) * projSpeed },
+      damage,
+      ttl: 2.5,
+      color,
+      size: 3,
+      crit: false,
+      weaponKind: "laser",
+      homing: false,
+      homingTargetId: null,
+      aoeRadius: 0,
+      empStun: 0,
+      armorPiercing: false,
+    };
+    zs.projectiles.set(proj.id, proj);
   }
 
   private bossFireCd(e: ServerEnemy): number {

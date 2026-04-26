@@ -22,32 +22,63 @@ export type RemotePlayer = {
   honor: number;
 };
 
+// ROTMG-style: full culled state from server each tick
+export type ServerState = {
+  self: {
+    x: number; y: number;
+    vx: number; vy: number;
+    a: number;
+    hp: number; hpMax: number;
+    sp: number; spMax: number;
+  };
+  players: {
+    id: number; name: string; shipClass: string; level: number; faction: string | null;
+    x: number; y: number; vx: number; vy: number; a: number;
+    hp: number; sp: number;
+  }[];
+  enemies: {
+    id: string; x: number; y: number; vx: number; vy: number; a: number;
+    hp: number; hpMax: number;
+    type: string; size: number; color: string;
+    isBoss?: boolean; bossPhase?: number;
+    aggro: boolean;
+    damage: number; speed: number;
+    behavior: string; name: string;
+  }[];
+  npcs: {
+    id: string; x: number; y: number; vx: number; vy: number; a: number;
+    hp: number; hpMax: number;
+    state: string; color: string; size: number; name: string;
+  }[];
+  projectiles: {
+    id: string; x: number; y: number; vx: number; vy: number;
+    damage: number; color: string; size: number;
+    fromPlayer: boolean; crit: boolean;
+    weaponKind: "laser" | "rocket";
+    homing: boolean;
+  }[];
+  asteroids: {
+    id: string; x: number; y: number;
+    hp: number; hpMax: number; size: number; yields: string;
+  }[];
+};
+
+// Legacy types kept for backward compat with events
 export type TickData = {
-  id: number;
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  a: number;
-  hp: number;
-  sp: number;
+  id: number; x: number; y: number; vx: number; vy: number; a: number; hp: number; sp: number;
 };
 
 export type EnemyTickData = {
-  id: string; x: number; y: number;
-  vx: number; vy: number; a: number;
+  id: string; x: number; y: number; vx: number; vy: number; a: number;
   hp: number; hpMax: number;
   type: string; size: number; color: string;
-  isBoss?: boolean; bossPhase?: number;
-  aggro: boolean;
+  isBoss?: boolean; bossPhase?: number; aggro: boolean;
 };
 
 export type NpcTickData = {
-  id: string; x: number; y: number;
-  vx: number; vy: number; a: number;
+  id: string; x: number; y: number; vx: number; vy: number; a: number;
   hp: number; hpMax: number;
-  state: string; color: string; size: number;
-  name: string;
+  state: string; color: string; size: number; name: string;
 };
 
 export type ServerEnemy = {
@@ -106,10 +137,17 @@ export type EnemyAttackEvent = {
   targetPos: { x: number; y: number };
 };
 
+export type PlayerHitEvent = {
+  damage: number;
+  hp: number;
+  shield: number;
+};
+
 type SocketEvents = {
   onPlayersInZone: (players: RemotePlayer[]) => void;
   onPlayerJoin: (player: RemotePlayer) => void;
   onPlayerLeave: (data: { playerId: number }) => void;
+  onState: (state: ServerState) => void;
   onZoneTick: (payload: ZoneTickPayload) => void;
   onCombatAttack: (event: CombatEvent) => void;
   onChatMessage: (msg: { from: string; text: string; channel: string; time: number }) => void;
@@ -121,6 +159,7 @@ type SocketEvents = {
   onEnemyDie: (event: EnemyDieEvent) => void;
   onEnemyHit: (event: EnemyHitEvent) => void;
   onEnemyAttack: (event: EnemyAttackEvent) => void;
+  onPlayerHit: (event: PlayerHitEvent) => void;
   onAsteroidMine: (data: { asteroidId: string; hp: number; hpMax: number }) => void;
   onAsteroidDestroy: (data: { asteroidId: string; playerId: number; ore: { resourceId: string; qty: number } }) => void;
   onAsteroidRespawn: (asteroid: ServerAsteroid) => void;
@@ -162,6 +201,12 @@ export function connectSocket(token: string) {
     listeners.onPlayerLeave?.(data);
   });
 
+  // ROTMG-style: full culled state per tick
+  socket.on("state", (state: ServerState) => {
+    listeners.onState?.(state);
+  });
+
+  // Legacy tick (kept for backward compat during transition)
   socket.on("zone:tick", (payload: ZoneTickPayload) => {
     listeners.onZoneTick?.(payload);
   });
@@ -207,6 +252,10 @@ export function connectSocket(token: string) {
     listeners.onEnemyAttack?.(event);
   });
 
+  socket.on("player:hit", (event: PlayerHitEvent) => {
+    listeners.onPlayerHit?.(event);
+  });
+
   socket.on("asteroid:mine", (data: { asteroidId: string; hp: number; hpMax: number }) => {
     listeners.onAsteroidMine?.(data);
   });
@@ -241,8 +290,21 @@ export function setSocketListeners(l: Partial<SocketEvents>) {
   listeners = l;
 }
 
-// ── Outgoing events ───────────────────────────────────────────────────
+// ── Outgoing events (ROTMG-style: input only) ──────────────────────────
 
+export function sendInputMove(x: number, y: number) {
+  socket?.emit("input:move", { x, y });
+}
+
+export function sendInputAttack(enemyId: string | null, laser: boolean, rocket: boolean, laserAmmo: string, rocketAmmo: string) {
+  socket?.emit("input:attack", { enemyId, laser, rocket, laserAmmo, rocketAmmo });
+}
+
+export function sendInputMine(asteroidId: string | null) {
+  socket?.emit("input:mine", { asteroidId });
+}
+
+// Legacy outgoing events (kept for dungeon/offline mode)
 export function sendPosition(x: number, y: number, vx: number, vy: number, angle: number) {
   socket?.emit("position", { x, y, vx, vy, angle });
 }

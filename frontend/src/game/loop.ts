@@ -13,7 +13,7 @@ import {
   rankFor,
 } from "./types";
 import { sfx } from "./sound";
-import { sendAttackEnemy, sendMine, type ServerEnemy, type ServerAsteroid, type ServerNpc, type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent } from "../net/socket";
+import { sendAttackEnemy, sendMine, type ServerEnemy, type ServerAsteroid, type ServerNpc, type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent, type ServerState, type PlayerHitEvent } from "../net/socket";
 
 // Returns the equipped weapon's color (used for laser projectiles)
 function equippedWeaponColor(): string {
@@ -907,34 +907,40 @@ function tickWorld(dt: number): void {
     }, 30000);
   }
 
-  // ── Player movement
-  const dx = state.cameraTarget.x - p.pos.x;
-  const dy = state.cameraTarget.y - p.pos.y;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist > 6) {
-    const toTargetAngle = Math.atan2(dy, dx);
-    if (dist > 40) p.angle = toTargetAngle;
-    const accel = stats.speed * 4;
-    p.vel.x += Math.cos(toTargetAngle) * accel * dt;
-    p.vel.y += Math.sin(toTargetAngle) * accel * dt;
-  }
-  // Face attack target when fighting (DarkOrbit style)
-  if ((state.isLaserFiring || state.isRocketFiring) && state.attackTargetId) {
-    const atk = state.enemies.find(e => e.id === state.attackTargetId);
-    if (atk) {
-      p.angle = Math.atan2(atk.pos.y - p.pos.y, atk.pos.x - p.pos.x);
+  // ── Player movement (server-authoritative when connected, local fallback in dungeon/offline)
+  if (!serverEnemiesReceived || state.dungeon) {
+    const dx = state.cameraTarget.x - p.pos.x;
+    const dy = state.cameraTarget.y - p.pos.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > 6) {
+      const toTargetAngle = Math.atan2(dy, dx);
+      if (dist > 40) p.angle = toTargetAngle;
+      const accel = stats.speed * 4;
+      p.vel.x += Math.cos(toTargetAngle) * accel * dt;
+      p.vel.y += Math.sin(toTargetAngle) * accel * dt;
     }
+    if ((state.isLaserFiring || state.isRocketFiring) && state.attackTargetId) {
+      const atk = state.enemies.find(e => e.id === state.attackTargetId);
+      if (atk) {
+        p.angle = Math.atan2(atk.pos.y - p.pos.y, atk.pos.x - p.pos.x);
+      }
+    }
+    const v = Math.sqrt(p.vel.x * p.vel.x + p.vel.y * p.vel.y);
+    const speedCap = state.afterburnUntil > state.tick ? stats.speed * 3 : stats.speed;
+    if (v > speedCap) {
+      p.vel.x = (p.vel.x / v) * speedCap;
+      p.vel.y = (p.vel.y / v) * speedCap;
+    }
+    p.vel.x *= 0.96;
+    p.vel.y *= 0.96;
+    p.pos.x += p.vel.x * dt;
+    p.pos.y += p.vel.y * dt;
   }
-  const v = Math.sqrt(p.vel.x * p.vel.x + p.vel.y * p.vel.y);
-  const speedCap = state.afterburnUntil > state.tick ? stats.speed * 3 : stats.speed;
-  if (v > speedCap) {
-    p.vel.x = (p.vel.x / v) * speedCap;
-    p.vel.y = (p.vel.y / v) * speedCap;
+  // When server-authoritative: position comes from onServerState, just drift by vel for smoothness
+  if (serverEnemiesReceived && !state.dungeon) {
+    p.pos.x += p.vel.x * dt;
+    p.pos.y += p.vel.y * dt;
   }
-  p.vel.x *= 0.96;
-  p.vel.y *= 0.96;
-  p.pos.x += p.vel.x * dt;
-  p.pos.y += p.vel.y * dt;
 
   // ── Engine particles + 16-bit trail + thruster sound
   const cls = SHIP_CLASSES[p.shipClass];
@@ -952,9 +958,11 @@ function tickWorld(dt: number): void {
     sfx.thrusterUpdate(0);
   }
 
-  // ── Shield regen (only after 5s out of combat)
-  if (outOfCombatFor >= 5 && p.shield < stats.shieldMax) {
-    p.shield = Math.min(stats.shieldMax, p.shield + stats.shieldRegen * dt);
+  // ── Shield regen (server handles when connected, local fallback in dungeon/offline)
+  if (!serverEnemiesReceived || state.dungeon) {
+    if (outOfCombatFor >= 5 && p.shield < stats.shieldMax) {
+      p.shield = Math.min(stats.shieldMax, p.shield + stats.shieldRegen * dt);
+    }
   }
 
   // ── Enemies spawn (server handles spawning when connected, local fallback otherwise)
@@ -1114,7 +1122,7 @@ function tickWorld(dt: number): void {
     }
   }
 
-  // ── Attack: only fire when player chooses to attack (isAttacking)
+  // ── Attack: server handles combat when connected, local fallback for dungeon/offline
   playerFireCd.value -= dt;
   rocketFireCd.value -= dt;
   const atkTarget = state.attackTargetId
@@ -1260,8 +1268,8 @@ function tickWorld(dt: number): void {
       const mDist = distance(p.pos.x, p.pos.y, mAst.pos.x, mAst.pos.y);
       if (mDist < 450) {
         const miningDps = stats.damage * 0.25;
-        if (serverEnemiesReceived) {
-          sendMine(mAst.id);
+        if (serverEnemiesReceived && !state.dungeon) {
+          // Server handles mining via input:mine event — just do VFX here
         } else {
           mAst.hp -= miningDps * dt;
         }
@@ -1339,7 +1347,16 @@ function tickWorld(dt: number): void {
   }
 
   // ── Projectiles update + collisions
+  // When server-authoritative: server sends projectile positions via state event, skip local collision
+  const serverHandlesProjectiles = serverEnemiesReceived && !state.dungeon;
   state.projectiles = state.projectiles.filter((pr) => {
+    // Server-managed projectiles: just move and render, no local collision
+    if (serverHandlesProjectiles && (pr as any).serverId) {
+      pr.pos.x += pr.vel.x * dt;
+      pr.pos.y += pr.vel.y * dt;
+      pr.ttl -= dt;
+      return pr.ttl > 0;
+    }
     // Homing steering (rockets)
     if (pr.homing && pr.fromPlayer && state.enemies.length > 0) {
       let target: Enemy | null = null;
@@ -1779,7 +1796,7 @@ export type _ZoneId = ZoneId;
 
 // ── SERVER EVENT HANDLERS (called from App.tsx socket listeners) ─────────
 
-let serverEnemiesReceived = false;
+export let serverEnemiesReceived = false;
 const locallyKilledIds = new Set<string>();
 
 export function onServerZoneEnemies(enemies: ServerEnemy[]): void {
@@ -2050,6 +2067,163 @@ export function onNpcDie(data: { npcId: string }): void {
     sfx.explosion();
   }
   state.npcShips = state.npcShips.filter((ns) => ns.id !== data.npcId);
+}
+
+// ── ROTMG-STYLE: FULL STATE FROM SERVER ──────────────────────────────────
+
+export function onServerState(s: ServerState): void {
+  serverEnemiesReceived = true;
+  if (state.dungeon) return;
+
+  const p = state.player;
+  const lerpFactor = 0.35;
+
+  // Server-authoritative player position
+  p.pos.x += (s.self.x - p.pos.x) * lerpFactor;
+  p.pos.y += (s.self.y - p.pos.y) * lerpFactor;
+  p.vel.x = s.self.vx;
+  p.vel.y = s.self.vy;
+  p.angle = s.self.a;
+  p.hull = s.self.hp;
+  p.shield = s.self.sp;
+
+  // Other players
+  const seenPlayerIds = new Set<string>();
+  for (const sp of s.players) {
+    const sid = String(sp.id);
+    seenPlayerIds.add(sid);
+    const o = state.others.find((op) => op.id === sid);
+    if (o) {
+      o.pos.x += (sp.x - o.pos.x) * lerpFactor;
+      o.pos.y += (sp.y - o.pos.y) * lerpFactor;
+      o.vel.x = sp.vx; o.vel.y = sp.vy;
+      o.angle = sp.a;
+    } else {
+      state.others.push({
+        id: sid, name: sp.name, shipClass: sp.shipClass as any,
+        level: sp.level, clan: null, zone: p.zone as any,
+        pos: { x: sp.x, y: sp.y }, vel: { x: sp.vx, y: sp.vy },
+        angle: sp.a, inParty: false,
+      });
+    }
+  }
+  state.others = state.others.filter((o) => seenPlayerIds.has(o.id));
+
+  // Enemies: update existing, add new, remove culled-out
+  const seenEnemyIds = new Set<string>();
+  for (const se of s.enemies) {
+    seenEnemyIds.add(se.id);
+    const e = state.enemies.find((en) => en.id === se.id);
+    if (e) {
+      e.pos.x += (se.x - e.pos.x) * lerpFactor;
+      e.pos.y += (se.y - e.pos.y) * lerpFactor;
+      e.vel.x = se.vx; e.vel.y = se.vy;
+      e.angle = se.a; e.hull = se.hp; e.hullMax = se.hpMax;
+      if (se.isBoss !== undefined) e.isBoss = se.isBoss;
+      if (se.bossPhase !== undefined) e.bossPhase = se.bossPhase;
+      e.aggro = se.aggro;
+    } else {
+      state.enemies.push({
+        id: se.id, type: (se.type || "scout") as any,
+        name: se.name || se.id,
+        behavior: (se.behavior || "normal") as any,
+        pos: { x: se.x, y: se.y }, vel: { x: se.vx, y: se.vy },
+        angle: se.a, hull: se.hp, hullMax: se.hpMax,
+        damage: se.damage || 10, speed: se.speed || 60, fireCd: 2,
+        exp: 0, credits: 0, honor: 0,
+        color: se.color || "#ff5c6c", size: se.size || 12,
+        isBoss: se.isBoss || false, bossPhase: se.bossPhase || 0,
+        burstCd: 0, burstShots: 0,
+        spawnPos: { x: se.x, y: se.y }, aggro: se.aggro || false,
+      });
+    }
+  }
+  state.enemies = state.enemies.filter((e) => seenEnemyIds.has(e.id));
+
+  // NPCs
+  const seenNpcIds = new Set<string>();
+  for (const sn of s.npcs) {
+    seenNpcIds.add(sn.id);
+    const n = state.npcShips.find((ns) => ns.id === sn.id);
+    if (n) {
+      n.pos.x += (sn.x - n.pos.x) * lerpFactor;
+      n.pos.y += (sn.y - n.pos.y) * lerpFactor;
+      n.vel.x = sn.vx; n.vel.y = sn.vy;
+      n.angle = sn.a; n.hull = sn.hp; n.hullMax = sn.hpMax;
+      n.state = sn.state as any;
+    } else {
+      state.npcShips.push({
+        id: sn.id, name: sn.name,
+        pos: { x: sn.x, y: sn.y }, vel: { x: sn.vx, y: sn.vy },
+        angle: sn.a, color: sn.color, size: sn.size,
+        hull: sn.hp, hullMax: sn.hpMax, speed: 0,
+        damage: 0, fireCd: 2,
+        targetPos: { x: sn.x, y: sn.y },
+        state: sn.state as any, targetEnemyId: null,
+        zone: p.zone,
+      });
+    }
+  }
+  state.npcShips = state.npcShips.filter((n) => seenNpcIds.has(n.id));
+
+  // Projectiles: replace entirely from server state
+  const seenProjIds = new Set<string>();
+  for (const sp of s.projectiles) {
+    seenProjIds.add(sp.id);
+    const existing = state.projectiles.find((pr) => (pr as any).serverId === sp.id);
+    if (existing) {
+      existing.pos.x += (sp.x - existing.pos.x) * 0.5;
+      existing.pos.y += (sp.y - existing.pos.y) * 0.5;
+      existing.vel.x = sp.vx;
+      existing.vel.y = sp.vy;
+    } else {
+      state.projectiles.push({
+        id: `sp-${sp.id}`,
+        pos: { x: sp.x, y: sp.y },
+        vel: { x: sp.vx, y: sp.vy },
+        damage: sp.damage,
+        ttl: 3,
+        fromPlayer: sp.fromPlayer,
+        color: sp.color,
+        size: sp.size,
+        crit: sp.crit,
+        weaponKind: sp.weaponKind,
+        homing: sp.homing,
+        serverId: sp.id,
+      } as any);
+    }
+  }
+  state.projectiles = state.projectiles.filter((pr) => {
+    const sid = (pr as any).serverId;
+    if (sid) return seenProjIds.has(sid);
+    return pr.ttl > 0; // Keep local-only projectiles (dungeon etc.)
+  });
+
+  // Asteroids: update from server
+  const seenAstIds = new Set<string>();
+  for (const sa of s.asteroids) {
+    seenAstIds.add(sa.id);
+    const a = state.asteroids.find((ast) => ast.id === sa.id);
+    if (a) {
+      a.pos.x = sa.x; a.pos.y = sa.y;
+      a.hp = sa.hp; a.hpMax = sa.hpMax;
+      a.size = sa.size;
+    } else {
+      state.asteroids.push({
+        id: sa.id,
+        pos: { x: sa.x, y: sa.y },
+        hp: sa.hp, hpMax: sa.hpMax, size: sa.size,
+        rotation: 0, rotSpeed: (Math.random() - 0.5) * 0.4,
+        zone: p.zone,
+        yields: sa.yields as any,
+      });
+    }
+  }
+  state.asteroids = state.asteroids.filter((a) => seenAstIds.has(a.id));
+}
+
+export function onPlayerHit(data: PlayerHitEvent): void {
+  damagePlayer(data.damage);
 }
 
 function serverEnemyToLocal(se: ServerEnemy): Enemy {

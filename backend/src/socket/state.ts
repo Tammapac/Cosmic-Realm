@@ -23,6 +23,23 @@ export type OnlinePlayer = {
   honor: number;
   targetX: number | null;
   targetY: number | null;
+  // ROTMG-style: server computes movement from click target
+  speed: number;
+  // Combat state
+  isLaserFiring: boolean;
+  isRocketFiring: boolean;
+  attackTargetId: string | null;
+  laserAmmoType: string;
+  rocketAmmoType: string;
+  laserFireCd: number;
+  rocketFireCd: number;
+  // Mining state
+  miningTargetId: string | null;
+  // Shield regen
+  lastHitTick: number;
+  shieldRegen: number;
+  // Afterburn
+  afterburnUntil: number;
 };
 
 // zone → Map<playerId, OnlinePlayer>
