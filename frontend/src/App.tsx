@@ -16,11 +16,18 @@ import { travelToZone, state as gameState } from "./game/store";
 import AuthScreen from "./components/AuthScreen";
 import { hasToken, getPlayer, clearToken } from "./net/api";
 import {
-  connectSocket, disconnectSocket, setSocketListeners, sendInputMove, sendInputAttack, sendInputMine,
-  type ZoneTickPayload, type ServerEnemy, type ServerAsteroid, type ServerNpc, type ServerState,
-  type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent, type PlayerHitEvent,
+  connectSocket, disconnectSocket, setSocketListeners, sendInput,
+  type ServerEnemy, type ServerAsteroid, type ServerNpc, type ProjectileSpawnEvent,
+  type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent,
 } from "./net/socket";
-import { onEnemyHit, onEnemyDie, onEnemyAttack, onEnemySpawn, onBossWarn, onAsteroidMine, onAsteroidDestroy, onAsteroidRespawn, onServerZoneEnemies, onServerZoneAsteroids, onServerZoneNpcs, onNpcSpawn, onNpcDie, onPlayerHit, onProjectileSpawn, onServerState, serverEnemiesReceived } from "./game/loop";
+import {
+  onEnemyHit, onEnemyDie, onEnemyAttack, onEnemySpawn, onBossWarn,
+  onAsteroidMine, onAsteroidDestroy, onAsteroidRespawn,
+  onServerZoneEnemies, onServerZoneAsteroids, onServerZoneNpcs,
+  onNpcSpawn, onNpcDie,
+  onWelcome, onDelta, onSnapshot, onPlayerHitFromServer,
+  onLaserFireFromServer, onRocketFireFromServer, onProjectileSpawnFromServer,
+} from "./game/loop";
 
 function GameCanvas() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -81,9 +88,6 @@ function GameCanvas() {
       };
       state.attackTargetId = enemy.id;
       state.miningTargetId = null;
-      sendInputMine(null);
-      sendInputAttack(enemy.id, state.isLaserFiring, state.isRocketFiring,
-        state.player.activeAmmoType ?? "x1", state.player.activeRocketAmmoType ?? "cl1");
       bump();
       return;
     }
@@ -98,7 +102,6 @@ function GameCanvas() {
         detail: `${asteroid.yields.toUpperCase()} · ${Math.round(asteroid.hp)}/${Math.round(asteroid.hpMax)} HP`,
       };
       state.miningTargetId = asteroid.id;
-      sendInputMine(asteroid.id);
       bump();
       return;
     }
@@ -130,7 +133,6 @@ function GameCanvas() {
     // Clicked on free space — move ship there, keep target lock
     state.cameraTarget = { x: wx, y: wy };
     state.miningTargetId = null;
-    sendInputMine(null);
 
     // Snap to station if clicked nearby
     for (const s of STATIONS) {
@@ -140,8 +142,6 @@ function GameCanvas() {
         break;
       }
     }
-    // ROTMG: send move target to server
-    sendInputMove(state.cameraTarget.x, state.cameraTarget.y);
     bump();
   };
 
@@ -158,12 +158,10 @@ function GameCanvas() {
       };
       state.attackTargetId = enemy.id;
       state.miningTargetId = null;
+      // Double-click starts both lasers and rockets
       state.isLaserFiring = true;
       state.isRocketFiring = true;
       state.isAttacking = true;
-      sendInputMine(null);
-      sendInputAttack(enemy.id, true, true,
-        state.player.activeAmmoType ?? "x1", state.player.activeRocketAmmoType ?? "cl1");
       bump();
     }
   };
@@ -177,7 +175,6 @@ function GameCanvas() {
       x: state.player.pos.x + (cx - rect.width / 2) / state.cameraZoom,
       y: state.player.pos.y + (cy - rect.height / 2) / state.cameraZoom,
     };
-    sendInputMove(state.cameraTarget.x, state.cameraTarget.y);
   };
 
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
@@ -383,22 +380,16 @@ function GameApp() {
   // Wire socket listeners to game state
   useEffect(() => {
     setSocketListeners({
-      onPlayersInZone: (players) => {
-        state.others = players.map((p) => ({
-          id: String(p.id), name: p.name, shipClass: p.shipClass as any,
-          level: p.level, clan: p.clan, zone: p.zone as any,
-          pos: { x: p.x, y: p.y }, vel: { x: p.vx, y: p.vy }, angle: p.angle,
-          inParty: false,
-        }));
-        bump();
-      },
+      onWelcome: (payload) => onWelcome(payload),
+      onDelta: (payload) => onDelta(payload),
+      onSnapshot: (payload) => onSnapshot(payload),
       onPlayerJoin: (p) => {
         const sid = String(p.id);
         if (state.others.find((o) => o.id === sid)) return;
         state.others.push({
           id: sid, name: p.name, shipClass: p.shipClass as any,
-          level: p.level, clan: p.clan, zone: p.zone as any,
-          pos: { x: p.x, y: p.y }, vel: { x: p.vx, y: p.vy }, angle: p.angle,
+          level: p.level, clan: null, zone: p.zone as any,
+          pos: { x: 0, y: 0 }, vel: { x: 0, y: 0 }, angle: 0,
           inParty: false,
         });
         bump();
@@ -408,62 +399,10 @@ function GameApp() {
         state.others = state.others.filter((o) => o.id !== sid);
         bump();
       },
-      onZoneTick: (payload: ZoneTickPayload) => {
-        for (const t of payload.players) {
-          const sid = String(t.id);
-          const o = state.others.find((op) => op.id === sid);
-          if (o) {
-            const lerpFactor = 0.35;
-            o.pos.x += (t.x - o.pos.x) * lerpFactor;
-            o.pos.y += (t.y - o.pos.y) * lerpFactor;
-            o.vel.x = t.vx; o.vel.y = t.vy;
-            o.angle = t.a;
-          }
-        }
-        for (const et of payload.enemies) {
-          const e = state.enemies.find((en) => en.id === et.id);
-          if (e) {
-            const lerpFactor = 0.35;
-            e.pos.x += (et.x - e.pos.x) * lerpFactor;
-            e.pos.y += (et.y - e.pos.y) * lerpFactor;
-            e.vel.x = et.vx; e.vel.y = et.vy;
-            e.angle = et.a; e.hull = et.hp; e.hullMax = et.hpMax;
-            if (et.isBoss !== undefined) e.isBoss = et.isBoss;
-            if (et.bossPhase !== undefined) e.bossPhase = et.bossPhase;
-            e.aggro = et.aggro;
-          } else if (!state.dungeon) {
-            state.enemies.push({
-              id: et.id, type: (et.type || "scout") as any, name: et.id,
-              behavior: "normal" as any,
-              pos: { x: et.x, y: et.y }, vel: { x: et.vx, y: et.vy },
-              angle: et.a, hull: et.hp, hullMax: et.hpMax,
-              damage: 10, speed: 60, fireCd: 2,
-              exp: 0, credits: 0, honor: 0,
-              color: et.color || "#ff5c6c", size: et.size || 12,
-              isBoss: et.isBoss || false, bossPhase: et.bossPhase || 0,
-              burstCd: 0, burstShots: 0,
-              spawnPos: { x: et.x, y: et.y }, aggro: et.aggro || false,
-            });
-          }
-        }
-        for (const nt of payload.npcs) {
-          const n = state.npcShips.find((ns) => ns.id === nt.id);
-          if (n) {
-            const lerpFactor = 0.35;
-            n.pos.x += (nt.x - n.pos.x) * lerpFactor;
-            n.pos.y += (nt.y - n.pos.y) * lerpFactor;
-            n.vel.x = nt.vx; n.vel.y = nt.vy;
-            n.angle = nt.a; n.hull = nt.hp; n.hullMax = nt.hpMax;
-            n.state = nt.state as any;
-          }
-        }
-      },
       onChatMessage: (msg) => {
         pushChat(msg.channel as any, msg.from, msg.text);
       },
-      onOnlineCount: (_count) => {
-        // Could display online player count in UI
-      },
+      onOnlineCount: (_count) => {},
       onZoneEnemies: (enemies: ServerEnemy[]) => onServerZoneEnemies(enemies),
       onZoneAsteroids: (asteroids: ServerAsteroid[]) => onServerZoneAsteroids(asteroids),
       onZoneNpcs: (npcs: ServerNpc[]) => onServerZoneNpcs(npcs),
@@ -471,17 +410,35 @@ function GameApp() {
       onEnemyDie: (event: EnemyDieEvent) => onEnemyDie(event),
       onEnemyHit: (event: EnemyHitEvent) => onEnemyHit(event),
       onEnemyAttack: (event: EnemyAttackEvent) => onEnemyAttack(event),
+      onPlayerHit: (data) => onPlayerHitFromServer(data),
       onAsteroidMine: (data) => onAsteroidMine(data),
       onAsteroidDestroy: (data) => onAsteroidDestroy(data),
       onAsteroidRespawn: (asteroid: ServerAsteroid) => onAsteroidRespawn(asteroid),
       onBossWarn: () => onBossWarn(),
       onNpcSpawn: (npc: ServerNpc) => onNpcSpawn(npc),
       onNpcDie: (data) => onNpcDie(data),
-      onProjectileSpawn: (data) => onProjectileSpawn(data),
-      onState: (serverState: ServerState) => onServerState(serverState),
-      onPlayerHit: (event: PlayerHitEvent) => onPlayerHit(event),
+      onProjectileSpawn: (event: ProjectileSpawnEvent) => onProjectileSpawnFromServer(event),
+      onLaserFire: (event) => onLaserFireFromServer(event),
+      onRocketFire: (event) => onRocketFireFromServer(event),
     });
     return () => setSocketListeners({});
+  }, []);
+
+  // Send input to server every 50ms (unified: movement + combat + mining)
+  useEffect(() => {
+    const id = setInterval(() => {
+      sendInput({
+        targetX: state.cameraTarget.x,
+        targetY: state.cameraTarget.y,
+        firing: state.isLaserFiring,
+        rocketFiring: state.isRocketFiring,
+        attackTargetId: state.attackTargetId,
+        miningTargetId: state.miningTargetId,
+        laserAmmo: state.player.activeAmmoType ?? "x1",
+        rocketAmmo: state.player.activeRocketAmmoType ?? "cl1",
+      });
+    }, 50);
+    return () => clearInterval(id);
   }, []);
 
   // Keyboard shortcuts
@@ -522,8 +479,6 @@ function GameApp() {
           if (state.selectedWorldTarget?.kind === "enemy") {
             state.isLaserFiring = !state.isLaserFiring;
             state.isAttacking = state.isLaserFiring || state.isRocketFiring;
-            sendInputAttack(state.attackTargetId, state.isLaserFiring, state.isRocketFiring,
-              state.player.activeAmmoType ?? "x1", state.player.activeRocketAmmoType ?? "cl1");
             bump();
           }
         }
@@ -532,8 +487,6 @@ function GameApp() {
           if (state.selectedWorldTarget?.kind === "enemy") {
             state.isRocketFiring = !state.isRocketFiring;
             state.isAttacking = state.isLaserFiring || state.isRocketFiring;
-            sendInputAttack(state.attackTargetId, state.isLaserFiring, state.isRocketFiring,
-              state.player.activeAmmoType ?? "x1", state.player.activeRocketAmmoType ?? "cl1");
             bump();
           }
         }
