@@ -1438,6 +1438,7 @@ function tickWorld(dt: number): void {
           e.hull -= dmg;
           e.hitFlash = 1;
           e.aggro = true;
+          sfx.hit();
           emitSpark(pr.pos.x, pr.pos.y, e.color, pr.crit ? 8 : 4, pr.crit ? 180 : 120, pr.crit ? 4 : 3);
           emitSpark(pr.pos.x, pr.pos.y, "#ffffff", pr.crit ? 4 : 2, pr.crit ? 140 : 90, 2);
           emitRing(pr.pos.x, pr.pos.y, pr.color, pr.crit ? 35 : 22);
