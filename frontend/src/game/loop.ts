@@ -937,16 +937,6 @@ function tickWorld(dt: number): void {
   // ── Engine particles + 16-bit trail
   const cls = SHIP_CLASSES[p.shipClass];
   if (Math.abs(p.vel.x) + Math.abs(p.vel.y) > 30) {
-    if (Math.random() < 0.7) {
-      const back = p.angle + Math.PI;
-      state.particles.push({
-        id: `p-${Math.random().toString(36).slice(2, 8)}`,
-        pos: { x: p.pos.x + Math.cos(back) * 12, y: p.pos.y + Math.sin(back) * 12 },
-        vel: { x: Math.cos(back) * 60 + (Math.random() - 0.5) * 30, y: Math.sin(back) * 60 + (Math.random() - 0.5) * 30 },
-        ttl: 0.4, maxTtl: 0.4,
-        color: "#4ee2ff", size: 2, kind: "engine",
-      });
-    }
     trailTimer -= dt;
     if (trailTimer <= 0) {
       const back = p.angle + Math.PI;

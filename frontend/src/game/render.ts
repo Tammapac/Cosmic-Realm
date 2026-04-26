@@ -2052,21 +2052,21 @@ function drawProjectile(ctx: CanvasRenderingContext2D, pr: Projectile): void {
   } else {
     // ── Laser: solid glowing beam ──
     ctx.shadowColor = pr.color;
-    ctx.shadowBlur = 16;
+    ctx.shadowBlur = 20;
     // Soft outer glow
-    ctx.globalAlpha = 0.15;
+    ctx.globalAlpha = 0.2;
     ctx.fillStyle = pr.color;
     ctx.beginPath();
-    ctx.ellipse(0, 0, 10, 3, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, 16, 5, 0, 0, Math.PI * 2);
     ctx.fill();
     // Solid colored beam
     ctx.globalAlpha = 0.9;
     ctx.fillStyle = pr.color;
-    ctx.fillRect(-6, -0.8, 12, 1.6);
+    ctx.fillRect(-10, -1.3, 20, 2.6);
     // Hot white core
     ctx.globalAlpha = 1;
     ctx.fillStyle = "#ffffff";
-    ctx.fillRect(-5, -0.4, 10, 0.8);
+    ctx.fillRect(-8, -0.6, 16, 1.2);
   }
 
   ctx.restore();
