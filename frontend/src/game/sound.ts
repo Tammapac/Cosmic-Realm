@@ -169,12 +169,14 @@ const LASER_SOUNDS = ["/audio/LaserSchuss1.ogg", "/audio/LaserSchuss2.ogg", "/au
 const ROCKET_SOUND = "/audio/rocket_shot.mp3";
 const HIT_SOUNDS = ["/audio/hit1.mp3", "/audio/hit2.mp3", "/audio/hit3.mp3"];
 const HIT_PITCHES = [0.75, 0.85, 1.0, 1.15, 1.3, 1.5];
+const ENEMY_HIT_SOUND = "/audio/hit_enemy.ogg";
 const MINING_SOUND = "/audio/mininglaser.mp3";
 
 function preloadAll(): void {
   for (const url of LASER_SOUNDS) loadAudioFile(url);
   loadAudioFile(ROCKET_SOUND);
   for (const url of HIT_SOUNDS) loadAudioFile(url);
+  loadAudioFile(ENEMY_HIT_SOUND);
   loadAudioFile(MINING_SOUND);
 }
 
@@ -205,6 +207,11 @@ export const sfx = {
     const pick = HIT_SOUNDS[Math.floor(Math.random() * HIT_SOUNDS.length)];
     const pitch = HIT_PITCHES[Math.floor(Math.random() * HIT_PITCHES.length)];
     playPooled(pick, 0.3, pitch);
+  },
+  enemyHit(): void {
+    if (!throttled("enemyHit", 30)) return;
+    const pitch = 0.85 + Math.random() * 0.3;
+    playPooled(ENEMY_HIT_SOUND, 0.35, pitch);
   },
   crit(): void {
     if (!throttled("crit", 50)) return;
