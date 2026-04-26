@@ -123,13 +123,14 @@ function loadAudioFile(url: string): void {
     .finally(() => loadingBuffers.delete(url));
 }
 
-function playPooled(url: string, vol = 0.5): void {
+function playPooled(url: string, vol = 0.5, rate = 1): void {
   const c = ensureCtx();
   if (!c || !masterGain || muted) return;
   const buf = audioBuffers[url];
   if (!buf) { loadAudioFile(url); return; }
   const src = c.createBufferSource();
   src.buffer = buf;
+  src.playbackRate.value = rate;
   const g = c.createGain();
   g.gain.value = vol;
   src.connect(g);
@@ -166,11 +167,14 @@ function stopMiningLoop(): void {
 
 const LASER_SOUNDS = ["/audio/LaserSchuss1.ogg", "/audio/LaserSchuss2.ogg", "/audio/LaserSchuss3.ogg"];
 const ROCKET_SOUND = "/audio/rocket_shot.mp3";
+const HIT_SOUNDS = ["/audio/hit1.mp3", "/audio/hit2.mp3", "/audio/hit3.mp3"];
+const HIT_PITCHES = [0.75, 0.85, 1.0, 1.15, 1.3, 1.5];
 const MINING_SOUND = "/audio/mininglaser.mp3";
 
 function preloadAll(): void {
   for (const url of LASER_SOUNDS) loadAudioFile(url);
   loadAudioFile(ROCKET_SOUND);
+  for (const url of HIT_SOUNDS) loadAudioFile(url);
   loadAudioFile(MINING_SOUND);
 }
 
@@ -198,7 +202,9 @@ export const sfx = {
   },
   hit(): void {
     if (!throttled("hit", 30)) return;
-    blip({ freq: 220, freqEnd: 90, dur: 0.05, type: "sawtooth", gain: 0.18, release: 0.04 });
+    const pick = HIT_SOUNDS[Math.floor(Math.random() * HIT_SOUNDS.length)];
+    const pitch = HIT_PITCHES[Math.floor(Math.random() * HIT_PITCHES.length)];
+    playPooled(pick, 0.3, pitch);
   },
   crit(): void {
     if (!throttled("crit", 50)) return;
