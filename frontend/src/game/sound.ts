@@ -165,16 +165,52 @@ function stopMiningLoop(): void {
   }
 }
 
+let thrusterSource: AudioBufferSourceNode | null = null;
+let thrusterGain: GainNode | null = null;
+const THRUSTER_MAX_VOL = 0.06;
+
+function startThrusterLoop(): void {
+  const c = ensureCtx();
+  if (!c || !masterGain || muted || thrusterSource) return;
+  const buf = audioBuffers[THRUSTER_SOUND];
+  if (!buf) { loadAudioFile(THRUSTER_SOUND); return; }
+  thrusterSource = c.createBufferSource();
+  thrusterSource.buffer = buf;
+  thrusterSource.loop = true;
+  thrusterGain = c.createGain();
+  thrusterGain.gain.value = 0;
+  thrusterSource.connect(thrusterGain);
+  thrusterGain.connect(masterGain);
+  thrusterSource.start();
+  thrusterSource.onended = () => { thrusterSource = null; thrusterGain = null; };
+}
+
+function updateThrusterVolume(speedPct: number): void {
+  if (!thrusterGain) return;
+  const target = Math.min(THRUSTER_MAX_VOL, speedPct * THRUSTER_MAX_VOL);
+  thrusterGain.gain.value += (target - thrusterGain.gain.value) * 0.1;
+}
+
+function stopThrusterLoop(): void {
+  if (thrusterSource) {
+    try { thrusterSource.stop(); } catch {}
+    thrusterSource = null;
+    thrusterGain = null;
+  }
+}
+
 const LASER_SOUNDS = ["/audio/LaserSchuss1.ogg", "/audio/LaserSchuss2.ogg", "/audio/LaserSchuss3.ogg"];
 const ROCKET_SOUND = "/audio/rocket_shot.mp3";
 const ENEMY_HIT_SOUNDS = ["/audio/enemy_hit1.mp3", "/audio/enemy_hit2.mp3"];
 const ENEMY_HIT_PITCHES = [0.7, 0.8, 0.9, 1.0, 1.1, 1.25, 1.4];
+const THRUSTER_SOUND = "/audio/thruster_hum.mp3";
 const MINING_SOUND = "/audio/mininglaser.mp3";
 
 function preloadAll(): void {
   for (const url of LASER_SOUNDS) loadAudioFile(url);
   loadAudioFile(ROCKET_SOUND);
   for (const url of ENEMY_HIT_SOUNDS) loadAudioFile(url);
+  loadAudioFile(THRUSTER_SOUND);
   loadAudioFile(MINING_SOUND);
 }
 
@@ -193,6 +229,15 @@ export const sfx = {
   rocketShoot(): void {
     if (!throttled("rocketShoot", 150)) return;
     playPooled(ROCKET_SOUND, 0.4);
+  },
+  thrusterStart(): void {
+    startThrusterLoop();
+  },
+  thrusterUpdate(speedPct: number): void {
+    updateThrusterVolume(speedPct);
+  },
+  thrusterStop(): void {
+    stopThrusterLoop();
   },
   miningLaserStart(): void {
     startMiningLoop();

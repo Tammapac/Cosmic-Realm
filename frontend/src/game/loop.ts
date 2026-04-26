@@ -772,6 +772,7 @@ function damagePlayer(amount: number): void {
       p.hull = 1;
       p.vel = { x: 0, y: 0 };
       state.player.milestones.totalDeaths++;
+      sfx.thrusterStop();
       sfx.explosion(true);
       state.cameraShake = 1;
     }
@@ -934,15 +935,20 @@ function tickWorld(dt: number): void {
   p.pos.x += p.vel.x * dt;
   p.pos.y += p.vel.y * dt;
 
-  // ── Engine particles + 16-bit trail
+  // ── Engine particles + 16-bit trail + thruster sound
   const cls = SHIP_CLASSES[p.shipClass];
-  if (Math.abs(p.vel.x) + Math.abs(p.vel.y) > 30) {
+  const shipSpeed = Math.sqrt(p.vel.x * p.vel.x + p.vel.y * p.vel.y);
+  if (shipSpeed > 30) {
+    sfx.thrusterStart();
+    sfx.thrusterUpdate(Math.min(1, shipSpeed / stats.speed));
     trailTimer -= dt;
     if (trailTimer <= 0) {
       const back = p.angle + Math.PI;
       emitTrail(p.pos.x + Math.cos(back) * 8, p.pos.y + Math.sin(back) * 8, "#4ee2ff");
       trailTimer = 0.08;
     }
+  } else {
+    sfx.thrusterUpdate(0);
   }
 
   // ── Shield regen (only after 5s out of combat)
