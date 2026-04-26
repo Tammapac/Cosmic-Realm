@@ -434,8 +434,8 @@ function emitTrail(x: number, y: number, color: string): void {
   state.particles.push({
     id: `t-${Math.random().toString(36).slice(2, 8)}`,
     pos: { x, y }, vel: { x: 0, y: 0 },
-    ttl: 0.5, maxTtl: 0.5,
-    color, size: 3, kind: "trail",
+    ttl: 2.0, maxTtl: 2.0,
+    color, size: 5, kind: "trail",
   });
 }
 
@@ -944,14 +944,14 @@ function tickWorld(dt: number): void {
         pos: { x: p.pos.x + Math.cos(back) * 12, y: p.pos.y + Math.sin(back) * 12 },
         vel: { x: Math.cos(back) * 60 + (Math.random() - 0.5) * 30, y: Math.sin(back) * 60 + (Math.random() - 0.5) * 30 },
         ttl: 0.4, maxTtl: 0.4,
-        color: cls.color, size: 2, kind: "engine",
+        color: "#4ee2ff", size: 2, kind: "engine",
       });
     }
     trailTimer -= dt;
     if (trailTimer <= 0) {
       const back = p.angle + Math.PI;
-      emitTrail(p.pos.x + Math.cos(back) * 8, p.pos.y + Math.sin(back) * 8, cls.color);
-      trailTimer = 0.05;
+      emitTrail(p.pos.x + Math.cos(back) * 8, p.pos.y + Math.sin(back) * 8, "#4ee2ff");
+      trailTimer = 0.08;
     }
   }
 

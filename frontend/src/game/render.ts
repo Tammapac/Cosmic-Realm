@@ -109,6 +109,14 @@ function drawShipPixels(
     ctx.stroke();
   }
 
+  const EX = "#4ee2ff";
+  function thruster(cx: number, cy: number, rx: number, ry: number): void {
+    ctx.shadowColor = EX;
+    ctx.shadowBlur = 8;
+    ell(EX, cx, cy, rx, ry);
+    ctx.shadowBlur = 0;
+  }
+
   switch (id) {
     case "skimmer": {
       // F-16 Falcon style: cranked delta wing, slim fuselage, single engine
@@ -132,7 +140,7 @@ function drawShipPixels(
       poly(c,  [[-0.5,-14],[0.5,-14],[0,-17]]);
       // Engine nozzle
       ell(a,   0, 11, 2, 1.2);
-      ell("#4ee2ff", 0, 12.5, 1.2, 0.8);                 // exhaust glow
+      thruster(0, 12.5, 1.2, 0.8);
       // Panel line
       seg(dk,  0,-9, 0, 9, 0.5);
       break;
@@ -160,8 +168,8 @@ function drawShipPixels(
       // Twin engines
       ell(a,   -2, 11, 1.8, 1.2);
       ell(a,    2, 11, 1.8, 1.2);
-      ell("#ffd24a", -2, 12.5, 1, 0.7);
-      ell("#ffd24a",  2, 12.5, 1, 0.7);
+      thruster(-2, 12.5, 1, 0.7);
+      thruster( 2, 12.5, 1, 0.7);
       // Weapon hardpoints on wings
       poly(dk, [[-8,1],[-7,1],[-7,4],[-8,4]]);
       poly(dk, [[ 7,1],[ 8,1],[ 8,4],[ 7,4]]);
@@ -189,10 +197,10 @@ function drawShipPixels(
       ell(a,   12.5, 7.5, 2.2, 1.2);                    // R outer nacelle
       ell(a,   -3.5, 12,  1.6, 1);                      // L inner
       ell(a,    3.5, 12,  1.6, 1);                      // R inner
-      ell("#5cff8a", -12.5, 9,  1.3, 0.8);
-      ell("#5cff8a",  12.5, 9,  1.3, 0.8);
-      ell("#5cff8a",  -3.5, 13.5, 1, 0.6);
-      ell("#5cff8a",   3.5, 13.5, 1, 0.6);
+      thruster(-12.5, 9,  1.3, 0.8);
+      thruster( 12.5, 9,  1.3, 0.8);
+      thruster( -3.5, 13.5, 1, 0.6);
+      thruster(  3.5, 13.5, 1, 0.6);
       // Panel lines
       seg(dk, -3,-9,-3, 9, 0.5);
       seg(dk,  3,-9, 3, 9, 0.5);
@@ -221,8 +229,8 @@ function drawShipPixels(
       // Twin engines
       ell(a,   -2.5, 12, 2, 1.3);
       ell(a,    2.5, 12, 2, 1.3);
-      ell("#ff5c6c", -2.5, 13.5, 1.2, 0.8);
-      ell("#ff5c6c",  2.5, 13.5, 1.2, 0.8);
+      thruster(-2.5, 13.5, 1.2, 0.8);
+      thruster( 2.5, 13.5, 1.2, 0.8);
       // Engine intakes (side, bulge)
       poly(a,  [[-3.5,-5],[-6,-3],[-5.5, 4],[-3, 4]]);  // L intake
       poly(a,  [[ 3.5,-5],[ 6,-3],[ 5.5, 4],[ 3, 4]]); // R intake
@@ -249,9 +257,9 @@ function drawShipPixels(
       ell(a,   -5,  9, 1.8, 1.1);
       ell(a,    0, 10, 1.8, 1.1);
       ell(a,    5,  9, 1.8, 1.1);
-      ell("#ff5cf0", -5,10.8, 1.1, 0.7);
-      ell("#ff5cf0",  0,11.8, 1.1, 0.7);
-      ell("#ff5cf0",  5,10.8, 1.1, 0.7);
+      thruster(-5,10.8, 1.1, 0.7);
+      thruster( 0,11.8, 1.1, 0.7);
+      thruster( 5,10.8, 1.1, 0.7);
       // Panel edge lines
       seg(dk, -17, 3, -7,-7, 0.5);
       seg(dk,  17, 3,  7,-7, 0.5);
@@ -275,8 +283,8 @@ function drawShipPixels(
       // Twin engine pods mounted on rear fuselage sides (like A-10)
       poly(a,  [[-6,-2],[-8,-2],[-8, 8],[-6, 8]]);      // L engine pod
       poly(a,  [[ 6,-2],[ 8,-2],[ 8, 8],[ 6, 8]]);      // R engine pod
-      ell("#aaff5c", -7, 9, 1.8, 1.2);                  // L exhaust
-      ell("#aaff5c",  7, 9, 1.8, 1.2);                  // R exhaust
+      thruster(-7, 9, 1.8, 1.2);
+      thruster( 7, 9, 1.8, 1.2);
       // Center cannon (GAU-8 style)
       poly(dk, [[-1,-14],[1,-14],[1,-19],[-1,-19]]);
       // Wing weapon hardpoints
@@ -286,7 +294,7 @@ function drawShipPixels(
       poly(dk, [[ 8, 0],[ 9, 0],[ 9, 4],[ 8, 4]]);
       // Center tail engine
       ell(a,   0, 14, 2.5, 1.5);
-      ell("#aaff5c", 0, 15.5, 1.5, 1);
+      thruster(0, 15.5, 1.5, 1);
       break;
     }
     case "phalanx": {
@@ -318,10 +326,10 @@ function drawShipPixels(
       ell(a,   -4, 13, 2.5, 1.5);
       ell(a,    4, 13, 2.5, 1.5);
       ell(a,   10, 12, 2.5, 1.5);
-      ell("#4ee2ff", -10,13.8, 1.5, 0.9);
-      ell("#4ee2ff",  -4,14.8, 1.5, 0.9);
-      ell("#4ee2ff",   4,14.8, 1.5, 0.9);
-      ell("#4ee2ff",  10,13.8, 1.5, 0.9);
+      thruster(-10,13.8, 1.5, 0.9);
+      thruster( -4,14.8, 1.5, 0.9);
+      thruster(  4,14.8, 1.5, 0.9);
+      thruster( 10,13.8, 1.5, 0.9);
       break;
     }
     case "titan": {
@@ -355,10 +363,10 @@ function drawShipPixels(
       ell(a,   -4, 17, 2.8, 1.6);
       ell(a,    4, 17, 2.8, 1.6);
       ell(a,   10, 16, 2.8, 1.6);
-      ell("#ffd24a", -10,18, 1.6, 1);
-      ell("#ffd24a",  -4,19, 1.6, 1);
-      ell("#ffd24a",   4,19, 1.6, 1);
-      ell("#ffd24a",  10,18, 1.6, 1);
+      thruster(-10,18, 1.6, 1);
+      thruster( -4,19, 1.6, 1);
+      thruster(  4,19, 1.6, 1);
+      thruster( 10,18, 1.6, 1);
       // Hull panel lines
       seg(dk,  0,-15, 0, 13, 0.5);
       seg(dk, -9,-10, 9,-10, 0.5);
@@ -390,11 +398,11 @@ function drawShipPixels(
       ell(a,    0, 19, 2.5, 1.4);
       ell(a,    6, 18, 2.5, 1.4);
       ell(a,   12, 17, 2.5, 1.4);
-      ell("#ff5c6c", -12,19, 1.4, 0.9);
-      ell("#ff5c6c",  -6,20, 1.4, 0.9);
-      ell("#ff5c6c",   0,21, 1.4, 0.9);
-      ell("#ff5c6c",   6,20, 1.4, 0.9);
-      ell("#ff5c6c",  12,19, 1.4, 0.9);
+      thruster(-12,19, 1.4, 0.9);
+      thruster( -6,20, 1.4, 0.9);
+      thruster(  0,21, 1.4, 0.9);
+      thruster(  6,20, 1.4, 0.9);
+      thruster( 12,19, 1.4, 0.9);
       seg(dk, 0,-16, 0, 15, 0.5);
       seg(dk,-14, 5, 14, 5, 0.5);
       break;
@@ -428,8 +436,8 @@ function drawShipPixels(
       // Twin phase engines
       ell(a,   -2.5, 11, 1.8, 1.1);
       ell(a,    2.5, 11, 1.8, 1.1);
-      ell("#b06cff", -2.5,12.5, 1, 0.7);
-      ell("#b06cff",  2.5,12.5, 1, 0.7);
+      thruster(-2.5,12.5, 1, 0.7);
+      thruster( 2.5,12.5, 1, 0.7);
       break;
     }
     case "colossus": {
@@ -441,7 +449,7 @@ function drawShipPixels(
       poly(dk, [[-17,0],[-14,0],[-14,6],[-17,6]]);
       poly(dk, [[14,0],[17,0],[17,6],[14,6]]);
       for (let i = -3; i <= 3; i++) ell(a, i*3.5, 18, 2.2, 1.3);
-      for (let i = -3; i <= 3; i++) ell("#ff4444", i*3.5, 20, 1.2, 0.8);
+      for (let i = -3; i <= 3; i++) thruster(i*3.5, 20, 1.2, 0.8);
       break;
     }
     case "harbinger": {
@@ -455,8 +463,8 @@ function drawShipPixels(
       poly(dk, [[3,8],[6,14],[2,12]]);
       ell(a, -4, 14, 2, 1.2);
       ell(a,  4, 14, 2, 1.2);
-      ell("#44ffaa", -4, 16, 1.2, 0.7);
-      ell("#44ffaa",  4, 16, 1.2, 0.7);
+      thruster(-4, 16, 1.2, 0.7);
+      thruster( 4, 16, 1.2, 0.7);
       break;
     }
     case "eclipse": {
@@ -468,7 +476,7 @@ function drawShipPixels(
       poly(dk, [[-19,-1],[-16,-1],[-16,6],[-19,6]]);
       poly(dk, [[16,-1],[19,-1],[19,6],[16,6]]);
       for (let i = -4; i <= 4; i++) ell(a, i*3, 18, 2.5, 1.4);
-      for (let i = -4; i <= 4; i++) ell("#ff8800", i*3, 20, 1.4, 0.9);
+      for (let i = -4; i <= 4; i++) thruster(i*3, 20, 1.4, 0.9);
       break;
     }
     case "sovereign": {
@@ -479,7 +487,7 @@ function drawShipPixels(
       poly(c,  [[-1,-22],[1,-22],[0,-26]]);
       poly(dk, [[0,16],[16,18],[0,22],[-16,18]]);
       for (let i = -5; i <= 5; i++) ell(a, i*3, 20, 2.5, 1.4);
-      for (let i = -5; i <= 5; i++) ell("#ffdd00", i*3, 22, 1.4, 0.9);
+      for (let i = -5; i <= 5; i++) thruster(i*3, 22, 1.4, 0.9);
       break;
     }
     case "apex": {
@@ -494,7 +502,7 @@ function drawShipPixels(
       ell("#ffffff", 0, -4, 3, 3);
       ell("#ffcc00", 0, -4, 1.5, 1.5);
       for (let i = -6; i <= 6; i++) ell(a, i*2.8, 22, 2.4, 1.3);
-      for (let i = -6; i <= 6; i++) ell("#ffffff", i*2.8, 24, 1.2, 0.8);
+      for (let i = -6; i <= 6; i++) thruster(i*2.8, 24, 1.2, 0.8);
       break;
     }
   }
@@ -2042,29 +2050,23 @@ function drawProjectile(ctx: CanvasRenderingContext2D, pr: Projectile): void {
     ctx.fillRect(-15, -1, 3, 2);
     ctx.globalAlpha = 1;
   } else {
-    // ── Laser: thin energy beam with bright core ──
+    // ── Laser: solid glowing beam ──
     ctx.shadowColor = pr.color;
-    ctx.shadowBlur = 14;
-    // Outer glow (wide, faint)
-    ctx.globalAlpha = 0.25;
+    ctx.shadowBlur = 16;
+    // Soft outer glow
+    ctx.globalAlpha = 0.15;
     ctx.fillStyle = pr.color;
-    ctx.fillRect(-12, -pr.size * 0.6, 24, pr.size * 1.2);
-    // Main beam body (thin)
-    ctx.globalAlpha = 0.7;
-    ctx.fillRect(-10, -1.2, 20, 2.4);
-    // Bright white core (very thin)
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 10, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Solid colored beam
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = pr.color;
+    ctx.fillRect(-6, -0.8, 12, 1.6);
+    // Hot white core
     ctx.globalAlpha = 1;
     ctx.fillStyle = "#ffffff";
-    ctx.fillRect(-8, -0.6, 16, 1.2);
-    // Leading tip glow
-    ctx.beginPath();
-    ctx.arc(8, 0, 2, 0, Math.PI * 2);
-    ctx.fillStyle = pr.color;
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(8, 0, 1, 0, Math.PI * 2);
-    ctx.fillStyle = "#ffffff";
-    ctx.fill();
+    ctx.fillRect(-5, -0.4, 10, 0.8);
   }
 
   ctx.restore();
@@ -2090,11 +2092,21 @@ function drawParticle(ctx: CanvasRenderingContext2D, pa: Particle): void {
     return;
   }
   if (pa.kind === "trail") {
-    ctx.globalAlpha = a * 0.7;
+    const r = pa.size * a;
+    ctx.save();
+    ctx.globalAlpha = a * a * 0.5;
+    ctx.shadowColor = pa.color;
+    ctx.shadowBlur = 6 * a;
     ctx.fillStyle = pa.color;
-    const s = pa.size * a;
-    ctx.fillRect(pa.pos.x - s / 2, pa.pos.y - s / 2, s, s);
-    ctx.globalAlpha = 1;
+    ctx.beginPath();
+    ctx.arc(pa.pos.x, pa.pos.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = a * a * 0.8;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.arc(pa.pos.x, pa.pos.y, r * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
     return;
   }
   if (pa.kind === "flash") {
