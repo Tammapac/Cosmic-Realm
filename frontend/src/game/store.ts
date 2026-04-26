@@ -285,7 +285,7 @@ function pickQuests(zone: ZoneId): Quest[] {
 const saved = loadSaved();
 const fresh = makeInitialPlayer();
 const initialPlayer: Player = saved
-  ? { ...fresh, ...saved, pos: { x: 0, y: 80 }, vel: { x: 0, y: 0 } }
+  ? { ...fresh, ...saved, vel: { x: 0, y: 0 } }
   : fresh;
 
 // Migration: ensure cargo, drones, milestones, missions, skills exist
@@ -499,6 +499,7 @@ export function save(): void {
       shipClass: p.shipClass,
       inventory: p.inventory,
       equipped: p.equipped,
+      pos: { x: p.pos.x, y: p.pos.y },
       hull: p.hull,
       level: p.level,
       exp: p.exp,
@@ -647,13 +648,13 @@ export function refreshOthers(zone: ZoneId): void {
   bump();
 }
 
-export function travelToZone(zoneId: ZoneId): void {
+export function travelToZone(zoneId: ZoneId, spawnPos?: { x: number; y: number }): void {
   if (state.player.zone !== zoneId) {
     state.player.milestones.totalWarps++;
     bumpMission("warp-zones", 1);
   }
   state.player.zone = zoneId;
-  state.player.pos = { x: 0, y: 80 };
+  state.player.pos = spawnPos ? { ...spawnPos } : { x: 0, y: 80 };
   state.player.vel = { x: 0, y: 0 };
   state.cameraTarget = { ...state.player.pos };
   state.enemies = [];
@@ -662,7 +663,7 @@ export function travelToZone(zoneId: ZoneId): void {
   state.cargoBoxes = [];
   state.npcShips = [];
   refreshOthers(zoneId);
-  sendWarp(zoneId, 0, 80);
+  sendWarp(zoneId, state.player.pos.x, state.player.pos.y);
   pushNotification(`Warped to ${ZONES[zoneId].name}`, "good");
   pushChat("system", "SYSTEM", `You entered ${ZONES[zoneId].name}.`);
   sfx.warp();
