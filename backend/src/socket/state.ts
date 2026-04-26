@@ -1,6 +1,14 @@
-// Server-side world state: tracks all online players per zone
-// DarkOrbit-style: the server is the authority on who is where,
-// clients send movement/action intents, server broadcasts positions
+export type PlayerInput = {
+  seq: number;
+  targetX: number | null;
+  targetY: number | null;
+  firing: boolean;
+  rocketFiring: boolean;
+  attackTargetId: string | null;
+  miningTargetId: string | null;
+  laserAmmo: string;
+  rocketAmmo: string;
+};
 
 export type OnlinePlayer = {
   socketId: string;
@@ -21,8 +29,39 @@ export type OnlinePlayer = {
   shield: number;
   shieldMax: number;
   honor: number;
+  speed: number;
+  shieldRegen: number;
+  damage: number;
+  fireRate: number;
+  critChance: number;
+  damageReduction: number;
+  shieldAbsorb: number;
+  aoeRadius: number;
+  lootBonus: number;
+
+  // Input sequencing
   targetX: number | null;
   targetY: number | null;
+  inputQueue: PlayerInput[];
+  lastProcessedInput: number;
+
+  // Combat state (from latest input)
+  isLaserFiring: boolean;
+  isRocketFiring: boolean;
+  attackTargetId: string | null;
+  miningTargetId: string | null;
+  laserAmmoType: string;
+  rocketAmmoType: string;
+  laserFireCd: number;
+  rocketFireCd: number;
+
+  // Delta tracking
+  version: number;
+  visibleEntityVersions: Map<string, number>;
+
+  // Misc
+  afterburnUntil: number;
+  lastHitTick: number;
 };
 
 // zone → Map<playerId, OnlinePlayer>

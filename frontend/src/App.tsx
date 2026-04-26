@@ -16,11 +16,17 @@ import { travelToZone, state as gameState } from "./game/store";
 import AuthScreen from "./components/AuthScreen";
 import { hasToken, getPlayer, clearToken } from "./net/api";
 import {
-  connectSocket, disconnectSocket, setSocketListeners, sendPosition,
-  type ZoneTickPayload, type ServerEnemy, type ServerAsteroid, type ServerNpc,
+  connectSocket, disconnectSocket, setSocketListeners, sendInput,
+  type ServerEnemy, type ServerAsteroid, type ServerNpc,
   type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent,
 } from "./net/socket";
-import { onEnemyHit, onEnemyDie, onEnemyAttack, onEnemySpawn, onBossWarn, onAsteroidMine, onAsteroidDestroy, onAsteroidRespawn, onServerZoneEnemies, onServerZoneAsteroids, onServerZoneNpcs, onNpcSpawn, onNpcDie } from "./game/loop";
+import {
+  onEnemyHit, onEnemyDie, onEnemyAttack, onEnemySpawn, onBossWarn,
+  onAsteroidMine, onAsteroidDestroy, onAsteroidRespawn,
+  onServerZoneEnemies, onServerZoneAsteroids, onServerZoneNpcs,
+  onNpcSpawn, onNpcDie,
+  onWelcome, onDelta, onSnapshot, onPlayerHitFromServer,
+} from "./game/loop";
 
 function GameCanvas() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -373,22 +379,16 @@ function GameApp() {
   // Wire socket listeners to game state
   useEffect(() => {
     setSocketListeners({
-      onPlayersInZone: (players) => {
-        state.others = players.map((p) => ({
-          id: String(p.id), name: p.name, shipClass: p.shipClass as any,
-          level: p.level, clan: p.clan, zone: p.zone as any,
-          pos: { x: p.x, y: p.y }, vel: { x: p.vx, y: p.vy }, angle: p.angle,
-          inParty: false,
-        }));
-        bump();
-      },
+      onWelcome: (payload) => onWelcome(payload),
+      onDelta: (payload) => onDelta(payload),
+      onSnapshot: (payload) => onSnapshot(payload),
       onPlayerJoin: (p) => {
         const sid = String(p.id);
         if (state.others.find((o) => o.id === sid)) return;
         state.others.push({
           id: sid, name: p.name, shipClass: p.shipClass as any,
-          level: p.level, clan: p.clan, zone: p.zone as any,
-          pos: { x: p.x, y: p.y }, vel: { x: p.vx, y: p.vy }, angle: p.angle,
+          level: p.level, clan: null, zone: p.zone as any,
+          pos: { x: 0, y: 0 }, vel: { x: 0, y: 0 }, angle: 0,
           inParty: false,
         });
         bump();
@@ -398,43 +398,10 @@ function GameApp() {
         state.others = state.others.filter((o) => o.id !== sid);
         bump();
       },
-      onZoneTick: (payload: ZoneTickPayload) => {
-        for (const t of payload.players) {
-          const sid = String(t.id);
-          const o = state.others.find((op) => op.id === sid);
-          if (o) {
-            o.pos.x = t.x; o.pos.y = t.y;
-            o.vel.x = t.vx; o.vel.y = t.vy;
-            o.angle = t.a;
-          }
-        }
-        for (const et of payload.enemies) {
-          const e = state.enemies.find((en) => en.id === et.id);
-          if (e) {
-            e.pos.x = et.x; e.pos.y = et.y;
-            e.vel.x = et.vx; e.vel.y = et.vy;
-            e.angle = et.a; e.hull = et.hp; e.hullMax = et.hpMax;
-            if (et.isBoss !== undefined) e.isBoss = et.isBoss;
-            if (et.bossPhase !== undefined) e.bossPhase = et.bossPhase;
-            e.aggro = et.aggro;
-          }
-        }
-        for (const nt of payload.npcs) {
-          const n = state.npcShips.find((ns) => ns.id === nt.id);
-          if (n) {
-            n.pos.x = nt.x; n.pos.y = nt.y;
-            n.vel.x = nt.vx; n.vel.y = nt.vy;
-            n.angle = nt.a; n.hull = nt.hp; n.hullMax = nt.hpMax;
-            n.state = nt.state as any;
-          }
-        }
-      },
       onChatMessage: (msg) => {
         pushChat(msg.channel as any, msg.from, msg.text);
       },
-      onOnlineCount: (_count) => {
-        // Could display online player count in UI
-      },
+      onOnlineCount: (_count) => {},
       onZoneEnemies: (enemies: ServerEnemy[]) => onServerZoneEnemies(enemies),
       onZoneAsteroids: (asteroids: ServerAsteroid[]) => onServerZoneAsteroids(asteroids),
       onZoneNpcs: (npcs: ServerNpc[]) => onServerZoneNpcs(npcs),
@@ -442,27 +409,33 @@ function GameApp() {
       onEnemyDie: (event: EnemyDieEvent) => onEnemyDie(event),
       onEnemyHit: (event: EnemyHitEvent) => onEnemyHit(event),
       onEnemyAttack: (event: EnemyAttackEvent) => onEnemyAttack(event),
+      onPlayerHit: (data) => onPlayerHitFromServer(data),
       onAsteroidMine: (data) => onAsteroidMine(data),
       onAsteroidDestroy: (data) => onAsteroidDestroy(data),
       onAsteroidRespawn: (asteroid: ServerAsteroid) => onAsteroidRespawn(asteroid),
       onBossWarn: () => onBossWarn(),
       onNpcSpawn: (npc: ServerNpc) => onNpcSpawn(npc),
       onNpcDie: (data) => onNpcDie(data),
+      onLaserFire: (_event) => {},
+      onRocketFire: (_event) => {},
     });
     return () => setSocketListeners({});
   }, []);
 
-  // Send position to server every 100ms for other players
+  // Send input to server every 50ms (unified: movement + combat + mining)
   useEffect(() => {
     const id = setInterval(() => {
-      sendPosition(
-        state.player.pos.x,
-        state.player.pos.y,
-        state.player.vel.x,
-        state.player.vel.y,
-        state.player.angle
-      );
-    }, 100);
+      sendInput({
+        targetX: state.cameraTarget.x,
+        targetY: state.cameraTarget.y,
+        firing: state.isLaserFiring,
+        rocketFiring: state.isRocketFiring,
+        attackTargetId: state.attackTargetId,
+        miningTargetId: state.miningTargetId,
+        laserAmmo: state.player.activeAmmoType ?? "x1",
+        rocketAmmo: state.player.activeRocketAmmoType ?? "cl1",
+      });
+    }, 50);
     return () => clearInterval(id);
   }, []);
 

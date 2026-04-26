@@ -13,7 +13,7 @@ import {
   rankFor,
 } from "./types";
 import { sfx } from "./sound";
-import { sendAttackEnemy, sendMine, type ServerEnemy, type ServerAsteroid, type ServerNpc, type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent } from "../net/socket";
+import { type ServerEnemy, type ServerAsteroid, type ServerNpc, type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent, type DeltaPayload, type SnapshotPayload, type WelcomePayload, type DeltaEntity } from "../net/socket";
 
 // Returns the equipped weapon's color (used for laser projectiles)
 function equippedWeaponColor(): string {
@@ -1227,10 +1227,7 @@ function tickWorld(dt: number): void {
         playerFireCd.value = cd;
         state.attackCooldownUntil = state.tick + cd;
         state.attackCooldownDuration = cd;
-        // Server-authoritative: tell server about the attack
-        if (serverEnemiesReceived) {
-          sendAttackEnemy(atkTarget.id, "laser", laserAmmoType);
-        }
+        // Server handles damage via input state (isLaserFiring + attackTargetId)
       }
 
       // Fire rockets on separate slower cooldown (uses rocket ammo, higher damage) - only when rocket firing is active
@@ -1276,10 +1273,7 @@ function tickWorld(dt: number): void {
         emitSpark(p.pos.x, p.pos.y, "#ffd24a", 4, 80, 2);
         sfx.rocketShoot();
         atkTarget.aggro = true;
-        // Server-authoritative: tell server about the rocket attack
-        if (serverEnemiesReceived) {
-          sendAttackEnemy(atkTarget.id, "rocket", rocketAmmoType);
-        }
+        // Server handles damage via input state (isRocketFiring + attackTargetId)
         const avgRocketRate = rocketIds.reduce((sum, rid) => {
           const ri = p.inventory.find((m) => m.instanceId === rid);
           const rd = ri ? MODULE_DEFS[ri.defId] : null;
@@ -1308,9 +1302,8 @@ function tickWorld(dt: number): void {
       const mDist = distance(p.pos.x, p.pos.y, mAst.pos.x, mAst.pos.y);
       if (mDist < 450) {
         const miningDps = stats.damage * 0.25;
-        if (serverEnemiesReceived) {
-          sendMine(mAst.id);
-        } else {
+        // Server handles mining via input state (miningTargetId)
+        if (!serverEnemiesReceived) {
           mAst.hp -= miningDps * dt;
         }
         sfx.miningLaserStart();
@@ -2042,4 +2035,236 @@ function serverEnemyToLocal(se: ServerEnemy): Enemy {
     spawnPos: { x: se.x, y: se.y },
     aggro: false,
   };
+}
+
+// ── DELTA / SNAPSHOT HANDLERS (server-authoritative netcode) ──────────────
+
+let serverConfig = { tickRate: 25, friction: 0.96, frictionRefFps: 60 };
+export let serverAuthoritative = false;
+
+export function onWelcome(data: WelcomePayload): void {
+  serverConfig = {
+    tickRate: data.tickRate,
+    friction: data.friction,
+    frictionRefFps: data.frictionRefFps,
+  };
+  serverAuthoritative = true;
+}
+
+export function onDelta(data: DeltaPayload): void {
+  if (!serverAuthoritative) return;
+  const p = state.player;
+  const self = data.self;
+
+  // Reconcile own position: smooth for small errors, snap for large
+  const dx = self.x - p.pos.x;
+  const dy = self.y - p.pos.y;
+  const d = Math.sqrt(dx * dx + dy * dy);
+
+  if (d > 80) {
+    p.pos.x = self.x;
+    p.pos.y = self.y;
+  } else if (d > 2) {
+    p.pos.x += dx * 0.3;
+    p.pos.y += dy * 0.3;
+  }
+
+  // Sync velocity from server
+  p.vel.x = self.vx;
+  p.vel.y = self.vy;
+
+  // Sync HP/shield from server (authoritative)
+  if (state.playerRespawnTimer <= 0) {
+    p.hull = self.hp;
+    p.shield = self.shield;
+  }
+
+  // Process addOrUpdate
+  for (const entity of data.addOrUpdate) {
+    applyEntityUpdate(entity);
+  }
+
+  // Process removals
+  for (const id of data.removals) {
+    removeEntityById(id);
+  }
+}
+
+export function onSnapshot(data: SnapshotPayload): void {
+  if (!serverAuthoritative) return;
+  const p = state.player;
+  const self = data.self;
+
+  // Snap to server position on snapshot
+  p.pos.x = self.x;
+  p.pos.y = self.y;
+  p.vel.x = self.vx;
+  p.vel.y = self.vy;
+  if (state.playerRespawnTimer <= 0) {
+    p.hull = self.hp;
+    p.shield = self.shield;
+  }
+
+  // Apply all entities
+  const entityIds = new Set<string>();
+  for (const entity of data.entities) {
+    entityIds.add(entity.id);
+    applyEntityUpdate(entity);
+  }
+
+  // Remove entities not in snapshot (they left our viewport)
+  state.enemies = state.enemies.filter(e => entityIds.has(e.id));
+  state.npcShips = state.npcShips.filter(n => entityIds.has(n.id));
+  state.others = state.others.filter(o => entityIds.has(`p-${o.id}`));
+
+  bump();
+}
+
+export function onPlayerHitFromServer(data: { damage: number; hp: number; shield: number }): void {
+  const p = state.player;
+  if (state.playerRespawnTimer > 0) return;
+
+  // Set authoritative HP from server
+  p.hull = data.hp;
+  p.shield = data.shield;
+
+  // Visual feedback
+  emitSpark(p.pos.x, p.pos.y, "#ff5c6c", 6, 70, 2);
+  sfx.hit();
+  state.cameraShake = Math.max(state.cameraShake, 0.15);
+  state.lastHitTick = state.tick;
+
+  if (p.hull <= 0 && state.playerRespawnTimer <= 0) {
+    const shipColor = SHIP_CLASSES[p.shipClass].color;
+    emitDeath(p.pos.x, p.pos.y, shipColor, true);
+    state.playerDeathFlash = 0.6;
+    state.playerRespawnTimer = 0.5;
+    p.hull = 1;
+    p.vel = { x: 0, y: 0 };
+    state.player.milestones.totalDeaths++;
+    sfx.thrusterStop();
+    sfx.explosion(true);
+    state.cameraShake = 1;
+  }
+}
+
+function applyEntityUpdate(entity: DeltaEntity): void {
+  switch (entity.entityType) {
+    case "enemy": {
+      const e = state.enemies.find(en => en.id === entity.id);
+      if (e) {
+        e.pos.x = entity.x; e.pos.y = entity.y;
+        if (entity.vx != null) e.vel.x = entity.vx;
+        if (entity.vy != null) e.vel.y = entity.vy;
+        if (entity.angle != null) e.angle = entity.angle;
+        if (entity.hp != null) e.hull = entity.hp;
+        if (entity.hpMax != null) e.hullMax = entity.hpMax;
+        if (entity.isBoss != null) e.isBoss = entity.isBoss;
+        if (entity.bossPhase != null) e.bossPhase = entity.bossPhase;
+      } else {
+        state.enemies.push({
+          id: entity.id,
+          type: (entity.type || "scout") as EnemyType,
+          name: entity.name || "Unknown",
+          behavior: (entity.behavior || "chaser") as any,
+          pos: { x: entity.x, y: entity.y },
+          vel: { x: entity.vx || 0, y: entity.vy || 0 },
+          angle: entity.angle || 0,
+          hull: entity.hp || 100, hullMax: entity.hpMax || 100,
+          damage: entity.damage || 10, speed: entity.speed || 80,
+          fireCd: Math.random() * 2, exp: 0, credits: 0, honor: 0,
+          color: entity.color || "#ff5c6c", size: entity.size || 12,
+          isBoss: entity.isBoss || false, bossPhase: entity.bossPhase || 0,
+          burstCd: 0, burstShots: 0,
+          spawnPos: { x: entity.x, y: entity.y },
+          aggro: false,
+        });
+      }
+      break;
+    }
+    case "player": {
+      const numId = entity.id.replace("p-", "");
+      const o = state.others.find(op => op.id === numId);
+      if (o) {
+        o.pos.x = entity.x; o.pos.y = entity.y;
+        if (entity.vx != null) o.vel.x = entity.vx;
+        if (entity.vy != null) o.vel.y = entity.vy;
+        if (entity.angle != null) o.angle = entity.angle;
+      } else {
+        state.others.push({
+          id: numId,
+          name: entity.name || "Pilot",
+          shipClass: (entity.shipClass || "skimmer") as any,
+          level: entity.level || 1,
+          clan: null,
+          zone: state.player.zone as any,
+          pos: { x: entity.x, y: entity.y },
+          vel: { x: entity.vx || 0, y: entity.vy || 0 },
+          angle: entity.angle || 0,
+          inParty: false,
+        });
+      }
+      break;
+    }
+    case "npc": {
+      const n = state.npcShips.find(ns => ns.id === entity.id);
+      if (n) {
+        n.pos.x = entity.x; n.pos.y = entity.y;
+        if (entity.vx != null) n.vel.x = entity.vx;
+        if (entity.vy != null) n.vel.y = entity.vy;
+        if (entity.angle != null) n.angle = entity.angle;
+        if (entity.hp != null) n.hull = entity.hp;
+        if (entity.hpMax != null) n.hullMax = entity.hpMax;
+        if (entity.state != null) n.state = entity.state as any;
+      } else {
+        state.npcShips.push({
+          id: entity.id,
+          name: entity.name || "NPC",
+          pos: { x: entity.x, y: entity.y },
+          vel: { x: entity.vx || 0, y: entity.vy || 0 },
+          angle: entity.angle || 0,
+          color: entity.color || "#4ee2ff",
+          size: entity.size || 12,
+          hull: entity.hp || 200, hullMax: entity.hpMax || 200,
+          speed: entity.speed || 100, damage: 0, fireCd: 2,
+          targetPos: { x: entity.x, y: entity.y },
+          state: (entity.state || "patrol") as any,
+          targetEnemyId: null,
+          zone: state.player.zone,
+        });
+      }
+      break;
+    }
+    case "asteroid": {
+      const a = state.asteroids.find(ast => ast.id === entity.id);
+      if (a) {
+        if (entity.hp != null) a.hp = entity.hp;
+        if (entity.hpMax != null) a.hpMax = entity.hpMax;
+      } else {
+        state.asteroids.push({
+          id: entity.id,
+          pos: { x: entity.x, y: entity.y },
+          hp: entity.hp || 100, hpMax: entity.hpMax || 100,
+          size: entity.size || 20,
+          rotation: 0, rotSpeed: (Math.random() - 0.5) * 0.4,
+          zone: state.player.zone,
+          yields: (entity.yields || "iron") as any,
+        });
+      }
+      break;
+    }
+  }
+}
+
+function removeEntityById(id: string): void {
+  if (id.startsWith("p-")) {
+    const numId = id.replace("p-", "");
+    state.others = state.others.filter(o => o.id !== numId);
+  } else if (id.startsWith("e-") || id.startsWith("boss-")) {
+    state.enemies = state.enemies.filter(e => e.id !== id);
+  } else if (id.startsWith("npc-")) {
+    state.npcShips = state.npcShips.filter(n => n.id !== id);
+  } else if (id.startsWith("ast-")) {
+    state.asteroids = state.asteroids.filter(a => a.id !== id);
+  }
 }
