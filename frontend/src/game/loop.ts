@@ -13,7 +13,7 @@ import {
   rankFor,
 } from "./types";
 import { sfx } from "./sound";
-import { type ServerEnemy, type ServerAsteroid, type ServerNpc, type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent, type DeltaPayload, type SnapshotPayload, type WelcomePayload, type DeltaEntity, type LaserFireEvent, type RocketFireEvent } from "../net/socket";
+import { type ServerEnemy, type ServerAsteroid, type ServerNpc, type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent, type DeltaPayload, type SnapshotPayload, type WelcomePayload, type DeltaEntity, type LaserFireEvent, type RocketFireEvent, type ProjectileSpawnEvent } from "../net/socket";
 
 // Returns the equipped weapon's color (used for laser projectiles)
 function equippedWeaponColor(): string {
@@ -561,7 +561,7 @@ function emitDeath(x: number, y: number, color: string, big = false): void {
 function fireProjectile(
   from: "player" | "enemy" | "drone",
   x: number, y: number, angle: number, damage: number, color: string, size = 3,
-  opts?: { crit?: boolean; aoeRadius?: number; speedMul?: number; homing?: boolean; empStun?: number; armorPiercing?: boolean; weaponKind?: WeaponKind },
+  opts?: { crit?: boolean; aoeRadius?: number; speedMul?: number; homing?: boolean; empStun?: number; armorPiercing?: boolean; weaponKind?: WeaponKind; renderOnly?: boolean },
 ): void {
   const speedBase = from === "player" ? 280 : from === "drone" ? 260 : 220;
   const speed = speedBase * (opts?.speedMul ?? 1);
@@ -580,6 +580,7 @@ function fireProjectile(
     empStun: opts?.empStun,
     armorPiercing: opts?.armorPiercing,
     weaponKind: opts?.weaponKind,
+    renderOnly: opts?.renderOnly,
   });
 }
 
@@ -930,16 +931,13 @@ function tickWorld(dt: number): void {
     p.pos.x += p.vel.x * dt;
     p.pos.y += p.vel.y * dt;
   } else {
-    // Smooth pursuit: advance server target with velocity, then smoothly track it
-    _srvX += _srvVX * dt;
-    _srvY += _srvVY * dt;
-    const smoothRate = Math.min(1, 20 * dt);
-    p.pos.x += (_srvX - p.pos.x) * smoothRate;
-    p.pos.y += (_srvY - p.pos.y) * smoothRate;
-    p.vel.x = _srvVX;
-    p.vel.y = _srvVY;
-    if (Math.abs(_srvVX) > 1 || Math.abs(_srvVY) > 1) {
-      p.angle = Math.atan2(_srvVY, _srvVX);
+    // Server owns position; extrapolate linearly with server velocity between delta snaps
+    // No friction here - server velocity is post-friction and represents the right speed
+    // Applying friction client-side causes undershoot then snap-forward on each delta
+    p.pos.x += p.vel.x * dt;
+    p.pos.y += p.vel.y * dt;
+    if (Math.abs(p.vel.x) > 1 || Math.abs(p.vel.y) > 1) {
+      p.angle = Math.atan2(p.vel.y, p.vel.x);
     }
   }
   // Face attack target when fighting (DarkOrbit style)
@@ -1463,6 +1461,9 @@ function tickWorld(dt: number): void {
       if (isEmp && Math.random() < 0.08) {
         emitRing(pr.pos.x, pr.pos.y, pr.color);
       }
+    }
+    if (pr.renderOnly) {
+      return true;
     }
     if (pr.fromPlayer) {
       // hit enemies
@@ -2079,6 +2080,21 @@ export function onRocketFireFromServer(data: RocketFireEvent): void {
   }
 }
 
+export function onProjectileSpawnFromServer(data: ProjectileSpawnEvent): void {
+  const angle = Math.atan2(data.vy, data.vx);
+  const speed = Math.sqrt(data.vx * data.vx + data.vy * data.vy);
+  const baseSpeed = data.fromPlayer ? 280 : 220;
+  const speedMul = baseSpeed > 0 ? speed / baseSpeed : 1;
+
+  fireProjectile(data.fromPlayer ? "player" : "enemy", data.x, data.y, angle, data.damage, data.color, data.size, {
+    crit: data.crit,
+    homing: data.homing,
+    speedMul,
+    weaponKind: data.weaponKind,
+    renderOnly: true,
+  });
+}
+
 function serverEnemyToLocal(se: ServerEnemy): Enemy {
   return {
     id: se.id,
@@ -2106,7 +2122,6 @@ let serverConfig = { tickRate: 25, friction: 0.96, frictionRefFps: 60 };
 export let serverAuthoritative = false;
 let serverPlayerId = 0;
 let _deltaCount = 0;
-let _srvX = 0, _srvY = 0, _srvVX = 0, _srvVY = 0;
 
 export function onWelcome(data: WelcomePayload): void {
   serverConfig = {
@@ -2127,19 +2142,11 @@ export function onDelta(data: DeltaPayload): void {
   const p = state.player;
   const self = data.self;
 
-  // Set server target for smooth pursuit (game loop smoothly converges toward it)
-  _srvX = self.x;
-  _srvY = self.y;
-  _srvVX = self.vx;
-  _srvVY = self.vy;
-
-  // Snap on first delta or if very far (teleport/warp)
-  const dx = self.x - p.pos.x;
-  const dy = self.y - p.pos.y;
-  if (_deltaCount <= 1 || (dx * dx + dy * dy) > 40000) {
-    p.pos.x = self.x;
-    p.pos.y = self.y;
-  }
+  // Snap to server position (server is authoritative)
+  p.pos.x = self.x;
+  p.pos.y = self.y;
+  p.vel.x = self.vx;
+  p.vel.y = self.vy;
 
   // Sync HP/shield from server (authoritative)
   if (state.playerRespawnTimer <= 0) {
@@ -2163,13 +2170,11 @@ export function onSnapshot(data: SnapshotPayload): void {
   const p = state.player;
   const self = data.self;
 
-  // Update server target for smooth pursuit
-  _srvX = self.x;
-  _srvY = self.y;
-  _srvVX = self.vx;
-  _srvVY = self.vy;
+  // Snap to server position on snapshot
   p.pos.x = self.x;
   p.pos.y = self.y;
+  p.vel.x = self.vx;
+  p.vel.y = self.vy;
   if (state.playerRespawnTimer <= 0) {
     p.hull = self.hp;
     p.shield = self.shield;
@@ -2193,29 +2198,30 @@ export function onSnapshot(data: SnapshotPayload): void {
 export function onPlayerHitFromServer(data: { damage: number; hp: number; shield: number }): void {
   const p = state.player;
   if (state.playerRespawnTimer > 0) return;
-
-  // Set authoritative HP from server
   p.hull = data.hp;
   p.shield = data.shield;
-
-  // Visual feedback
   emitSpark(p.pos.x, p.pos.y, "#ff5c6c", 6, 70, 2);
   sfx.hit();
   state.cameraShake = Math.max(state.cameraShake, 0.15);
   state.lastHitTick = state.tick;
+}
 
-  if (p.hull <= 0 && state.playerRespawnTimer <= 0) {
-    const shipColor = SHIP_CLASSES[p.shipClass].color;
-    emitDeath(p.pos.x, p.pos.y, shipColor, true);
-    state.playerDeathFlash = 0.6;
-    state.playerRespawnTimer = 0.5;
-    p.hull = 1;
-    p.vel = { x: 0, y: 0 };
-    state.player.milestones.totalDeaths++;
-    sfx.thrusterStop();
-    sfx.explosion(true);
-    state.cameraShake = 1;
-  }
+export function onPlayerDieFromServer(data: { playerId: number; pos: { x: number; y: number } }): void {
+  const p = state.player;
+  if (data.playerId !== serverPlayerId) return;
+  const shipColor = SHIP_CLASSES[p.shipClass].color;
+  emitDeath(data.pos.x, data.pos.y, shipColor, true);
+  state.playerDeathFlash = 0.6;
+  state.player.milestones.totalDeaths++;
+  state.isAttacking = false;
+  state.isLaserFiring = false;
+  state.isRocketFiring = false;
+  state.attackTargetId = null;
+  state.selectedWorldTarget = null;
+  sfx.thrusterStop();
+  sfx.explosion(true);
+  state.cameraShake = 1;
+  pushNotification("Ship destroyed. Respawning...", "bad");
 }
 
 function applyEntityUpdate(entity: DeltaEntity): void {
@@ -2223,11 +2229,9 @@ function applyEntityUpdate(entity: DeltaEntity): void {
     case "enemy": {
       const e = state.enemies.find(en => en.id === entity.id);
       if (e) {
-        // Compute velocity to smoothly converge to server position
-        const edx = entity.x - e.pos.x;
-        const edy = entity.y - e.pos.y;
-        e.vel.x = (entity.vx || 0) + edx * 8;
-        e.vel.y = (entity.vy || 0) + edy * 8;
+        e.pos.x = entity.x; e.pos.y = entity.y;
+        if (entity.vx != null) e.vel.x = entity.vx;
+        if (entity.vy != null) e.vel.y = entity.vy;
         if (entity.angle != null) e.angle = entity.angle;
         if (entity.hp != null) e.hull = entity.hp;
         if (entity.hpMax != null) e.hullMax = entity.hpMax;
@@ -2258,10 +2262,9 @@ function applyEntityUpdate(entity: DeltaEntity): void {
       const numId = entity.id.replace("p-", "");
       const o = state.others.find(op => op.id === numId);
       if (o) {
-        const odx = entity.x - o.pos.x;
-        const ody = entity.y - o.pos.y;
-        o.vel.x = (entity.vx || 0) + odx * 8;
-        o.vel.y = (entity.vy || 0) + ody * 8;
+        o.pos.x = entity.x; o.pos.y = entity.y;
+        if (entity.vx != null) o.vel.x = entity.vx;
+        if (entity.vy != null) o.vel.y = entity.vy;
         if (entity.angle != null) o.angle = entity.angle;
       } else {
         state.others.push({
@@ -2282,10 +2285,9 @@ function applyEntityUpdate(entity: DeltaEntity): void {
     case "npc": {
       const n = state.npcShips.find(ns => ns.id === entity.id);
       if (n) {
-        const ndx = entity.x - n.pos.x;
-        const ndy = entity.y - n.pos.y;
-        n.vel.x = (entity.vx || 0) + ndx * 8;
-        n.vel.y = (entity.vy || 0) + ndy * 8;
+        n.pos.x = entity.x; n.pos.y = entity.y;
+        if (entity.vx != null) n.vel.x = entity.vx;
+        if (entity.vy != null) n.vel.y = entity.vy;
         if (entity.angle != null) n.angle = entity.angle;
         if (entity.hp != null) n.hull = entity.hp;
         if (entity.hpMax != null) n.hullMax = entity.hpMax;
