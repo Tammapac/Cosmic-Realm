@@ -1197,21 +1197,21 @@ function tickWorld(dt: number): void {
           fireProjectile("player", ox, oy, ang - side * 0.03, perShot, laserColor, 4, {
             weaponKind: "laser",
           });
-          // Muzzle flash at gun port
+          // Muzzle flash at gun port — large and visible when zoomed out
           state.particles.push({
             id: `mf-${Math.random().toString(36).slice(2, 8)}`,
             pos: { x: ox, y: oy }, vel: { x: 0, y: 0 },
-            ttl: 0.12, maxTtl: 0.12,
-            color: laserColor, size: 35, kind: "flash",
+            ttl: 0.18, maxTtl: 0.18,
+            color: laserColor, size: 70, kind: "flash",
           });
           state.particles.push({
             id: `mf2-${Math.random().toString(36).slice(2, 8)}`,
             pos: { x: ox, y: oy }, vel: { x: 0, y: 0 },
-            ttl: 0.06, maxTtl: 0.06,
-            color: "#ffffff", size: 20, kind: "flash",
+            ttl: 0.1, maxTtl: 0.1,
+            color: "#ffffff", size: 45, kind: "flash",
           });
-          emitSpark(ox, oy, laserColor, 4, 90, 2);
-          emitSpark(ox, oy, "#ffffff", 2, 50, 1);
+          emitSpark(ox, oy, laserColor, 6, 120, 3);
+          emitSpark(ox, oy, "#ffffff", 3, 70, 2);
         }
         atkTarget.aggro = true;
         const cd = Math.max(0.2, 0.85 / stats.fireRate);
@@ -1235,32 +1235,32 @@ function tickWorld(dt: number): void {
             speedMul: 0.55,
           });
         }
-        // Fire/smoke puff at launch point
+        // Fire/smoke puff at launch point — big and visible
         state.particles.push({
           id: `rl-${Math.random().toString(36).slice(2, 8)}`,
           pos: { x: p.pos.x, y: p.pos.y }, vel: { x: 0, y: 0 },
-          ttl: 0.18, maxTtl: 0.18,
-          color: "#ff8a4e", size: 45, kind: "flash",
+          ttl: 0.25, maxTtl: 0.25,
+          color: "#ff8a4e", size: 90, kind: "flash",
         });
         state.particles.push({
           id: `rl2-${Math.random().toString(36).slice(2, 8)}`,
           pos: { x: p.pos.x, y: p.pos.y }, vel: { x: 0, y: 0 },
-          ttl: 0.08, maxTtl: 0.08,
-          color: "#ffffff", size: 25, kind: "flash",
+          ttl: 0.12, maxTtl: 0.12,
+          color: "#ffffff", size: 50, kind: "flash",
         });
-        emitRing(p.pos.x, p.pos.y, "#ff8a4e", 20);
-        for (let si = 0; si < 6; si++) {
+        emitRing(p.pos.x, p.pos.y, "#ff8a4e", 35);
+        for (let si = 0; si < 10; si++) {
           const sa = Math.random() * Math.PI * 2;
-          const ss = 25 + Math.random() * 50;
+          const ss = 30 + Math.random() * 60;
           state.particles.push({
             id: `rls-${Math.random().toString(36).slice(2, 8)}`,
             pos: { x: p.pos.x, y: p.pos.y },
             vel: { x: Math.cos(sa) * ss, y: Math.sin(sa) * ss },
-            ttl: 0.25 + Math.random() * 0.2, maxTtl: 0.45,
-            color: Math.random() > 0.4 ? "#ff8a4e" : "#bbbbbb", size: 3 + Math.random() * 3, kind: "smoke",
+            ttl: 0.5 + Math.random() * 0.4, maxTtl: 0.9,
+            color: Math.random() > 0.4 ? "#ff8a4e" : "#999999", size: 4 + Math.random() * 5, kind: "smoke",
           });
         }
-        emitSpark(p.pos.x, p.pos.y, "#ffd24a", 3, 70, 2);
+        emitSpark(p.pos.x, p.pos.y, "#ffd24a", 5, 100, 3);
         atkTarget.aggro = true;
         const avgRocketRate = rocketIds.reduce((sum, rid) => {
           const ri = p.inventory.find((m) => m.instanceId === rid);
@@ -1393,26 +1393,26 @@ function tickWorld(dt: number): void {
       const velAng = Math.atan2(pr.vel.y, pr.vel.x);
       const backX = -Math.cos(velAng);
       const backY = -Math.sin(velAng);
-      // Fiery core trail (thin)
-      if (Math.random() < 0.8) {
-        const spread = (Math.random() - 0.5) * 3;
+      // Fiery core trail
+      if (Math.random() < 0.9) {
+        const spread = (Math.random() - 0.5) * 4;
         state.particles.push({
           id: `rt-${Math.random().toString(36).slice(2, 8)}`,
           pos: { x: pr.pos.x + backX * 6 + spread * backY, y: pr.pos.y + backY * 6 - spread * backX },
-          vel: { x: backX * (15 + Math.random() * 30) + (Math.random() - 0.5) * 6, y: backY * (15 + Math.random() * 30) + (Math.random() - 0.5) * 6 },
-          ttl: 0.3 + Math.random() * 0.2, maxTtl: 0.5,
-          color: pr.color, size: 1.5 + Math.random() * 1.5, kind: "ember",
+          vel: { x: backX * (20 + Math.random() * 40) + (Math.random() - 0.5) * 10, y: backY * (20 + Math.random() * 40) + (Math.random() - 0.5) * 10 },
+          ttl: 0.35 + Math.random() * 0.25, maxTtl: 0.6,
+          color: Math.random() > 0.5 ? "#ff8a4e" : "#ffd24a", size: 2.5 + Math.random() * 2, kind: "ember",
         });
       }
-      // Thin smoke wisps
-      if (Math.random() < 0.5) {
-        const spread = (Math.random() - 0.5) * 5;
+      // Thick smoke trail
+      if (Math.random() < 0.85) {
+        const spread = (Math.random() - 0.5) * 6;
         state.particles.push({
           id: `rs-${Math.random().toString(36).slice(2, 8)}`,
           pos: { x: pr.pos.x + backX * 10 + spread * backY, y: pr.pos.y + backY * 10 - spread * backX },
-          vel: { x: backX * (8 + Math.random() * 15) + (Math.random() - 0.5) * 10, y: backY * (8 + Math.random() * 15) + (Math.random() - 0.5) * 10 },
-          ttl: 0.4 + Math.random() * 0.3, maxTtl: 0.7,
-          color: "#aaaaaa", size: 2 + Math.random() * 2, kind: "smoke",
+          vel: { x: backX * (10 + Math.random() * 20) + (Math.random() - 0.5) * 12, y: backY * (10 + Math.random() * 20) + (Math.random() - 0.5) * 12 },
+          ttl: 0.7 + Math.random() * 0.5, maxTtl: 1.2,
+          color: "#888888", size: 4 + Math.random() * 4, kind: "smoke",
         });
       }
       // EMP rockets also emit occasional electric ring pulse while in flight
