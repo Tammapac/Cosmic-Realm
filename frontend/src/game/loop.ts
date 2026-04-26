@@ -134,10 +134,9 @@ function spawnNpcShip(): void {
 
 function updateNpcShips(dt: number): void {
   if (serverEnemiesReceived && !state.dungeon) {
-    const t = interpElapsed / TICK_INTERVAL;
     for (const npc of state.npcShips) {
-      const in_ = interpGet(`n:${npc.id}`, t);
-      if (in_) { npc.pos.x = in_.x; npc.pos.y = in_.y; npc.angle = in_.a; }
+      npc.pos.x += npc.vel.x * dt;
+      npc.pos.y += npc.vel.y * dt;
     }
     return;
   }
@@ -814,7 +813,6 @@ const playerFireCd = { value: 0 };
 const rocketFireCd = { value: 0 };
 
 function tickWorld(dt: number): void {
-  if (serverEnemiesReceived && !state.dungeon) interpElapsed += dt;
   state.tick += dt;
   if (state.levelUpFlash > 0) state.levelUpFlash = Math.max(0, state.levelUpFlash - dt);
   if (state.playerDeathFlash > 0) state.playerDeathFlash = Math.max(0, state.playerDeathFlash - dt);
@@ -937,11 +935,10 @@ function tickWorld(dt: number): void {
     p.pos.x += p.vel.x * dt;
     p.pos.y += p.vel.y * dt;
   }
-  // When server-authoritative: interpolate between last two server snapshots
+  // When server-authoritative: smooth extrapolation using server velocity
   if (serverEnemiesReceived && !state.dungeon) {
-    const t = interpElapsed / TICK_INTERVAL;
-    const ip = interpGet("player", t);
-    if (ip) { p.pos.x = ip.x; p.pos.y = ip.y; }
+    p.pos.x += p.vel.x * dt;
+    p.pos.y += p.vel.y * dt;
   }
 
   // ── Engine particles + 16-bit trail + thruster sound
@@ -1009,13 +1006,12 @@ function tickWorld(dt: number): void {
 
   // ── Update enemies
   if (serverEnemiesReceived && !state.dungeon) {
-    // Server-authoritative: interpolate between snapshots + decay VFX timers
-    const t = interpElapsed / TICK_INTERVAL;
+    // Server-authoritative: extrapolate + decay VFX timers
     for (const e of state.enemies) {
       if (e.hitFlash !== undefined && e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt * 4);
       if (e.combo) { e.combo.ttl -= dt; if (e.combo.ttl <= 0) e.combo = undefined; }
-      const ie = interpGet(`e:${e.id}`, t);
-      if (ie) { e.pos.x = ie.x; e.pos.y = ie.y; e.angle = ie.a; }
+      e.pos.x += e.vel.x * dt;
+      e.pos.y += e.vel.y * dt;
     }
   } else {
     // Local fallback: full AI (patrol, aggro, firing)
@@ -1651,17 +1647,9 @@ function tickWorld(dt: number): void {
       aiUpdateTimer = 2;
     }
   }
-  if (serverEnemiesReceived && !state.dungeon) {
-    const t = interpElapsed / TICK_INTERVAL;
-    for (const o of state.others) {
-      const io_ = interpGet(`o:${o.id}`, t);
-      if (io_) { o.pos.x = io_.x; o.pos.y = io_.y; o.angle = io_.a; }
-    }
-  } else {
-    for (const o of state.others) {
-      o.pos.x += o.vel.x * dt;
-      o.pos.y += o.vel.y * dt;
-    }
+  for (const o of state.others) {
+    o.pos.x += o.vel.x * dt;
+    o.pos.y += o.vel.y * dt;
   }
 
   // ── Auto chat chatter (only in local/offline mode)
@@ -1812,39 +1800,6 @@ export type _ZoneId = ZoneId;
 export let serverEnemiesReceived = false;
 const locallyKilledIds = new Set<string>();
 
-// ── Interpolation buffer for smooth 60fps rendering from 20Hz server ticks ──
-type InterpSnapshot = { x: number; y: number; vx: number; vy: number; a: number };
-const interpPrev = new Map<string, InterpSnapshot>();
-const interpNext = new Map<string, InterpSnapshot>();
-let interpElapsed = 0;
-const TICK_INTERVAL = 1 / 20; // 50ms
-
-function interpSet(id: string, x: number, y: number, vx: number, vy: number, a: number) {
-  const prev = interpNext.get(id);
-  if (prev) {
-    interpPrev.set(id, { ...prev });
-  } else {
-    interpPrev.set(id, { x, y, vx, vy, a });
-  }
-  interpNext.set(id, { x, y, vx, vy, a });
-}
-
-function interpGet(id: string, t: number): { x: number; y: number; a: number } | null {
-  const p = interpPrev.get(id);
-  const n = interpNext.get(id);
-  if (!p || !n) return n ? { x: n.x, y: n.y, a: n.a } : null;
-  const ct = Math.min(1, t);
-  return {
-    x: p.x + (n.x - p.x) * ct,
-    y: p.y + (n.y - p.y) * ct,
-    a: n.a,
-  };
-}
-
-function interpRemove(id: string) {
-  interpPrev.delete(id);
-  interpNext.delete(id);
-}
 
 export function onServerZoneEnemies(enemies: ServerEnemy[]): void {
   serverEnemiesReceived = true;
@@ -2124,11 +2079,9 @@ export function onServerState(s: ServerState): void {
 
   const p = state.player;
 
-  // Reset interpolation timer on each server tick
-  interpElapsed = 0;
-
-  // Feed player snapshot into interpolation buffer
-  interpSet("player", s.self.x, s.self.y, s.self.vx, s.self.vy, s.self.a);
+  // Direct position set from server
+  p.pos.x = s.self.x;
+  p.pos.y = s.self.y;
   p.vel.x = s.self.vx;
   p.vel.y = s.self.vy;
   p.angle = s.self.a;
@@ -2140,9 +2093,9 @@ export function onServerState(s: ServerState): void {
   for (const sp of s.players) {
     const sid = String(sp.id);
     seenPlayerIds.add(sid);
-    interpSet(`o:${sid}`, sp.x, sp.y, sp.vx, sp.vy, sp.a);
     const o = state.others.find((op) => op.id === sid);
     if (o) {
+      o.pos.x = sp.x; o.pos.y = sp.y;
       o.vel.x = sp.vx; o.vel.y = sp.vy;
       o.angle = sp.a;
     } else {
@@ -2154,20 +2107,17 @@ export function onServerState(s: ServerState): void {
       });
     }
   }
-  for (const o of state.others) {
-    if (!seenPlayerIds.has(o.id)) interpRemove(`o:${o.id}`);
-  }
   state.others = state.others.filter((o) => seenPlayerIds.has(o.id));
 
   // Enemies
   const seenEnemyIds = new Set<string>();
   for (const se of s.enemies) {
     seenEnemyIds.add(se.id);
-    interpSet(`e:${se.id}`, se.x, se.y, se.vx, se.vy, se.a);
     const e = state.enemies.find((en) => en.id === se.id);
     if (e) {
+      e.pos.x = se.x; e.pos.y = se.y;
       e.vel.x = se.vx; e.vel.y = se.vy;
-      e.hull = se.hp; e.hullMax = se.hpMax;
+      e.angle = se.a; e.hull = se.hp; e.hullMax = se.hpMax;
       if (se.isBoss !== undefined) e.isBoss = se.isBoss;
       if (se.bossPhase !== undefined) e.bossPhase = se.bossPhase;
       e.aggro = se.aggro;
@@ -2187,20 +2137,17 @@ export function onServerState(s: ServerState): void {
       });
     }
   }
-  for (const e of state.enemies) {
-    if (!seenEnemyIds.has(e.id)) interpRemove(`e:${e.id}`);
-  }
   state.enemies = state.enemies.filter((e) => seenEnemyIds.has(e.id));
 
   // NPCs
   const seenNpcIds = new Set<string>();
   for (const sn of s.npcs) {
     seenNpcIds.add(sn.id);
-    interpSet(`n:${sn.id}`, sn.x, sn.y, sn.vx, sn.vy, sn.a);
     const n = state.npcShips.find((ns) => ns.id === sn.id);
     if (n) {
+      n.pos.x = sn.x; n.pos.y = sn.y;
       n.vel.x = sn.vx; n.vel.y = sn.vy;
-      n.hull = sn.hp; n.hullMax = sn.hpMax;
+      n.angle = sn.a; n.hull = sn.hp; n.hullMax = sn.hpMax;
       n.state = sn.state as any;
     } else {
       state.npcShips.push({
@@ -2214,9 +2161,6 @@ export function onServerState(s: ServerState): void {
         zone: p.zone,
       });
     }
-  }
-  for (const n of state.npcShips) {
-    if (!seenNpcIds.has(n.id)) interpRemove(`n:${n.id}`);
   }
   state.npcShips = state.npcShips.filter((n) => seenNpcIds.has(n.id));
 
