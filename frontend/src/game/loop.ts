@@ -930,10 +930,9 @@ function tickWorld(dt: number): void {
     p.pos.x += p.vel.x * dt;
     p.pos.y += p.vel.y * dt;
   } else {
-    // Server owns position; extrapolate with velocity + friction between delta snaps
-    const fric = Math.pow(0.96, dt * 60);
-    p.vel.x *= fric;
-    p.vel.y *= fric;
+    // Server owns position; extrapolate linearly with server velocity between delta snaps
+    // No friction here - server velocity is post-friction and represents the right speed
+    // Applying friction client-side causes undershoot then snap-forward on each delta
     p.pos.x += p.vel.x * dt;
     p.pos.y += p.vel.y * dt;
     if (Math.abs(p.vel.x) > 1 || Math.abs(p.vel.y) > 1) {
