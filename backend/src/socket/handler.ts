@@ -14,7 +14,7 @@ import {
 } from "./state.js";
 import { GameEngine, computeStats, type GameEvent } from "../game/engine.js";
 
-const TICK_RATE = 30;
+const TICK_RATE = 20;
 const CULL_RADIUS = 2000;
 
 export function setupSocket(io: Server) {
