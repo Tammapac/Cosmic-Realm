@@ -133,19 +133,25 @@ function spawnNpcShip(): void {
 }
 
 function updateNpcShips(dt: number): void {
+  if (serverEnemiesReceived) {
+    // Server-authoritative: just drift by velocity, no local AI
+    for (const npc of state.npcShips) {
+      npc.pos.x += npc.vel.x * dt;
+      npc.pos.y += npc.vel.y * dt;
+    }
+    return;
+  }
+  // Local fallback: full NPC AI
   for (let i = state.npcShips.length - 1; i >= 0; i--) {
     const npc = state.npcShips[i];
     if (npc.zone !== state.player.zone) { state.npcShips.splice(i, 1); continue; }
     npc.fireCd = Math.max(0, npc.fireCd - dt);
-
-    // Check for nearby enemies to fight
     let nearestEnemy: Enemy | null = null;
     let nearestDist = 350;
     for (const e of state.enemies) {
       const d = Math.hypot(e.pos.x - npc.pos.x, e.pos.y - npc.pos.y);
       if (d < nearestDist) { nearestEnemy = e; nearestDist = d; }
     }
-
     if (nearestEnemy) {
       npc.state = "fight";
       npc.targetEnemyId = nearestEnemy.id;
@@ -153,13 +159,8 @@ function updateNpcShips(dt: number): void {
       const dy = nearestEnemy.pos.y - npc.pos.y;
       const dist = Math.max(1, Math.hypot(dx, dy));
       npc.angle = Math.atan2(dy, dx);
-      if (dist > 120) {
-        npc.vel.x = (dx / dist) * npc.speed;
-        npc.vel.y = (dy / dist) * npc.speed;
-      } else {
-        npc.vel.x *= 0.9;
-        npc.vel.y *= 0.9;
-      }
+      if (dist > 120) { npc.vel.x = (dx / dist) * npc.speed; npc.vel.y = (dy / dist) * npc.speed; }
+      else { npc.vel.x *= 0.9; npc.vel.y *= 0.9; }
       if (npc.fireCd <= 0 && dist < 300) {
         fireProjectile("player", npc.pos.x, npc.pos.y, npc.angle + (Math.random() - 0.5) * 0.1, npc.damage, npc.color, 2);
         npc.fireCd = 0.8 + Math.random() * 0.4;
@@ -179,10 +180,8 @@ function updateNpcShips(dt: number): void {
       npc.vel.x = (dx / dist) * npc.speed * 0.6;
       npc.vel.y = (dy / dist) * npc.speed * 0.6;
     }
-
     npc.pos.x += npc.vel.x * dt;
     npc.pos.y += npc.vel.y * dt;
-
     if (npc.hull <= 0) {
       emitDeath(npc.pos.x, npc.pos.y, npc.color, false);
       state.npcShips.splice(i, 1);
@@ -997,167 +996,119 @@ function tickWorld(dt: number): void {
     updateNpcShips(dt);
   }
 
-  // ── Update enemies (patrol near spawn, aggro when attacked or NPC nearby)
-  const LEASH_RANGE = 800;
-  const MIN_DIST = 60;
-  for (const e of state.enemies) {
-    const exd = p.pos.x - e.pos.x;
-    const eyd = p.pos.y - e.pos.y;
-    let ed = Math.sqrt(exd * exd + eyd * eyd);
-    e.angle = Math.atan2(eyd, exd);
-    if (e.hitFlash !== undefined && e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt * 4);
-    if (e.combo) {
-      e.combo.ttl -= dt;
-      if (e.combo.ttl <= 0) e.combo = undefined;
+  // ── Update enemies
+  if (serverEnemiesReceived) {
+    // Server-authoritative: just drift by velocity from last server tick, no local AI
+    for (const e of state.enemies) {
+      if (e.hitFlash !== undefined && e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt * 4);
+      if (e.combo) { e.combo.ttl -= dt; if (e.combo.ttl <= 0) e.combo = undefined; }
+      e.pos.x += e.vel.x * dt;
+      e.pos.y += e.vel.y * dt;
     }
-    // EMP stun: skip AI while stunned
-    if (e.stunUntil !== undefined && e.stunUntil > state.tick) {
-      e.vel.x *= 0.85; e.vel.y *= 0.85;
-      e.pos.x += e.vel.x * dt; e.pos.y += e.vel.y * dt;
-      continue;
-    }
-
-    // Check for nearby NPC ships — enemies aggro and target them
-    let npcTarget: NpcShip | null = null;
-    let npcDist = 400;
-    for (const npc of state.npcShips) {
-      const nd = Math.hypot(npc.pos.x - e.pos.x, npc.pos.y - e.pos.y);
-      if (nd < npcDist) { npcTarget = npc; npcDist = nd; }
-    }
-    if (npcTarget && npcDist < ed) {
-      e.aggro = true;
-      e.angle = Math.atan2(npcTarget.pos.y - e.pos.y, npcTarget.pos.x - e.pos.x);
-      ed = npcDist;
-    }
-
-    // Aggro: enters aggro when hit or NPC nearby, drops aggro when too far from spawn
-    const distFromSpawn = Math.sqrt(
-      (e.pos.x - e.spawnPos.x) ** 2 + (e.pos.y - e.spawnPos.y) ** 2
-    );
-    if (e.aggro && distFromSpawn > LEASH_RANGE && !npcTarget) e.aggro = false;
-    if (e.isBoss) e.aggro = ed < 800;
-
-    if (!e.aggro) {
-      // PATROL: drift slowly near spawn position
-      const toSpawnX = e.spawnPos.x - e.pos.x;
-      const toSpawnY = e.spawnPos.y - e.pos.y;
-      const toSpawnD = Math.sqrt(toSpawnX * toSpawnX + toSpawnY * toSpawnY);
-      const patrolSpeed = e.speed * 0.25;
-      if (toSpawnD > 120) {
-        const ang = Math.atan2(toSpawnY, toSpawnX);
-        e.vel.x = Math.cos(ang) * patrolSpeed;
-        e.vel.y = Math.sin(ang) * patrolSpeed;
-        e.angle = ang;
-      } else {
-        const wobble = Math.sin(state.tick * 0.8 + e.pos.x * 0.01) * Math.PI;
-        e.vel.x = Math.cos(wobble) * patrolSpeed * 0.5;
-        e.vel.y = Math.sin(wobble) * patrolSpeed * 0.5;
-        e.angle = wobble;
+  } else {
+    // Local fallback: full AI (patrol, aggro, firing)
+    const LEASH_RANGE = 800;
+    const MIN_DIST = 60;
+    for (const e of state.enemies) {
+      const exd = p.pos.x - e.pos.x;
+      const eyd = p.pos.y - e.pos.y;
+      let ed = Math.sqrt(exd * exd + eyd * eyd);
+      e.angle = Math.atan2(eyd, exd);
+      if (e.hitFlash !== undefined && e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt * 4);
+      if (e.combo) { e.combo.ttl -= dt; if (e.combo.ttl <= 0) e.combo = undefined; }
+      if (e.stunUntil !== undefined && e.stunUntil > state.tick) {
+        e.vel.x *= 0.85; e.vel.y *= 0.85;
+        e.pos.x += e.vel.x * dt; e.pos.y += e.vel.y * dt;
+        continue;
       }
-    } else if (ed < MIN_DIST) {
-      // Too close to player — stop and hold position
-      e.vel.x *= 0.8;
-      e.vel.y *= 0.8;
-    } else if (e.behavior === "fast") {
-      const wobble = Math.sin(state.tick * 5 + (e.pos.x + e.pos.y)) * 0.6;
-      const ang = e.angle + wobble;
-      e.vel.x = Math.cos(ang) * e.speed;
-      e.vel.y = Math.sin(ang) * e.speed;
-    } else if (e.behavior === "ranged") {
-      const ideal = 340;
-      const speed = e.speed * (ed < ideal - 40 ? -1 : ed > ideal + 40 ? 1 : 0.2);
-      e.vel.x = Math.cos(e.angle) * speed;
-      e.vel.y = Math.sin(e.angle) * speed;
-    } else if (e.behavior === "tank") {
-      if (ed > 160) {
-        e.vel.x = Math.cos(e.angle) * e.speed;
-        e.vel.y = Math.sin(e.angle) * e.speed;
-      } else {
-        e.vel.x *= 0.85;
-        e.vel.y *= 0.85;
+      let npcTarget: NpcShip | null = null;
+      let npcDist = 400;
+      for (const npc of state.npcShips) {
+        const nd = Math.hypot(npc.pos.x - e.pos.x, npc.pos.y - e.pos.y);
+        if (nd < npcDist) { npcTarget = npc; npcDist = nd; }
       }
-    } else {
-      if (ed > 120) {
-        e.vel.x = Math.cos(e.angle) * e.speed;
-        e.vel.y = Math.sin(e.angle) * e.speed;
-      } else {
-        e.vel.x *= 0.9;
-        e.vel.y *= 0.9;
+      if (npcTarget && npcDist < ed) {
+        e.aggro = true;
+        e.angle = Math.atan2(npcTarget.pos.y - e.pos.y, npcTarget.pos.x - e.pos.x);
+        ed = npcDist;
       }
-    }
-    e.pos.x += e.vel.x * dt;
-    e.pos.y += e.vel.y * dt;
-
-    // Firing: only when aggroed
-    e.fireCd -= dt;
-    if (!e.aggro) continue;
-    if (e.isBoss) {
-      const hpPct = e.hull / e.hullMax;
-      const newPhase = hpPct > 0.66 ? 0 : hpPct > 0.33 ? 1 : 2;
-      if (newPhase > (e.bossPhase ?? 0)) {
-        e.bossPhase = newPhase;
-        state.cameraShake = Math.max(state.cameraShake, 0.5);
-        emitRing(e.pos.x, e.pos.y, "#ff3b4d", 80);
-        emitRing(e.pos.x, e.pos.y, "#ff8a4e", 60);
-        emitSpark(e.pos.x, e.pos.y, "#ff8a4e", 20, 200, 3);
-        pushNotification(newPhase === 1 ? "BOSS ENRAGED — Phase 2!" : "BOSS BERSERK — Phase 3!", "bad");
-        pushChat("system", "SYSTEM", newPhase === 1 ? "The dreadnought powers up its secondary weapons!" : "The dreadnought enters berserk mode!");
-        sfx.bossWarn();
-      }
-      const phase = e.bossPhase ?? 0;
-      if (e.fireCd <= 0 && ed < 600) {
-        if (phase === 0) {
-          for (let i = -2; i <= 2; i++) {
-            fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.1, e.damage, e.color, 4, { speedMul: 0.95 });
-          }
-          e.fireCd = 1.4;
-        } else if (phase === 1) {
-          for (let i = -3; i <= 3; i++) {
-            fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.12, e.damage * 1.2, "#ff5c6c", 4, { speedMul: 1.05 });
-          }
-          e.fireCd = 1.0;
+      const distFromSpawn = Math.sqrt((e.pos.x - e.spawnPos.x) ** 2 + (e.pos.y - e.spawnPos.y) ** 2);
+      if (e.aggro && distFromSpawn > LEASH_RANGE && !npcTarget) e.aggro = false;
+      if (e.isBoss) e.aggro = ed < 800;
+      if (!e.aggro) {
+        const toSpawnX = e.spawnPos.x - e.pos.x;
+        const toSpawnY = e.spawnPos.y - e.pos.y;
+        const toSpawnD = Math.sqrt(toSpawnX * toSpawnX + toSpawnY * toSpawnY);
+        const patrolSpeed = e.speed * 0.25;
+        if (toSpawnD > 120) {
+          const ang = Math.atan2(toSpawnY, toSpawnX);
+          e.vel.x = Math.cos(ang) * patrolSpeed; e.vel.y = Math.sin(ang) * patrolSpeed; e.angle = ang;
         } else {
-          for (let i = 0; i < 12; i++) {
-            const ra = (Math.PI * 2 / 12) * i + state.tick * 0.5;
-            fireProjectile("enemy", e.pos.x, e.pos.y, ra, e.damage * 0.8, "#ff3b4d", 3, { speedMul: 0.7 });
-          }
-          for (let i = -2; i <= 2; i++) {
-            fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.08, e.damage * 1.5, "#ffffff", 5, { speedMul: 1.1 });
-          }
-          e.fireCd = 1.2;
+          const wobble = Math.sin(state.tick * 0.8 + e.pos.x * 0.01) * Math.PI;
+          e.vel.x = Math.cos(wobble) * patrolSpeed * 0.5; e.vel.y = Math.sin(wobble) * patrolSpeed * 0.5; e.angle = wobble;
         }
-        e.burstShots = phase >= 1 ? 5 : 3;
-        e.burstCd = 0.12;
+      } else if (ed < MIN_DIST) {
+        e.vel.x *= 0.8; e.vel.y *= 0.8;
+      } else if (e.behavior === "fast") {
+        const wobble = Math.sin(state.tick * 5 + (e.pos.x + e.pos.y)) * 0.6;
+        const ang = e.angle + wobble;
+        e.vel.x = Math.cos(ang) * e.speed; e.vel.y = Math.sin(ang) * e.speed;
+      } else if (e.behavior === "ranged") {
+        const ideal = 340;
+        const speed = e.speed * (ed < ideal - 40 ? -1 : ed > ideal + 40 ? 1 : 0.2);
+        e.vel.x = Math.cos(e.angle) * speed; e.vel.y = Math.sin(e.angle) * speed;
+      } else if (e.behavior === "tank") {
+        if (ed > 160) { e.vel.x = Math.cos(e.angle) * e.speed; e.vel.y = Math.sin(e.angle) * e.speed; }
+        else { e.vel.x *= 0.85; e.vel.y *= 0.85; }
+      } else {
+        if (ed > 120) { e.vel.x = Math.cos(e.angle) * e.speed; e.vel.y = Math.sin(e.angle) * e.speed; }
+        else { e.vel.x *= 0.9; e.vel.y *= 0.9; }
       }
-      if ((e.burstShots ?? 0) > 0) {
-        e.burstCd = (e.burstCd ?? 0) - dt;
-        if ((e.burstCd ?? 0) <= 0) {
-          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage * 0.7, e.color, 3);
-          e.burstShots = (e.burstShots ?? 0) - 1;
-          e.burstCd = 0.12;
+      e.pos.x += e.vel.x * dt; e.pos.y += e.vel.y * dt;
+
+      e.fireCd -= dt;
+      if (!e.aggro) continue;
+      if (e.isBoss) {
+        const hpPct = e.hull / e.hullMax;
+        const newPhase = hpPct > 0.66 ? 0 : hpPct > 0.33 ? 1 : 2;
+        if (newPhase > (e.bossPhase ?? 0)) {
+          e.bossPhase = newPhase;
+          state.cameraShake = Math.max(state.cameraShake, 0.5);
+          emitRing(e.pos.x, e.pos.y, "#ff3b4d", 80);
+          emitRing(e.pos.x, e.pos.y, "#ff8a4e", 60);
+          emitSpark(e.pos.x, e.pos.y, "#ff8a4e", 20, 200, 3);
+          pushNotification(newPhase === 1 ? "BOSS ENRAGED — Phase 2!" : "BOSS BERSERK — Phase 3!", "bad");
+          pushChat("system", "SYSTEM", newPhase === 1 ? "The dreadnought powers up its secondary weapons!" : "The dreadnought enters berserk mode!");
+          sfx.bossWarn();
         }
-      }
-      if (phase >= 2) { e.speed = 55; }
-    } else if (e.behavior === "ranged") {
-      if (e.fireCd <= 0 && ed < 480) {
-        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage, e.color);
-        e.fireCd = 0.6 + Math.random() * 0.4;
-      }
-    } else if (e.behavior === "tank") {
-      if (e.fireCd <= 0 && ed < 440) {
-        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle - 0.04, e.damage * 0.9, e.color);
-        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + 0.04, e.damage * 0.9, e.color);
-        e.fireCd = 1.4 + Math.random() * 0.6;
-      }
-    } else if (e.behavior === "fast") {
-      if (e.fireCd <= 0 && ed < 280) {
-        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage, e.color, 2);
-        e.fireCd = 0.5 + Math.random() * 0.4;
-      }
-    } else {
-      if (e.fireCd <= 0 && ed < 500) {
-        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage, e.color);
-        e.fireCd = 1.0 + Math.random() * 0.8;
+        const phase = e.bossPhase ?? 0;
+        if (e.fireCd <= 0 && ed < 600) {
+          if (phase === 0) {
+            for (let i = -2; i <= 2; i++) fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.1, e.damage, e.color, 4, { speedMul: 0.95 });
+            e.fireCd = 1.4;
+          } else if (phase === 1) {
+            for (let i = -3; i <= 3; i++) fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.12, e.damage * 1.2, "#ff5c6c", 4, { speedMul: 1.05 });
+            e.fireCd = 1.0;
+          } else {
+            for (let i = 0; i < 12; i++) { const ra = (Math.PI * 2 / 12) * i + state.tick * 0.5; fireProjectile("enemy", e.pos.x, e.pos.y, ra, e.damage * 0.8, "#ff3b4d", 3, { speedMul: 0.7 }); }
+            for (let i = -2; i <= 2; i++) fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.08, e.damage * 1.5, "#ffffff", 5, { speedMul: 1.1 });
+            e.fireCd = 1.2;
+          }
+          e.burstShots = phase >= 1 ? 5 : 3; e.burstCd = 0.12;
+        }
+        if ((e.burstShots ?? 0) > 0) {
+          e.burstCd = (e.burstCd ?? 0) - dt;
+          if ((e.burstCd ?? 0) <= 0) { fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage * 0.7, e.color, 3); e.burstShots = (e.burstShots ?? 0) - 1; e.burstCd = 0.12; }
+        }
+        if (phase >= 2) e.speed = 55;
+      } else if (e.behavior === "ranged") {
+        if (e.fireCd <= 0 && ed < 480) { fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage, e.color); e.fireCd = 0.6 + Math.random() * 0.4; }
+      } else if (e.behavior === "tank") {
+        if (e.fireCd <= 0 && ed < 440) { fireProjectile("enemy", e.pos.x, e.pos.y, e.angle - 0.04, e.damage * 0.9, e.color); fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + 0.04, e.damage * 0.9, e.color); e.fireCd = 1.4 + Math.random() * 0.6; }
+      } else if (e.behavior === "fast") {
+        if (e.fireCd <= 0 && ed < 280) { fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage, e.color, 2); e.fireCd = 0.5 + Math.random() * 0.4; }
+      } else {
+        if (e.fireCd <= 0 && ed < 500) { fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage, e.color); e.fireCd = 1.0 + Math.random() * 0.8; }
       }
     }
   }
@@ -1612,7 +1563,9 @@ function tickWorld(dt: number): void {
         }
       }
       if (distance(pr.pos.x, pr.pos.y, p.pos.x, p.pos.y) < 12) {
-        damagePlayer(pr.damage);
+        if (!serverEnemiesReceived) damagePlayer(pr.damage);
+        // When server-authoritative, damage comes from onEnemyAttack — just show VFX
+        emitSpark(pr.pos.x, pr.pos.y, pr.color, 4, 80, 2);
         return false;
       }
     }
@@ -1657,29 +1610,33 @@ function tickWorld(dt: number): void {
   for (const ev of state.events) ev.ttl -= dt;
   state.events = state.events.filter((ev) => ev.ttl > 0);
 
-  // ── AI other players drift
-  aiUpdateTimer -= dt;
-  if (aiUpdateTimer <= 0) {
-    for (const o of state.others) {
-      if (Math.random() < 0.3) {
-        o.vel.x = (Math.random() - 0.5) * 100;
-        o.vel.y = (Math.random() - 0.5) * 100;
-        o.angle = Math.atan2(o.vel.y, o.vel.x);
+  // ── Other players drift (server sends real positions, local fallback randomizes)
+  if (!serverEnemiesReceived) {
+    aiUpdateTimer -= dt;
+    if (aiUpdateTimer <= 0) {
+      for (const o of state.others) {
+        if (Math.random() < 0.3) {
+          o.vel.x = (Math.random() - 0.5) * 100;
+          o.vel.y = (Math.random() - 0.5) * 100;
+          o.angle = Math.atan2(o.vel.y, o.vel.x);
+        }
       }
+      aiUpdateTimer = 2;
     }
-    aiUpdateTimer = 2;
   }
   for (const o of state.others) {
     o.pos.x += o.vel.x * dt;
     o.pos.y += o.vel.y * dt;
   }
 
-  // ── Auto chat chatter
-  chatTimer -= dt;
-  if (chatTimer <= 0) {
-    const o = state.others[Math.floor(Math.random() * state.others.length)];
-    if (o) pushChat("local", o.name, CHAT_LINES[Math.floor(Math.random() * CHAT_LINES.length)]);
-    chatTimer = 8 + Math.random() * 10;
+  // ── Auto chat chatter (only in local/offline mode)
+  if (!serverEnemiesReceived) {
+    chatTimer -= dt;
+    if (chatTimer <= 0) {
+      const o = state.others[Math.floor(Math.random() * state.others.length)];
+      if (o) pushChat("local", o.name, CHAT_LINES[Math.floor(Math.random() * CHAT_LINES.length)]);
+      chatTimer = 8 + Math.random() * 10;
+    }
   }
 
   // ── Notification ttl
