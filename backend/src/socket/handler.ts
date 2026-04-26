@@ -210,6 +210,8 @@ export function setupSocket(io: Server) {
     }) => {
       const p = getPlayer(user.playerId);
       if (!p) return;
+      if (data.hull != null) p.hull = data.hull;
+      if (data.shield != null) p.shield = data.shield;
       p.level = data.level;
       p.shipClass = data.shipClass;
       p.honor = data.honor;
