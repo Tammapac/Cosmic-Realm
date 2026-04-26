@@ -2199,27 +2199,30 @@ export function onServerState(s: ServerState): void {
     return pr.ttl > 0; // Keep local-only projectiles (dungeon etc.)
   });
 
-  // Asteroids: update from server
-  const seenAstIds = new Set<string>();
-  for (const sa of s.asteroids) {
-    seenAstIds.add(sa.id);
-    const a = state.asteroids.find((ast) => ast.id === sa.id);
-    if (a) {
-      a.pos.x = sa.x; a.pos.y = sa.y;
-      a.hp = sa.hp; a.hpMax = sa.hpMax;
-      a.size = sa.size;
-    } else {
-      state.asteroids.push({
-        id: sa.id,
-        pos: { x: sa.x, y: sa.y },
-        hp: sa.hp, hpMax: sa.hpMax, size: sa.size,
-        rotation: 0, rotSpeed: (Math.random() - 0.5) * 0.4,
-        zone: p.zone,
-        yields: sa.yields as any,
-      });
+  // Asteroids: sent once on connection/warp, updated via mine/destroy/respawn events
+  // Only sync if server includes them (not in per-tick state)
+  if (s.asteroids && s.asteroids.length > 0) {
+    const seenAstIds = new Set<string>();
+    for (const sa of s.asteroids) {
+      seenAstIds.add(sa.id);
+      const a = state.asteroids.find((ast) => ast.id === sa.id);
+      if (a) {
+        a.pos.x = sa.x; a.pos.y = sa.y;
+        a.hp = sa.hp; a.hpMax = sa.hpMax;
+        a.size = sa.size;
+      } else {
+        state.asteroids.push({
+          id: sa.id,
+          pos: { x: sa.x, y: sa.y },
+          hp: sa.hp, hpMax: sa.hpMax, size: sa.size,
+          rotation: 0, rotSpeed: (Math.random() - 0.5) * 0.4,
+          zone: p.zone,
+          yields: sa.yields as any,
+        });
+      }
     }
+    state.asteroids = state.asteroids.filter((a) => seenAstIds.has(a.id));
   }
-  state.asteroids = state.asteroids.filter((a) => seenAstIds.has(a.id));
 }
 
 export function onPlayerHit(data: PlayerHitEvent): void {

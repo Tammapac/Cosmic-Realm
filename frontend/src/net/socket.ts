@@ -57,7 +57,7 @@ export type ServerState = {
     weaponKind: "laser" | "rocket";
     homing: boolean;
   }[];
-  asteroids: {
+  asteroids?: {
     id: string; x: number; y: number;
     hp: number; hpMax: number; size: number; yields: string;
   }[];

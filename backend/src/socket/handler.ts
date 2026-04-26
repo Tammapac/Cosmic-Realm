@@ -101,6 +101,9 @@ export function setupSocket(io: Server) {
     socket.to(`zone:${online.zone}`).emit("player:join", toClientPlayer(online));
     io.emit("online:count", getOnlineCount());
 
+    // Send initial zone asteroids (static, not in per-tick state)
+    socket.emit("zone:asteroids", engine.getZoneAsteroids(online.zone));
+
     // ── INPUT: MOVE (click target) ────────────────────────────────
     socket.on("input:move", (data: { x: number; y: number }) => {
       const p = getPlayer(user.playerId);
@@ -150,6 +153,9 @@ export function setupSocket(io: Server) {
 
       socket.join(`zone:${data.toZone}`);
       socket.to(`zone:${data.toZone}`).emit("player:join", toClientPlayer(p));
+
+      // Send asteroids for new zone
+      socket.emit("zone:asteroids", engine.getZoneAsteroids(data.toZone));
     });
 
     // ── PVP COMBAT (visual broadcast for now) ───────────────────────
@@ -288,7 +294,6 @@ export function setupSocket(io: Server) {
           enemies: culled.enemies,
           npcs: culled.npcs,
           projectiles: culled.projectiles,
-          asteroids: culled.asteroids,
         });
       }
     }
@@ -342,6 +347,27 @@ function broadcastEvents(io: Server, events: GameEvent[]): void {
         break;
       case "boss:warn":
         io.to(`zone:${ev.zone}`).emit("boss:warn");
+        break;
+      case "enemy:spawn":
+        io.to(`zone:${ev.zone}`).emit("enemy:spawn", ev.enemy);
+        break;
+      case "enemy:attack":
+        io.to(`zone:${ev.zone}`).emit("enemy:attack", {
+          enemyId: ev.enemyId,
+          targetId: ev.targetId,
+          damage: ev.damage,
+          pos: ev.pos,
+          targetPos: ev.targetPos,
+        });
+        break;
+      case "asteroid:respawn":
+        io.to(`zone:${ev.zone}`).emit("asteroid:respawn", ev.asteroid);
+        break;
+      case "npc:spawn":
+        io.to(`zone:${ev.zone}`).emit("npc:spawn", ev.npc);
+        break;
+      case "npc:die":
+        io.to(`zone:${ev.zone}`).emit("npc:die", { npcId: ev.npcId });
         break;
       default:
         break;
