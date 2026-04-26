@@ -561,7 +561,7 @@ function emitDeath(x: number, y: number, color: string, big = false): void {
 function fireProjectile(
   from: "player" | "enemy" | "drone",
   x: number, y: number, angle: number, damage: number, color: string, size = 3,
-  opts?: { crit?: boolean; aoeRadius?: number; speedMul?: number; homing?: boolean; empStun?: number; armorPiercing?: boolean; weaponKind?: WeaponKind },
+  opts?: { crit?: boolean; aoeRadius?: number; speedMul?: number; homing?: boolean; empStun?: number; armorPiercing?: boolean; weaponKind?: WeaponKind; renderOnly?: boolean },
 ): void {
   const speedBase = from === "player" ? 280 : from === "drone" ? 260 : 220;
   const speed = speedBase * (opts?.speedMul ?? 1);
@@ -580,6 +580,7 @@ function fireProjectile(
     empStun: opts?.empStun,
     armorPiercing: opts?.armorPiercing,
     weaponKind: opts?.weaponKind,
+    renderOnly: opts?.renderOnly,
   });
 }
 
@@ -1461,6 +1462,9 @@ function tickWorld(dt: number): void {
         emitRing(pr.pos.x, pr.pos.y, pr.color);
       }
     }
+    if (pr.renderOnly) {
+      return true;
+    }
     if (pr.fromPlayer) {
       // hit enemies
       for (const e of state.enemies) {
@@ -2087,6 +2091,7 @@ export function onProjectileSpawnFromServer(data: ProjectileSpawnEvent): void {
     homing: data.homing,
     speedMul,
     weaponKind: data.weaponKind,
+    renderOnly: true,
   });
 }
 

@@ -571,6 +571,7 @@ export type Projectile = {
   empStun?: number;         // stun duration in seconds (EMP ammo)
   armorPiercing?: boolean;  // AP ammo marker
   weaponKind?: WeaponKind;
+  renderOnly?: boolean;
 };
 
 export type Floater = {
