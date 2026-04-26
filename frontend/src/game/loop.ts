@@ -930,13 +930,16 @@ function tickWorld(dt: number): void {
     p.pos.x += p.vel.x * dt;
     p.pos.y += p.vel.y * dt;
   } else {
-    // Server owns position; extrapolate linearly with server velocity between delta snaps
-    // No friction here - server velocity is post-friction and represents the right speed
-    // Applying friction client-side causes undershoot then snap-forward on each delta
-    p.pos.x += p.vel.x * dt;
-    p.pos.y += p.vel.y * dt;
-    if (Math.abs(p.vel.x) > 1 || Math.abs(p.vel.y) > 1) {
-      p.angle = Math.atan2(p.vel.y, p.vel.x);
+    // Smooth pursuit: advance server target with velocity, then smoothly track it
+    _srvX += _srvVX * dt;
+    _srvY += _srvVY * dt;
+    const smoothRate = Math.min(1, 20 * dt);
+    p.pos.x += (_srvX - p.pos.x) * smoothRate;
+    p.pos.y += (_srvY - p.pos.y) * smoothRate;
+    p.vel.x = _srvVX;
+    p.vel.y = _srvVY;
+    if (Math.abs(_srvVX) > 1 || Math.abs(_srvVY) > 1) {
+      p.angle = Math.atan2(_srvVY, _srvVX);
     }
   }
   // Face attack target when fighting (DarkOrbit style)
@@ -2103,6 +2106,7 @@ let serverConfig = { tickRate: 25, friction: 0.96, frictionRefFps: 60 };
 export let serverAuthoritative = false;
 let serverPlayerId = 0;
 let _deltaCount = 0;
+let _srvX = 0, _srvY = 0, _srvVX = 0, _srvVY = 0;
 
 export function onWelcome(data: WelcomePayload): void {
   serverConfig = {
@@ -2123,11 +2127,19 @@ export function onDelta(data: DeltaPayload): void {
   const p = state.player;
   const self = data.self;
 
-  // Snap to server position (server is authoritative)
-  p.pos.x = self.x;
-  p.pos.y = self.y;
-  p.vel.x = self.vx;
-  p.vel.y = self.vy;
+  // Set server target for smooth pursuit (game loop smoothly converges toward it)
+  _srvX = self.x;
+  _srvY = self.y;
+  _srvVX = self.vx;
+  _srvVY = self.vy;
+
+  // Snap on first delta or if very far (teleport/warp)
+  const dx = self.x - p.pos.x;
+  const dy = self.y - p.pos.y;
+  if (_deltaCount <= 1 || (dx * dx + dy * dy) > 40000) {
+    p.pos.x = self.x;
+    p.pos.y = self.y;
+  }
 
   // Sync HP/shield from server (authoritative)
   if (state.playerRespawnTimer <= 0) {
@@ -2151,11 +2163,13 @@ export function onSnapshot(data: SnapshotPayload): void {
   const p = state.player;
   const self = data.self;
 
-  // Snap to server position on snapshot
+  // Update server target for smooth pursuit
+  _srvX = self.x;
+  _srvY = self.y;
+  _srvVX = self.vx;
+  _srvVY = self.vy;
   p.pos.x = self.x;
   p.pos.y = self.y;
-  p.vel.x = self.vx;
-  p.vel.y = self.vy;
   if (state.playerRespawnTimer <= 0) {
     p.hull = self.hp;
     p.shield = self.shield;
@@ -2209,9 +2223,11 @@ function applyEntityUpdate(entity: DeltaEntity): void {
     case "enemy": {
       const e = state.enemies.find(en => en.id === entity.id);
       if (e) {
-        e.pos.x = entity.x; e.pos.y = entity.y;
-        if (entity.vx != null) e.vel.x = entity.vx;
-        if (entity.vy != null) e.vel.y = entity.vy;
+        // Compute velocity to smoothly converge to server position
+        const edx = entity.x - e.pos.x;
+        const edy = entity.y - e.pos.y;
+        e.vel.x = (entity.vx || 0) + edx * 8;
+        e.vel.y = (entity.vy || 0) + edy * 8;
         if (entity.angle != null) e.angle = entity.angle;
         if (entity.hp != null) e.hull = entity.hp;
         if (entity.hpMax != null) e.hullMax = entity.hpMax;
@@ -2242,9 +2258,10 @@ function applyEntityUpdate(entity: DeltaEntity): void {
       const numId = entity.id.replace("p-", "");
       const o = state.others.find(op => op.id === numId);
       if (o) {
-        o.pos.x = entity.x; o.pos.y = entity.y;
-        if (entity.vx != null) o.vel.x = entity.vx;
-        if (entity.vy != null) o.vel.y = entity.vy;
+        const odx = entity.x - o.pos.x;
+        const ody = entity.y - o.pos.y;
+        o.vel.x = (entity.vx || 0) + odx * 8;
+        o.vel.y = (entity.vy || 0) + ody * 8;
         if (entity.angle != null) o.angle = entity.angle;
       } else {
         state.others.push({
@@ -2265,9 +2282,10 @@ function applyEntityUpdate(entity: DeltaEntity): void {
     case "npc": {
       const n = state.npcShips.find(ns => ns.id === entity.id);
       if (n) {
-        n.pos.x = entity.x; n.pos.y = entity.y;
-        if (entity.vx != null) n.vel.x = entity.vx;
-        if (entity.vy != null) n.vel.y = entity.vy;
+        const ndx = entity.x - n.pos.x;
+        const ndy = entity.y - n.pos.y;
+        n.vel.x = (entity.vx || 0) + ndx * 8;
+        n.vel.y = (entity.vy || 0) + ndy * 8;
         if (entity.angle != null) n.angle = entity.angle;
         if (entity.hp != null) n.hull = entity.hp;
         if (entity.hpMax != null) n.hullMax = entity.hpMax;
