@@ -4,6 +4,7 @@
 let ctx: AudioContext | null = null;
 let masterGain: GainNode | null = null;
 let muted = false;
+let preloaded = false;
 let volume = 0.5;
 
 function ensureCtx(): AudioContext | null {
@@ -30,6 +31,7 @@ function ensureCtx(): AudioContext | null {
     }
   }
   if (ctx && ctx.state === "suspended") void ctx.resume();
+  if (ctx && !preloaded) { preloaded = true; preloadAll(); }
   return ctx;
 }
 
@@ -104,12 +106,60 @@ function blip(opts: {
   }
 }
 
+// ── AUDIO POOL (file-based sounds with pre-decoded buffers) ─────────────
+const audioBuffers: Record<string, AudioBuffer> = {};
+const loadingBuffers: Set<string> = new Set();
+
+function loadAudioFile(url: string): void {
+  if (audioBuffers[url] || loadingBuffers.has(url)) return;
+  const c = ensureCtx();
+  if (!c) return;
+  loadingBuffers.add(url);
+  fetch(url)
+    .then((r) => r.arrayBuffer())
+    .then((buf) => c.decodeAudioData(buf))
+    .then((decoded) => { audioBuffers[url] = decoded; })
+    .catch(() => {})
+    .finally(() => loadingBuffers.delete(url));
+}
+
+function playPooled(url: string, vol = 0.5): void {
+  const c = ensureCtx();
+  if (!c || !masterGain || muted) return;
+  const buf = audioBuffers[url];
+  if (!buf) { loadAudioFile(url); return; }
+  const src = c.createBufferSource();
+  src.buffer = buf;
+  const g = c.createGain();
+  g.gain.value = vol;
+  src.connect(g);
+  g.connect(masterGain);
+  src.start();
+}
+
+const LASER_SOUNDS = ["/audio/LaserSchuss1.ogg", "/audio/LaserSchuss2.ogg", "/audio/LaserSchuss3.ogg"];
+const MINING_SOUND = "/audio/mininglaser.mp3";
+
+function preloadAll(): void {
+  for (const url of LASER_SOUNDS) loadAudioFile(url);
+  loadAudioFile(MINING_SOUND);
+}
+
 // ── PUBLIC SFX ──────────────────────────────────────────────────────────
 export const sfx = {
   shoot(tier = 1): void {
     if (!throttled("shoot", 60)) return;
     const base = 720 + tier * 60;
     blip({ freq: base, freqEnd: base * 0.4, dur: 0.06, type: "square", gain: 0.10, release: 0.05 });
+  },
+  laserShoot(): void {
+    if (!throttled("laserShoot", 80)) return;
+    const pick = LASER_SOUNDS[Math.floor(Math.random() * LASER_SOUNDS.length)];
+    playPooled(pick, 0.4);
+  },
+  miningLaser(): void {
+    if (!throttled("miningLaser", 300)) return;
+    playPooled(MINING_SOUND, 0.35);
   },
   hit(): void {
     if (!throttled("hit", 30)) return;

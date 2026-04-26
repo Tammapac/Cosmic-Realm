@@ -1213,6 +1213,7 @@ function tickWorld(dt: number): void {
           emitSpark(ox, oy, laserColor, 6, 120, 3);
           emitSpark(ox, oy, "#ffffff", 3, 70, 2);
         }
+        sfx.laserShoot();
         atkTarget.aggro = true;
         const cd = Math.max(0.2, 0.85 / stats.fireRate);
         playerFireCd.value = cd;
@@ -1290,6 +1291,7 @@ function tickWorld(dt: number): void {
       if (mDist < 450) {
         const miningDps = stats.damage * 0.25;
         mAst.hp -= miningDps * dt;
+        sfx.miningLaser();
         if (Math.random() < dt * 4) {
           const rx = mAst.pos.x + (Math.random() - 0.5) * mAst.size;
           const ry = mAst.pos.y + (Math.random() - 0.5) * mAst.size;
