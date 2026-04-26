@@ -413,7 +413,6 @@ function GameApp() {
         for (const et of payload.enemies) {
           const e = state.enemies.find((en) => en.id === et.id);
           if (e) {
-            // Lerp position toward server value for smooth interpolation
             const lerpFactor = 0.35;
             e.pos.x += (et.x - e.pos.x) * lerpFactor;
             e.pos.y += (et.y - e.pos.y) * lerpFactor;
@@ -422,6 +421,19 @@ function GameApp() {
             if (et.isBoss !== undefined) e.isBoss = et.isBoss;
             if (et.bossPhase !== undefined) e.bossPhase = et.bossPhase;
             e.aggro = et.aggro;
+          } else if (!state.dungeon) {
+            state.enemies.push({
+              id: et.id, type: (et.type || "scout") as any, name: et.id,
+              behavior: "normal" as any,
+              pos: { x: et.x, y: et.y }, vel: { x: et.vx, y: et.vy },
+              angle: et.a, hull: et.hp, hullMax: et.hpMax,
+              damage: 10, speed: 60, fireCd: 2,
+              exp: 0, credits: 0, honor: 0,
+              color: et.color || "#ff5c6c", size: et.size || 12,
+              isBoss: et.isBoss || false, bossPhase: et.bossPhase || 0,
+              burstCd: 0, burstShots: 0,
+              spawnPos: { x: et.x, y: et.y }, aggro: et.aggro || false,
+            });
           }
         }
         for (const nt of payload.npcs) {
