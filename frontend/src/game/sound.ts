@@ -137,6 +137,33 @@ function playPooled(url: string, vol = 0.5): void {
   src.start();
 }
 
+let miningSource: AudioBufferSourceNode | null = null;
+let miningGain: GainNode | null = null;
+
+function startMiningLoop(): void {
+  const c = ensureCtx();
+  if (!c || !masterGain || muted || miningSource) return;
+  const buf = audioBuffers[MINING_SOUND];
+  if (!buf) { loadAudioFile(MINING_SOUND); return; }
+  miningSource = c.createBufferSource();
+  miningSource.buffer = buf;
+  miningSource.loop = true;
+  miningGain = c.createGain();
+  miningGain.gain.value = 0.12;
+  miningSource.connect(miningGain);
+  miningGain.connect(masterGain);
+  miningSource.start();
+  miningSource.onended = () => { miningSource = null; miningGain = null; };
+}
+
+function stopMiningLoop(): void {
+  if (miningSource) {
+    try { miningSource.stop(); } catch {}
+    miningSource = null;
+    miningGain = null;
+  }
+}
+
 const LASER_SOUNDS = ["/audio/LaserSchuss1.ogg", "/audio/LaserSchuss2.ogg", "/audio/LaserSchuss3.ogg"];
 const MINING_SOUND = "/audio/mininglaser.mp3";
 
@@ -157,9 +184,11 @@ export const sfx = {
     const pick = LASER_SOUNDS[Math.floor(Math.random() * LASER_SOUNDS.length)];
     playPooled(pick, 0.4);
   },
-  miningLaser(): void {
-    if (!throttled("miningLaser", 300)) return;
-    playPooled(MINING_SOUND, 0.35);
+  miningLaserStart(): void {
+    startMiningLoop();
+  },
+  miningLaserStop(): void {
+    stopMiningLoop();
   },
   hit(): void {
     if (!throttled("hit", 30)) return;

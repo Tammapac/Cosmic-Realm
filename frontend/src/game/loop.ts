@@ -1284,6 +1284,7 @@ function tickWorld(dt: number): void {
   }
 
   // ── Mining: beam damages asteroid continuously (no projectiles)
+  if (!state.miningTargetId || state.attackTargetId) sfx.miningLaserStop();
   if (state.miningTargetId && !state.attackTargetId) {
     const mAst = state.asteroids.find((a) => a.id === state.miningTargetId && a.zone === p.zone);
     if (mAst) {
@@ -1291,7 +1292,7 @@ function tickWorld(dt: number): void {
       if (mDist < 450) {
         const miningDps = stats.damage * 0.25;
         mAst.hp -= miningDps * dt;
-        sfx.miningLaser();
+        sfx.miningLaserStart();
         if (Math.random() < dt * 4) {
           const rx = mAst.pos.x + (Math.random() - 0.5) * mAst.size;
           const ry = mAst.pos.y + (Math.random() - 0.5) * mAst.size;
@@ -1310,12 +1311,14 @@ function tickWorld(dt: number): void {
             kind: "debris",
           });
         }
-        if (mAst.hp <= 0) { state.miningTargetId = null; destroyAsteroid(mAst.id); }
+        if (mAst.hp <= 0) { state.miningTargetId = null; sfx.miningLaserStop(); destroyAsteroid(mAst.id); }
       } else {
         state.miningTargetId = null;
+        sfx.miningLaserStop();
       }
     } else {
       state.miningTargetId = null;
+      sfx.miningLaserStop();
     }
   }
 
