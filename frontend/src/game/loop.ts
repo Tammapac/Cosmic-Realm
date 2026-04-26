@@ -814,6 +814,7 @@ const playerFireCd = { value: 0 };
 const rocketFireCd = { value: 0 };
 
 function tickWorld(dt: number): void {
+  if (serverEnemiesReceived && !state.dungeon) interpElapsed += dt;
   state.tick += dt;
   if (state.levelUpFlash > 0) state.levelUpFlash = Math.max(0, state.levelUpFlash - dt);
   if (state.playerDeathFlash > 0) state.playerDeathFlash = Math.max(0, state.playerDeathFlash - dt);
@@ -938,7 +939,6 @@ function tickWorld(dt: number): void {
   }
   // When server-authoritative: interpolate between last two server snapshots
   if (serverEnemiesReceived && !state.dungeon) {
-    interpElapsed += dt;
     const t = interpElapsed / TICK_INTERVAL;
     const ip = interpGet("player", t);
     if (ip) { p.pos.x = ip.x; p.pos.y = ip.y; }
@@ -1817,7 +1817,7 @@ type InterpSnapshot = { x: number; y: number; vx: number; vy: number; a: number 
 const interpPrev = new Map<string, InterpSnapshot>();
 const interpNext = new Map<string, InterpSnapshot>();
 let interpElapsed = 0;
-const TICK_INTERVAL = 1 / 20; // 50ms
+const TICK_INTERVAL = 1 / 30; // ~33ms
 
 function interpSet(id: string, x: number, y: number, vx: number, vy: number, a: number) {
   const prev = interpNext.get(id);
