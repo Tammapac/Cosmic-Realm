@@ -1235,48 +1235,32 @@ function tickWorld(dt: number): void {
             speedMul: 0.55,
           });
         }
-        // Directional fire/smoke blast from ship in firing direction
-        const noseX = p.pos.x + Math.cos(ang) * 16;
-        const noseY = p.pos.y + Math.sin(ang) * 16;
+        // Muzzle flash + smoke burst at ship (radial, not directional)
         state.particles.push({
           id: `rl-${Math.random().toString(36).slice(2, 8)}`,
-          pos: { x: noseX, y: noseY }, vel: { x: 0, y: 0 },
+          pos: { x: p.pos.x, y: p.pos.y }, vel: { x: 0, y: 0 },
           ttl: 0.2, maxTtl: 0.2,
-          color: "#ff8a4e", size: 60, kind: "flash",
+          color: "#ff8a4e", size: 65, kind: "flash",
         });
         state.particles.push({
           id: `rl2-${Math.random().toString(36).slice(2, 8)}`,
-          pos: { x: noseX, y: noseY }, vel: { x: 0, y: 0 },
+          pos: { x: p.pos.x, y: p.pos.y }, vel: { x: 0, y: 0 },
           ttl: 0.1, maxTtl: 0.1,
           color: "#ffffff", size: 35, kind: "flash",
         });
-        // Fire cone shooting forward from ship
-        for (let si = 0; si < 8; si++) {
-          const spread = (Math.random() - 0.5) * 0.6;
-          const fireAng = ang + spread;
-          const ss = 60 + Math.random() * 80;
-          state.particles.push({
-            id: `rff-${Math.random().toString(36).slice(2, 8)}`,
-            pos: { x: noseX, y: noseY },
-            vel: { x: Math.cos(fireAng) * ss, y: Math.sin(fireAng) * ss },
-            ttl: 0.2 + Math.random() * 0.15, maxTtl: 0.35,
-            color: Math.random() > 0.3 ? "#ff8a4e" : "#ffd24a", size: 3 + Math.random() * 3, kind: "ember",
-          });
-        }
-        // Smoke cloud that lingers at launch point
+        // Radial smoke puffs around ship
         for (let si = 0; si < 6; si++) {
-          const spread = (Math.random() - 0.5) * 0.8;
-          const smokeAng = ang + spread;
-          const ss = 20 + Math.random() * 35;
+          const sa = Math.random() * Math.PI * 2;
+          const ss = 25 + Math.random() * 40;
           state.particles.push({
             id: `rls-${Math.random().toString(36).slice(2, 8)}`,
-            pos: { x: noseX, y: noseY },
-            vel: { x: Math.cos(smokeAng) * ss, y: Math.sin(smokeAng) * ss },
-            ttl: 0.6 + Math.random() * 0.4, maxTtl: 1.0,
-            color: "#888888", size: 5 + Math.random() * 4, kind: "smoke",
+            pos: { x: p.pos.x, y: p.pos.y },
+            vel: { x: Math.cos(sa) * ss, y: Math.sin(sa) * ss },
+            ttl: 0.5 + Math.random() * 0.3, maxTtl: 0.8,
+            color: "#888888", size: 4 + Math.random() * 3, kind: "smoke",
           });
         }
-        emitSpark(noseX, noseY, "#ffd24a", 4, 80, 2);
+        emitSpark(p.pos.x, p.pos.y, "#ffd24a", 4, 80, 2);
         atkTarget.aggro = true;
         const avgRocketRate = rocketIds.reduce((sum, rid) => {
           const ri = p.inventory.find((m) => m.instanceId === rid);
