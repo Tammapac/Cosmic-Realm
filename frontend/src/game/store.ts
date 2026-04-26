@@ -51,6 +51,7 @@ import {
   ZoneId,
 } from "./types";
 import { sfx } from "./sound";
+import { sendWarp } from "../net/socket";
 
 export type HangarTab =
   | "bounties" | "loadout" | "ships" | "drones" | "market" | "ammo" | "cargo" | "repair" | "skills" | "missions" | "dungeons";
@@ -661,6 +662,7 @@ export function travelToZone(zoneId: ZoneId): void {
   state.cargoBoxes = [];
   state.npcShips = [];
   refreshOthers(zoneId);
+  sendWarp(zoneId, 0, 80);
   pushNotification(`Warped to ${ZONES[zoneId].name}`, "good");
   pushChat("system", "SYSTEM", `You entered ${ZONES[zoneId].name}.`);
   sfx.warp();

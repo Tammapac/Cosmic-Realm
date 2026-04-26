@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { state, bump, useGame, save, pushNotification, abandonDungeon, useConsumable, runDockingServices, loadServerPlayer, collectCargoBox, enterDungeon } from "./game/store";
+import { state, bump, useGame, save, pushNotification, pushChat, abandonDungeon, useConsumable, runDockingServices, loadServerPlayer, collectCargoBox, enterDungeon } from "./game/store";
 import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats } from "./game/loop";
 import { render } from "./game/render";
 import { TopBar, WorldTargetHud } from "./components/TopBar";
@@ -15,7 +15,12 @@ import { DUNGEONS, STATIONS, PORTALS, ZONES, MODULE_DEFS } from "./game/types";
 import { travelToZone, state as gameState } from "./game/store";
 import AuthScreen from "./components/AuthScreen";
 import { hasToken, getPlayer, clearToken } from "./net/api";
-import { connectSocket, disconnectSocket, setSocketListeners, sendPosition } from "./net/socket";
+import {
+  connectSocket, disconnectSocket, setSocketListeners, sendPosition,
+  type ZoneTickPayload, type ServerEnemy, type ServerAsteroid, type ServerNpc,
+  type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent,
+} from "./net/socket";
+import { onEnemyHit, onEnemyDie, onEnemyAttack, onEnemySpawn, onBossWarn, onAsteroidMine, onAsteroidDestroy, onAsteroidRespawn, onServerZoneEnemies, onServerZoneAsteroids, onServerZoneNpcs, onNpcSpawn, onNpcDie } from "./game/loop";
 
 function GameCanvas() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -365,6 +370,88 @@ function DockingSummary() {
 }
 
 function GameApp() {
+  // Wire socket listeners to game state
+  useEffect(() => {
+    setSocketListeners({
+      onPlayersInZone: (players) => {
+        state.others = players.map((p) => ({
+          id: String(p.id), name: p.name, shipClass: p.shipClass as any,
+          level: p.level, clan: p.clan, zone: p.zone as any,
+          pos: { x: p.x, y: p.y }, vel: { x: p.vx, y: p.vy }, angle: p.angle,
+          inParty: false,
+        }));
+        bump();
+      },
+      onPlayerJoin: (p) => {
+        const sid = String(p.id);
+        if (state.others.find((o) => o.id === sid)) return;
+        state.others.push({
+          id: sid, name: p.name, shipClass: p.shipClass as any,
+          level: p.level, clan: p.clan, zone: p.zone as any,
+          pos: { x: p.x, y: p.y }, vel: { x: p.vx, y: p.vy }, angle: p.angle,
+          inParty: false,
+        });
+        bump();
+      },
+      onPlayerLeave: (data) => {
+        const sid = String(data.playerId);
+        state.others = state.others.filter((o) => o.id !== sid);
+        bump();
+      },
+      onZoneTick: (payload: ZoneTickPayload) => {
+        for (const t of payload.players) {
+          const sid = String(t.id);
+          const o = state.others.find((op) => op.id === sid);
+          if (o) {
+            o.pos.x = t.x; o.pos.y = t.y;
+            o.vel.x = t.vx; o.vel.y = t.vy;
+            o.angle = t.a;
+          }
+        }
+        for (const et of payload.enemies) {
+          const e = state.enemies.find((en) => en.id === et.id);
+          if (e) {
+            e.pos.x = et.x; e.pos.y = et.y;
+            e.vel.x = et.vx; e.vel.y = et.vy;
+            e.angle = et.a; e.hull = et.hp; e.hullMax = et.hpMax;
+            if (et.isBoss !== undefined) e.isBoss = et.isBoss;
+            if (et.bossPhase !== undefined) e.bossPhase = et.bossPhase;
+            e.aggro = et.aggro;
+          }
+        }
+        for (const nt of payload.npcs) {
+          const n = state.npcShips.find((ns) => ns.id === nt.id);
+          if (n) {
+            n.pos.x = nt.x; n.pos.y = nt.y;
+            n.vel.x = nt.vx; n.vel.y = nt.vy;
+            n.angle = nt.a; n.hull = nt.hp; n.hullMax = nt.hpMax;
+            n.state = nt.state as any;
+          }
+        }
+      },
+      onChatMessage: (msg) => {
+        pushChat(msg.channel as any, msg.from, msg.text);
+      },
+      onOnlineCount: (_count) => {
+        // Could display online player count in UI
+      },
+      onZoneEnemies: (enemies: ServerEnemy[]) => onServerZoneEnemies(enemies),
+      onZoneAsteroids: (asteroids: ServerAsteroid[]) => onServerZoneAsteroids(asteroids),
+      onZoneNpcs: (npcs: ServerNpc[]) => onServerZoneNpcs(npcs),
+      onEnemySpawn: (enemy: ServerEnemy) => onEnemySpawn(enemy),
+      onEnemyDie: (event: EnemyDieEvent) => onEnemyDie(event),
+      onEnemyHit: (event: EnemyHitEvent) => onEnemyHit(event),
+      onEnemyAttack: (event: EnemyAttackEvent) => onEnemyAttack(event),
+      onAsteroidMine: (data) => onAsteroidMine(data),
+      onAsteroidDestroy: (data) => onAsteroidDestroy(data),
+      onAsteroidRespawn: (asteroid: ServerAsteroid) => onAsteroidRespawn(asteroid),
+      onBossWarn: () => onBossWarn(),
+      onNpcSpawn: (npc: ServerNpc) => onNpcSpawn(npc),
+      onNpcDie: (data) => onNpcDie(data),
+    });
+    return () => setSocketListeners({});
+  }, []);
+
   // Send position to server every 100ms for other players
   useEffect(() => {
     const id = setInterval(() => {

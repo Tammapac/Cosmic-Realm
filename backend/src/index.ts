@@ -8,6 +8,8 @@ import { rateLimit } from "express-rate-limit";
 import authRouter from "./routes/auth.js";
 import playerRouter from "./routes/player.js";
 import leaderboardRouter from "./routes/leaderboard.js";
+import clanRouter from "./routes/clan.js";
+import { authMiddleware } from "./middleware/auth.js";
 import { setupSocket } from "./socket/handler.js";
 
 const app = express();
@@ -44,6 +46,7 @@ const authLimiter = rateLimit({
 app.use("/api/auth", authLimiter, authRouter);
 app.use("/api/player", playerRouter);
 app.use("/api/leaderboard", leaderboardRouter);
+app.use("/api/clan", authMiddleware, clanRouter);
 
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", uptime: process.uptime() });
