@@ -459,9 +459,10 @@ export class GameEngine {
         p.velX = (p.velX / v) * speedCap;
         p.velY = (p.velY / v) * speedCap;
       }
-      // Friction
-      p.velX *= 0.96;
-      p.velY *= 0.96;
+      // Frame-rate independent friction (normalized to match 0.96 per frame at 60fps)
+      const friction = Math.pow(0.96, dt * 60);
+      p.velX *= friction;
+      p.velY *= friction;
       // Position update
       p.posX += p.velX * dt;
       p.posY += p.velY * dt;
