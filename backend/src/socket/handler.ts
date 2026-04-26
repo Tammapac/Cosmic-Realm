@@ -16,6 +16,7 @@ import { GameEngine, computeStats, type GameEvent } from "../game/engine.js";
 
 const TICK_RATE = 30;
 const CULL_RADIUS = 2000;
+const FIXED_DT = 1 / TICK_RATE;
 
 export function setupSocket(io: Server) {
   const engine = new GameEngine();
@@ -246,19 +247,13 @@ export function setupSocket(io: Server) {
     });
   });
 
-  // ── SERVER TICK (ROTMG-style: per-player culled state) ──────────────
   const TICK_MS = 1000 / TICK_RATE;
   const CULL_RADIUS_SQ = CULL_RADIUS * CULL_RADIUS;
-  let lastTick = Date.now();
   let nextTickAt = Date.now() + TICK_MS;
 
   const runTick = () => {
     try {
-      const now = Date.now();
-      const dt = Math.min(0.1, (now - lastTick) / 1000);
-      lastTick = now;
-
-      const events = engine.tick(dt, getPlayersInZone);
+      const events = engine.tick(FIXED_DT, getPlayersInZone);
       broadcastEvents(io, events);
 
       for (const [, playersMap] of getAllZones()) {
