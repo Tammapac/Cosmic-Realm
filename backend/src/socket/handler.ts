@@ -3,11 +3,19 @@ import { verifyToken, TokenPayload } from "../middleware/auth.js";
 import { db, schema } from "../db/index.js";
 import { eq } from "drizzle-orm";
 import {
-  OnlinePlayer, PlayerInput,
-  addPlayer, removePlayer, movePlayerToZone,
-  getPlayersInZone, getPlayer, getOnlineCount, getAllZones,
+  OnlinePlayer,
+  addPlayer,
+  removePlayer,
+  movePlayerToZone,
+  getPlayersInZone,
+  getPlayer,
+  getOnlineCount,
+  getAllZones,
 } from "./state.js";
-import { GameEngine, computeStats, TICK_RATE, type GameEvent } from "../game/engine.js";
+import { GameEngine, computeStats, type GameEvent } from "../game/engine.js";
+
+const TICK_RATE = 30;
+const CULL_RADIUS = 2000;
 
 export function setupSocket(io: Server) {
   const engine = new GameEngine();
@@ -39,7 +47,7 @@ export function setupSocket(io: Server) {
       return;
     }
 
-    // Cache player data and compute stats
+    // Cache player data for stat computation
     const playerData = {
       shipClass: dbPlayer.shipClass,
       inventory: dbPlayer.inventory,
@@ -68,82 +76,61 @@ export function setupSocket(io: Server) {
       angle: 0,
       hull: dbPlayer.hull > 0 ? dbPlayer.hull : stats.hullMax,
       hullMax: stats.hullMax,
-      shield: dbPlayer.shield > 0 ? dbPlayer.shield : stats.shieldMax,
+      shield: dbPlayer.shield,
       shieldMax: stats.shieldMax,
       honor: dbPlayer.honor,
-      speed: stats.speed,
-      shieldRegen: stats.shieldRegen,
-      damage: stats.damage,
-      fireRate: stats.fireRate,
-      critChance: stats.critChance,
-      damageReduction: stats.damageReduction,
-      shieldAbsorb: stats.shieldAbsorb,
-      aoeRadius: stats.aoeRadius,
-      lootBonus: stats.lootBonus,
-
       targetX: null,
       targetY: null,
-      inputQueue: [],
-      lastProcessedInput: 0,
-
+      speed: stats.speed,
       isLaserFiring: false,
       isRocketFiring: false,
       attackTargetId: null,
-      miningTargetId: null,
       laserAmmoType: "x1",
       rocketAmmoType: "cl1",
       laserFireCd: 0,
       rocketFireCd: 0,
-
-      version: 1,
-      visibleEntityVersions: new Map(),
-
-      afterburnUntil: 0,
+      miningTargetId: null,
       lastHitTick: 0,
+      shieldRegen: stats.shieldRegen,
+      afterburnUntil: 0,
     };
 
     socket.join(`zone:${online.zone}`);
     addPlayer(online);
 
-    // Send welcome with server config (for client prediction)
-    socket.emit("welcome", {
-      playerId: online.playerId,
-      tickRate: TICK_RATE,
-      friction: 0.96,
-      frictionRefFps: 60,
-    });
-
-    // Send initial zone state
-    socket.emit("zone:enemies", engine.getZoneEnemies(online.zone));
-    socket.emit("zone:asteroids", engine.getZoneAsteroids(online.zone));
-    socket.emit("zone:npcs", engine.getZoneNpcs(online.zone));
-
-    socket.to(`zone:${online.zone}`).emit("player:join", {
-      id: online.playerId, name: online.name,
-      shipClass: online.shipClass, level: online.level,
-      faction: online.faction, zone: online.zone,
-    });
+    socket.to(`zone:${online.zone}`).emit("player:join", toClientPlayer(online));
     io.emit("online:count", getOnlineCount());
 
-    // ── INPUT (unified: movement + combat + mining) ───────────────────
-    socket.on("input", (data: PlayerInput) => {
+    // Send initial zone asteroids (static, not in per-tick state)
+    socket.emit("zone:asteroids", engine.getZoneAsteroids(online.zone));
+
+    // ── INPUT: MOVE (click target) ────────────────────────────────
+    socket.on("input:move", (data: { x: number; y: number }) => {
       const p = getPlayer(user.playerId);
       if (!p) return;
-      if (p.inputQueue.length >= 30) p.inputQueue.shift();
-      p.inputQueue.push({
-        seq: Number(data.seq) || 0,
-        targetX: data.targetX != null ? clamp(data.targetX, -8000, 8000) : null,
-        targetY: data.targetY != null ? clamp(data.targetY, -8000, 8000) : null,
-        firing: Boolean(data.firing),
-        rocketFiring: Boolean(data.rocketFiring),
-        attackTargetId: data.attackTargetId || null,
-        miningTargetId: data.miningTargetId || null,
-        laserAmmo: data.laserAmmo || "x1",
-        rocketAmmo: data.rocketAmmo || "cl1",
-      });
+      p.targetX = clamp(data.x, -8000, 8000);
+      p.targetY = clamp(data.y, -8000, 8000);
     });
 
-    // ── ZONE WARP ─────────────────────────────────────────────────────
+    // ── INPUT: ATTACK (start/stop firing) ─────────────────────────
+    socket.on("input:attack", (data: { enemyId: string | null; laser: boolean; rocket: boolean; laserAmmo: string; rocketAmmo: string }) => {
+      const p = getPlayer(user.playerId);
+      if (!p) return;
+      p.attackTargetId = data.enemyId;
+      p.isLaserFiring = data.laser;
+      p.isRocketFiring = data.rocket;
+      if (data.laserAmmo) p.laserAmmoType = data.laserAmmo;
+      if (data.rocketAmmo) p.rocketAmmoType = data.rocketAmmo;
+    });
+
+    // ── INPUT: MINE (start/stop mining) ───────────────────────────
+    socket.on("input:mine", (data: { asteroidId: string | null }) => {
+      const p = getPlayer(user.playerId);
+      if (!p) return;
+      p.miningTargetId = data.asteroidId;
+    });
+
+    // ── ZONE WARP ───────────────────────────────────────────────────
     socket.on("warp", (data: { toZone: string; x: number; y: number }) => {
       const p = getPlayer(user.playerId);
       if (!p) return;
@@ -163,20 +150,30 @@ export function setupSocket(io: Server) {
       p.isLaserFiring = false;
       p.isRocketFiring = false;
       p.miningTargetId = null;
-      p.visibleEntityVersions.clear();
 
       socket.join(`zone:${data.toZone}`);
-      socket.emit("zone:enemies", engine.getZoneEnemies(data.toZone));
+      socket.to(`zone:${data.toZone}`).emit("player:join", toClientPlayer(p));
+
+      // Send asteroids for new zone
       socket.emit("zone:asteroids", engine.getZoneAsteroids(data.toZone));
-      socket.emit("zone:npcs", engine.getZoneNpcs(data.toZone));
-      socket.to(`zone:${data.toZone}`).emit("player:join", {
-        id: p.playerId, name: p.name,
-        shipClass: p.shipClass, level: p.level,
-        faction: p.faction, zone: data.toZone,
+    });
+
+    // ── PVP COMBAT (visual broadcast for now) ───────────────────────
+    socket.on("attack", (data: { targetPlayerId: number; damage: number; weaponKind: string }) => {
+      const attacker = getPlayer(user.playerId);
+      const target = getPlayer(data.targetPlayerId);
+      if (!attacker || !target) return;
+      if (attacker.zone !== target.zone) return;
+
+      io.to(`zone:${attacker.zone}`).emit("combat:attack", {
+        attackerId: attacker.playerId,
+        targetId: target.playerId,
+        weaponKind: data.weaponKind,
+        damage: data.damage,
       });
     });
 
-    // ── CHAT ──────────────────────────────────────────────────────────
+    // ── CHAT ────────────────────────────────────────────────────────
     socket.on("chat", async (data: { channel: string; text: string }) => {
       if (!data.text || data.text.length > 200) return;
       const p = getPlayer(user.playerId);
@@ -201,24 +198,23 @@ export function setupSocket(io: Server) {
         fromName: p.name,
         text: data.text,
         zone: p.zone,
-      }).catch(() => {});
+      }).catch(() => { });
     });
 
-    // ── STATS UPDATE (equipment/skill changes) ────────────────────────
+    // ── STATS UPDATE (syncs player data for engine computation) ─────
     socket.on("stats:update", (data: {
-      hull?: number; shield?: number; level?: number;
-      shipClass?: string; honor?: number;
+      hull: number; shield: number; level: number;
+      shipClass: string; honor: number;
       inventory?: any[]; equipped?: any; skills?: any;
       drones?: any[]; faction?: string;
     }) => {
       const p = getPlayer(user.playerId);
       if (!p) return;
-
       if (data.hull != null) p.hull = data.hull;
       if (data.shield != null) p.shield = data.shield;
-      if (data.level != null) p.level = data.level;
-      if (data.shipClass) p.shipClass = data.shipClass;
-      if (data.honor != null) p.honor = data.honor;
+      p.level = data.level;
+      p.shipClass = data.shipClass;
+      p.honor = data.honor;
 
       const cached = engine.playerDataCache.get(user.playerId);
       if (cached) {
@@ -231,37 +227,14 @@ export function setupSocket(io: Server) {
         if (data.level) cached.level = data.level;
       }
 
-      // Recompute stats
-      const newStats = computeStats(cached || data);
+      const newStats = engine.refreshPlayerStats(user.playerId) ?? computeStats(cached || data);
       p.speed = newStats.speed;
       p.hullMax = newStats.hullMax;
       p.shieldMax = newStats.shieldMax;
       p.shieldRegen = newStats.shieldRegen;
-      p.damage = newStats.damage;
-      p.fireRate = newStats.fireRate;
-      p.critChance = newStats.critChance;
-      p.damageReduction = newStats.damageReduction;
-      p.shieldAbsorb = newStats.shieldAbsorb;
-      p.aoeRadius = newStats.aoeRadius;
-      p.lootBonus = newStats.lootBonus;
     });
 
-    // ��─ PVP COMBAT (visual broadcast) ─────────────────────────────────
-    socket.on("attack", (data: { targetPlayerId: number; damage: number; weaponKind: string }) => {
-      const attacker = getPlayer(user.playerId);
-      const target = getPlayer(data.targetPlayerId);
-      if (!attacker || !target) return;
-      if (attacker.zone !== target.zone) return;
-
-      io.to(`zone:${attacker.zone}`).emit("combat:attack", {
-        attackerId: attacker.playerId,
-        targetId: target.playerId,
-        weaponKind: data.weaponKind,
-        damage: data.damage,
-      });
-    });
-
-    // ── DISCONNECT ────────────────────────────────────────────────────
+    // ── DISCONNECT ──────────────────────────────────────────────────
     socket.on("disconnect", () => {
       console.log(`[IO] ${user.username} disconnected`);
       engine.removePlayerData(user.playerId);
@@ -273,25 +246,58 @@ export function setupSocket(io: Server) {
     });
   });
 
-  // ── SERVER TICK ───────────────────────────────────────────────────────
+  // ── SERVER TICK (ROTMG-style: per-player culled state) ──────────────
   const TICK_MS = 1000 / TICK_RATE;
-  const dt = 1 / TICK_RATE;
+  const CULL_RADIUS_SQ = CULL_RADIUS * CULL_RADIUS;
+  let lastTick = Date.now();
   let nextTickAt = Date.now() + TICK_MS;
 
   const runTick = () => {
     try {
-      const result = engine.tick(dt, getPlayersInZone);
-      broadcastEvents(io, result.events);
+      const now = Date.now();
+      const dt = Math.min(0.1, (now - lastTick) / 1000);
+      lastTick = now;
 
-      for (const [playerId, delta] of result.deltas) {
-        const p = getPlayer(playerId);
-        if (!p) continue;
-        io.sockets.sockets.get(p.socketId)?.emit("delta", delta);
-      }
-      for (const [playerId, snapshot] of result.snapshots) {
-        const p = getPlayer(playerId);
-        if (!p) continue;
-        io.sockets.sockets.get(p.socketId)?.emit("snapshot", snapshot);
+      const events = engine.tick(dt, getPlayersInZone);
+      broadcastEvents(io, events);
+
+      for (const [, playersMap] of getAllZones()) {
+        if (playersMap.size === 0) continue;
+        const playersArr = Array.from(playersMap.values());
+
+        for (const p of playersArr) {
+          const culled = engine.getCulledStateForPlayer(p);
+
+          const nearbyPlayers: any[] = [];
+          for (const other of playersArr) {
+            if (other.playerId === p.playerId) continue;
+            const dx = p.posX - other.posX;
+            const dy = p.posY - other.posY;
+            if (dx * dx + dy * dy < CULL_RADIUS_SQ) {
+              nearbyPlayers.push({
+                id: other.playerId,
+                name: other.name,
+                shipClass: other.shipClass,
+                level: other.level,
+                faction: other.faction,
+                x: other.posX, y: other.posY,
+                vx: other.velX, vy: other.velY,
+                a: other.angle,
+                hp: other.hull, sp: other.shield,
+              });
+            }
+          }
+
+          const sock = io.sockets.sockets.get(p.socketId);
+          if (!sock) continue;
+
+          sock.emit("state", {
+            self: culled.self,
+            players: nearbyPlayers,
+            enemies: culled.enemies,
+            npcs: culled.npcs,
+          });
+        }
       }
     } catch (err) {
       console.error("[tick] error:", err);
@@ -311,34 +317,30 @@ export function setupSocket(io: Server) {
   setTimeout(runTick, TICK_MS);
 }
 
-// ── EVENT BROADCASTING ──────────────────────────────────────────────────
+// ── EVENT BROADCASTING ─────────────────────────────────────────────────
 
 function broadcastEvents(io: Server, events: GameEvent[]): void {
   for (const ev of events) {
     switch (ev.type) {
-      case "enemy:spawn":
-        io.to(`zone:${ev.zone}`).emit("enemy:spawn", ev.enemy);
-        break;
       case "enemy:die":
         io.to(`zone:${ev.zone}`).emit("enemy:die", {
-          enemyId: ev.enemyId, killerId: ev.killerId,
-          loot: ev.loot, pos: ev.pos,
+          enemyId: ev.enemyId,
+          killerId: ev.killerId,
+          loot: ev.loot,
+          pos: ev.pos,
         });
         break;
       case "enemy:hit":
         io.to(`zone:${ev.zone}`).emit("enemy:hit", {
-          enemyId: ev.enemyId, damage: ev.damage,
-          hp: ev.hp, hpMax: ev.hpMax, crit: ev.crit,
+          enemyId: ev.enemyId,
+          damage: ev.damage,
+          hp: ev.hp,
+          hpMax: ev.hpMax,
+          crit: ev.crit,
           attackerId: ev.attackerId,
         });
         break;
-      case "enemy:attack":
-        io.to(`zone:${ev.zone}`).emit("enemy:attack", {
-          enemyId: ev.enemyId, targetId: ev.targetId,
-          damage: ev.damage, pos: ev.pos, targetPos: ev.targetPos,
-        });
-        break;
-      case "player:damage": {
+      case "player:hit": {
         const p = getPlayer(ev.playerId);
         if (p) {
           const sock = io.sockets.sockets.get(p.socketId);
@@ -348,19 +350,35 @@ function broadcastEvents(io: Server, events: GameEvent[]): void {
       }
       case "asteroid:mine":
         io.to(`zone:${ev.zone}`).emit("asteroid:mine", {
-          asteroidId: ev.asteroidId, hp: ev.hp, hpMax: ev.hpMax,
+          asteroidId: ev.asteroidId,
+          hp: ev.hp,
+          hpMax: ev.hpMax,
         });
         break;
       case "asteroid:destroy":
         io.to(`zone:${ev.zone}`).emit("asteroid:destroy", {
-          asteroidId: ev.asteroidId, playerId: ev.playerId, ore: ev.ore,
+          asteroidId: ev.asteroidId,
+          playerId: ev.playerId,
+          ore: ev.ore,
+        });
+        break;
+      case "boss:warn":
+        io.to(`zone:${ev.zone}`).emit("boss:warn");
+        break;
+      case "enemy:spawn":
+        io.to(`zone:${ev.zone}`).emit("enemy:spawn", ev.enemy);
+        break;
+      case "enemy:attack":
+        io.to(`zone:${ev.zone}`).emit("enemy:attack", {
+          enemyId: ev.enemyId,
+          targetId: ev.targetId,
+          damage: ev.damage,
+          pos: ev.pos,
+          targetPos: ev.targetPos,
         });
         break;
       case "asteroid:respawn":
         io.to(`zone:${ev.zone}`).emit("asteroid:respawn", ev.asteroid);
-        break;
-      case "boss:warn":
-        io.to(`zone:${ev.zone}`).emit("boss:warn");
         break;
       case "npc:spawn":
         io.to(`zone:${ev.zone}`).emit("npc:spawn", ev.npc);
@@ -368,21 +386,47 @@ function broadcastEvents(io: Server, events: GameEvent[]): void {
       case "npc:die":
         io.to(`zone:${ev.zone}`).emit("npc:die", { npcId: ev.npcId });
         break;
-      case "laser:fire":
-        io.to(`zone:${ev.zone}`).emit("laser:fire", {
-          attackerId: ev.attackerId, targetId: ev.targetId,
-          damage: ev.damage, crit: ev.crit,
-        });
+      case "projectile:spawn": {
+        const source = getPlayer(ev.fromPlayerId);
+        if (source) {
+          const sock = io.sockets.sockets.get(source.socketId);
+          if (sock) {
+            sock.to(`zone:${ev.zone}`).emit("projectile:spawn", {
+              x: ev.x, y: ev.y, vx: ev.vx, vy: ev.vy,
+              damage: ev.damage, color: ev.color, size: ev.size,
+              crit: ev.crit, weaponKind: ev.weaponKind, homing: ev.homing,
+              fromPlayer: true,
+            });
+          }
+        }
         break;
-      case "rocket:fire":
-        io.to(`zone:${ev.zone}`).emit("rocket:fire", {
-          attackerId: ev.attackerId, targetId: ev.targetId,
-          damage: ev.damage, crit: ev.crit,
-          pos: ev.pos, targetPos: ev.targetPos,
-        });
+      }
+      default:
         break;
     }
   }
+}
+
+function toClientPlayer(p: OnlinePlayer) {
+  return {
+    id: p.playerId,
+    name: p.name,
+    shipClass: p.shipClass,
+    level: p.level,
+    faction: p.faction,
+    clan: p.clan,
+    zone: p.zone,
+    x: p.posX,
+    y: p.posY,
+    vx: p.velX,
+    vy: p.velY,
+    angle: p.angle,
+    hull: p.hull,
+    hullMax: p.hullMax,
+    shield: p.shield,
+    shieldMax: p.shieldMax,
+    honor: p.honor,
+  };
 }
 
 function clamp(v: number, min: number, max: number) {

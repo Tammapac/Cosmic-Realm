@@ -1,6 +1,14 @@
-// Server-side world state: tracks all online players per zone
-// DarkOrbit-style: the server is the authority on who is where,
-// clients send movement/action intents, server broadcasts positions
+export type PlayerInput = {
+  seq: number;
+  targetX: number | null;
+  targetY: number | null;
+  firing: boolean;
+  rocketFiring: boolean;
+  attackTargetId: string | null;
+  miningTargetId: string | null;
+  laserAmmo: string;
+  rocketAmmo: string;
+};
 
 export type OnlinePlayer = {
   socketId: string;
@@ -23,26 +31,20 @@ export type OnlinePlayer = {
   honor: number;
   targetX: number | null;
   targetY: number | null;
-  // ROTMG-style: server computes movement from click target
   speed: number;
-  // Combat state
   isLaserFiring: boolean;
   isRocketFiring: boolean;
   attackTargetId: string | null;
+  miningTargetId: string | null;
   laserAmmoType: string;
   rocketAmmoType: string;
   laserFireCd: number;
   rocketFireCd: number;
-  // Mining state
-  miningTargetId: string | null;
-  // Shield regen
-  lastHitTick: number;
   shieldRegen: number;
-  // Afterburn
   afterburnUntil: number;
+  lastHitTick: number;
 };
 
-// zone → Map<playerId, OnlinePlayer>
 const zones = new Map<string, Map<number, OnlinePlayer>>();
 
 export function getZone(zoneId: string): Map<number, OnlinePlayer> {
