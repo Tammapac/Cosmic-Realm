@@ -733,7 +733,9 @@ function applyKill(e: Enemy, killerCrit: boolean): void {
   bumpMission("earn-credits", credGain);
 
   if (killerCrit) {
-    pushFloater({ text: "CRIT!", color: "#ffd24a", x: e.pos.x, y: e.pos.y - 28, scale: 1.4, bold: true, ttl: 0.7 });
+    pushFloater({ text: "CRIT!", color: "#ffee00", x: e.pos.x, y: e.pos.y - 28, scale: 1.6, bold: true, ttl: 1.0 });
+    emitSpark(e.pos.x, e.pos.y, "#ffee00", 8, 140, 3);
+    emitSpark(e.pos.x, e.pos.y, "#ffffff", 4, 100, 2);
   }
 
   tryLevelUp();
@@ -831,13 +833,22 @@ function tickWorld(dt: number): void {
       p2.shield = stats2.shieldMax;
       const lostCr = Math.floor(p2.credits * 0.1);
       p2.credits = Math.max(0, p2.credits - lostCr);
-      p2.pos = { x: 0, y: 80 };
+      // Respawn at main station in current zone
+      const homeStation = STATIONS.find((st) => st.zone === p2.zone && st.kind === "hub")
+        || STATIONS.find((st) => st.zone === p2.zone)
+        || STATIONS[0];
+      p2.pos = { x: homeStation.pos.x, y: homeStation.pos.y + 80 };
       p2.vel = { x: 0, y: 0 };
       state.cameraTarget = { ...p2.pos };
       state.enemies = [];
+      state.isAttacking = false;
+      state.isLaserFiring = false;
+      state.isRocketFiring = false;
+      state.attackTargetId = null;
+      state.selectedWorldTarget = null;
       bossActive = false;
-      pushNotification(`Ship destroyed. -${lostCr}cr. Respawned.`, "bad");
-      pushChat("system", "SYSTEM", `Your ship was destroyed. -${lostCr} credits.`);
+      pushNotification(`Ship destroyed. -${lostCr}cr. Respawned at ${homeStation.name}.`, "bad");
+      pushChat("system", "SYSTEM", `Your ship was destroyed. -${lostCr} credits. Respawned at ${homeStation.name}.`);
     }
     // Keep VFX alive during the death window so explosion particles animate
     for (const pa of state.particles) {
@@ -1259,8 +1270,23 @@ function tickWorld(dt: number): void {
       if (mDist < 450) {
         const miningDps = stats.damage * 0.25;
         mAst.hp -= miningDps * dt;
-        if (Math.random() < dt * 3) {
-          emitSpark(mAst.pos.x + (Math.random() - 0.5) * mAst.size, mAst.pos.y + (Math.random() - 0.5) * mAst.size, "#c69060", 2, 40, 1);
+        if (Math.random() < dt * 4) {
+          const rx = mAst.pos.x + (Math.random() - 0.5) * mAst.size;
+          const ry = mAst.pos.y + (Math.random() - 0.5) * mAst.size;
+          emitSpark(rx, ry, "#c69060", 2, 40, 1);
+          const da = Math.random() * Math.PI * 2;
+          const dspd = 30 + Math.random() * 60;
+          state.particles.push({
+            id: `rd-${Math.random().toString(36).slice(2, 8)}`,
+            pos: { x: rx, y: ry },
+            vel: { x: Math.cos(da) * dspd, y: Math.sin(da) * dspd },
+            ttl: 0.5 + Math.random() * 0.6, maxTtl: 1.1,
+            color: Math.random() > 0.5 ? "#c0a070" : "#8a7050",
+            size: 2 + Math.random() * 3,
+            rot: Math.random() * Math.PI * 2,
+            rotVel: (Math.random() - 0.5) * 12,
+            kind: "debris",
+          });
         }
         if (mAst.hp <= 0) { state.miningTargetId = null; destroyAsteroid(mAst.id); }
       } else {
@@ -1466,11 +1492,14 @@ function tickWorld(dt: number): void {
           // damage floater
           pushFloater({
             text: pr.crit ? `${Math.round(dmg)}!` : `${Math.round(dmg)}`,
-            color: pr.crit ? "#ffd24a" : "#e8f0ff",
-            x: e.pos.x + (Math.random() - 0.5) * 14,
-            y: e.pos.y - e.size - 6,
-            scale: pr.crit ? 1.3 : 0.9, ttl: 0.6, bold: pr.crit,
+            color: pr.crit ? "#ffee00" : "#e8f0ff",
+            x: e.pos.x + (Math.random() - 0.5) * 18,
+            y: e.pos.y - e.size - 8,
+            scale: pr.crit ? 1.5 : 0.95, ttl: pr.crit ? 1.0 : 0.7, bold: pr.crit,
           });
+          if (pr.crit) {
+            emitSpark(e.pos.x, e.pos.y, "#ffee00", 6, 100, 2);
+          }
           if (stacks >= 3) {
             pushFloater({ text: `x${stacks}`, color: "#ff5cf0", x: e.pos.x, y: e.pos.y + e.size + 8, scale: 0.9, ttl: 0.5 });
           }
@@ -1641,7 +1670,41 @@ function destroyAsteroid(id: string): void {
   if (!a) return;
   emitSpark(a.pos.x, a.pos.y, "#c69060", 16, 120, 3);
   emitSpark(a.pos.x, a.pos.y, "#7a5028", 8, 80, 2);
-  emitDeath(a.pos.x, a.pos.y, a.yields === "lumenite" ? "#80b0b0" : "#c0a070", false);
+  // Smoke-only explosion (no fire) + rock debris
+  state.particles.push({
+    id: `af-${Math.random().toString(36).slice(2, 8)}`,
+    pos: { x: a.pos.x, y: a.pos.y }, vel: { x: 0, y: 0 },
+    ttl: 0.3, maxTtl: 0.3,
+    color: "#ffffff", size: 80, kind: "flash",
+  });
+  for (let i = 0; i < 14; i++) {
+    const sa = Math.random() * Math.PI * 2;
+    const ss = 20 + Math.random() * 50;
+    state.particles.push({
+      id: `as-${Math.random().toString(36).slice(2, 8)}`,
+      pos: { x: a.pos.x + (Math.random() - 0.5) * 10, y: a.pos.y + (Math.random() - 0.5) * 10 },
+      vel: { x: Math.cos(sa) * ss, y: Math.sin(sa) * ss },
+      ttl: 0.8 + Math.random() * 0.8, maxTtl: 1.6,
+      color: i % 3 === 0 ? "#555" : i % 3 === 1 ? "#888" : "#aaa",
+      size: 8 + Math.random() * 12, kind: "smoke",
+    });
+  }
+  for (let i = 0; i < 10; i++) {
+    const da = Math.random() * Math.PI * 2;
+    const ds = 60 + Math.random() * 140;
+    state.particles.push({
+      id: `ad-${Math.random().toString(36).slice(2, 8)}`,
+      pos: { x: a.pos.x, y: a.pos.y },
+      vel: { x: Math.cos(da) * ds, y: Math.sin(da) * ds },
+      ttl: 0.6 + Math.random() * 0.8, maxTtl: 1.4,
+      color: Math.random() > 0.4 ? "#c0a070" : "#7a5028",
+      size: 3 + Math.random() * 5,
+      rot: Math.random() * Math.PI * 2,
+      rotVel: (Math.random() - 0.5) * 16,
+      kind: "debris",
+    });
+  }
+  emitRing(a.pos.x, a.pos.y, "#c0a070", 30);
   sfx.explosion();
   const qty = 2 + Math.floor(Math.random() * 3);
   const got = addCargo(a.yields, qty);

@@ -147,12 +147,13 @@ function MicroBar({
   return (
     <div className="flex items-center gap-1 mb-0.5">
       <span className="text-[13px] w-9 tracking-widest" style={{ color: "#ffffff" }}>{label}</span>
-      <div className="bar flex-1" style={{ height: 10 }}>
+      <div className="bar flex-1" style={{ height: 12 }}>
         <div className="bar-fill"
           style={{
             width: `${pct}%`,
             background: `linear-gradient(90deg, ${color}66, ${color})`,
             boxShadow: `0 0 4px ${color}`,
+            transition: "width 0.2s ease-out",
           }}
         />
       </div>

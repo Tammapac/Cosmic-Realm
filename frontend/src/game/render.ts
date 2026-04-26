@@ -56,9 +56,9 @@ function drawShip(
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(angle + Math.PI / 2);
-  if (glow) {
+  if (glow && state.player.shield > 0) {
     ctx.shadowColor = cls.color;
-    ctx.shadowBlur = 12;
+    ctx.shadowBlur = 8 + 6 * Math.min(1, state.player.shield / Math.max(1, effectiveStats().shieldMax));
   }
   const c = cls.color;
   const a = cls.accent;
@@ -1911,11 +1911,24 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
 
 // Mini health/shield bars above ship
 function drawHealthBar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, pct: number): void {
-  const h = 3;
-  ctx.fillStyle = "rgba(0,0,0,0.7)";
-  ctx.fillRect(x - w / 2, y, w, h);
-  ctx.fillStyle = pct > 0.5 ? "#5cff8a" : pct > 0.25 ? "#ffd24a" : "#ff5c6c";
-  ctx.fillRect(x - w / 2, y, Math.max(0, w * pct), h);
+  const h = 5;
+  ctx.fillStyle = "rgba(0,0,0,0.75)";
+  ctx.fillRect(x - w / 2 - 1, y - 1, w + 2, h + 2);
+  const barColor = pct > 0.6 ? "#5cff8a" : pct > 0.3 ? "#ffd24a" : "#ff5c6c";
+  const barW = Math.max(0, w * pct);
+  ctx.fillStyle = barColor;
+  ctx.fillRect(x - w / 2, y, barW, h);
+  ctx.globalAlpha = 0.4;
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(x - w / 2, y, barW, h / 2);
+  ctx.globalAlpha = 1;
+  if (pct < 0.3 && pct > 0) {
+    ctx.shadowColor = "#ff5c6c";
+    ctx.shadowBlur = 6;
+    ctx.fillStyle = "#ff5c6c";
+    ctx.fillRect(x - w / 2, y, barW, h);
+    ctx.shadowBlur = 0;
+  }
 }
 
 function drawHullShieldBars(
@@ -2029,16 +2042,29 @@ function drawProjectile(ctx: CanvasRenderingContext2D, pr: Projectile): void {
     ctx.fillRect(-15, -1, 3, 2);
     ctx.globalAlpha = 1;
   } else {
-    // ── Laser / default: energy bolt ──
+    // ── Laser: thin energy beam with bright core ──
     ctx.shadowColor = pr.color;
-    ctx.shadowBlur = 12;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(-3, -1, 6, 2);
+    ctx.shadowBlur = 14;
+    // Outer glow (wide, faint)
+    ctx.globalAlpha = 0.25;
     ctx.fillStyle = pr.color;
-    ctx.fillRect(-7, -pr.size / 2, 14, pr.size);
-    ctx.globalAlpha = 0.5;
-    ctx.fillRect(-10, -pr.size / 2 - 1, 20, pr.size + 2);
+    ctx.fillRect(-12, -pr.size * 0.6, 24, pr.size * 1.2);
+    // Main beam body (thin)
+    ctx.globalAlpha = 0.7;
+    ctx.fillRect(-10, -1.2, 20, 2.4);
+    // Bright white core (very thin)
     ctx.globalAlpha = 1;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(-8, -0.6, 16, 1.2);
+    // Leading tip glow
+    ctx.beginPath();
+    ctx.arc(8, 0, 2, 0, Math.PI * 2);
+    ctx.fillStyle = pr.color;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(8, 0, 1, 0, Math.PI * 2);
+    ctx.fillStyle = "#ffffff";
+    ctx.fill();
   }
 
   ctx.restore();
@@ -2308,10 +2334,14 @@ function drawStation(
 
 // ── FLOATERS ──────────────────────────────────────────────────────────────
 function drawFloater(ctx: CanvasRenderingContext2D, f: Floater): void {
-  const a = Math.max(0, Math.min(1, f.ttl / f.maxTtl));
-  const sz = Math.round(20 * f.scale);
+  const life = Math.max(0, Math.min(1, f.ttl / f.maxTtl));
+  const age = 1 - life;
+  // Scale pop: start big, settle to normal, then shrink at end
+  const popScale = age < 0.15 ? 1 + (1 - age / 0.15) * 0.3 : life < 0.3 ? 0.7 + life / 0.3 * 0.3 : 1;
+  const sz = Math.round(20 * f.scale * popScale);
+  const alpha = life < 0.3 ? life / 0.3 : 1;
   ctx.save();
-  ctx.globalAlpha = a;
+  ctx.globalAlpha = alpha;
   ctx.font = `${f.bold ? "bold " : ""}${sz}px 'Courier New', monospace`;
   ctx.textAlign = "center";
   ctx.shadowColor = "#000";
@@ -2321,6 +2351,12 @@ function drawFloater(ctx: CanvasRenderingContext2D, f: Floater): void {
   ctx.shadowBlur = 0;
   ctx.fillStyle = f.color;
   ctx.fillText(f.text, f.pos.x, f.pos.y);
+  if (f.bold) {
+    ctx.shadowColor = f.color;
+    ctx.shadowBlur = 8;
+    ctx.fillText(f.text, f.pos.x, f.pos.y);
+    ctx.shadowBlur = 0;
+  }
   ctx.restore();
 }
 

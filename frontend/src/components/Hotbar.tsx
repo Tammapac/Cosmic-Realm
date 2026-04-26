@@ -102,9 +102,10 @@ export function Hotbar() {
           fontFamily: "'Courier New', monospace",
           fontWeight: "bold",
           cursor: attackOnCooldown ? "not-allowed" : "pointer",
-          boxShadow: attackOnCooldown ? "none" : "0 0 10px #ff3b4d55",
+          boxShadow: isAttacking ? "0 0 14px #ff3b4d, 0 0 28px #ff3b4d44" : attackOnCooldown ? "none" : "0 0 10px #ff3b4d55",
           overflow: "hidden",
-          transition: "border-color 0.07s, background 0.07s, color 0.07s",
+          transition: "border-color 0.07s, background 0.07s, color 0.07s, box-shadow 0.15s",
+          animation: isAttacking ? "attack-pulse 1s ease-in-out infinite" : undefined,
         }}
       >
         {attackOnCooldown && (
