@@ -930,10 +930,12 @@ function tickWorld(dt: number): void {
     p.pos.x += p.vel.x * dt;
     p.pos.y += p.vel.y * dt;
   } else {
-    // Server owns position; just interpolate with server velocity between deltas
+    // Server owns position; extrapolate with velocity + friction between delta snaps
+    const fric = Math.pow(0.96, dt * 60);
+    p.vel.x *= fric;
+    p.vel.y *= fric;
     p.pos.x += p.vel.x * dt;
     p.pos.y += p.vel.y * dt;
-    // Face movement direction
     if (Math.abs(p.vel.x) > 1 || Math.abs(p.vel.y) > 1) {
       p.angle = Math.atan2(p.vel.y, p.vel.x);
     }
@@ -963,7 +965,7 @@ function tickWorld(dt: number): void {
   }
 
   // ── Shield regen (only after 5s out of combat)
-  if (outOfCombatFor >= 5 && p.shield < stats.shieldMax) {
+  if (!serverAuthoritative && outOfCombatFor >= 5 && p.shield < stats.shieldMax) {
     p.shield = Math.min(stats.shieldMax, p.shield + stats.shieldRegen * dt);
   }
 
@@ -1004,7 +1006,9 @@ function tickWorld(dt: number): void {
         npcSpawnTimer = 8 + Math.random() * 12;
       }
     }
-    updateNpcShips(dt);
+    if (!serverAuthoritative) {
+      updateNpcShips(dt);
+    }
   }
 
   // ── Update enemies (patrol near spawn, aggro when attacked or NPC nearby)
@@ -1698,12 +1702,14 @@ function tickWorld(dt: number): void {
     }
   }
 
-  // ── Auto chat chatter
-  chatTimer -= dt;
-  if (chatTimer <= 0) {
-    const o = state.others[Math.floor(Math.random() * state.others.length)];
-    if (o) pushChat("local", o.name, CHAT_LINES[Math.floor(Math.random() * CHAT_LINES.length)]);
-    chatTimer = 8 + Math.random() * 10;
+  // ── Auto chat chatter (singleplayer fallback only)
+  if (!serverAuthoritative) {
+    chatTimer -= dt;
+    if (chatTimer <= 0) {
+      const o = state.others[Math.floor(Math.random() * state.others.length)];
+      if (o) pushChat("local", o.name, CHAT_LINES[Math.floor(Math.random() * CHAT_LINES.length)]);
+      chatTimer = 8 + Math.random() * 10;
+    }
   }
 
   // ── Notification ttl
@@ -1718,6 +1724,7 @@ function tickWorld(dt: number): void {
   // ── Asteroid rotation + player collision
   for (const a of state.asteroids) {
     a.rotation += a.rotSpeed * dt;
+    if (serverAuthoritative) continue;
     if (a.zone !== state.player.zone) continue;
     const adist = distance(p.pos.x, p.pos.y, a.pos.x, a.pos.y);
     if (adist < a.size + 10) {
@@ -2108,24 +2115,13 @@ export function onWelcome(data: WelcomePayload): void {
 }
 
 export function onDelta(data: DeltaPayload): void {
-  if (!serverAuthoritative) return;
+  serverAuthoritative = true;
   const p = state.player;
   const self = data.self;
 
-  // Reconcile own position: smooth for small errors, snap for large
-  const dx = self.x - p.pos.x;
-  const dy = self.y - p.pos.y;
-  const d = Math.sqrt(dx * dx + dy * dy);
-
-  if (d > 80) {
-    p.pos.x = self.x;
-    p.pos.y = self.y;
-  } else if (d > 2) {
-    p.pos.x += dx * 0.3;
-    p.pos.y += dy * 0.3;
-  }
-
-  // Sync velocity from server
+  // Snap to server position (server is authoritative)
+  p.pos.x = self.x;
+  p.pos.y = self.y;
   p.vel.x = self.vx;
   p.vel.y = self.vy;
 
@@ -2147,7 +2143,7 @@ export function onDelta(data: DeltaPayload): void {
 }
 
 export function onSnapshot(data: SnapshotPayload): void {
-  if (!serverAuthoritative) return;
+  serverAuthoritative = true;
   const p = state.player;
   const self = data.self;
 
