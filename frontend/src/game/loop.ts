@@ -1835,8 +1835,8 @@ function interpGet(id: string, t: number): { x: number; y: number; a: number } |
   if (!p || !n) return n ? { x: n.x, y: n.y, a: n.a } : null;
   const ct = Math.min(1, t);
   return {
-    x: p.x + (n.x - p.x) * ct + n.vx * Math.max(0, t - 1) * TICK_INTERVAL,
-    y: p.y + (n.y - p.y) * ct + n.vy * Math.max(0, t - 1) * TICK_INTERVAL,
+    x: p.x + (n.x - p.x) * ct,
+    y: p.y + (n.y - p.y) * ct,
     a: n.a,
   };
 }
