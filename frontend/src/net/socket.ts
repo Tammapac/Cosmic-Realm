@@ -50,7 +50,7 @@ export type ServerState = {
     hp: number; hpMax: number;
     state: string; color: string; size: number; name: string;
   }[];
-  projectiles: {
+  projectiles?: {
     id: string; x: number; y: number; vx: number; vy: number;
     damage: number; color: string; size: number;
     fromPlayer: boolean; crit: boolean;
@@ -166,6 +166,7 @@ type SocketEvents = {
   onBossWarn: () => void;
   onNpcSpawn: (npc: ServerNpc) => void;
   onNpcDie: (data: { npcId: string }) => void;
+  onProjectileSpawn: (data: { x: number; y: number; vx: number; vy: number; damage: number; color: string; size: number; crit: boolean; weaponKind: "laser" | "rocket"; homing: boolean; fromPlayer: boolean }) => void;
 };
 
 let listeners: Partial<SocketEvents> = {};
@@ -278,6 +279,10 @@ export function connectSocket(token: string) {
 
   socket.on("npc:die", (data: { npcId: string }) => {
     listeners.onNpcDie?.(data);
+  });
+
+  socket.on("projectile:spawn", (data: any) => {
+    listeners.onProjectileSpawn?.(data);
   });
 }
 

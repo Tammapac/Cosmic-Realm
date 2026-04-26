@@ -20,7 +20,7 @@ import {
   type ZoneTickPayload, type ServerEnemy, type ServerAsteroid, type ServerNpc, type ServerState,
   type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent, type PlayerHitEvent,
 } from "./net/socket";
-import { onEnemyHit, onEnemyDie, onEnemyAttack, onEnemySpawn, onBossWarn, onAsteroidMine, onAsteroidDestroy, onAsteroidRespawn, onServerZoneEnemies, onServerZoneAsteroids, onServerZoneNpcs, onNpcSpawn, onNpcDie, onPlayerHit, onServerState, serverEnemiesReceived } from "./game/loop";
+import { onEnemyHit, onEnemyDie, onEnemyAttack, onEnemySpawn, onBossWarn, onAsteroidMine, onAsteroidDestroy, onAsteroidRespawn, onServerZoneEnemies, onServerZoneAsteroids, onServerZoneNpcs, onNpcSpawn, onNpcDie, onPlayerHit, onProjectileSpawn, onServerState, serverEnemiesReceived } from "./game/loop";
 
 function GameCanvas() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -477,6 +477,7 @@ function GameApp() {
       onBossWarn: () => onBossWarn(),
       onNpcSpawn: (npc: ServerNpc) => onNpcSpawn(npc),
       onNpcDie: (data) => onNpcDie(data),
+      onProjectileSpawn: (data) => onProjectileSpawn(data),
       onState: (serverState: ServerState) => onServerState(serverState),
       onPlayerHit: (event: PlayerHitEvent) => onPlayerHit(event),
     });
