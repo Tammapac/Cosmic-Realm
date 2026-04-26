@@ -346,10 +346,12 @@ export function sendInput(data: {
   rocketAmmo: string;
 }): number {
   const seq = ++_inputSeq;
-  socket?.emit("input:move", {
-    x: data.targetX,
-    y: data.targetY,
-  });
+  if (typeof data.targetX === "number" && Number.isFinite(data.targetX) && typeof data.targetY === "number" && Number.isFinite(data.targetY)) {
+    socket?.emit("input:move", {
+      x: data.targetX,
+      y: data.targetY,
+    });
+  }
   socket?.emit("input:attack", {
     enemyId: data.attackTargetId,
     laser: data.firing,
