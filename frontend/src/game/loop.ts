@@ -1094,22 +1094,52 @@ function tickWorld(dt: number): void {
     e.fireCd -= dt;
     if (!e.aggro) continue;
     if (e.isBoss) {
+      const hpPct = e.hull / e.hullMax;
+      const newPhase = hpPct > 0.66 ? 0 : hpPct > 0.33 ? 1 : 2;
+      if (newPhase > (e.bossPhase ?? 0)) {
+        e.bossPhase = newPhase;
+        state.cameraShake = Math.max(state.cameraShake, 0.5);
+        emitRing(e.pos.x, e.pos.y, "#ff3b4d", 80);
+        emitRing(e.pos.x, e.pos.y, "#ff8a4e", 60);
+        emitSpark(e.pos.x, e.pos.y, "#ff8a4e", 20, 200, 3);
+        pushNotification(newPhase === 1 ? "BOSS ENRAGED — Phase 2!" : "BOSS BERSERK — Phase 3!", "bad");
+        pushChat("system", "SYSTEM", newPhase === 1 ? "The dreadnought powers up its secondary weapons!" : "The dreadnought enters berserk mode!");
+        sfx.bossWarn();
+      }
+      const phase = e.bossPhase ?? 0;
       if (e.fireCd <= 0 && ed < 600) {
-        for (let i = -2; i <= 2; i++) {
-          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.1, e.damage, e.color, 4, { speedMul: 0.95 });
+        if (phase === 0) {
+          for (let i = -2; i <= 2; i++) {
+            fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.1, e.damage, e.color, 4, { speedMul: 0.95 });
+          }
+          e.fireCd = 1.4;
+        } else if (phase === 1) {
+          for (let i = -3; i <= 3; i++) {
+            fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.12, e.damage * 1.2, "#ff5c6c", 4, { speedMul: 1.05 });
+          }
+          e.fireCd = 1.0;
+        } else {
+          for (let i = 0; i < 12; i++) {
+            const ra = (Math.PI * 2 / 12) * i + state.tick * 0.5;
+            fireProjectile("enemy", e.pos.x, e.pos.y, ra, e.damage * 0.8, "#ff3b4d", 3, { speedMul: 0.7 });
+          }
+          for (let i = -2; i <= 2; i++) {
+            fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.08, e.damage * 1.5, "#ffffff", 5, { speedMul: 1.1 });
+          }
+          e.fireCd = 1.2;
         }
-        e.fireCd = 1.4;
-        e.burstShots = 3;
-        e.burstCd = 0.15;
+        e.burstShots = phase >= 1 ? 5 : 3;
+        e.burstCd = 0.12;
       }
       if ((e.burstShots ?? 0) > 0) {
         e.burstCd = (e.burstCd ?? 0) - dt;
         if ((e.burstCd ?? 0) <= 0) {
           fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage * 0.7, e.color, 3);
           e.burstShots = (e.burstShots ?? 0) - 1;
-          e.burstCd = 0.15;
+          e.burstCd = 0.12;
         }
       }
+      if (phase >= 2) { e.speed = 55; }
     } else if (e.behavior === "ranged") {
       if (e.fireCd <= 0 && ed < 480) {
         fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage, e.color);
