@@ -62,3 +62,42 @@ export async function savePlayer(playerData: any) {
 export async function getLeaderboard(sort = "honor", limit = 50) {
   return request(`/leaderboard/top?sort=${sort}&limit=${limit}`);
 }
+
+// ── Clan API ────────────────────────────────────────────────────────────
+
+export async function createClan(name: string, tag: string) {
+  return request("/clan/create", {
+    method: "POST",
+    body: JSON.stringify({ name, tag }),
+  });
+}
+
+export async function getClan(id: number) {
+  return request(`/clan/${id}`);
+}
+
+export async function joinClan(id: number) {
+  return request(`/clan/${id}/join`, { method: "POST" });
+}
+
+export async function leaveClan() {
+  return request("/clan/leave", { method: "POST" });
+}
+
+export async function kickClanMember(clanId: number, targetPlayerId: number) {
+  return request(`/clan/${clanId}/kick`, {
+    method: "POST",
+    body: JSON.stringify({ targetPlayerId }),
+  });
+}
+
+export async function promoteClanLeader(clanId: number, targetPlayerId: number) {
+  return request(`/clan/${clanId}/promote`, {
+    method: "POST",
+    body: JSON.stringify({ targetPlayerId }),
+  });
+}
+
+export async function listClans() {
+  return request("/clan/");
+}

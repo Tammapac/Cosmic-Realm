@@ -13,6 +13,7 @@ import {
   rankFor,
 } from "./types";
 import { sfx } from "./sound";
+import { sendAttackEnemy, sendMine, type ServerEnemy, type ServerAsteroid, type ServerNpc, type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent } from "../net/socket";
 
 // Returns the equipped weapon's color (used for laser projectiles)
 function equippedWeaponColor(): string {
@@ -956,10 +957,10 @@ function tickWorld(dt: number): void {
     p.shield = Math.min(stats.shieldMax, p.shield + stats.shieldRegen * dt);
   }
 
-  // ── Enemies spawn (dungeon mode replaces ambient spawning)
+  // ── Enemies spawn (server handles spawning when connected, local fallback otherwise)
   if (state.dungeon) {
     updateDungeon(dt);
-  } else {
+  } else if (!serverEnemiesReceived) {
     enemySpawnTimer -= dt;
     if (enemySpawnTimer <= 0) {
       spawnEnemy();
@@ -967,10 +968,9 @@ function tickWorld(dt: number): void {
     }
   }
 
-  // ── Boss event timer (only when no boss currently active and not in dungeon)
-  if (!bossActive && !state.dungeon) {
+  // ── Boss event timer (only when no boss currently active and not in dungeon, local fallback)
+  if (!serverEnemiesReceived && !bossActive && !state.dungeon) {
     state.bossSpawnTimer -= dt;
-    // pre-warning event 30s before
     if (state.bossSpawnTimer < 30 && state.bossSpawnTimer > 28) {
       const z = ZONES[state.player.zone];
       pushEvent({
@@ -981,16 +981,18 @@ function tickWorld(dt: number): void {
     }
     if (state.bossSpawnTimer <= 0) {
       spawnBoss();
-      state.bossSpawnTimer = 300 + Math.random() * 120; // 5-7 min cycle
+      state.bossSpawnTimer = 300 + Math.random() * 120;
     }
   }
 
-  // ── NPC ships spawn and update
+  // ── NPC ships spawn and update (server handles spawning when connected)
   if (!state.dungeon) {
-    npcSpawnTimer -= dt;
-    if (npcSpawnTimer <= 0) {
-      spawnNpcShip();
-      npcSpawnTimer = 8 + Math.random() * 12;
+    if (!serverEnemiesReceived) {
+      npcSpawnTimer -= dt;
+      if (npcSpawnTimer <= 0) {
+        spawnNpcShip();
+        npcSpawnTimer = 8 + Math.random() * 12;
+      }
     }
     updateNpcShips(dt);
   }
@@ -1225,6 +1227,10 @@ function tickWorld(dt: number): void {
         playerFireCd.value = cd;
         state.attackCooldownUntil = state.tick + cd;
         state.attackCooldownDuration = cd;
+        // Server-authoritative: tell server about the attack
+        if (serverEnemiesReceived) {
+          sendAttackEnemy(atkTarget.id, "laser", laserAmmoType);
+        }
       }
 
       // Fire rockets on separate slower cooldown (uses rocket ammo, higher damage) - only when rocket firing is active
@@ -1270,6 +1276,10 @@ function tickWorld(dt: number): void {
         emitSpark(p.pos.x, p.pos.y, "#ffd24a", 4, 80, 2);
         sfx.rocketShoot();
         atkTarget.aggro = true;
+        // Server-authoritative: tell server about the rocket attack
+        if (serverEnemiesReceived) {
+          sendAttackEnemy(atkTarget.id, "rocket", rocketAmmoType);
+        }
         const avgRocketRate = rocketIds.reduce((sum, rid) => {
           const ri = p.inventory.find((m) => m.instanceId === rid);
           const rd = ri ? MODULE_DEFS[ri.defId] : null;
@@ -1298,7 +1308,11 @@ function tickWorld(dt: number): void {
       const mDist = distance(p.pos.x, p.pos.y, mAst.pos.x, mAst.pos.y);
       if (mDist < 450) {
         const miningDps = stats.damage * 0.25;
-        mAst.hp -= miningDps * dt;
+        if (serverEnemiesReceived) {
+          sendMine(mAst.id);
+        } else {
+          mAst.hp -= miningDps * dt;
+        }
         sfx.miningLaserStart();
         if (Math.random() < dt * 4) {
           const rx = mAst.pos.x + (Math.random() - 0.5) * mAst.size;
@@ -1318,7 +1332,7 @@ function tickWorld(dt: number): void {
             kind: "debris",
           });
         }
-        if (mAst.hp <= 0) { state.miningTargetId = null; sfx.miningLaserStop(); destroyAsteroid(mAst.id); }
+        if (!serverEnemiesReceived && mAst.hp <= 0) { state.miningTargetId = null; sfx.miningLaserStop(); destroyAsteroid(mAst.id); }
       } else {
         state.miningTargetId = null;
         sfx.miningLaserStop();
@@ -1436,12 +1450,13 @@ function tickWorld(dt: number): void {
       // hit enemies
       for (const e of state.enemies) {
         if (distance(pr.pos.x, pr.pos.y, e.pos.x, e.pos.y) < e.size + 4) {
-          // combo bonus
           const stacks = e.combo ? Math.min(5, e.combo.stacks + 1) : 1;
           e.combo = { stacks, ttl: 3 };
           const comboMul = 1 + (stacks - 1) * 0.10;
           const dmg = pr.damage * comboMul;
-          e.hull -= dmg;
+          if (!serverEnemiesReceived) {
+            e.hull -= dmg;
+          }
           e.hitFlash = 1;
           e.aggro = true;
           sfx.enemyHit();
@@ -1554,13 +1569,13 @@ function tickWorld(dt: number): void {
             for (const e2 of state.enemies) {
               if (e2.id === e.id) continue;
               if (distance(e.pos.x, e.pos.y, e2.pos.x, e2.pos.y) < pr.aoeRadius * 8) {
-                e2.hull -= dmg * 0.4;
+                if (!serverEnemiesReceived) e2.hull -= dmg * 0.4;
                 e2.hitFlash = 1;
               }
             }
             emitRing(pr.pos.x, pr.pos.y, "#ffaa44");
           }
-          if (e.hull <= 0) applyKill(e, !!pr.crit);
+          if (!serverEnemiesReceived && e.hull <= 0) applyKill(e, !!pr.crit);
           return false;
         }
       }
@@ -1604,7 +1619,9 @@ function tickWorld(dt: number): void {
     return true;
   });
 
-  state.enemies = state.enemies.filter((e) => e.hull > 0);
+  if (!serverEnemiesReceived) {
+    state.enemies = state.enemies.filter((e) => e.hull > 0);
+  }
 
   // ── Particles update
   for (const pa of state.particles) {
@@ -1795,3 +1812,234 @@ export function checkStationDock(): string | null {
 
 // silence unused export warning for ZoneId import
 export type _ZoneId = ZoneId;
+
+// ── SERVER EVENT HANDLERS (called from App.tsx socket listeners) ─────────
+
+let serverEnemiesReceived = false;
+
+export function onServerZoneEnemies(enemies: ServerEnemy[]): void {
+  serverEnemiesReceived = true;
+  state.enemies = enemies.map(serverEnemyToLocal);
+  bump();
+}
+
+export function onServerZoneAsteroids(asteroids: ServerAsteroid[]): void {
+  state.asteroids = asteroids.map((a) => ({
+    id: a.id,
+    pos: { x: a.x, y: a.y },
+    hp: a.hp, hpMax: a.hpMax, size: a.size,
+    rotation: 0, rotSpeed: (Math.random() - 0.5) * 0.4,
+    zone: state.player.zone,
+    yields: a.yields as any,
+  }));
+  bump();
+}
+
+export function onServerZoneNpcs(npcs: ServerNpc[]): void {
+  state.npcShips = npcs.map((n) => ({
+    id: n.id, name: n.name,
+    pos: { x: n.x, y: n.y }, vel: { x: n.vx, y: n.vy },
+    angle: n.angle, color: n.color, size: n.size,
+    hull: n.hull, hullMax: n.hullMax, speed: n.speed,
+    damage: 0, fireCd: 2,
+    targetPos: { x: n.x, y: n.y },
+    state: n.state as any,
+    targetEnemyId: null,
+    zone: state.player.zone,
+  }));
+  bump();
+}
+
+export function onEnemySpawn(data: ServerEnemy): void {
+  if (state.enemies.find((e) => e.id === data.id)) return;
+  state.enemies.push(serverEnemyToLocal(data));
+}
+
+export function onEnemyHit(data: EnemyHitEvent): void {
+  const e = state.enemies.find((en) => en.id === data.enemyId);
+  if (!e) return;
+  e.hull = data.hp;
+  e.hullMax = data.hpMax;
+  e.hitFlash = 1;
+  e.aggro = true;
+  if (data.crit) {
+    emitSpark(e.pos.x, e.pos.y, "#ffee00", 8, 140, 3);
+    emitSpark(e.pos.x, e.pos.y, "#ffffff", 4, 100, 2);
+    pushFloater({ text: `${Math.round(data.damage)}!`, color: "#ffee00", x: e.pos.x + (Math.random() - 0.5) * 18, y: e.pos.y - e.size - 8, scale: 1.5, ttl: 1.0, bold: true });
+  } else {
+    pushFloater({ text: `${Math.round(data.damage)}`, color: "#e8f0ff", x: e.pos.x + (Math.random() - 0.5) * 18, y: e.pos.y - e.size - 8, scale: 0.95, ttl: 0.7 });
+  }
+  emitSpark(e.pos.x, e.pos.y, e.color, data.crit ? 8 : 4, data.crit ? 180 : 120, data.crit ? 4 : 3);
+}
+
+export function onEnemyDie(data: EnemyDieEvent): void {
+  const e = state.enemies.find((en) => en.id === data.enemyId);
+  const pos = e ? { x: e.pos.x, y: e.pos.y } : data.pos;
+  const wasBoss = e?.isBoss;
+  const color = e?.color ?? "#ff5c6c";
+  const size = e?.size ?? 12;
+
+  emitDeath(pos.x, pos.y, color, !!wasBoss);
+  if (wasBoss) {
+    sfx.bossKill();
+    state.cameraShake = Math.max(state.cameraShake, 1);
+    bossActive = false;
+    pushEvent({
+      title: "BOSS DEFEATED",
+      body: "Excellent shooting, Captain. Premium loot dropped.",
+      ttl: 6, kind: "boss", color: "#5cff8a",
+    });
+  } else {
+    sfx.explosion(size > 16);
+    const dist = Math.hypot(pos.x - state.player.pos.x, pos.y - state.player.pos.y);
+    state.cameraShake = Math.max(state.cameraShake, (size > 16 ? 0.75 : 0.5) * Math.max(0, 1 - dist / 800));
+  }
+
+  // Grant loot from server
+  const loot = data.loot;
+  const p = state.player;
+  p.exp += loot.exp;
+  p.credits += loot.credits;
+  p.honor += loot.honor;
+  while (p.exp >= EXP_FOR_LEVEL(p.level)) {
+    p.exp -= EXP_FOR_LEVEL(p.level);
+    p.level++;
+    state.levelUpFlash = 1.6;
+  }
+  pushFloater({ text: `+${loot.exp} XP`, color: "#ff5cf0", x: pos.x, y: pos.y - 20, scale: 0.9 });
+  pushFloater({ text: `+${loot.credits} CR`, color: "#ffd24a", x: pos.x + 20, y: pos.y - 8, scale: 0.9 });
+  if (loot.honor > 0) pushFloater({ text: `+${loot.honor} H`, color: "#c8a0ff", x: pos.x - 20, y: pos.y - 8, scale: 0.8 });
+  if (loot.resource) {
+    const got = addCargo(loot.resource.resourceId as any, loot.resource.qty);
+    if (got > 0) {
+      pushFloater({ text: `+${got} ${loot.resource.resourceId}`, color: "#5cff8a", x: pos.x, y: pos.y + 12, scale: 0.9 });
+      sfx.pickup();
+    }
+  }
+
+  // Ammo drop
+  const ammoDrop = 1 + Math.floor(Math.random() * 3);
+  p.ammo.x1 = (p.ammo.x1 ?? 0) + ammoDrop;
+
+  // Quest + mission progress
+  if (e) {
+    for (const q of p.activeQuests) {
+      if (!q.completed && q.killType === e.type && q.zone === p.zone) {
+        q.progress++;
+        if (q.progress >= q.killCount) {
+          q.completed = true;
+          pushNotification(`Quest complete: ${q.title}`, "good");
+        }
+      }
+    }
+  }
+  p.milestones.totalKills++;
+  if (wasBoss) p.milestones.bossKills++;
+  bumpMission("kill-any", 1);
+  bumpMission("kill-zone", 1, p.zone);
+  bumpMission("earn-credits", loot.credits);
+  tryLevelUp();
+
+  state.enemies = state.enemies.filter((en) => en.id !== data.enemyId);
+  bump();
+}
+
+export function onEnemyAttack(data: EnemyAttackEvent): void {
+  fireProjectile("enemy", data.pos.x, data.pos.y,
+    Math.atan2(data.targetPos.y - data.pos.y, data.targetPos.x - data.pos.x),
+    data.damage, "#ff5c6c", 3);
+  damagePlayer(data.damage);
+}
+
+export function onAsteroidMine(data: { asteroidId: string; hp: number; hpMax: number }): void {
+  const a = state.asteroids.find((ast) => ast.id === data.asteroidId);
+  if (a) {
+    a.hp = data.hp;
+    a.hpMax = data.hpMax;
+  }
+}
+
+export function onAsteroidDestroy(data: { asteroidId: string; playerId: number; ore: { resourceId: string; qty: number } }): void {
+  const a = state.asteroids.find((ast) => ast.id === data.asteroidId);
+  if (a) {
+    emitSpark(a.pos.x, a.pos.y, "#c69060", 16, 120, 3);
+    emitRing(a.pos.x, a.pos.y, "#c0a070", 30);
+    sfx.explosion();
+    const got = addCargo(data.ore.resourceId as any, data.ore.qty);
+    if (got > 0) {
+      pushFloater({ text: `+${got} ${data.ore.resourceId}`, color: "#5cff8a", x: a.pos.x, y: a.pos.y - 12, scale: 1, ttl: 0.9 });
+      sfx.pickup();
+      state.player.milestones.totalMined += got;
+      bumpMission("mine", got);
+    }
+  }
+  state.asteroids = state.asteroids.filter((ast) => ast.id !== data.asteroidId);
+  state.miningTargetId = null;
+  sfx.miningLaserStop();
+}
+
+export function onAsteroidRespawn(data: ServerAsteroid): void {
+  state.asteroids.push({
+    id: data.id,
+    pos: { x: data.x, y: data.y },
+    hp: data.hp, hpMax: data.hpMax, size: data.size,
+    rotation: 0, rotSpeed: (Math.random() - 0.5) * 0.4,
+    zone: state.player.zone,
+    yields: data.yields as any,
+  });
+}
+
+export function onBossWarn(): void {
+  const z = ZONES[state.player.zone];
+  pushEvent({
+    title: "INCOMING DREAD",
+    body: `Sensors detect a heavy warship inbound to ${z.name} in 30s.`,
+    ttl: 6, kind: "global", color: "#ff8a4e",
+  });
+  sfx.bossWarn();
+}
+
+export function onNpcSpawn(data: ServerNpc): void {
+  if (state.npcShips.find((n) => n.id === data.id)) return;
+  state.npcShips.push({
+    id: data.id, name: data.name,
+    pos: { x: data.x, y: data.y }, vel: { x: data.vx, y: data.vy },
+    angle: data.angle, color: data.color, size: data.size,
+    hull: data.hull, hullMax: data.hullMax, speed: data.speed,
+    damage: 0, fireCd: 2,
+    targetPos: { x: data.x, y: data.y },
+    state: data.state as any,
+    targetEnemyId: null,
+    zone: state.player.zone,
+  });
+}
+
+export function onNpcDie(data: { npcId: string }): void {
+  const n = state.npcShips.find((ns) => ns.id === data.npcId);
+  if (n) {
+    emitDeath(n.pos.x, n.pos.y, n.color);
+    sfx.explosion();
+  }
+  state.npcShips = state.npcShips.filter((ns) => ns.id !== data.npcId);
+}
+
+function serverEnemyToLocal(se: ServerEnemy): Enemy {
+  return {
+    id: se.id,
+    type: se.type as EnemyType,
+    name: se.name,
+    behavior: se.behavior as any,
+    pos: { x: se.x, y: se.y },
+    vel: { x: se.vx, y: se.vy },
+    angle: se.angle,
+    hull: se.hull, hullMax: se.hullMax,
+    damage: se.damage, speed: se.speed,
+    fireCd: Math.random() * 2,
+    exp: 0, credits: 0, honor: 0,
+    color: se.color, size: se.size,
+    isBoss: se.isBoss, bossPhase: se.bossPhase,
+    burstCd: 0, burstShots: 0,
+    spawnPos: { x: se.x, y: se.y },
+    aggro: false,
+  };
+}
