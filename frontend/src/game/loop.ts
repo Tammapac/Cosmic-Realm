@@ -1235,32 +1235,48 @@ function tickWorld(dt: number): void {
             speedMul: 0.55,
           });
         }
-        // Fire/smoke puff at launch point — big and visible
+        // Directional fire/smoke blast from ship in firing direction
+        const noseX = p.pos.x + Math.cos(ang) * 16;
+        const noseY = p.pos.y + Math.sin(ang) * 16;
         state.particles.push({
           id: `rl-${Math.random().toString(36).slice(2, 8)}`,
-          pos: { x: p.pos.x, y: p.pos.y }, vel: { x: 0, y: 0 },
-          ttl: 0.25, maxTtl: 0.25,
-          color: "#ff8a4e", size: 90, kind: "flash",
+          pos: { x: noseX, y: noseY }, vel: { x: 0, y: 0 },
+          ttl: 0.2, maxTtl: 0.2,
+          color: "#ff8a4e", size: 60, kind: "flash",
         });
         state.particles.push({
           id: `rl2-${Math.random().toString(36).slice(2, 8)}`,
-          pos: { x: p.pos.x, y: p.pos.y }, vel: { x: 0, y: 0 },
-          ttl: 0.12, maxTtl: 0.12,
-          color: "#ffffff", size: 50, kind: "flash",
+          pos: { x: noseX, y: noseY }, vel: { x: 0, y: 0 },
+          ttl: 0.1, maxTtl: 0.1,
+          color: "#ffffff", size: 35, kind: "flash",
         });
-        emitRing(p.pos.x, p.pos.y, "#ff8a4e", 35);
-        for (let si = 0; si < 10; si++) {
-          const sa = Math.random() * Math.PI * 2;
-          const ss = 30 + Math.random() * 60;
+        // Fire cone shooting forward from ship
+        for (let si = 0; si < 8; si++) {
+          const spread = (Math.random() - 0.5) * 0.6;
+          const fireAng = ang + spread;
+          const ss = 60 + Math.random() * 80;
           state.particles.push({
-            id: `rls-${Math.random().toString(36).slice(2, 8)}`,
-            pos: { x: p.pos.x, y: p.pos.y },
-            vel: { x: Math.cos(sa) * ss, y: Math.sin(sa) * ss },
-            ttl: 0.5 + Math.random() * 0.4, maxTtl: 0.9,
-            color: Math.random() > 0.4 ? "#ff8a4e" : "#999999", size: 4 + Math.random() * 5, kind: "smoke",
+            id: `rff-${Math.random().toString(36).slice(2, 8)}`,
+            pos: { x: noseX, y: noseY },
+            vel: { x: Math.cos(fireAng) * ss, y: Math.sin(fireAng) * ss },
+            ttl: 0.2 + Math.random() * 0.15, maxTtl: 0.35,
+            color: Math.random() > 0.3 ? "#ff8a4e" : "#ffd24a", size: 3 + Math.random() * 3, kind: "ember",
           });
         }
-        emitSpark(p.pos.x, p.pos.y, "#ffd24a", 5, 100, 3);
+        // Smoke cloud that lingers at launch point
+        for (let si = 0; si < 6; si++) {
+          const spread = (Math.random() - 0.5) * 0.8;
+          const smokeAng = ang + spread;
+          const ss = 20 + Math.random() * 35;
+          state.particles.push({
+            id: `rls-${Math.random().toString(36).slice(2, 8)}`,
+            pos: { x: noseX, y: noseY },
+            vel: { x: Math.cos(smokeAng) * ss, y: Math.sin(smokeAng) * ss },
+            ttl: 0.6 + Math.random() * 0.4, maxTtl: 1.0,
+            color: "#888888", size: 5 + Math.random() * 4, kind: "smoke",
+          });
+        }
+        emitSpark(noseX, noseY, "#ffd24a", 4, 80, 2);
         atkTarget.aggro = true;
         const avgRocketRate = rocketIds.reduce((sum, rid) => {
           const ri = p.inventory.find((m) => m.instanceId === rid);
@@ -1404,15 +1420,15 @@ function tickWorld(dt: number): void {
           color: Math.random() > 0.5 ? "#ff8a4e" : "#ffd24a", size: 2.5 + Math.random() * 2, kind: "ember",
         });
       }
-      // Thick smoke trail
-      if (Math.random() < 0.85) {
-        const spread = (Math.random() - 0.5) * 6;
+      // Smoke wisps behind rocket
+      if (Math.random() < 0.6) {
+        const spread = (Math.random() - 0.5) * 4;
         state.particles.push({
           id: `rs-${Math.random().toString(36).slice(2, 8)}`,
           pos: { x: pr.pos.x + backX * 10 + spread * backY, y: pr.pos.y + backY * 10 - spread * backX },
-          vel: { x: backX * (10 + Math.random() * 20) + (Math.random() - 0.5) * 12, y: backY * (10 + Math.random() * 20) + (Math.random() - 0.5) * 12 },
-          ttl: 0.7 + Math.random() * 0.5, maxTtl: 1.2,
-          color: "#888888", size: 4 + Math.random() * 4, kind: "smoke",
+          vel: { x: backX * (8 + Math.random() * 15) + (Math.random() - 0.5) * 8, y: backY * (8 + Math.random() * 15) + (Math.random() - 0.5) * 8 },
+          ttl: 0.5 + Math.random() * 0.3, maxTtl: 0.8,
+          color: "#999999", size: 2.5 + Math.random() * 2.5, kind: "smoke",
         });
       }
       // EMP rockets also emit occasional electric ring pulse while in flight
