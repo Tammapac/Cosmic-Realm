@@ -825,6 +825,8 @@ function tickWorld(dt: number): void {
     if (state.combatLaserFlash.ttl <= 0) state.combatLaserFlash = null;
   }
 
+  if (serverAuthoritative) applyServerSmoothing(dt);
+
   // ── Respawn timer: fire actual respawn logic after explosion delay ────
   if (state.playerRespawnTimer > 0) {
     state.playerRespawnTimer -= dt;
@@ -2123,6 +2125,75 @@ export let serverAuthoritative = false;
 let serverPlayerId = 0;
 let _deltaCount = 0;
 
+const SELF_LERP_RATE = 18;
+const ENTITY_LERP_RATE = 14;
+const SELF_SNAP_DIST_SQ = 250 * 250;
+
+type RenderTarget = { x: number; y: number; vx: number; vy: number };
+const _selfTarget: RenderTarget & { set: boolean } = { x: 0, y: 0, vx: 0, vy: 0, set: false };
+const _entityTargets = new Map<string, RenderTarget>();
+
+function setSelfTarget(x: number, y: number, vx: number, vy: number): void {
+  if (!_selfTarget.set) {
+    state.player.pos.x = x;
+    state.player.pos.y = y;
+    _selfTarget.set = true;
+  }
+  _selfTarget.x = x;
+  _selfTarget.y = y;
+  _selfTarget.vx = vx;
+  _selfTarget.vy = vy;
+}
+
+function setEntityTarget(id: string, x: number, y: number, vx: number, vy: number): void {
+  const cur = _entityTargets.get(id);
+  if (cur) { cur.x = x; cur.y = y; cur.vx = vx; cur.vy = vy; }
+  else _entityTargets.set(id, { x, y, vx, vy });
+}
+
+function applyServerSmoothing(dt: number): void {
+  if (_selfTarget.set) {
+    const p = state.player;
+    const dx = _selfTarget.x - p.pos.x;
+    const dy = _selfTarget.y - p.pos.y;
+    if (dx * dx + dy * dy > SELF_SNAP_DIST_SQ) {
+      p.pos.x = _selfTarget.x;
+      p.pos.y = _selfTarget.y;
+    } else {
+      const t = Math.min(1, SELF_LERP_RATE * dt);
+      p.pos.x += dx * t;
+      p.pos.y += dy * t;
+    }
+    p.vel.x = _selfTarget.vx;
+    p.vel.y = _selfTarget.vy;
+  }
+  const t = Math.min(1, ENTITY_LERP_RATE * dt);
+  for (const o of state.others) {
+    const tgt = _entityTargets.get(`p-${o.id}`);
+    if (!tgt) continue;
+    o.pos.x += (tgt.x - o.pos.x) * t;
+    o.pos.y += (tgt.y - o.pos.y) * t;
+    o.vel.x = tgt.vx;
+    o.vel.y = tgt.vy;
+  }
+  for (const e of state.enemies) {
+    const tgt = _entityTargets.get(e.id);
+    if (!tgt) continue;
+    e.pos.x += (tgt.x - e.pos.x) * t;
+    e.pos.y += (tgt.y - e.pos.y) * t;
+    e.vel.x = tgt.vx;
+    e.vel.y = tgt.vy;
+  }
+  for (const n of state.npcShips) {
+    const tgt = _entityTargets.get(n.id);
+    if (!tgt) continue;
+    n.pos.x += (tgt.x - n.pos.x) * t;
+    n.pos.y += (tgt.y - n.pos.y) * t;
+    n.vel.x = tgt.vx;
+    n.vel.y = tgt.vy;
+  }
+}
+
 export function onWelcome(data: WelcomePayload): void {
   serverConfig = {
     tickRate: data.tickRate,
@@ -2142,26 +2213,20 @@ export function onDelta(data: DeltaPayload): void {
   const p = state.player;
   const self = data.self;
 
-  // Snap to server position (server is authoritative)
-  p.pos.x = self.x;
-  p.pos.y = self.y;
-  p.vel.x = self.vx;
-  p.vel.y = self.vy;
+  setSelfTarget(self.x, self.y, self.vx, self.vy);
 
-  // Sync HP/shield from server (authoritative)
   if (state.playerRespawnTimer <= 0) {
     p.hull = self.hp;
     p.shield = self.shield;
   }
 
-  // Process addOrUpdate
   for (const entity of data.addOrUpdate) {
     applyEntityUpdate(entity);
   }
 
-  // Process removals
   for (const id of data.removals) {
     removeEntityById(id);
+    _entityTargets.delete(id);
   }
 }
 
@@ -2170,27 +2235,25 @@ export function onSnapshot(data: SnapshotPayload): void {
   const p = state.player;
   const self = data.self;
 
-  // Snap to server position on snapshot
-  p.pos.x = self.x;
-  p.pos.y = self.y;
-  p.vel.x = self.vx;
-  p.vel.y = self.vy;
+  setSelfTarget(self.x, self.y, self.vx, self.vy);
   if (state.playerRespawnTimer <= 0) {
     p.hull = self.hp;
     p.shield = self.shield;
   }
 
-  // Apply all entities
   const entityIds = new Set<string>();
   for (const entity of data.entities) {
     entityIds.add(entity.id);
     applyEntityUpdate(entity);
   }
 
-  // Remove entities not in snapshot (they left our viewport)
   state.enemies = state.enemies.filter(e => entityIds.has(e.id));
   state.npcShips = state.npcShips.filter(n => entityIds.has(n.id));
   state.others = state.others.filter(o => entityIds.has(`p-${o.id}`));
+
+  for (const id of Array.from(_entityTargets.keys())) {
+    if (!entityIds.has(id)) _entityTargets.delete(id);
+  }
 
   bump();
 }
@@ -2198,29 +2261,30 @@ export function onSnapshot(data: SnapshotPayload): void {
 export function onPlayerHitFromServer(data: { damage: number; hp: number; shield: number }): void {
   const p = state.player;
   if (state.playerRespawnTimer > 0) return;
-
-  // Set authoritative HP from server
   p.hull = data.hp;
   p.shield = data.shield;
-
-  // Visual feedback
   emitSpark(p.pos.x, p.pos.y, "#ff5c6c", 6, 70, 2);
   sfx.hit();
   state.cameraShake = Math.max(state.cameraShake, 0.15);
   state.lastHitTick = state.tick;
+}
 
-  if (p.hull <= 0 && state.playerRespawnTimer <= 0) {
-    const shipColor = SHIP_CLASSES[p.shipClass].color;
-    emitDeath(p.pos.x, p.pos.y, shipColor, true);
-    state.playerDeathFlash = 0.6;
-    state.playerRespawnTimer = 0.5;
-    p.hull = 1;
-    p.vel = { x: 0, y: 0 };
-    state.player.milestones.totalDeaths++;
-    sfx.thrusterStop();
-    sfx.explosion(true);
-    state.cameraShake = 1;
-  }
+export function onPlayerDieFromServer(data: { playerId: number; pos: { x: number; y: number } }): void {
+  const p = state.player;
+  if (data.playerId !== serverPlayerId) return;
+  const shipColor = SHIP_CLASSES[p.shipClass].color;
+  emitDeath(data.pos.x, data.pos.y, shipColor, true);
+  state.playerDeathFlash = 0.6;
+  state.player.milestones.totalDeaths++;
+  state.isAttacking = false;
+  state.isLaserFiring = false;
+  state.isRocketFiring = false;
+  state.attackTargetId = null;
+  state.selectedWorldTarget = null;
+  sfx.thrusterStop();
+  sfx.explosion(true);
+  state.cameraShake = 1;
+  pushNotification("Ship destroyed. Respawning...", "bad");
 }
 
 function applyEntityUpdate(entity: DeltaEntity): void {
@@ -2228,15 +2292,14 @@ function applyEntityUpdate(entity: DeltaEntity): void {
     case "enemy": {
       const e = state.enemies.find(en => en.id === entity.id);
       if (e) {
-        e.pos.x = entity.x; e.pos.y = entity.y;
-        if (entity.vx != null) e.vel.x = entity.vx;
-        if (entity.vy != null) e.vel.y = entity.vy;
+        setEntityTarget(entity.id, entity.x, entity.y, entity.vx ?? 0, entity.vy ?? 0);
         if (entity.angle != null) e.angle = entity.angle;
         if (entity.hp != null) e.hull = entity.hp;
         if (entity.hpMax != null) e.hullMax = entity.hpMax;
         if (entity.isBoss != null) e.isBoss = entity.isBoss;
         if (entity.bossPhase != null) e.bossPhase = entity.bossPhase;
       } else {
+        setEntityTarget(entity.id, entity.x, entity.y, entity.vx ?? 0, entity.vy ?? 0);
         state.enemies.push({
           id: entity.id,
           type: (entity.type || "scout") as EnemyType,
@@ -2261,11 +2324,10 @@ function applyEntityUpdate(entity: DeltaEntity): void {
       const numId = entity.id.replace("p-", "");
       const o = state.others.find(op => op.id === numId);
       if (o) {
-        o.pos.x = entity.x; o.pos.y = entity.y;
-        if (entity.vx != null) o.vel.x = entity.vx;
-        if (entity.vy != null) o.vel.y = entity.vy;
+        setEntityTarget(entity.id, entity.x, entity.y, entity.vx ?? 0, entity.vy ?? 0);
         if (entity.angle != null) o.angle = entity.angle;
       } else {
+        setEntityTarget(entity.id, entity.x, entity.y, entity.vx ?? 0, entity.vy ?? 0);
         state.others.push({
           id: numId,
           name: entity.name || "Pilot",
@@ -2284,14 +2346,13 @@ function applyEntityUpdate(entity: DeltaEntity): void {
     case "npc": {
       const n = state.npcShips.find(ns => ns.id === entity.id);
       if (n) {
-        n.pos.x = entity.x; n.pos.y = entity.y;
-        if (entity.vx != null) n.vel.x = entity.vx;
-        if (entity.vy != null) n.vel.y = entity.vy;
+        setEntityTarget(entity.id, entity.x, entity.y, entity.vx ?? 0, entity.vy ?? 0);
         if (entity.angle != null) n.angle = entity.angle;
         if (entity.hp != null) n.hull = entity.hp;
         if (entity.hpMax != null) n.hullMax = entity.hpMax;
         if (entity.state != null) n.state = entity.state as any;
       } else {
+        setEntityTarget(entity.id, entity.x, entity.y, entity.vx ?? 0, entity.vy ?? 0);
         state.npcShips.push({
           id: entity.id,
           name: entity.name || "NPC",

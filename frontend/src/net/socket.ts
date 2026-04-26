@@ -185,6 +185,7 @@ type SocketEvents = {
   onEnemyHit: (event: EnemyHitEvent) => void;
   onEnemyAttack: (event: EnemyAttackEvent) => void;
   onPlayerHit: (data: { damage: number; hp: number; shield: number }) => void;
+  onPlayerDie: (data: { playerId: number; pos: { x: number; y: number } }) => void;
   onAsteroidMine: (data: { asteroidId: string; hp: number; hpMax: number }) => void;
   onAsteroidDestroy: (data: { asteroidId: string; playerId: number; ore: { resourceId: string; qty: number } }) => void;
   onAsteroidRespawn: (asteroid: ServerAsteroid) => void;
@@ -283,6 +284,10 @@ export function connectSocket(token: string) {
 
   socket.on("player:hit", (data: { damage: number; hp: number; shield: number }) => {
     listeners.onPlayerHit?.(data);
+  });
+
+  socket.on("player:die", (data: { playerId: number; pos: { x: number; y: number } }) => {
+    listeners.onPlayerDie?.(data);
   });
 
   socket.on("asteroid:mine", (data: { asteroidId: string; hp: number; hpMax: number }) => {
