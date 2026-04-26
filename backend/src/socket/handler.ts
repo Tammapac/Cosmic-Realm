@@ -88,7 +88,9 @@ export function setupSocket(io: Server) {
       (p) => p.playerId !== online.playerId
     );
     socket.emit("zone:players", zonePlayers.map(toClientPlayer));
-    socket.emit("zone:enemies", engine.getZoneEnemies(online.zone));
+    const zoneEnemies = engine.getZoneEnemies(online.zone);
+    console.log(`[IO] Sending ${zoneEnemies.length} enemies to ${user.username} in zone ${online.zone}`);
+    socket.emit("zone:enemies", zoneEnemies);
     socket.emit("zone:asteroids", engine.getZoneAsteroids(online.zone));
     socket.emit("zone:npcs", engine.getZoneNpcs(online.zone));
 
