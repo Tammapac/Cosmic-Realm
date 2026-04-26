@@ -165,10 +165,12 @@ function stopMiningLoop(): void {
 }
 
 const LASER_SOUNDS = ["/audio/LaserSchuss1.ogg", "/audio/LaserSchuss2.ogg", "/audio/LaserSchuss3.ogg"];
+const ROCKET_SOUND = "/audio/rocket_shot.mp3";
 const MINING_SOUND = "/audio/mininglaser.mp3";
 
 function preloadAll(): void {
   for (const url of LASER_SOUNDS) loadAudioFile(url);
+  loadAudioFile(ROCKET_SOUND);
   loadAudioFile(MINING_SOUND);
 }
 
@@ -183,6 +185,10 @@ export const sfx = {
     if (!throttled("laserShoot", 80)) return;
     const pick = LASER_SOUNDS[Math.floor(Math.random() * LASER_SOUNDS.length)];
     playPooled(pick, 0.4);
+  },
+  rocketShoot(): void {
+    if (!throttled("rocketShoot", 150)) return;
+    playPooled(ROCKET_SOUND, 0.4);
   },
   miningLaserStart(): void {
     startMiningLoop();

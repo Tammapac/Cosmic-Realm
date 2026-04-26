@@ -1262,6 +1262,7 @@ function tickWorld(dt: number): void {
           });
         }
         emitSpark(p.pos.x, p.pos.y, "#ffd24a", 4, 80, 2);
+        sfx.rocketShoot();
         atkTarget.aggro = true;
         const avgRocketRate = rocketIds.reduce((sum, rid) => {
           const ri = p.inventory.find((m) => m.instanceId === rid);
