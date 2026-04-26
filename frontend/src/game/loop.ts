@@ -134,10 +134,7 @@ function spawnNpcShip(): void {
 
 function updateNpcShips(dt: number): void {
   if (serverEnemiesReceived && !state.dungeon) {
-    for (const npc of state.npcShips) {
-      npc.pos.x += npc.vel.x * dt;
-      npc.pos.y += npc.vel.y * dt;
-    }
+    // Positions set by onServerState, no local movement
     return;
   }
   // Local fallback: full NPC AI
@@ -935,11 +932,7 @@ function tickWorld(dt: number): void {
     p.pos.x += p.vel.x * dt;
     p.pos.y += p.vel.y * dt;
   }
-  // When server-authoritative: smooth extrapolation using server velocity
-  if (serverEnemiesReceived && !state.dungeon) {
-    p.pos.x += p.vel.x * dt;
-    p.pos.y += p.vel.y * dt;
-  }
+  // When server-authoritative: positions set directly by onServerState, no local movement
 
   // ── Engine particles + 16-bit trail + thruster sound
   const cls = SHIP_CLASSES[p.shipClass];
@@ -1006,12 +999,10 @@ function tickWorld(dt: number): void {
 
   // ── Update enemies
   if (serverEnemiesReceived && !state.dungeon) {
-    // Server-authoritative: extrapolate + decay VFX timers
+    // Server-authoritative: decay VFX timers only, positions set by onServerState
     for (const e of state.enemies) {
       if (e.hitFlash !== undefined && e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt * 4);
       if (e.combo) { e.combo.ttl -= dt; if (e.combo.ttl <= 0) e.combo = undefined; }
-      e.pos.x += e.vel.x * dt;
-      e.pos.y += e.vel.y * dt;
     }
   } else {
     // Local fallback: full AI (patrol, aggro, firing)
