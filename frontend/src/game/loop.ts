@@ -935,35 +935,10 @@ function tickWorld(dt: number): void {
     p.pos.x += p.vel.x * dt;
     p.pos.y += p.vel.y * dt;
   }
-  // When server-authoritative: client-side prediction (same physics as server)
+  // When server-authoritative: extrapolate using server velocity (no local prediction)
   if (serverEnemiesReceived && !state.dungeon) {
-    const dx = state.cameraTarget.x - p.pos.x;
-    const dy = state.cameraTarget.y - p.pos.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist > 6) {
-      const toTargetAngle = Math.atan2(dy, dx);
-      if (dist > 40) p.angle = toTargetAngle;
-      const accel = stats.speed * 4;
-      p.vel.x += Math.cos(toTargetAngle) * accel * dt;
-      p.vel.y += Math.sin(toTargetAngle) * accel * dt;
-    }
-    if ((state.isLaserFiring || state.isRocketFiring) && state.attackTargetId) {
-      const atk = state.enemies.find(e => e.id === state.attackTargetId);
-      if (atk) p.angle = Math.atan2(atk.pos.y - p.pos.y, atk.pos.x - p.pos.x);
-    }
-    const v = Math.sqrt(p.vel.x * p.vel.x + p.vel.y * p.vel.y);
-    const speedCap = state.afterburnUntil > state.tick ? stats.speed * 3 : stats.speed;
-    if (v > speedCap) {
-      p.vel.x = (p.vel.x / v) * speedCap;
-      p.vel.y = (p.vel.y / v) * speedCap;
-    }
-    const friction = Math.pow(0.96, dt * 20);
-    p.vel.x *= friction;
-    p.vel.y *= friction;
     p.pos.x += p.vel.x * dt;
     p.pos.y += p.vel.y * dt;
-    p.pos.x = Math.max(-8000, Math.min(8000, p.pos.x));
-    p.pos.y = Math.max(-8000, Math.min(8000, p.pos.y));
   }
 
   // ── Engine particles + 16-bit trail + thruster sound
@@ -2111,12 +2086,11 @@ export function onServerState(s: ServerState): void {
   const pErr = Math.sqrt(pdx * pdx + pdy * pdy);
   if (pErr > SNAP) {
     p.pos.x = s.self.x; p.pos.y = s.self.y;
-    p.vel.x = s.self.vx; p.vel.y = s.self.vy;
   } else if (pErr > 2) {
-    p.pos.x += pdx * 0.1; p.pos.y += pdy * 0.1;
-    p.vel.x += (s.self.vx - p.vel.x) * 0.3;
-    p.vel.y += (s.self.vy - p.vel.y) * 0.3;
+    p.pos.x += pdx * 0.35; p.pos.y += pdy * 0.35;
   }
+  p.vel.x = s.self.vx;
+  p.vel.y = s.self.vy;
   p.angle = s.self.a;
   p.hull = s.self.hp;
   p.shield = s.self.sp;
