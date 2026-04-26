@@ -1817,7 +1817,7 @@ type InterpSnapshot = { x: number; y: number; vx: number; vy: number; a: number 
 const interpPrev = new Map<string, InterpSnapshot>();
 const interpNext = new Map<string, InterpSnapshot>();
 let interpElapsed = 0;
-const TICK_INTERVAL = 1 / 30; // ~33ms
+const TICK_INTERVAL = 1 / 20; // 50ms
 
 function interpSet(id: string, x: number, y: number, vx: number, vy: number, a: number) {
   const prev = interpNext.get(id);
