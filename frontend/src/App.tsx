@@ -17,7 +17,7 @@ import AuthScreen from "./components/AuthScreen";
 import { hasToken, getPlayer, clearToken } from "./net/api";
 import {
   connectSocket, disconnectSocket, setSocketListeners, sendInput,
-  type ServerEnemy, type ServerAsteroid, type ServerNpc,
+  type ServerEnemy, type ServerAsteroid, type ServerNpc, type ProjectileSpawnEvent,
   type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent,
 } from "./net/socket";
 import {
@@ -25,8 +25,8 @@ import {
   onAsteroidMine, onAsteroidDestroy, onAsteroidRespawn,
   onServerZoneEnemies, onServerZoneAsteroids, onServerZoneNpcs,
   onNpcSpawn, onNpcDie,
-  onWelcome, onDelta, onSnapshot, onPlayerHitFromServer,
-  onLaserFireFromServer, onRocketFireFromServer,
+  onWelcome, onDelta, onSnapshot, onPlayerHitFromServer, onPlayerDieFromServer,
+  onLaserFireFromServer, onRocketFireFromServer, onProjectileSpawnFromServer,
 } from "./game/loop";
 
 function GameCanvas() {
@@ -411,12 +411,14 @@ function GameApp() {
       onEnemyHit: (event: EnemyHitEvent) => onEnemyHit(event),
       onEnemyAttack: (event: EnemyAttackEvent) => onEnemyAttack(event),
       onPlayerHit: (data) => onPlayerHitFromServer(data),
+      onPlayerDie: (data) => onPlayerDieFromServer(data),
       onAsteroidMine: (data) => onAsteroidMine(data),
       onAsteroidDestroy: (data) => onAsteroidDestroy(data),
       onAsteroidRespawn: (asteroid: ServerAsteroid) => onAsteroidRespawn(asteroid),
       onBossWarn: () => onBossWarn(),
       onNpcSpawn: (npc: ServerNpc) => onNpcSpawn(npc),
       onNpcDie: (data) => onNpcDie(data),
+      onProjectileSpawn: (event: ProjectileSpawnEvent) => onProjectileSpawnFromServer(event),
       onLaserFire: (event) => onLaserFireFromServer(event),
       onRocketFire: (event) => onRocketFireFromServer(event),
     });
