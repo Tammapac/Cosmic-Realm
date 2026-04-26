@@ -2,6 +2,8 @@ import { io, Socket } from "socket.io-client";
 
 let socket: Socket | null = null;
 
+// ── TYPES ────────────────────────────────────────────────────────────────
+
 export type RemotePlayer = {
   id: number;
   name: string;
@@ -22,63 +24,68 @@ export type RemotePlayer = {
   honor: number;
 };
 
-// ROTMG-style: full culled state from server each tick
-export type ServerState = {
+export type WelcomePayload = {
+  playerId: number;
+  tickRate: number;
+  friction: number;
+  frictionRefFps: number;
+};
+
+export type DeltaEntity = {
+  id: string;
+  entityType: "player" | "enemy" | "npc" | "asteroid";
+  x: number; y: number;
+  vx?: number; vy?: number;
+  angle?: number;
+  hp?: number; hpMax?: number;
+  shield?: number; shieldMax?: number;
+  version: number;
+  // Player-specific
+  name?: string;
+  shipClass?: string;
+  level?: number;
+  faction?: string | null;
+  honor?: number;
+  // Enemy-specific
+  type?: string;
+  behavior?: string;
+  damage?: number;
+  speed?: number;
+  color?: string;
+  size?: number;
+  isBoss?: boolean;
+  bossPhase?: number;
+  // NPC-specific
+  state?: string;
+  // Asteroid-specific
+  yields?: string;
+};
+
+export type DeltaPayload = {
+  tick: number;
   self: {
+    id: number;
     x: number; y: number;
     vx: number; vy: number;
-    a: number;
     hp: number; hpMax: number;
-    sp: number; spMax: number;
+    shield: number; shieldMax: number;
+    lastProcessedInput: number;
   };
-  players: {
-    id: number; name: string; shipClass: string; level: number; faction: string | null;
-    x: number; y: number; vx: number; vy: number; a: number;
-    hp: number; sp: number;
-  }[];
-  enemies: {
-    id: string; x: number; y: number; vx: number; vy: number; a: number;
+  addOrUpdate: DeltaEntity[];
+  removals: string[];
+};
+
+export type SnapshotPayload = {
+  tick: number;
+  self: {
+    id: number;
+    x: number; y: number;
+    vx: number; vy: number;
     hp: number; hpMax: number;
-    type: string; size: number; color: string;
-    isBoss?: boolean; bossPhase?: number;
-    aggro: boolean;
-    damage: number; speed: number;
-    behavior: string; name: string;
-  }[];
-  npcs: {
-    id: string; x: number; y: number; vx: number; vy: number; a: number;
-    hp: number; hpMax: number;
-    state: string; color: string; size: number; name: string;
-  }[];
-  projectiles?: {
-    id: string; x: number; y: number; vx: number; vy: number;
-    damage: number; color: string; size: number;
-    fromPlayer: boolean; crit: boolean;
-    weaponKind: "laser" | "rocket";
-    homing: boolean;
-  }[];
-  asteroids?: {
-    id: string; x: number; y: number;
-    hp: number; hpMax: number; size: number; yields: string;
-  }[];
-};
-
-// Legacy types kept for backward compat with events
-export type TickData = {
-  id: number; x: number; y: number; vx: number; vy: number; a: number; hp: number; sp: number;
-};
-
-export type EnemyTickData = {
-  id: string; x: number; y: number; vx: number; vy: number; a: number;
-  hp: number; hpMax: number;
-  type: string; size: number; color: string;
-  isBoss?: boolean; bossPhase?: number; aggro: boolean;
-};
-
-export type NpcTickData = {
-  id: string; x: number; y: number; vx: number; vy: number; a: number;
-  hp: number; hpMax: number;
-  state: string; color: string; size: number; name: string;
+    shield: number; shieldMax: number;
+    lastProcessedInput: number;
+  };
+  entities: DeltaEntity[];
 };
 
 export type ServerEnemy = {
@@ -98,12 +105,6 @@ export type ServerNpc = {
   x: number; y: number; vx: number; vy: number; angle: number;
   hull: number; hullMax: number; speed: number;
   color: string; size: number; state: string;
-};
-
-export type ZoneTickPayload = {
-  players: TickData[];
-  enemies: EnemyTickData[];
-  npcs: NpcTickData[];
 };
 
 export type CombatEvent = {
@@ -137,18 +138,42 @@ export type EnemyAttackEvent = {
   targetPos: { x: number; y: number };
 };
 
-export type PlayerHitEvent = {
+export type LaserFireEvent = {
+  attackerId: number;
+  targetId: string;
   damage: number;
-  hp: number;
-  shield: number;
+  crit: boolean;
+};
+
+export type RocketFireEvent = {
+  attackerId: number;
+  targetId: string;
+  damage: number;
+  crit: boolean;
+  pos: { x: number; y: number };
+  targetPos: { x: number; y: number };
+};
+
+export type ProjectileSpawnEvent = {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  damage: number;
+  color: string;
+  size: number;
+  crit: boolean;
+  weaponKind: "laser" | "rocket";
+  homing: boolean;
+  fromPlayer: boolean;
 };
 
 type SocketEvents = {
-  onPlayersInZone: (players: RemotePlayer[]) => void;
-  onPlayerJoin: (player: RemotePlayer) => void;
+  onWelcome: (payload: WelcomePayload) => void;
+  onDelta: (payload: DeltaPayload) => void;
+  onSnapshot: (payload: SnapshotPayload) => void;
+  onPlayerJoin: (player: { id: number; name: string; shipClass: string; level: number; faction: string | null; zone: string }) => void;
   onPlayerLeave: (data: { playerId: number }) => void;
-  onState: (state: ServerState) => void;
-  onZoneTick: (payload: ZoneTickPayload) => void;
   onCombatAttack: (event: CombatEvent) => void;
   onChatMessage: (msg: { from: string; text: string; channel: string; time: number }) => void;
   onOnlineCount: (count: number) => void;
@@ -159,14 +184,16 @@ type SocketEvents = {
   onEnemyDie: (event: EnemyDieEvent) => void;
   onEnemyHit: (event: EnemyHitEvent) => void;
   onEnemyAttack: (event: EnemyAttackEvent) => void;
-  onPlayerHit: (event: PlayerHitEvent) => void;
+  onPlayerHit: (data: { damage: number; hp: number; shield: number }) => void;
   onAsteroidMine: (data: { asteroidId: string; hp: number; hpMax: number }) => void;
   onAsteroidDestroy: (data: { asteroidId: string; playerId: number; ore: { resourceId: string; qty: number } }) => void;
   onAsteroidRespawn: (asteroid: ServerAsteroid) => void;
   onBossWarn: () => void;
   onNpcSpawn: (npc: ServerNpc) => void;
   onNpcDie: (data: { npcId: string }) => void;
-  onProjectileSpawn: (data: { x: number; y: number; vx: number; vy: number; damage: number; color: string; size: number; crit: boolean; weaponKind: "laser" | "rocket"; homing: boolean; fromPlayer: boolean }) => void;
+  onProjectileSpawn: (event: ProjectileSpawnEvent) => void;
+  onLaserFire: (event: LaserFireEvent) => void;
+  onRocketFire: (event: RocketFireEvent) => void;
 };
 
 let listeners: Partial<SocketEvents> = {};
@@ -190,26 +217,26 @@ export function connectSocket(token: string) {
     console.log("[Socket] Disconnected:", reason);
   });
 
-  socket.on("zone:players", (players: RemotePlayer[]) => {
-    listeners.onPlayersInZone?.(players);
+  // Server authority events
+  socket.on("welcome", (payload: WelcomePayload) => {
+    listeners.onWelcome?.(payload);
   });
 
-  socket.on("player:join", (player: RemotePlayer) => {
+  socket.on("delta", (payload: DeltaPayload) => {
+    listeners.onDelta?.(payload);
+  });
+
+  socket.on("snapshot", (payload: SnapshotPayload) => {
+    listeners.onSnapshot?.(payload);
+  });
+
+  // Player events
+  socket.on("player:join", (player) => {
     listeners.onPlayerJoin?.(player);
   });
 
   socket.on("player:leave", (data: { playerId: number }) => {
     listeners.onPlayerLeave?.(data);
-  });
-
-  // ROTMG-style: full culled state per tick
-  socket.on("state", (state: ServerState) => {
-    listeners.onState?.(state);
-  });
-
-  // Legacy tick (kept for backward compat during transition)
-  socket.on("zone:tick", (payload: ZoneTickPayload) => {
-    listeners.onZoneTick?.(payload);
   });
 
   socket.on("combat:attack", (event: CombatEvent) => {
@@ -224,7 +251,7 @@ export function connectSocket(token: string) {
     listeners.onOnlineCount?.(count);
   });
 
-  // Server-authoritative game events
+  // Zone state (initial load + warp)
   socket.on("zone:enemies", (enemies: ServerEnemy[]) => {
     listeners.onZoneEnemies?.(enemies);
   });
@@ -237,6 +264,7 @@ export function connectSocket(token: string) {
     listeners.onZoneNpcs?.(npcs);
   });
 
+  // Game events
   socket.on("enemy:spawn", (enemy: ServerEnemy) => {
     listeners.onEnemySpawn?.(enemy);
   });
@@ -253,8 +281,8 @@ export function connectSocket(token: string) {
     listeners.onEnemyAttack?.(event);
   });
 
-  socket.on("player:hit", (event: PlayerHitEvent) => {
-    listeners.onPlayerHit?.(event);
+  socket.on("player:hit", (data: { damage: number; hp: number; shield: number }) => {
+    listeners.onPlayerHit?.(data);
   });
 
   socket.on("asteroid:mine", (data: { asteroidId: string; hp: number; hpMax: number }) => {
@@ -281,8 +309,16 @@ export function connectSocket(token: string) {
     listeners.onNpcDie?.(data);
   });
 
-  socket.on("projectile:spawn", (data: any) => {
-    listeners.onProjectileSpawn?.(data);
+  socket.on("projectile:spawn", (event: ProjectileSpawnEvent) => {
+    listeners.onProjectileSpawn?.(event);
+  });
+
+  socket.on("laser:fire", (event: LaserFireEvent) => {
+    listeners.onLaserFire?.(event);
+  });
+
+  socket.on("rocket:fire", (event: RocketFireEvent) => {
+    listeners.onRocketFire?.(event);
   });
 }
 
@@ -295,27 +331,36 @@ export function setSocketListeners(l: Partial<SocketEvents>) {
   listeners = l;
 }
 
-// ── Outgoing events (ROTMG-style: input only) ──────────────────────────
+// ── Outgoing events ──────────────────────────────────────────────────────
 
-export function sendInputMove(x: number, y: number) {
-  socket?.emit("input:move", { x, y });
-}
+let _inputSeq = 0;
 
-export function sendInputAttack(enemyId: string | null, laser: boolean, rocket: boolean, laserAmmo: string, rocketAmmo: string) {
-  socket?.emit("input:attack", { enemyId, laser, rocket, laserAmmo, rocketAmmo });
-}
-
-export function sendInputMine(asteroidId: string | null) {
-  socket?.emit("input:mine", { asteroidId });
-}
-
-// Legacy outgoing events (kept for dungeon/offline mode)
-export function sendPosition(x: number, y: number, vx: number, vy: number, angle: number) {
-  socket?.emit("position", { x, y, vx, vy, angle });
-}
-
-export function sendMove(x: number, y: number) {
-  socket?.emit("move", { x, y });
+export function sendInput(data: {
+  targetX: number | null;
+  targetY: number | null;
+  firing: boolean;
+  rocketFiring: boolean;
+  attackTargetId: string | null;
+  miningTargetId: string | null;
+  laserAmmo: string;
+  rocketAmmo: string;
+}): number {
+  const seq = ++_inputSeq;
+  socket?.emit("input:move", {
+    x: data.targetX,
+    y: data.targetY,
+  });
+  socket?.emit("input:attack", {
+    enemyId: data.attackTargetId,
+    laser: data.firing,
+    rocket: data.rocketFiring,
+    laserAmmo: data.laserAmmo,
+    rocketAmmo: data.rocketAmmo,
+  });
+  socket?.emit("input:mine", {
+    asteroidId: data.miningTargetId,
+  });
+  return seq;
 }
 
 export function sendWarp(toZone: string, x: number, y: number) {
@@ -326,20 +371,12 @@ export function sendAttack(targetPlayerId: number, damage: number, weaponKind: s
   socket?.emit("attack", { targetPlayerId, damage, weaponKind });
 }
 
-export function sendAttackEnemy(enemyId: string, weaponKind: "laser" | "rocket", ammoType: string) {
-  socket?.emit("attack:enemy", { enemyId, weaponKind, ammoType });
-}
-
-export function sendMine(asteroidId: string) {
-  socket?.emit("mine", { asteroidId });
-}
-
 export function sendChat(channel: string, text: string) {
   socket?.emit("chat", { channel, text });
 }
 
 export function sendStatsUpdate(data: {
-  hull: number; shield: number; level: number; shipClass: string; honor: number;
+  hull?: number; shield?: number; level?: number; shipClass?: string; honor?: number;
   inventory?: any[]; equipped?: any; skills?: any; drones?: any[]; faction?: string;
 }) {
   socket?.emit("stats:update", data);
@@ -347,4 +384,8 @@ export function sendStatsUpdate(data: {
 
 export function isConnected(): boolean {
   return socket?.connected ?? false;
+}
+
+export function getInputSeq(): number {
+  return _inputSeq;
 }
