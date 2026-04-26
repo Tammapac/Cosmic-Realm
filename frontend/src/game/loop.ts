@@ -13,7 +13,7 @@ import {
   rankFor,
 } from "./types";
 import { sfx } from "./sound";
-import { sendAttackEnemy, sendMine, type ServerEnemy, type ServerAsteroid, type ServerNpc, type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent, type ServerState, type PlayerHitEvent } from "../net/socket";
+import { sendAttackEnemy, sendMine, sendStatsUpdate, sendWarp, type ServerEnemy, type ServerAsteroid, type ServerNpc, type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent, type ServerState, type PlayerHitEvent } from "../net/socket";
 
 // Returns the equipped weapon's color (used for laser projectiles)
 function equippedWeaponColor(): string {
@@ -846,6 +846,14 @@ function tickWorld(dt: number): void {
       bossActive = false;
       pushNotification(`Ship destroyed. -${lostCr}cr. Respawned at ${homeStation.name}.`, "bad");
       pushChat("system", "SYSTEM", `Your ship was destroyed. -${lostCr} credits. Respawned at ${homeStation.name}.`);
+      // Sync respawn to server
+      if (serverEnemiesReceived) {
+        sendStatsUpdate({
+          hull: p2.hull, shield: p2.shield, level: p2.level,
+          shipClass: p2.shipClass, honor: p2.honor,
+        });
+        sendWarp(p2.zone as string, p2.pos.x, p2.pos.y);
+      }
     }
     // Keep VFX alive during the death window so explosion particles animate
     for (const pa of state.particles) {
@@ -2076,8 +2084,11 @@ export function onServerState(s: ServerState): void {
   p.vel.x = s.self.vx;
   p.vel.y = s.self.vy;
   p.angle = s.self.a;
-  p.hull = s.self.hp;
-  p.shield = s.self.sp;
+  // Hull/shield: accept server value unless player is respawning or just repaired
+  if (state.playerRespawnTimer <= 0) {
+    p.hull = s.self.hp;
+    p.shield = s.self.sp;
+  }
 
   // Other players
   const seenPlayerIds = new Set<string>();

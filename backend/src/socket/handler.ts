@@ -74,7 +74,7 @@ export function setupSocket(io: Server) {
       velX: 0,
       velY: 0,
       angle: 0,
-      hull: dbPlayer.hull,
+      hull: dbPlayer.hull > 0 ? dbPlayer.hull : stats.hullMax,
       hullMax: stats.hullMax,
       shield: dbPlayer.shield,
       shieldMax: stats.shieldMax,
