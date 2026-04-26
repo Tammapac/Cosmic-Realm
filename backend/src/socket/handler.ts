@@ -129,6 +129,7 @@ export function setupSocket(io: Server) {
     socket.on("input", (data: PlayerInput) => {
       const p = getPlayer(user.playerId);
       if (!p) return;
+      if (p.inputQueue.length >= 30) p.inputQueue.shift();
       p.inputQueue.push({
         seq: Number(data.seq) || 0,
         targetX: data.targetX != null ? clamp(data.targetX, -8000, 8000) : null,
@@ -273,29 +274,41 @@ export function setupSocket(io: Server) {
   });
 
   // ── SERVER TICK ───────────────────────────────────────────────────────
-  setInterval(() => {
-    const dt = 1 / TICK_RATE;
-    const result = engine.tick(dt, (zone: string) => getPlayersInZone(zone));
+  const TICK_MS = 1000 / TICK_RATE;
+  const dt = 1 / TICK_RATE;
+  let nextTickAt = Date.now() + TICK_MS;
 
-    // Broadcast game events (enemy:hit, enemy:die, etc.)
-    broadcastEvents(io, result.events);
+  const runTick = () => {
+    try {
+      const result = engine.tick(dt, getPlayersInZone);
+      broadcastEvents(io, result.events);
 
-    // Send deltas to individual players
-    for (const [playerId, delta] of result.deltas) {
-      const p = getPlayer(playerId);
-      if (!p) continue;
-      const sock = io.sockets.sockets.get(p.socketId);
-      sock?.emit("delta", delta);
+      for (const [playerId, delta] of result.deltas) {
+        const p = getPlayer(playerId);
+        if (!p) continue;
+        io.sockets.sockets.get(p.socketId)?.emit("delta", delta);
+      }
+      for (const [playerId, snapshot] of result.snapshots) {
+        const p = getPlayer(playerId);
+        if (!p) continue;
+        io.sockets.sockets.get(p.socketId)?.emit("snapshot", snapshot);
+      }
+    } catch (err) {
+      console.error("[tick] error:", err);
     }
 
-    // Send snapshots to individual players
-    for (const [playerId, snapshot] of result.snapshots) {
-      const p = getPlayer(playerId);
-      if (!p) continue;
-      const sock = io.sockets.sockets.get(p.socketId);
-      sock?.emit("snapshot", snapshot);
+    nextTickAt += TICK_MS;
+    const now = Date.now();
+    let delay = nextTickAt - now;
+    if (delay < -TICK_MS * 5) {
+      nextTickAt = now + TICK_MS;
+      delay = TICK_MS;
+    } else if (delay < 0) {
+      delay = 0;
     }
-  }, 1000 / TICK_RATE);
+    setTimeout(runTick, delay);
+  };
+  setTimeout(runTick, TICK_MS);
 }
 
 // ── EVENT BROADCASTING ──────────────────────────────────────────────────
