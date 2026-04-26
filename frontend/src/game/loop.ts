@@ -2103,6 +2103,7 @@ function serverEnemyToLocal(se: ServerEnemy): Enemy {
 let serverConfig = { tickRate: 25, friction: 0.96, frictionRefFps: 60 };
 export let serverAuthoritative = false;
 let serverPlayerId = 0;
+let _deltaCount = 0;
 
 export function onWelcome(data: WelcomePayload): void {
   serverConfig = {
@@ -2116,6 +2117,10 @@ export function onWelcome(data: WelcomePayload): void {
 
 export function onDelta(data: DeltaPayload): void {
   serverAuthoritative = true;
+  _deltaCount++;
+  if (_deltaCount % 20 === 0) {
+    document.title = `CR [S:${data.tick} d:${_deltaCount} e:${data.addOrUpdate.length}]`;
+  }
   const p = state.player;
   const self = data.self;
 
