@@ -64,11 +64,30 @@ router.post("/register", async (req, res) => {
       .values({ username, email, passwordHash })
       .returning();
 
+    const uid = () =>
+      `mi-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+    const wpId = uid(), gnId = uid(), mdId = uid();
+
     const [player] = await db
       .insert(schema.players)
       .values({
         accountId: account.id,
         name: pilotName,
+        credits: 10000,
+        inventory: [
+          { instanceId: wpId, defId: "wp-pulse-1" },
+          { instanceId: gnId, defId: "gn-core-1" },
+          { instanceId: mdId, defId: "md-thrust-1" },
+        ],
+        equipped: {
+          weapon: [wpId, null, null],
+          generator: [gnId, null, null],
+          module: [mdId, null, null],
+        },
+        ammo: { x1: 2000, x2: 0, x3: 0, x4: 0 },
+        rocketAmmoType: { cl1: 100, cl2: 0, bm3: 0, drock: 0 },
+        consumables: { "repair-bot": 2, "shield-charge": 1 },
+        hotbar: ["repair-bot", "shield-charge", null, null, null, null, null, null],
       })
       .returning();
 

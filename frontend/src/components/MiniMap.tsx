@@ -8,6 +8,7 @@ export function MiniMap() {
   const player = useGame((s) => s.player);
   const enemies = useGame((s) => s.enemies);
   const others = useGame((s) => s.others);
+  const npcShips = useGame((s) => s.npcShips);
   const asteroids = useGame((s) => s.asteroids);
   const cargoBoxes = useGame((s) => s.cargoBoxes);
   const minimapScale = useGame((s) => s.minimapScale);
@@ -135,6 +136,13 @@ export function MiniMap() {
               return <rect key={o.id} x={x - 2} y={y - 2} width={4} height={4} fill="#8a9ac8" />;
             })}
 
+            {npcShips.map((n) => {
+              const x = fullSize / 2 + n.pos.x * fullScale;
+              const y = fullSize / 2 + n.pos.y * fullScale;
+              if (x < 0 || x > fullSize || y < 0 || y > fullSize) return null;
+              return <polygon key={n.id} points={`${x},${y - 3} ${x + 3},${y + 2} ${x - 3},${y + 2}`} fill={n.color} />;
+            })}
+
             {enemies.map((e) => {
               const x = fullSize / 2 + e.pos.x * fullScale;
               const y = fullSize / 2 + e.pos.y * fullScale;
@@ -236,6 +244,13 @@ export function MiniMap() {
           const y = SIZE / 2 + (o.pos.y - player.pos.y) * scale;
           if (x < 0 || x > SIZE || y < 0 || y > SIZE) return null;
           return <rect key={o.id} x={x - 1} y={y - 1} width={2} height={2} fill="#8a9ac8" />;
+        })}
+
+        {npcShips.map((n) => {
+          const x = SIZE / 2 + (n.pos.x - player.pos.x) * scale;
+          const y = SIZE / 2 + (n.pos.y - player.pos.y) * scale;
+          if (x < 0 || x > SIZE || y < 0 || y > SIZE) return null;
+          return <polygon key={n.id} points={`${x},${y - 2} ${x + 2},${y + 1} ${x - 2},${y + 1}`} fill={n.color} />;
         })}
 
         {enemies.map((e) => {

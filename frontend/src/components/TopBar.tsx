@@ -1,25 +1,15 @@
 import { useGame, state, bump, save, pushNotification, maxDroneSlots, cargoCapacity } from "../game/store";
 import { EXP_FOR_LEVEL, FACTIONS, MODULE_DEFS, SHIP_CLASSES, ZONES, rankFor, HONOR_RANKS, DRONE_DEFS } from "../game/types";
+import { effectiveStats } from "../game/loop";
 import { setMuted, getMuted, setVolume, getVolume } from "../game/sound";
 import { useState } from "react";
 
 export function TopBar() {
   const player = useGame((s) => s.player);
   const cls = SHIP_CLASSES[player.shipClass];
-  let shieldMax = cls.shieldMax;
-  let hullMax = cls.hullMax;
-  for (const id of [...player.equipped.weapon, ...player.equipped.generator, ...player.equipped.module]) {
-    if (!id) continue;
-    const item = player.inventory.find((m) => m.instanceId === id);
-    const def = item ? MODULE_DEFS[item.defId] : null;
-    if (!def) continue;
-    shieldMax += def.stats.shieldMax ?? 0;
-    hullMax += def.stats.hullMax ?? 0;
-  }
-  for (const d of player.drones) {
-    shieldMax += DRONE_DEFS[d.kind].shieldBonus;
-    hullMax += DRONE_DEFS[d.kind].hullBonus;
-  }
+  const es = effectiveStats();
+  const shieldMax = es.shieldMax;
+  const hullMax = es.hullMax;
   const expNeeded = EXP_FOR_LEVEL(player.level);
   const zone = ZONES[player.zone];
   const rank = rankFor(player.honor);
@@ -141,11 +131,11 @@ export function WorldTargetHud() {
         padding: "8px 10px",
       }}
     >
-      <div className="text-[9px] tracking-widest text-mute">TARGET</div>
-      <div className="text-[12px] font-bold" style={{ color: target.kind === "enemy" ? "#ff5c6c" : "#c69060" }}>
+      <div className="text-[13px] tracking-widest text-mute">TARGET</div>
+      <div className="text-[15px] font-bold" style={{ color: target.kind === "enemy" ? "#ff5c6c" : "#c69060" }}>
         {target.name}
       </div>
-      <div className="text-[10px] text-dim mt-1">{target.detail}</div>
+      <div className="text-[13px] text-dim mt-1">{target.detail}</div>
     </div>
   );
 }
@@ -157,12 +147,13 @@ function MicroBar({
   return (
     <div className="flex items-center gap-1 mb-0.5">
       <span className="text-[13px] w-9 tracking-widest" style={{ color: "#ffffff" }}>{label}</span>
-      <div className="bar flex-1" style={{ height: 10 }}>
+      <div className="bar flex-1" style={{ height: 12 }}>
         <div className="bar-fill"
           style={{
             width: `${pct}%`,
             background: `linear-gradient(90deg, ${color}66, ${color})`,
             boxShadow: `0 0 4px ${color}`,
+            transition: "width 0.2s ease-out",
           }}
         />
       </div>

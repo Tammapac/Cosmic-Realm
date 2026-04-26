@@ -27,6 +27,7 @@ import {
   MODULE_DEFS,
   ModuleItem,
   ModuleSlot,
+  NpcShip,
   OtherPlayer,
   Particle,
   Player,
@@ -37,7 +38,10 @@ import {
   RESOURCES,
   ResourceId,
   ROCKET_AMMO_TYPE_DEFS,
+  ROCKET_MISSILE_TYPE_DEFS,
   RocketAmmoType,
+  RocketMissileType,
+  ROCKET_MISSILE_TYPE_ORDER,
   SHIP_CLASSES,
   SKILL_NODES,
   STATIONS,
@@ -66,6 +70,7 @@ export type GameState = {
   floaters: Floater[];
   asteroids: Asteroid[];
   others: OtherPlayer[];
+  npcShips: NpcShip[];
   chat: ChatMessage[];
   events: GameEvent[];
   cameraTarget: { x: number; y: number };
@@ -90,6 +95,7 @@ export type GameState = {
   pendingIdleReward: { credits: number; exp: number; secondsAway: number } | null;
   dungeon: DungeonRun | null;
   // consumable effects (game-time seconds)
+  lastHitTick: number;            // game-tick when player was last damaged (for regen delay)
   repairBotUntil: number;        // gradual hull heal active until this game-time
   afterburnUntil: number;        // speed boost active until this game-time
   miningTargetId: string | null; // asteroid being mined (for beam visual)
@@ -108,8 +114,11 @@ export type GameState = {
   } | null;
   attackTargetId: string | null;
   isAttacking: boolean;
+  isLaserFiring: boolean;
+  isRocketFiring: boolean;
   cargoBoxes: CargoBox[];
   showAmmoSelector: boolean;
+  showRocketAmmoSelector: boolean;
   minimapScale: number;
   showFullZoneMap: boolean;
   cameraZoom: number;
@@ -170,7 +179,7 @@ function makeInitialPlayer(): Player {
     shield: SHIP_CLASSES.skimmer.shieldMax,
     level: 1,
     exp: 0,
-    credits: 250,
+    credits: 10000,
     honor: 0,
     cargo: [],
     zone: "alpha",
@@ -189,8 +198,10 @@ function makeInitialPlayer(): Player {
     lastSeen: Date.now(),
     consumables: { "repair-bot": 2, "shield-charge": 1 },
     hotbar: ["repair-bot", "shield-charge", null, null, null, null, null, null],
-    ammo: { x1: 0, x2: 0, x3: 0, x4: 0 },
+    ammo: { x1: 2000, x2: 0, x3: 0, x4: 0 },
     activeAmmoType: "x1" as RocketAmmoType,
+    rocketAmmo: { cl1: 100, cl2: 0, bm3: 0, drock: 0 },
+    activeRocketAmmoType: "cl1" as RocketMissileType,
     autoRestock: false,
     autoRepairHull: false,
     autoShieldRecharge: false,
@@ -297,6 +308,15 @@ if (!initialPlayer.ammo || typeof initialPlayer.ammo !== "object" || Array.isArr
 if (!initialPlayer.activeAmmoType || !["x1","x2","x3","x4"].includes(initialPlayer.activeAmmoType)) {
   initialPlayer.activeAmmoType = "x1" as RocketAmmoType;
 }
+if (!initialPlayer.rocketAmmo || typeof initialPlayer.rocketAmmo !== "object") {
+  initialPlayer.rocketAmmo = { cl1: 0, cl2: 0, bm3: 0, drock: 0 };
+}
+for (const t of ["cl1", "cl2", "bm3", "drock"] as RocketMissileType[]) {
+  if (typeof initialPlayer.rocketAmmo[t] !== "number") initialPlayer.rocketAmmo[t] = 0;
+}
+if (!initialPlayer.activeRocketAmmoType || !["cl1","cl2","bm3","drock"].includes(initialPlayer.activeRocketAmmoType)) {
+  initialPlayer.activeRocketAmmoType = "cl1" as RocketMissileType;
+}
 if (!initialPlayer.milestones) initialPlayer.milestones = newMilestones();
 if (!initialPlayer.skills) initialPlayer.skills = {};
 if (typeof initialPlayer.skillPoints !== "number") initialPlayer.skillPoints = Math.max(0, (initialPlayer.level ?? 1) - 1);
@@ -391,6 +411,7 @@ export const state: GameState = {
   floaters: [],
   asteroids: makeAsteroids(initialPlayer.zone),
   others: makeOthers(initialPlayer.zone),
+  npcShips: [],
   chat: [
     { id: "c0", channel: "system", from: "SYSTEM", text: "Welcome to Stellar Frontier, Captain.", time: Date.now() },
     { id: "c1", channel: "local", from: "Aurora", text: "anyone running nebula bounties?", time: Date.now() },
@@ -418,6 +439,7 @@ export const state: GameState = {
   bossSpawnTimer: 240, // first boss event ~4 minutes in
   pendingIdleReward,
   dungeon: null,
+  lastHitTick: 0,
   repairBotUntil: 0,
   afterburnUntil: 0,
   miningTargetId: null,
@@ -431,8 +453,11 @@ export const state: GameState = {
   selectedWorldTarget: null,
   attackTargetId: null,
   isAttacking: false,
+  isLaserFiring: false,
+  isRocketFiring: false,
   cargoBoxes: [],
   showAmmoSelector: false,
+  showRocketAmmoSelector: false,
   minimapScale: 1,
   showFullZoneMap: false,
   cameraZoom: 1,
@@ -494,6 +519,8 @@ export function save(): void {
       lastSeen: p.lastSeen,
       ammo: p.ammo,
       activeAmmoType: p.activeAmmoType,
+      rocketAmmo: p.rocketAmmo,
+      activeRocketAmmoType: p.activeRocketAmmoType,
       autoRestock: p.autoRestock,
       autoRepairHull: p.autoRepairHull,
       autoShieldRecharge: p.autoShieldRecharge,
@@ -533,6 +560,7 @@ export function loadServerPlayer(data: any): void {
     const FACTION_MIGRATE: Record<string, string> = { aurora: "earth", crimson: "mars", syndicate: "venus" };
     p.faction = (FACTION_MIGRATE[data.faction] ?? data.faction) as any;
     if (p.faction !== "earth" && p.faction !== "mars" && p.faction !== "venus") p.faction = null;
+    state.showFactionPicker = p.faction === null;
   }
   if (data.skillPoints != null) p.skillPoints = data.skillPoints;
   if (data.skills) p.skills = data.skills;
@@ -545,6 +573,8 @@ export function loadServerPlayer(data: any): void {
   if (data.hotbar) p.hotbar = data.hotbar;
   if (data.ammo && typeof data.ammo === "object" && typeof data.ammo.x1 === "number") p.ammo = data.ammo;
   if (data.activeAmmoType && ["x1","x2","x3","x4"].includes(data.activeAmmoType)) p.activeAmmoType = data.activeAmmoType;
+  if (data.rocketAmmo && typeof data.rocketAmmo === "object") p.rocketAmmo = data.rocketAmmo;
+  if (data.activeRocketAmmoType && ["cl1","cl2","bm3","drock"].includes(data.activeRocketAmmoType)) p.activeRocketAmmoType = data.activeRocketAmmoType;
   if (data.autoRestock != null) p.autoRestock = data.autoRestock;
   if (data.autoRepairHull != null) p.autoRepairHull = data.autoRepairHull;
   if (data.autoShieldRecharge != null) p.autoShieldRecharge = data.autoShieldRecharge;
@@ -629,6 +659,7 @@ export function travelToZone(zoneId: ZoneId): void {
   state.projectiles = [];
   state.particles = [];
   state.cargoBoxes = [];
+  state.npcShips = [];
   refreshOthers(zoneId);
   pushNotification(`Warped to ${ZONES[zoneId].name}`, "good");
   pushChat("system", "SYSTEM", `You entered ${ZONES[zoneId].name}.`);
@@ -793,6 +824,14 @@ export function ensureAmmoInitialized(): void {
     p.ammo[t] = Math.min(p.ammo[t], max);
   }
   if (!p.activeAmmoType || !["x1","x2","x3","x4"].includes(p.activeAmmoType)) p.activeAmmoType = "x1";
+  // Also init rocket ammo
+  const rMax = Math.floor(max * 0.25);
+  if (!p.rocketAmmo || typeof p.rocketAmmo !== "object") p.rocketAmmo = { cl1: 0, cl2: 0, bm3: 0, drock: 0 };
+  for (const t of ["cl1", "cl2", "bm3", "drock"] as RocketMissileType[]) {
+    if (typeof p.rocketAmmo[t] !== "number") p.rocketAmmo[t] = 0;
+    p.rocketAmmo[t] = Math.min(p.rocketAmmo[t], rMax);
+  }
+  if (!p.activeRocketAmmoType || !["cl1","cl2","bm3","drock"].includes(p.activeRocketAmmoType)) p.activeRocketAmmoType = "cl1";
 }
 
 export function restockAmmo(): void {
@@ -932,6 +971,63 @@ export function autoRestockIfEnabled(collect?: DockServiceEntry[]): void {
   bumpMission("spend-credits", cost);
   if (collect) collect.push({ kind: "ammo", label: `${def.shortName} ammo restocked (${missing} rounds)`, cost });
   else pushNotification(`Auto-Restock: ${def.shortName} topped up · -${cost}cr`, "good");
+  save(); bump();
+}
+
+// ── ROCKET AMMO HELPERS ──────────────────────────────────────────────────
+
+export function rocketMissileMax(): number {
+  return Math.floor(rocketAmmoMax() * 0.25);
+}
+
+export function ensureRocketAmmoInitialized(): void {
+  const p = state.player;
+  const max = rocketMissileMax();
+  if (!p.rocketAmmo || typeof p.rocketAmmo !== "object") p.rocketAmmo = { cl1: 0, cl2: 0, bm3: 0, drock: 0 };
+  for (const t of ["cl1", "cl2", "bm3", "drock"] as RocketMissileType[]) {
+    if (typeof p.rocketAmmo[t] !== "number") p.rocketAmmo[t] = 0;
+    p.rocketAmmo[t] = Math.min(p.rocketAmmo[t], max);
+  }
+  if (!p.activeRocketAmmoType || !["cl1","cl2","bm3","drock"].includes(p.activeRocketAmmoType)) p.activeRocketAmmoType = "cl1";
+}
+
+export function getActiveRocketAmmoType(): RocketMissileType {
+  return state.player.activeRocketAmmoType ?? "cl1";
+}
+
+export function getRocketAmmoCount(type?: RocketMissileType): number {
+  const t = type ?? state.player.activeRocketAmmoType ?? "cl1";
+  return state.player.rocketAmmo[t] ?? 0;
+}
+
+export function switchRocketAmmoType(type: RocketMissileType): void {
+  ensureRocketAmmoInitialized();
+  state.player.activeRocketAmmoType = type;
+  const def = ROCKET_MISSILE_TYPE_DEFS[type];
+  pushNotification(`Rocket ammo switched to ${def.name}`, "good");
+  save(); bump();
+}
+
+export function purchaseRocketAmmo(type: RocketMissileType, amount: number): void {
+  const p = state.player;
+  const max = rocketMissileMax();
+  ensureRocketAmmoInitialized();
+  const cur = p.rocketAmmo[type] ?? 0;
+  const canBuy = Math.min(amount, max - cur);
+  if (canBuy <= 0) {
+    pushNotification("Rocket ammo already full", "info");
+    return;
+  }
+  const def = ROCKET_MISSILE_TYPE_DEFS[type];
+  const cost = canBuy * def.costPerRound;
+  if (p.credits < cost) {
+    pushNotification(`Need ${cost}cr for ${canBuy} ${def.shortName} rounds`, "bad");
+    return;
+  }
+  p.credits -= cost;
+  p.rocketAmmo[type] = cur + canBuy;
+  bumpMission("spend-credits", cost);
+  pushNotification(`Bought ${canBuy} ${def.shortName} · -${cost}cr`, "good");
   save(); bump();
 }
 

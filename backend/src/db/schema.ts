@@ -37,7 +37,7 @@ export const players = pgTable(
     shipClass: varchar("ship_class", { length: 32 }).notNull().default("skimmer"),
     level: integer("level").notNull().default(1),
     exp: bigint("exp", { mode: "number" }).notNull().default(0),
-    credits: bigint("credits", { mode: "number" }).notNull().default(250),
+    credits: bigint("credits", { mode: "number" }).notNull().default(10000),
     honor: integer("honor").notNull().default(0),
     hull: real("hull").notNull().default(100),
     shield: real("shield").notNull().default(70),

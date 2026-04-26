@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from "react";
-import { state, bump, useGame, save, pushNotification, abandonDungeon, useConsumable, getAmmoWeaponIds, rocketAmmoMax, getActiveAmmoType, getAmmoCount, runDockingServices, loadServerPlayer, collectCargoBox, enterDungeon } from "./game/store";
+import { state, bump, useGame, save, pushNotification, abandonDungeon, useConsumable, runDockingServices, loadServerPlayer, collectCargoBox, enterDungeon } from "./game/store";
 import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats } from "./game/loop";
 import { render } from "./game/render";
 import { TopBar, WorldTargetHud } from "./components/TopBar";
 import { MiniMap } from "./components/MiniMap";
 import { Hangar } from "./components/Hangar";
-import { SocialPanel, ClanPanel, GalaxyMap } from "./components/SocialPanel";
+import { SocialPanel, ClanPanel, GalaxyMap, BattleLog } from "./components/SocialPanel";
 import { FactionPicker } from "./components/FactionPicker";
 import { IdleRewardModal } from "./components/IdleRewardModal";
 import { EventBanners } from "./components/EventBanners";
 import { Hotbar } from "./components/Hotbar";
 import { QuestTracker } from "./components/QuestTracker";
-import { DUNGEONS, STATIONS, PORTALS, ZONES, MODULE_DEFS, ROCKET_AMMO_TYPE_DEFS } from "./game/types";
+import { DUNGEONS, STATIONS, PORTALS, ZONES, MODULE_DEFS } from "./game/types";
 import { travelToZone, state as gameState } from "./game/store";
 import AuthScreen from "./components/AuthScreen";
 import { hasToken, getPlayer, clearToken } from "./net/api";
@@ -146,7 +146,9 @@ function GameCanvas() {
       };
       state.attackTargetId = enemy.id;
       state.miningTargetId = null;
-      // Double-click also starts attacking
+      // Double-click starts both lasers and rockets
+      state.isLaserFiring = true;
+      state.isRocketFiring = true;
       state.isAttacking = true;
       bump();
     }
@@ -166,7 +168,7 @@ function GameCanvas() {
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? -0.1 : 0.1;
-    state.cameraZoom = Math.max(0.4, Math.min(2.5, state.cameraZoom + delta));
+    state.cameraZoom = Math.max(1.0, Math.min(2.5, state.cameraZoom + delta));
     bump();
   };
 
@@ -280,63 +282,6 @@ function DockPrompt() {
   );
 }
 
-function AmmoHud() {
-  const docked = useGame((s) => s.dockedAt);
-  const player = useGame((s) => s.player);
-  useGame((s) => s.tick);
-
-  if (docked) return null;
-
-  const weaponIds = getAmmoWeaponIds();
-  if (weaponIds.length === 0) return null;
-
-  const activeType = getActiveAmmoType();
-  const typeDef = ROCKET_AMMO_TYPE_DEFS[activeType];
-  const ammoMax = rocketAmmoMax();
-  const cur = getAmmoCount(activeType);
-  const pct = ammoMax > 0 ? cur / ammoMax : 0;
-  const isEmpty = cur === 0;
-  const isLow = cur > 0 && cur <= 10;
-  const barColor = isEmpty || isLow ? "#ff5c6c" : typeDef.color;
-
-  const handleClick = () => {
-    state.hangarTab = "loadout";
-    bump();
-  };
-
-  return (
-    <div className="absolute z-30" style={{ bottom: 56, right: 12 }}>
-      <div
-        className="panel px-2 py-1"
-        style={{
-          borderColor: barColor,
-          boxShadow: (isEmpty || isLow) ? `0 0 8px ${barColor}66` : undefined,
-          minWidth: 148,
-          cursor: "pointer",
-          animation: isLow ? "hud-pulse 1s ease-in-out infinite" : undefined,
-        }}
-        title="Click to go to Ammo tab when docked"
-        onClick={handleClick}
-      >
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-[9px] tracking-widest truncate" style={{ color: typeDef.color }}>
-            {typeDef.glyph} {typeDef.shortName} AMMO
-          </div>
-          <div className="text-[10px] font-bold tabular-nums" style={{ color: barColor }}>
-            {isEmpty ? "EMPTY" : isLow ? `${cur} LOW` : cur}
-            <span className="text-mute text-[8px]">/{ammoMax}</span>
-          </div>
-        </div>
-        <div className="mt-0.5 h-1" style={{ background: "rgba(255,255,255,0.08)" }}>
-          <div
-            className="h-full"
-            style={{ width: `${pct * 100}%`, background: barColor, transition: "width 0.2s" }}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function Title() {
   return (
@@ -464,18 +409,28 @@ function GameApp() {
         state.showMap = false;
         state.showClan = false;
         state.showAmmoSelector = false;
+        state.showRocketAmmoSelector = false;
         state.showFullZoneMap = false;
         bump();
       } else if (e.key === "1") {
         if (!state.dockedAt) {
           if (state.selectedWorldTarget?.kind === "enemy") {
-            state.isAttacking = !state.isAttacking;
+            state.isLaserFiring = !state.isLaserFiring;
+            state.isAttacking = state.isLaserFiring || state.isRocketFiring;
             bump();
           }
         }
-      } else if (e.key >= "2" && e.key <= "9") {
+      } else if (e.key === "2") {
         if (!state.dockedAt) {
-          useConsumable(parseInt(e.key) - 2);
+          if (state.selectedWorldTarget?.kind === "enemy") {
+            state.isRocketFiring = !state.isRocketFiring;
+            state.isAttacking = state.isLaserFiring || state.isRocketFiring;
+            bump();
+          }
+        }
+      } else if (e.key >= "3" && e.key <= "9") {
+        if (!state.dockedAt) {
+          useConsumable(parseInt(e.key) - 3);
         }
       }
     };
@@ -504,7 +459,7 @@ function GameApp() {
       <Notifications />
       <DungeonHud />
       <QuestTracker />
-      <AmmoHud />
+      <BattleLog />
       {showSocial && <SocialPanel />}
       <ClanPanel />
       <GalaxyMap />

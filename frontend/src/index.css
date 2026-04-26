@@ -11,9 +11,9 @@
   --accent-amber: #ffd24a;
   --accent-green: #5cff8a;
   --accent-red: #ff5c6c;
-  --text-bright: #e8f0ff;
-  --text-dim: #8a9ac8;
-  --text-mute: #5a6a98;
+  --text-bright: #ffffff;
+  --text-dim: #d0d8f0;
+  --text-mute: #a0b0d8;
 }
 
 * {
@@ -63,6 +63,10 @@ button {
 @keyframes hud-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.55; }
+}
+@keyframes attack-pulse {
+  0%, 100% { box-shadow: 0 0 14px #ff3b4d, 0 0 28px #ff3b4d44; }
+  50% { box-shadow: 0 0 20px #ff5c6c, 0 0 40px #ff3b4d88; }
 }
 
 @keyframes fadeInDown {
