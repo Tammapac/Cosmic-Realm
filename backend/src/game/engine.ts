@@ -13,6 +13,9 @@ import type { OnlinePlayer } from "../socket/state.js";
 // ── CULLING ──────────────────────────────────────────────────────────────
 
 const CULL_RADIUS = 2000;
+const MOVE_STOP_DISTANCE = 10;
+const MOVE_SNAP_DISTANCE = 18;
+const MOVE_IDLE_SPEED = 8;
 
 function inView(px: number, py: number, ex: number, ey: number): boolean {
   const dx = px - ex;
@@ -457,15 +460,28 @@ export class GameEngine {
     return events;
   }
 
-  // ── SERVER-AUTHORITATIVE PLAYER MOVEMENT ────────────────────────────────
-
   private tickPlayerMovement(players: OnlinePlayer[], dt: number): void {
+    const stopDistanceSq = MOVE_STOP_DISTANCE * MOVE_STOP_DISTANCE;
+    const snapDistanceSq = MOVE_SNAP_DISTANCE * MOVE_SNAP_DISTANCE;
+    const idleSpeedSq = MOVE_IDLE_SPEED * MOVE_IDLE_SPEED;
+
     for (const p of players) {
       if (p.targetX !== null && p.targetY !== null) {
         const dx = p.targetX - p.posX;
         const dy = p.targetY - p.posY;
-        const d = Math.sqrt(dx * dx + dy * dy);
-        if (d > 6) {
+        const distSqToTarget = dx * dx + dy * dy;
+
+        if (distSqToTarget <= stopDistanceSq) {
+          if (distSqToTarget <= snapDistanceSq) {
+            p.posX = p.targetX;
+            p.posY = p.targetY;
+          }
+          p.targetX = null;
+          p.targetY = null;
+          p.velX = 0;
+          p.velY = 0;
+        } else {
+          const d = Math.sqrt(distSqToTarget);
           const toAngle = Math.atan2(dy, dx);
           if (d > 40) p.angle = toAngle;
           const accel = p.speed * 4;
@@ -473,7 +489,6 @@ export class GameEngine {
           p.velY += Math.sin(toAngle) * accel * dt;
         }
       }
-      // Speed cap
       const v = Math.sqrt(p.velX * p.velX + p.velY * p.velY);
       const now = Date.now() / 1000;
       const speedCap = p.afterburnUntil > now ? p.speed * 3 : p.speed;
@@ -481,18 +496,35 @@ export class GameEngine {
         p.velX = (p.velX / v) * speedCap;
         p.velY = (p.velY / v) * speedCap;
       }
-      // Frame-rate independent friction (normalized to match 0.96 per frame at 60fps)
       const friction = Math.pow(0.96, dt * 60);
       p.velX *= friction;
       p.velY *= friction;
-      // Position update
       p.posX += p.velX * dt;
       p.posY += p.velY * dt;
-      // Clamp to map
+
+      const speedSq = p.velX * p.velX + p.velY * p.velY;
+      if (speedSq <= idleSpeedSq) {
+        p.velX = 0;
+        p.velY = 0;
+      }
+
+      if (p.targetX !== null && p.targetY !== null) {
+        const dx = p.targetX - p.posX;
+        const dy = p.targetY - p.posY;
+        const distSqToTarget = dx * dx + dy * dy;
+        if (distSqToTarget <= snapDistanceSq && (p.velX * p.velX + p.velY * p.velY) <= idleSpeedSq) {
+          p.posX = p.targetX;
+          p.posY = p.targetY;
+          p.targetX = null;
+          p.targetY = null;
+          p.velX = 0;
+          p.velY = 0;
+        }
+      }
+
       p.posX = clamp(p.posX, -MAP_RADIUS, MAP_RADIUS);
       p.posY = clamp(p.posY, -MAP_RADIUS, MAP_RADIUS);
 
-      // Face attack target
       if (p.attackTargetId) {
         const zs = this.zones.get(p.zone);
         if (zs) {
