@@ -403,7 +403,9 @@ function GameApp() {
           const sid = String(t.id);
           const o = state.others.find((op) => op.id === sid);
           if (o) {
-            o.pos.x = t.x; o.pos.y = t.y;
+            const lerpFactor = 0.35;
+            o.pos.x += (t.x - o.pos.x) * lerpFactor;
+            o.pos.y += (t.y - o.pos.y) * lerpFactor;
             o.vel.x = t.vx; o.vel.y = t.vy;
             o.angle = t.a;
           }
@@ -411,7 +413,10 @@ function GameApp() {
         for (const et of payload.enemies) {
           const e = state.enemies.find((en) => en.id === et.id);
           if (e) {
-            e.pos.x = et.x; e.pos.y = et.y;
+            // Lerp position toward server value for smooth interpolation
+            const lerpFactor = 0.35;
+            e.pos.x += (et.x - e.pos.x) * lerpFactor;
+            e.pos.y += (et.y - e.pos.y) * lerpFactor;
             e.vel.x = et.vx; e.vel.y = et.vy;
             e.angle = et.a; e.hull = et.hp; e.hullMax = et.hpMax;
             if (et.isBoss !== undefined) e.isBoss = et.isBoss;
@@ -422,7 +427,9 @@ function GameApp() {
         for (const nt of payload.npcs) {
           const n = state.npcShips.find((ns) => ns.id === nt.id);
           if (n) {
-            n.pos.x = nt.x; n.pos.y = nt.y;
+            const lerpFactor = 0.35;
+            n.pos.x += (nt.x - n.pos.x) * lerpFactor;
+            n.pos.y += (nt.y - n.pos.y) * lerpFactor;
             n.vel.x = nt.vx; n.vel.y = nt.vy;
             n.angle = nt.a; n.hull = nt.hp; n.hullMax = nt.hpMax;
             n.state = nt.state as any;
