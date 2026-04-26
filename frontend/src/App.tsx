@@ -26,6 +26,7 @@ import {
   onServerZoneEnemies, onServerZoneAsteroids, onServerZoneNpcs,
   onNpcSpawn, onNpcDie,
   onWelcome, onDelta, onSnapshot, onPlayerHitFromServer,
+  onLaserFireFromServer, onRocketFireFromServer,
 } from "./game/loop";
 
 function GameCanvas() {
@@ -416,8 +417,8 @@ function GameApp() {
       onBossWarn: () => onBossWarn(),
       onNpcSpawn: (npc: ServerNpc) => onNpcSpawn(npc),
       onNpcDie: (data) => onNpcDie(data),
-      onLaserFire: (_event) => {},
-      onRocketFire: (_event) => {},
+      onLaserFire: (event) => onLaserFireFromServer(event),
+      onRocketFire: (event) => onRocketFireFromServer(event),
     });
     return () => setSocketListeners({});
   }, []);

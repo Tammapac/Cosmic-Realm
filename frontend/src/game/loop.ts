@@ -13,7 +13,7 @@ import {
   rankFor,
 } from "./types";
 import { sfx } from "./sound";
-import { type ServerEnemy, type ServerAsteroid, type ServerNpc, type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent, type DeltaPayload, type SnapshotPayload, type WelcomePayload, type DeltaEntity } from "../net/socket";
+import { type ServerEnemy, type ServerAsteroid, type ServerNpc, type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent, type DeltaPayload, type SnapshotPayload, type WelcomePayload, type DeltaEntity, type LaserFireEvent, type RocketFireEvent } from "../net/socket";
 
 // Returns the equipped weapon's color (used for laser projectiles)
 function equippedWeaponColor(): string {
@@ -909,14 +909,34 @@ function tickWorld(dt: number): void {
   }
 
   // ── Player movement
-  const dx = state.cameraTarget.x - p.pos.x;
-  const dy = state.cameraTarget.y - p.pos.y;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist > 6) {
-    p.angle = Math.atan2(dy, dx);
-    const accel = stats.speed * 4;
-    p.vel.x += Math.cos(p.angle) * accel * dt;
-    p.vel.y += Math.sin(p.angle) * accel * dt;
+  if (!serverAuthoritative) {
+    const dx = state.cameraTarget.x - p.pos.x;
+    const dy = state.cameraTarget.y - p.pos.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > 6) {
+      p.angle = Math.atan2(dy, dx);
+      const accel = stats.speed * 4;
+      p.vel.x += Math.cos(p.angle) * accel * dt;
+      p.vel.y += Math.sin(p.angle) * accel * dt;
+    }
+    const v = Math.sqrt(p.vel.x * p.vel.x + p.vel.y * p.vel.y);
+    const speedCap = state.afterburnUntil > state.tick ? stats.speed * 3 : stats.speed;
+    if (v > speedCap) {
+      p.vel.x = (p.vel.x / v) * speedCap;
+      p.vel.y = (p.vel.y / v) * speedCap;
+    }
+    p.vel.x *= 0.96;
+    p.vel.y *= 0.96;
+    p.pos.x += p.vel.x * dt;
+    p.pos.y += p.vel.y * dt;
+  } else {
+    // Server owns position; just interpolate with server velocity between deltas
+    p.pos.x += p.vel.x * dt;
+    p.pos.y += p.vel.y * dt;
+    // Face movement direction
+    if (Math.abs(p.vel.x) > 1 || Math.abs(p.vel.y) > 1) {
+      p.angle = Math.atan2(p.vel.y, p.vel.x);
+    }
   }
   // Face attack target when fighting (DarkOrbit style)
   if ((state.isLaserFiring || state.isRocketFiring) && state.attackTargetId) {
@@ -925,16 +945,6 @@ function tickWorld(dt: number): void {
       p.angle = Math.atan2(atk.pos.y - p.pos.y, atk.pos.x - p.pos.x);
     }
   }
-  const v = Math.sqrt(p.vel.x * p.vel.x + p.vel.y * p.vel.y);
-  const speedCap = state.afterburnUntil > state.tick ? stats.speed * 3 : stats.speed;
-  if (v > speedCap) {
-    p.vel.x = (p.vel.x / v) * speedCap;
-    p.vel.y = (p.vel.y / v) * speedCap;
-  }
-  p.vel.x *= 0.96;
-  p.vel.y *= 0.96;
-  p.pos.x += p.vel.x * dt;
-  p.pos.y += p.vel.y * dt;
 
   // ── Engine particles + 16-bit trail + thruster sound
   const cls = SHIP_CLASSES[p.shipClass];
@@ -1001,15 +1011,24 @@ function tickWorld(dt: number): void {
   const LEASH_RANGE = 800;
   const MIN_DIST = 60;
   for (const e of state.enemies) {
-    const exd = p.pos.x - e.pos.x;
-    const eyd = p.pos.y - e.pos.y;
-    let ed = Math.sqrt(exd * exd + eyd * eyd);
-    e.angle = Math.atan2(eyd, exd);
     if (e.hitFlash !== undefined && e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt * 4);
     if (e.combo) {
       e.combo.ttl -= dt;
       if (e.combo.ttl <= 0) e.combo = undefined;
     }
+    if (serverAuthoritative) {
+      // Server owns enemy positions; just interpolate with velocity
+      e.pos.x += e.vel.x * dt;
+      e.pos.y += e.vel.y * dt;
+      if (Math.abs(e.vel.x) > 1 || Math.abs(e.vel.y) > 1) {
+        e.angle = Math.atan2(e.vel.y, e.vel.x);
+      }
+      continue;
+    }
+    const exd = p.pos.x - e.pos.x;
+    const eyd = p.pos.y - e.pos.y;
+    let ed = Math.sqrt(exd * exd + eyd * eyd);
+    e.angle = Math.atan2(eyd, exd);
     // EMP stun: skip AI while stunned
     if (e.stunUntil !== undefined && e.stunUntil > state.tick) {
       e.vel.x *= 0.85; e.vel.y *= 0.85;
@@ -1605,7 +1624,7 @@ function tickWorld(dt: number): void {
         }
       }
       if (distance(pr.pos.x, pr.pos.y, p.pos.x, p.pos.y) < 12) {
-        damagePlayer(pr.damage);
+        if (!serverAuthoritative) damagePlayer(pr.damage);
         return false;
       }
     }
@@ -1650,21 +1669,33 @@ function tickWorld(dt: number): void {
   for (const ev of state.events) ev.ttl -= dt;
   state.events = state.events.filter((ev) => ev.ttl > 0);
 
-  // ── AI other players drift
-  aiUpdateTimer -= dt;
-  if (aiUpdateTimer <= 0) {
+  // ── Other players movement
+  if (serverAuthoritative) {
+    // Server sends positions via delta/snapshot; interpolate with velocity
     for (const o of state.others) {
-      if (Math.random() < 0.3) {
-        o.vel.x = (Math.random() - 0.5) * 100;
-        o.vel.y = (Math.random() - 0.5) * 100;
+      o.pos.x += o.vel.x * dt;
+      o.pos.y += o.vel.y * dt;
+      if (Math.abs(o.vel.x) > 1 || Math.abs(o.vel.y) > 1) {
         o.angle = Math.atan2(o.vel.y, o.vel.x);
       }
     }
-    aiUpdateTimer = 2;
-  }
-  for (const o of state.others) {
-    o.pos.x += o.vel.x * dt;
-    o.pos.y += o.vel.y * dt;
+  } else {
+    // AI drift (singleplayer fallback)
+    aiUpdateTimer -= dt;
+    if (aiUpdateTimer <= 0) {
+      for (const o of state.others) {
+        if (Math.random() < 0.3) {
+          o.vel.x = (Math.random() - 0.5) * 100;
+          o.vel.y = (Math.random() - 0.5) * 100;
+          o.angle = Math.atan2(o.vel.y, o.vel.x);
+        }
+      }
+      aiUpdateTimer = 2;
+    }
+    for (const o of state.others) {
+      o.pos.x += o.vel.x * dt;
+      o.pos.y += o.vel.y * dt;
+    }
   }
 
   // ── Auto chat chatter
@@ -1941,7 +1972,9 @@ export function onEnemyAttack(data: EnemyAttackEvent): void {
   fireProjectile("enemy", data.pos.x, data.pos.y,
     Math.atan2(data.targetPos.y - data.pos.y, data.targetPos.x - data.pos.x),
     data.damage, "#ff5c6c", 3);
-  damagePlayer(data.damage);
+  if (!serverAuthoritative) {
+    damagePlayer(data.damage);
+  }
 }
 
 export function onAsteroidMine(data: { asteroidId: string; hp: number; hpMax: number }): void {
@@ -2016,6 +2049,27 @@ export function onNpcDie(data: { npcId: string }): void {
   state.npcShips = state.npcShips.filter((ns) => ns.id !== data.npcId);
 }
 
+export function onLaserFireFromServer(data: LaserFireEvent): void {
+  if (data.attackerId === serverPlayerId) return;
+  const attacker = state.others.find(o => o.id === String(data.attackerId));
+  const target = state.enemies.find(e => e.id === data.targetId);
+  if (!attacker || !target) return;
+  const angle = Math.atan2(target.pos.y - attacker.pos.y, target.pos.x - attacker.pos.x);
+  fireProjectile("player", attacker.pos.x, attacker.pos.y, angle, data.damage, "#4ee2ff", 3);
+  if (data.crit) {
+    emitSpark(target.pos.x, target.pos.y, "#ffee00", 6, 120, 3);
+  }
+}
+
+export function onRocketFireFromServer(data: RocketFireEvent): void {
+  if (data.attackerId === serverPlayerId) return;
+  const angle = Math.atan2(data.targetPos.y - data.pos.y, data.targetPos.x - data.pos.x);
+  fireProjectile("player", data.pos.x, data.pos.y, angle, data.damage, "#ff8844", 4, { speedMul: 0.7 });
+  if (data.crit) {
+    emitSpark(data.targetPos.x, data.targetPos.y, "#ffee00", 6, 120, 3);
+  }
+}
+
 function serverEnemyToLocal(se: ServerEnemy): Enemy {
   return {
     id: se.id,
@@ -2041,6 +2095,7 @@ function serverEnemyToLocal(se: ServerEnemy): Enemy {
 
 let serverConfig = { tickRate: 25, friction: 0.96, frictionRefFps: 60 };
 export let serverAuthoritative = false;
+let serverPlayerId = 0;
 
 export function onWelcome(data: WelcomePayload): void {
   serverConfig = {
@@ -2048,6 +2103,7 @@ export function onWelcome(data: WelcomePayload): void {
     friction: data.friction,
     frictionRefFps: data.frictionRefFps,
   };
+  serverPlayerId = data.playerId;
   serverAuthoritative = true;
 }
 
