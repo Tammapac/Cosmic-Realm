@@ -123,7 +123,8 @@ export type GameEvent =
   | { type: "boss:warn"; zone: string }
   | { type: "npc:spawn"; zone: string; npc: ClientNpc }
   | { type: "npc:die"; zone: string; npcId: string }
-  | { type: "player:hit"; playerId: number; damage: number; zone: string };
+  | { type: "player:hit"; playerId: number; damage: number; zone: string }
+  | { type: "projectile:spawn"; zone: string; fromPlayerId: number; x: number; y: number; vx: number; vy: number; damage: number; color: string; size: number; crit: boolean; weaponKind: "laser" | "rocket"; homing: boolean };
 
 export type ClientEnemy = {
   id: string;
@@ -537,6 +538,12 @@ export class GameEngine {
             armorPiercing: false,
           };
           zs.projectiles.set(proj.id, proj);
+          events.push({
+            type: "projectile:spawn", zone: zoneId, fromPlayerId: p.playerId,
+            x: proj.pos.x, y: proj.pos.y, vx: proj.vel.x, vy: proj.vel.y,
+            damage: proj.damage, color: proj.color, size: proj.size,
+            crit: proj.crit, weaponKind: proj.weaponKind, homing: proj.homing,
+          });
         }
 
         const cd = Math.max(0.2, 0.85 / stats.fireRate);
@@ -572,6 +579,12 @@ export class GameEngine {
           armorPiercing: false,
         };
         zs.projectiles.set(proj.id, proj);
+        events.push({
+          type: "projectile:spawn", zone: zoneId, fromPlayerId: p.playerId,
+          x: proj.pos.x, y: proj.pos.y, vx: proj.vel.x, vy: proj.vel.y,
+          damage: proj.damage, color: proj.color, size: proj.size,
+          crit: proj.crit, weaponKind: proj.weaponKind, homing: proj.homing,
+        });
 
         const rCd = 1.5 / (stats.fireRate * 0.5);
         p.rocketFireCd = rCd;

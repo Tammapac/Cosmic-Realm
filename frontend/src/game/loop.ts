@@ -134,11 +134,7 @@ function spawnNpcShip(): void {
 
 function updateNpcShips(dt: number): void {
   if (serverEnemiesReceived && !state.dungeon) {
-    // Server-authoritative: just drift by velocity, no local AI
-    for (const npc of state.npcShips) {
-      npc.pos.x += npc.vel.x * dt;
-      npc.pos.y += npc.vel.y * dt;
-    }
+    // Server-authoritative: positions come from onServerState, no local movement
     return;
   }
   // Local fallback: full NPC AI
@@ -936,11 +932,7 @@ function tickWorld(dt: number): void {
     p.pos.x += p.vel.x * dt;
     p.pos.y += p.vel.y * dt;
   }
-  // When server-authoritative: position comes from onServerState, just drift by vel for smoothness
-  if (serverEnemiesReceived && !state.dungeon) {
-    p.pos.x += p.vel.x * dt;
-    p.pos.y += p.vel.y * dt;
-  }
+  // When server-authoritative: position comes from onServerState lerp, no local extrapolation
 
   // ── Engine particles + 16-bit trail + thruster sound
   const cls = SHIP_CLASSES[p.shipClass];
@@ -1007,12 +999,10 @@ function tickWorld(dt: number): void {
 
   // ── Update enemies
   if (serverEnemiesReceived && !state.dungeon) {
-    // Server-authoritative: just drift by velocity from last server tick, no local AI
+    // Server-authoritative: positions come from onServerState, just decay local VFX timers
     for (const e of state.enemies) {
       if (e.hitFlash !== undefined && e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt * 4);
       if (e.combo) { e.combo.ttl -= dt; if (e.combo.ttl <= 0) e.combo = undefined; }
-      e.pos.x += e.vel.x * dt;
-      e.pos.y += e.vel.y * dt;
     }
   } else {
     // Local fallback: full AI (patrol, aggro, firing)
@@ -1415,6 +1405,8 @@ function tickWorld(dt: number): void {
         emitRing(pr.pos.x, pr.pos.y, pr.color);
       }
     }
+    // Server-authoritative: skip local collision, server handles all damage via events
+    if (serverHandlesProjectiles) return pr.ttl > 0;
     if (pr.fromPlayer) {
       // hit enemies
       for (const e of state.enemies) {
@@ -2076,7 +2068,7 @@ export function onServerState(s: ServerState): void {
   if (state.dungeon) return;
 
   const p = state.player;
-  const lerpFactor = 0.35;
+  const lerpFactor = 0.5;
 
   // Server-authoritative player position
   p.pos.x += (s.self.x - p.pos.x) * lerpFactor;
@@ -2166,38 +2158,7 @@ export function onServerState(s: ServerState): void {
   }
   state.npcShips = state.npcShips.filter((n) => seenNpcIds.has(n.id));
 
-  // Projectiles: replace entirely from server state
-  const seenProjIds = new Set<string>();
-  for (const sp of s.projectiles) {
-    seenProjIds.add(sp.id);
-    const existing = state.projectiles.find((pr) => (pr as any).serverId === sp.id);
-    if (existing) {
-      existing.pos.x += (sp.x - existing.pos.x) * 0.5;
-      existing.pos.y += (sp.y - existing.pos.y) * 0.5;
-      existing.vel.x = sp.vx;
-      existing.vel.y = sp.vy;
-    } else {
-      state.projectiles.push({
-        id: `sp-${sp.id}`,
-        pos: { x: sp.x, y: sp.y },
-        vel: { x: sp.vx, y: sp.vy },
-        damage: sp.damage,
-        ttl: 3,
-        fromPlayer: sp.fromPlayer,
-        color: sp.color,
-        size: sp.size,
-        crit: sp.crit,
-        weaponKind: sp.weaponKind,
-        homing: sp.homing,
-        serverId: sp.id,
-      } as any);
-    }
-  }
-  state.projectiles = state.projectiles.filter((pr) => {
-    const sid = (pr as any).serverId;
-    if (sid) return seenProjIds.has(sid);
-    return pr.ttl > 0; // Keep local-only projectiles (dungeon etc.)
-  });
+  // Projectiles: handled via events (projectile:spawn, enemy:attack), not per-tick state
 
   // Asteroids: sent once on connection/warp, updated via mine/destroy/respawn events
   // Only sync if server includes them (not in per-tick state)
@@ -2227,6 +2188,14 @@ export function onServerState(s: ServerState): void {
 
 export function onPlayerHit(data: PlayerHitEvent): void {
   damagePlayer(data.damage);
+}
+
+export function onProjectileSpawn(data: { x: number; y: number; vx: number; vy: number; damage: number; color: string; size: number; crit: boolean; weaponKind: "laser" | "rocket"; homing: boolean; fromPlayer: boolean }): void {
+  if (state.dungeon) return;
+  const ang = Math.atan2(data.vy, data.vx);
+  fireProjectile(data.fromPlayer ? "player" : "enemy",
+    data.x, data.y, ang, data.damage, data.color, data.size,
+    { weaponKind: data.weaponKind, homing: data.homing });
 }
 
 function serverEnemyToLocal(se: ServerEnemy): Enemy {

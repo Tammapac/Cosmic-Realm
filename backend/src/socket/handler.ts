@@ -293,7 +293,6 @@ export function setupSocket(io: Server) {
           players: nearbyPlayers,
           enemies: culled.enemies,
           npcs: culled.npcs,
-          projectiles: culled.projectiles,
         });
       }
     }
@@ -369,6 +368,21 @@ function broadcastEvents(io: Server, events: GameEvent[]): void {
       case "npc:die":
         io.to(`zone:${ev.zone}`).emit("npc:die", { npcId: ev.npcId });
         break;
+      case "projectile:spawn": {
+        const source = getPlayer(ev.fromPlayerId);
+        if (source) {
+          const sock = io.sockets.sockets.get(source.socketId);
+          if (sock) {
+            sock.to(`zone:${ev.zone}`).emit("projectile:spawn", {
+              x: ev.x, y: ev.y, vx: ev.vx, vy: ev.vy,
+              damage: ev.damage, color: ev.color, size: ev.size,
+              crit: ev.crit, weaponKind: ev.weaponKind, homing: ev.homing,
+              fromPlayer: true,
+            });
+          }
+        }
+        break;
+      }
       default:
         break;
     }
