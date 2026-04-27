@@ -2215,11 +2215,7 @@ export function onDelta(data: DeltaPayload): void {
   const p = state.player;
   const self = data.self;
 
-  console.log(`[DELTA-RCV] t:${data.tick} BEFORE pos:(${Math.round(p.pos.x)},${Math.round(p.pos.y)}) target:(${Math.round(_selfTarget.x)},${Math.round(_selfTarget.y)})`);
-
   setSelfTarget(self.x, self.y, self.vx, self.vy);
-
-  console.log(`[DELTA-RCV] t:${data.tick} AFTER target:(${Math.round(self.x)},${Math.round(self.y)}) updates:${data.addOrUpdate.length} rem:${data.removals.length}`);
 
   if (state.playerRespawnTimer <= 0) {
     p.hull = self.hp;
@@ -2243,11 +2239,7 @@ export function onSnapshot(data: SnapshotPayload): void {
   const p = state.player;
   const self = data.self;
 
-  console.log(`[SNAP-RCV] t:${data.tick} BEFORE pos:(${Math.round(p.pos.x)},${Math.round(p.pos.y)}) target:(${Math.round(_selfTarget.x)},${Math.round(_selfTarget.y)})`);
-
   setSelfTarget(self.x, self.y, self.vx, self.vy);
-
-  console.log(`[SNAP-RCV] t:${data.tick} AFTER target:(${Math.round(self.x)},${Math.round(self.y)}) ent:${data.entities.length}`);
 
   if (state.playerRespawnTimer <= 0) {
     p.hull = self.hp;
