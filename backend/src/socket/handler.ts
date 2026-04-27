@@ -343,6 +343,7 @@ export function setupSocket(io: Server) {
 
           if (shouldSendSnapshot) {
             // Full snapshot for resync
+            console.log(`[SNAP] t:${tickCounter} p:${p.playerId} pos:(${Math.round(selfData.x)},${Math.round(selfData.y)}) ent:${entities.length}`);
             sock.emit("snapshot", {
               tick: tickCounter,
               self: selfData,
@@ -391,15 +392,14 @@ export function setupSocket(io: Server) {
               }
             }
 
-            // Only send delta if there are changes
-            if (addOrUpdate.length > 0 || removals.length > 0) {
-              sock.emit("delta", {
-                tick: tickCounter,
-                self: selfData,
-                addOrUpdate,
-                removals,
-              });
-            }
+            // ALWAYS send delta (includes self position even if no entity changes)
+            console.log(`[DELTA] t:${tickCounter} p:${p.playerId} pos:(${Math.round(selfData.x)},${Math.round(selfData.y)}) updates:${addOrUpdate.length} rem:${removals.length}`);
+            sock.emit("delta", {
+              tick: tickCounter,
+              self: selfData,
+              addOrUpdate,
+              removals,
+            });
 
             // Update stored state
             const entityMap = new Map<string, EntitySnapshot>();
