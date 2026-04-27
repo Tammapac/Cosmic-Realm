@@ -13,10 +13,10 @@ import {
   getAllZones,
 } from "./state.js";
 import { GameEngine, computeStats, type GameEvent } from "../game/engine.js";
+import { MOVEMENT } from "../../../lib/game-constants.js";
 
-const TICK_RATE = 30;
 const CULL_RADIUS = 2000;
-const FIXED_DT = 1 / TICK_RATE;
+const FIXED_DT = 1 / MOVEMENT.SERVER_TICK_RATE;
 
 export function setupSocket(io: Server) {
   const engine = new GameEngine();
@@ -101,8 +101,8 @@ export function setupSocket(io: Server) {
 
     socket.emit("welcome", {
       playerId: dbPlayer.id,
-      tickRate: TICK_RATE,
-      friction: 0.96,
+      tickRate: MOVEMENT.SERVER_TICK_RATE,
+      friction: MOVEMENT.FRICTION_PER_60FPS_FRAME,
       frictionRefFps: 60,
     });
 
@@ -254,7 +254,7 @@ export function setupSocket(io: Server) {
     });
   });
 
-  const TICK_MS = 1000 / TICK_RATE;
+  const TICK_MS = 1000 / MOVEMENT.SERVER_TICK_RATE;
   const CULL_RADIUS_SQ = CULL_RADIUS * CULL_RADIUS;
   let nextTickAt = Date.now() + TICK_MS;
   let tickCounter = 0;

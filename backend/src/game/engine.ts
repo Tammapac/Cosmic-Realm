@@ -9,13 +9,11 @@ import {
   MINING_RANGE, MINING_DPS_FACTOR,
 } from "./data.js";
 import type { OnlinePlayer } from "../socket/state.js";
+import { MOVEMENT } from "../../../lib/game-constants.js";
 
 // ── CULLING ──────────────────────────────────────────────────────────────
 
 const CULL_RADIUS = 2000;
-const MOVE_STOP_DISTANCE = 10;
-const MOVE_SNAP_DISTANCE = 18;
-const MOVE_IDLE_SPEED = 8;
 
 function inView(px: number, py: number, ex: number, ey: number): boolean {
   const dx = px - ex;
@@ -461,9 +459,9 @@ export class GameEngine {
   }
 
   private tickPlayerMovement(players: OnlinePlayer[], dt: number): void {
-    const stopDistanceSq = MOVE_STOP_DISTANCE * MOVE_STOP_DISTANCE;
-    const snapDistanceSq = MOVE_SNAP_DISTANCE * MOVE_SNAP_DISTANCE;
-    const idleSpeedSq = MOVE_IDLE_SPEED * MOVE_IDLE_SPEED;
+    const stopDistanceSq = MOVEMENT.STOP_DISTANCE * MOVEMENT.STOP_DISTANCE;
+    const snapDistanceSq = MOVEMENT.SNAP_DISTANCE * MOVEMENT.SNAP_DISTANCE;
+    const idleSpeedSq = MOVEMENT.IDLE_SPEED * MOVEMENT.IDLE_SPEED;
 
     for (const p of players) {
       if (p.targetX !== null && p.targetY !== null) {
@@ -484,19 +482,19 @@ export class GameEngine {
           const d = Math.sqrt(distSqToTarget);
           const toAngle = Math.atan2(dy, dx);
           if (d > 40) p.angle = toAngle;
-          const accel = p.speed * 4;
+          const accel = p.speed * MOVEMENT.ACCELERATION_MULTIPLIER;
           p.velX += Math.cos(toAngle) * accel * dt;
           p.velY += Math.sin(toAngle) * accel * dt;
         }
       }
       const v = Math.sqrt(p.velX * p.velX + p.velY * p.velY);
       const now = Date.now() / 1000;
-      const speedCap = p.afterburnUntil > now ? p.speed * 3 : p.speed;
+      const speedCap = p.afterburnUntil > now ? p.speed * MOVEMENT.AFTERBURN_MULTIPLIER : p.speed;
       if (v > speedCap) {
         p.velX = (p.velX / v) * speedCap;
         p.velY = (p.velY / v) * speedCap;
       }
-      const friction = Math.pow(0.96, dt * 60);
+      const friction = Math.pow(MOVEMENT.FRICTION_PER_60FPS_FRAME, dt * 60);
       p.velX *= friction;
       p.velY *= friction;
       p.posX += p.velX * dt;

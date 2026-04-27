@@ -14,6 +14,7 @@ import {
 } from "./types";
 import { sfx } from "./sound";
 import { type ServerEnemy, type ServerAsteroid, type ServerNpc, type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent, type DeltaPayload, type SnapshotPayload, type WelcomePayload, type DeltaEntity, type LaserFireEvent, type RocketFireEvent, type ProjectileSpawnEvent } from "../net/socket";
+import { MOVEMENT, NETCODE } from "../../../lib/game-constants";
 
 // Returns the equipped weapon's color (used for laser projectiles)
 function equippedWeaponColor(): string {
@@ -916,20 +917,20 @@ function tickWorld(dt: number): void {
     const dx = state.cameraTarget.x - p.pos.x;
     const dy = state.cameraTarget.y - p.pos.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist > 6) {
+    if (dist > MOVEMENT.STOP_DISTANCE) {
       p.angle = Math.atan2(dy, dx);
-      const accel = stats.speed * 4;
+      const accel = stats.speed * MOVEMENT.ACCELERATION_MULTIPLIER;
       p.vel.x += Math.cos(p.angle) * accel * dt;
       p.vel.y += Math.sin(p.angle) * accel * dt;
     }
     const v = Math.sqrt(p.vel.x * p.vel.x + p.vel.y * p.vel.y);
-    const speedCap = state.afterburnUntil > state.tick ? stats.speed * 3 : stats.speed;
+    const speedCap = state.afterburnUntil > state.tick ? stats.speed * MOVEMENT.AFTERBURN_MULTIPLIER : stats.speed;
     if (v > speedCap) {
       p.vel.x = (p.vel.x / v) * speedCap;
       p.vel.y = (p.vel.y / v) * speedCap;
     }
-    p.vel.x *= 0.96;
-    p.vel.y *= 0.96;
+    p.vel.x *= MOVEMENT.FRICTION_PER_60FPS_FRAME;
+    p.vel.y *= MOVEMENT.FRICTION_PER_60FPS_FRAME;
     p.pos.x += p.vel.x * dt;
     p.pos.y += p.vel.y * dt;
   } else {
@@ -2125,9 +2126,7 @@ export let serverAuthoritative = false;
 let serverPlayerId = 0;
 let _deltaCount = 0;
 
-const SELF_LERP_RATE = 18;
-const ENTITY_LERP_RATE = 14;
-const SELF_SNAP_DIST_SQ = 250 * 250;
+const ENTITY_LERP_RATE = NETCODE.INTERPOLATION_FACTOR;
 
 type RenderTarget = { x: number; y: number; vx: number; vy: number };
 const _selfTarget: RenderTarget & { set: boolean } = { x: 0, y: 0, vx: 0, vy: 0, set: false };
@@ -2156,39 +2155,39 @@ function applyServerSmoothing(dt: number): void {
     const p = state.player;
     const dx = _selfTarget.x - p.pos.x;
     const dy = _selfTarget.y - p.pos.y;
-    if (dx * dx + dy * dy > SELF_SNAP_DIST_SQ) {
+    // Snap if too far (prevents desyncs from accumulating)
+    const snapThreshold = 250;
+    if (dx * dx + dy * dy > snapThreshold * snapThreshold) {
       p.pos.x = _selfTarget.x;
       p.pos.y = _selfTarget.y;
     } else {
-      const t = Math.min(1, SELF_LERP_RATE * dt);
-      p.pos.x += dx * t;
-      p.pos.y += dy * t;
+      p.pos.x += dx * NETCODE.INTERPOLATION_FACTOR;
+      p.pos.y += dy * NETCODE.INTERPOLATION_FACTOR;
     }
     p.vel.x = _selfTarget.vx;
     p.vel.y = _selfTarget.vy;
   }
-  const t = Math.min(1, ENTITY_LERP_RATE * dt);
   for (const o of state.others) {
     const tgt = _entityTargets.get(`p-${o.id}`);
     if (!tgt) continue;
-    o.pos.x += (tgt.x - o.pos.x) * t;
-    o.pos.y += (tgt.y - o.pos.y) * t;
+    o.pos.x += (tgt.x - o.pos.x) * NETCODE.INTERPOLATION_FACTOR;
+    o.pos.y += (tgt.y - o.pos.y) * NETCODE.INTERPOLATION_FACTOR;
     o.vel.x = tgt.vx;
     o.vel.y = tgt.vy;
   }
   for (const e of state.enemies) {
     const tgt = _entityTargets.get(e.id);
     if (!tgt) continue;
-    e.pos.x += (tgt.x - e.pos.x) * t;
-    e.pos.y += (tgt.y - e.pos.y) * t;
+    e.pos.x += (tgt.x - e.pos.x) * NETCODE.INTERPOLATION_FACTOR;
+    e.pos.y += (tgt.y - e.pos.y) * NETCODE.INTERPOLATION_FACTOR;
     e.vel.x = tgt.vx;
     e.vel.y = tgt.vy;
   }
   for (const n of state.npcShips) {
     const tgt = _entityTargets.get(n.id);
     if (!tgt) continue;
-    n.pos.x += (tgt.x - n.pos.x) * t;
-    n.pos.y += (tgt.y - n.pos.y) * t;
+    n.pos.x += (tgt.x - n.pos.x) * NETCODE.INTERPOLATION_FACTOR;
+    n.pos.y += (tgt.y - n.pos.y) * NETCODE.INTERPOLATION_FACTOR;
     n.vel.x = tgt.vx;
     n.vel.y = tgt.vy;
   }
