@@ -210,12 +210,28 @@ export function connectSocket(token: string) {
     reconnectionAttempts: 10,
   });
 
+  // Expose socket globally for DevTools debugging
+  (window as any).__debugSocket = socket;
+
   socket.on("connect", () => {
-    console.log("[Socket] Connected:", socket!.id);
+    console.log("[socket] connected", {
+      id: socket!.id,
+      transport: socket!.io.engine.transport.name,
+    });
+  });
+
+  socket.io.engine.on("upgrade", () => {
+    console.log("[socket] upgraded", {
+      transport: socket!.io.engine.transport.name,
+    });
   });
 
   socket.on("disconnect", (reason) => {
-    console.log("[Socket] Disconnected:", reason);
+    console.warn("[socket] disconnected", reason);
+  });
+
+  socket.on("connect_error", (err) => {
+    console.error("[socket] connect_error", err.message);
   });
 
   // Server authority events
@@ -223,11 +239,29 @@ export function connectSocket(token: string) {
     listeners.onWelcome?.(payload);
   });
 
+  let _deltaCount = 0;
+  let _snapshotCount = 0;
+
   socket.on("delta", (payload: DeltaPayload) => {
+    _deltaCount++;
+    if (_deltaCount % 60 === 0) {
+      console.log("[socket] delta #" + _deltaCount, {
+        tick: payload.tick,
+        updates: payload.addOrUpdate.length,
+        removals: payload.removals.length,
+        selfPos: { x: Math.round(payload.self.x), y: Math.round(payload.self.y) },
+      });
+    }
     listeners.onDelta?.(payload);
   });
 
   socket.on("snapshot", (payload: SnapshotPayload) => {
+    _snapshotCount++;
+    console.log("[socket] snapshot #" + _snapshotCount, {
+      tick: payload.tick,
+      entities: payload.entities.length,
+      selfPos: { x: Math.round(payload.self.x), y: Math.round(payload.self.y) },
+    });
     listeners.onSnapshot?.(payload);
   });
 
@@ -267,10 +301,12 @@ export function connectSocket(token: string) {
 
   // Game events
   socket.on("enemy:spawn", (enemy: ServerEnemy) => {
+    console.log("[socket] enemy:spawn", { id: enemy.id, type: enemy.type, name: enemy.name });
     listeners.onEnemySpawn?.(enemy);
   });
 
   socket.on("enemy:die", (event: EnemyDieEvent) => {
+    console.log("[socket] enemy:die", { id: event.enemyId, killer: event.killerId });
     listeners.onEnemyDie?.(event);
   });
 
@@ -314,7 +350,17 @@ export function connectSocket(token: string) {
     listeners.onNpcDie?.(data);
   });
 
+  let _projectileCount = 0;
+
   socket.on("projectile:spawn", (event: ProjectileSpawnEvent) => {
+    _projectileCount++;
+    if (_projectileCount % 20 === 0) {
+      console.log("[socket] projectile:spawn #" + _projectileCount, {
+        weaponKind: event.weaponKind,
+        fromPlayer: event.fromPlayer,
+        homing: event.homing,
+      });
+    }
     listeners.onProjectileSpawn?.(event);
   });
 
