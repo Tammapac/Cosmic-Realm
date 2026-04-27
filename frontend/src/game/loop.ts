@@ -2150,6 +2150,13 @@ function setEntityTarget(id: string, x: number, y: number, vx: number, vy: numbe
 }
 
 function applyServerSmoothing(dt: number): void {
+  // Frame-rate independent interpolation
+  // At 60 FPS: lerp = 1 - (1 - 0.15)^1 = 0.15 (15%)
+  // At 120 FPS: lerp = 1 - (1 - 0.15)^0.5 ≈ 0.078 (7.8% twice as often = same speed)
+  const targetFPS = 60;
+  const frameRatio = dt * targetFPS;
+  const lerp = 1 - Math.pow(1 - NETCODE.INTERPOLATION_FACTOR, frameRatio);
+
   if (_selfTarget.set) {
     const p = state.player;
     const dx = _selfTarget.x - p.pos.x;
@@ -2160,8 +2167,8 @@ function applyServerSmoothing(dt: number): void {
       p.pos.x = _selfTarget.x;
       p.pos.y = _selfTarget.y;
     } else {
-      p.pos.x += dx * NETCODE.INTERPOLATION_FACTOR;
-      p.pos.y += dy * NETCODE.INTERPOLATION_FACTOR;
+      p.pos.x += dx * lerp;
+      p.pos.y += dy * lerp;
     }
     p.vel.x = _selfTarget.vx;
     p.vel.y = _selfTarget.vy;
@@ -2169,24 +2176,24 @@ function applyServerSmoothing(dt: number): void {
   for (const o of state.others) {
     const tgt = _entityTargets.get(`p-${o.id}`);
     if (!tgt) continue;
-    o.pos.x += (tgt.x - o.pos.x) * NETCODE.INTERPOLATION_FACTOR;
-    o.pos.y += (tgt.y - o.pos.y) * NETCODE.INTERPOLATION_FACTOR;
+    o.pos.x += (tgt.x - o.pos.x) * lerp;
+    o.pos.y += (tgt.y - o.pos.y) * lerp;
     o.vel.x = tgt.vx;
     o.vel.y = tgt.vy;
   }
   for (const e of state.enemies) {
     const tgt = _entityTargets.get(e.id);
     if (!tgt) continue;
-    e.pos.x += (tgt.x - e.pos.x) * NETCODE.INTERPOLATION_FACTOR;
-    e.pos.y += (tgt.y - e.pos.y) * NETCODE.INTERPOLATION_FACTOR;
+    e.pos.x += (tgt.x - e.pos.x) * lerp;
+    e.pos.y += (tgt.y - e.pos.y) * lerp;
     e.vel.x = tgt.vx;
     e.vel.y = tgt.vy;
   }
   for (const n of state.npcShips) {
     const tgt = _entityTargets.get(n.id);
     if (!tgt) continue;
-    n.pos.x += (tgt.x - n.pos.x) * NETCODE.INTERPOLATION_FACTOR;
-    n.pos.y += (tgt.y - n.pos.y) * NETCODE.INTERPOLATION_FACTOR;
+    n.pos.x += (tgt.x - n.pos.x) * lerp;
+    n.pos.y += (tgt.y - n.pos.y) * lerp;
     n.vel.x = tgt.vx;
     n.vel.y = tgt.vy;
   }
