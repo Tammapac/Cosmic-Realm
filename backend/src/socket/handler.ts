@@ -251,6 +251,7 @@ export function setupSocket(io: Server) {
         socket.to(`zone:${zone}`).emit("player:leave", { playerId: user.playerId });
       }
       io.emit("online:count", getOnlineCount());
+      playerPreviousEntities.delete(user.playerId); // Clean up entity tracking
     });
   });
 
@@ -258,6 +259,10 @@ export function setupSocket(io: Server) {
   const CULL_RADIUS_SQ = CULL_RADIUS * CULL_RADIUS;
   let nextTickAt = Date.now() + TICK_MS;
   let tickCounter = 0;
+
+  // Delta/Snapshot system: track previous entity state per player
+  type EntitySnapshot = { id: string; x: number; y: number; vx: number; vy: number; version: number; [key: string]: any };
+  const playerPreviousEntities = new Map<number, Map<string, EntitySnapshot>>();
 
   const runTick = () => {
     try {
@@ -295,13 +300,7 @@ export function setupSocket(io: Server) {
           const sock = io.sockets.sockets.get(p.socketId);
           if (!sock) continue;
 
-          sock.emit("state", {
-            self: culled.self,
-            players: nearbyPlayers,
-            enemies: culled.enemies,
-            npcs: culled.npcs,
-          });
-
+          // Build current entity list
           const entities: any[] = [];
           for (const o of nearbyPlayers) {
             entities.push({
@@ -330,18 +329,85 @@ export function setupSocket(io: Server) {
             });
           }
 
-          sock.emit("snapshot", {
-            tick: tickCounter,
-            self: {
-              id: p.playerId,
-              x: culled.self.x, y: culled.self.y,
-              vx: culled.self.vx, vy: culled.self.vy,
-              hp: culled.self.hp, hpMax: culled.self.hpMax,
-              shield: culled.self.sp, shieldMax: culled.self.spMax,
-              lastProcessedInput: 0,
-            },
-            entities,
-          });
+          const selfData = {
+            id: p.playerId,
+            x: culled.self.x, y: culled.self.y,
+            vx: culled.self.vx, vy: culled.self.vy,
+            hp: culled.self.hp, hpMax: culled.self.hpMax,
+            shield: culled.self.sp, shieldMax: culled.self.spMax,
+            lastProcessedInput: 0,
+          };
+
+          // Send full snapshot every 30 ticks (1 per second), otherwise send delta
+          const shouldSendSnapshot = tickCounter % 30 === 0;
+
+          if (shouldSendSnapshot) {
+            // Full snapshot for resync
+            sock.emit("snapshot", {
+              tick: tickCounter,
+              self: selfData,
+              entities,
+            });
+
+            // Store current state for next delta
+            const entityMap = new Map<string, EntitySnapshot>();
+            for (const e of entities) {
+              entityMap.set(e.id, e);
+            }
+            playerPreviousEntities.set(p.playerId, entityMap);
+          } else {
+            // Delta: send only changes
+            const previous = playerPreviousEntities.get(p.playerId) || new Map();
+            const currentIds = new Set<string>();
+            const addOrUpdate: EntitySnapshot[] = [];
+            const removals: string[] = [];
+
+            // Check for added/updated entities
+            for (const entity of entities) {
+              currentIds.add(entity.id);
+              const prev = previous.get(entity.id);
+
+              if (!prev) {
+                // New entity
+                addOrUpdate.push(entity);
+              } else {
+                // Check if entity changed (position moved >1 unit or health changed)
+                const dx = entity.x - prev.x;
+                const dy = entity.y - prev.y;
+                const moved = dx * dx + dy * dy > 1;
+                const healthChanged = entity.hp !== prev.hp || entity.shield !== prev.shield;
+                const angleChanged = Math.abs(entity.angle - prev.angle) > 0.1;
+
+                if (moved || healthChanged || angleChanged) {
+                  addOrUpdate.push(entity);
+                }
+              }
+            }
+
+            // Check for removed entities
+            for (const prevId of previous.keys()) {
+              if (!currentIds.has(prevId)) {
+                removals.push(prevId);
+              }
+            }
+
+            // Only send delta if there are changes
+            if (addOrUpdate.length > 0 || removals.length > 0) {
+              sock.emit("delta", {
+                tick: tickCounter,
+                self: selfData,
+                addOrUpdate,
+                removals,
+              });
+            }
+
+            // Update stored state
+            const entityMap = new Map<string, EntitySnapshot>();
+            for (const e of entities) {
+              entityMap.set(e.id, e);
+            }
+            playerPreviousEntities.set(p.playerId, entityMap);
+          }
         }
       }
     } catch (err) {
