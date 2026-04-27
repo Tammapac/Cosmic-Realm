@@ -51,7 +51,7 @@ import {
   ZoneId,
 } from "./types";
 import { sfx } from "./sound";
-import { sendWarp } from "../net/socket";
+import { sendWarp, sendStatsUpdate } from "../net/socket";
 
 export type HangarTab =
   | "bounties" | "loadout" | "ships" | "drones" | "market" | "ammo" | "cargo" | "repair" | "skills" | "missions" | "dungeons";
@@ -529,6 +529,17 @@ export function save(): void {
       dungeonBestTimes: p.dungeonBestTimes,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+    // Sync stats to server engine for authoritative computation
+    sendStatsUpdate({
+      level: p.level,
+      shipClass: p.shipClass,
+      honor: p.honor,
+      inventory: p.inventory,
+      equipped: p.equipped,
+      skills: p.skills,
+      drones: p.drones,
+      faction: p.faction ?? undefined,
+    });
     // Also save to server if logged in
     if (localStorage.getItem("cosmic-token")) {
       fetch("/api/player/save", {
