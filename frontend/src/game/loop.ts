@@ -583,6 +583,7 @@ function fireProjectile(
     weaponKind: opts?.weaponKind,
     renderOnly: opts?.renderOnly,
   });
+  bump(); // Trigger React re-render to show projectile
 }
 
 function hasRocketWeapon(): boolean {
