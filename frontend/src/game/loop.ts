@@ -1227,6 +1227,7 @@ function tickWorld(dt: number): void {
           const oy = p.pos.y + Math.sin(perpAng) * 14 * side;
           fireProjectile("player", ox, oy, ang - side * 0.03, perShot, laserColor, 4, {
             weaponKind: "laser",
+            speedMul: 2.14,
           });
           // Muzzle flash at gun port — large and visible when zoomed out
           state.particles.push({
@@ -1265,7 +1266,7 @@ function tickWorld(dt: number): void {
           fireProjectile("player", p.pos.x, p.pos.y, ang, rDmg, rocketColor, 5, {
             weaponKind: "rocket",
             homing: true,
-            speedMul: 0.55,
+            speedMul: 1.18,
           });
         }
         // Muzzle flash + smoke burst at ship (radial, not directional)

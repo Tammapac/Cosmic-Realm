@@ -28,6 +28,7 @@ export type ServerProjectile = {
   zone: string;
   fromPlayerId: number | null;
   fromEnemyId: string | null;
+  fromNpcId: string | null;
   pos: Vec2;
   vel: Vec2;
   damage: number;
@@ -577,6 +578,7 @@ export class GameEngine {
             zone: zoneId,
             fromPlayerId: p.playerId,
             fromEnemyId: null,
+            fromNpcId: null,
             pos: { x: ox, y: oy },
             vel: { x: Math.cos(ang - side * 0.03) * projSpeed, y: Math.sin(ang - side * 0.03) * projSpeed },
             damage: perShot,
@@ -618,6 +620,7 @@ export class GameEngine {
           zone: zoneId,
           fromPlayerId: p.playerId,
           fromEnemyId: null,
+          fromNpcId: null,
           pos: { x: p.posX, y: p.posY },
           vel: { x: Math.cos(ang) * projSpeed, y: Math.sin(ang) * projSpeed },
           damage: rocketDmg,
@@ -779,6 +782,26 @@ export class GameEngine {
                   }
                 }
               }
+            }
+            zs.projectiles.delete(projId);
+            break;
+          }
+        }
+      } else if (proj.fromNpcId !== null) {
+        // NPC projectile -> hit enemies
+        for (const e of zs.enemies.values()) {
+          if (dist(proj.pos, e.pos) < e.size + 4) {
+            e.hull -= proj.damage;
+            if (e.hull <= 0) {
+              const loot: LootDrop = {
+                credits: Math.round(e.credits * this.getZoneTierMult(zoneId)),
+                exp: 0, honor: 0,
+              };
+              events.push({ type: "enemy:die", zone: zoneId, enemyId: e.id, killerId: 0, loot, pos: { ...e.pos } });
+              zs.enemies.delete(e.id);
+              if (e.isBoss) { zs.bossActive = false; zs.bossTimer = randRange(180, 420); }
+            } else {
+              events.push({ type: "enemy:hit", zone: zoneId, enemyId: e.id, damage: proj.damage, hp: e.hull, hpMax: e.hullMax, crit: false, attackerId: 0 });
             }
             zs.projectiles.delete(projId);
             break;
@@ -1372,6 +1395,7 @@ export class GameEngine {
       zone: zoneId,
       fromPlayerId: null,
       fromEnemyId: e.id,
+      fromNpcId: null,
       pos: { x: e.pos.x, y: e.pos.y },
       vel: { x: Math.cos(angle) * projSpeed, y: Math.sin(angle) * projSpeed },
       damage,
@@ -1502,12 +1526,29 @@ export class GameEngine {
         npc.fireTimer -= dt;
         if (npc.fireTimer <= 0 && d < 300) {
           npc.fireTimer = randRange(0.8, 1.2);
-          target.hull -= npc.damage;
-          if (target.hull <= 0) {
-            zs.enemies.delete(target.id);
-            npc.state = "patrol";
-            npc.targetEnemyId = null;
-          }
+          const npcAng = angleFromTo(npc.pos, target.pos);
+          const npcProjSpeed = 350;
+          const npcProj: ServerProjectile = {
+            id: eid("np"),
+            zone: zoneId,
+            fromPlayerId: null,
+            fromEnemyId: null,
+            fromNpcId: npc.id,
+            pos: { x: npc.pos.x, y: npc.pos.y },
+            vel: { x: Math.cos(npcAng) * npcProjSpeed, y: Math.sin(npcAng) * npcProjSpeed },
+            damage: npc.damage,
+            ttl: 2.0,
+            color: npc.color,
+            size: 3,
+            crit: false,
+            weaponKind: "laser",
+            homing: false,
+            homingTargetId: null,
+            aoeRadius: 0,
+            empStun: 0,
+            armorPiercing: false,
+          };
+          zs.projectiles.set(npcProj.id, npcProj);
         }
 
         if (d > 600) {
