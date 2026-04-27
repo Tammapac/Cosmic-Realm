@@ -1462,13 +1462,17 @@ function tickWorld(dt: number): void {
         emitRing(pr.pos.x, pr.pos.y, pr.color);
       }
     }
-    if (pr.renderOnly) {
-      return true;
-    }
     if (pr.fromPlayer) {
       // hit enemies
       for (const e of state.enemies) {
         if (distance(pr.pos.x, pr.pos.y, e.pos.x, e.pos.y) < e.size + 4) {
+          if (pr.renderOnly) {
+            // Visual-only projectile from another player: show VFX but skip damage
+            e.hitFlash = 1;
+            sfx.enemyHit();
+            emitSpark(pr.pos.x, pr.pos.y, e.color, pr.crit ? 8 : 4, pr.crit ? 180 : 120, pr.crit ? 4 : 3);
+            return false; // remove projectile
+          }
           const stacks = e.combo ? Math.min(5, e.combo.stacks + 1) : 1;
           e.combo = { stacks, ttl: 3 };
           const comboMul = 1 + (stacks - 1) * 0.10;
@@ -1678,14 +1682,8 @@ function tickWorld(dt: number): void {
 
   // ── Other players movement
   if (serverAuthoritative) {
-    // Server sends positions via delta/snapshot; interpolate with velocity
-    for (const o of state.others) {
-      o.pos.x += o.vel.x * dt;
-      o.pos.y += o.vel.y * dt;
-      if (Math.abs(o.vel.x) > 1 || Math.abs(o.vel.y) > 1) {
-        o.angle = Math.atan2(o.vel.y, o.vel.x);
-      }
-    }
+    // Server sends positions + angle via delta/snapshot; applyServerSmoothing handles lerp
+    // Don't override angle here - server sends the correct angle (including attack facing)
   } else {
     // AI drift (singleplayer fallback)
     aiUpdateTimer -= dt;
@@ -2330,6 +2328,8 @@ function applyEntityUpdate(entity: DeltaEntity): void {
       if (o) {
         setEntityTarget(entity.id, entity.x, entity.y, entity.vx ?? 0, entity.vy ?? 0);
         if (entity.angle != null) o.angle = entity.angle;
+        if (entity.hp != null) o.hull = entity.hp;
+        if (entity.shield != null) o.shield = entity.shield;
       } else {
         setEntityTarget(entity.id, entity.x, entity.y, entity.vx ?? 0, entity.vy ?? 0);
         state.others.push({
