@@ -2152,16 +2152,6 @@ function applyServerSmoothing(dt: number): void {
   const frameRatio = dt * targetFPS;
   const lerp = 1 - Math.pow(1 - NETCODE.INTERPOLATION_FACTOR, frameRatio);
 
-  // Dead-reckon all targets forward by velocity between server updates
-  if (_selfTarget.set) {
-    _selfTarget.x += _selfTarget.vx * dt;
-    _selfTarget.y += _selfTarget.vy * dt;
-  }
-  for (const tgt of _entityTargets.values()) {
-    tgt.x += tgt.vx * dt;
-    tgt.y += tgt.vy * dt;
-  }
-
   if (_selfTarget.set) {
     const p = state.player;
     const dx = _selfTarget.x - p.pos.x;
