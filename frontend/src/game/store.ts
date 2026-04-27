@@ -1393,3 +1393,8 @@ export function tickHotbarCooldowns(dt: number): void {
 }
 
 export { STATIONS, PORTALS };
+
+// Expose state for debugging in console
+if (typeof window !== 'undefined') {
+  (window as any).debugGameState = state;
+}
