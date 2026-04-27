@@ -2227,6 +2227,8 @@ export function onDelta(data: DeltaPayload): void {
     removeEntityById(id);
     _entityTargets.delete(id);
   }
+
+  bump(); // Trigger React re-render
 }
 
 export function onSnapshot(data: SnapshotPayload): void {
