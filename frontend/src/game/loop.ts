@@ -935,11 +935,9 @@ function tickWorld(dt: number): void {
     p.pos.x += p.vel.x * dt;
     p.pos.y += p.vel.y * dt;
   } else {
-    // Server owns position; extrapolate linearly with server velocity between delta snaps
-    // No friction here - server velocity is post-friction and represents the right speed
-    // Applying friction client-side causes undershoot then snap-forward on each delta
-    p.pos.x += p.vel.x * dt;
-    p.pos.y += p.vel.y * dt;
+    // Server owns position; interpolation handles movement in applyServerSmoothing()
+    // Do NOT extrapolate with velocity - causes double-speed movement
+    // Just update angle based on velocity direction
     if (Math.abs(p.vel.x) > 1 || Math.abs(p.vel.y) > 1) {
       p.angle = Math.atan2(p.vel.y, p.vel.x);
     }
@@ -2249,19 +2247,13 @@ export function onSnapshot(data: SnapshotPayload): void {
     p.shield = self.shield;
   }
 
-  const entityIds = new Set<string>();
+  // Apply all entity updates from snapshot
   for (const entity of data.entities) {
-    entityIds.add(entity.id);
     applyEntityUpdate(entity);
   }
 
-  state.enemies = state.enemies.filter(e => entityIds.has(e.id));
-  state.npcShips = state.npcShips.filter(n => entityIds.has(n.id));
-  state.others = state.others.filter(o => entityIds.has(`p-${o.id}`));
-
-  for (const id of Array.from(_entityTargets.keys())) {
-    if (!entityIds.has(id)) _entityTargets.delete(id);
-  }
+  // Don't aggressively filter - deltas handle removals
+  // Snapshot is just a resync, not a replacement of all state
 
   bump();
 }
