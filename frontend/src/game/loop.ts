@@ -1023,9 +1023,7 @@ function tickWorld(dt: number): void {
       if (e.combo.ttl <= 0) e.combo = undefined;
     }
     if (serverAuthoritative) {
-      // Server owns enemy positions; just interpolate with velocity
-      e.pos.x += e.vel.x * dt;
-      e.pos.y += e.vel.y * dt;
+      // Server owns enemy positions; applyServerSmoothing handles interpolation
       if (Math.abs(e.vel.x) > 1 || Math.abs(e.vel.y) > 1) {
         e.angle = Math.atan2(e.vel.y, e.vel.x);
       }
@@ -2150,18 +2148,24 @@ function setEntityTarget(id: string, x: number, y: number, vx: number, vy: numbe
 }
 
 function applyServerSmoothing(dt: number): void {
-  // Frame-rate independent interpolation
-  // At 60 FPS: lerp = 1 - (1 - 0.15)^1 = 0.15 (15%)
-  // At 120 FPS: lerp = 1 - (1 - 0.15)^0.5 ≈ 0.078 (7.8% twice as often = same speed)
   const targetFPS = 60;
   const frameRatio = dt * targetFPS;
   const lerp = 1 - Math.pow(1 - NETCODE.INTERPOLATION_FACTOR, frameRatio);
+
+  // Dead-reckon all targets forward by velocity between server updates
+  if (_selfTarget.set) {
+    _selfTarget.x += _selfTarget.vx * dt;
+    _selfTarget.y += _selfTarget.vy * dt;
+  }
+  for (const tgt of _entityTargets.values()) {
+    tgt.x += tgt.vx * dt;
+    tgt.y += tgt.vy * dt;
+  }
 
   if (_selfTarget.set) {
     const p = state.player;
     const dx = _selfTarget.x - p.pos.x;
     const dy = _selfTarget.y - p.pos.y;
-    // Snap if too far (prevents desyncs from accumulating)
     const snapThreshold = 250;
     if (dx * dx + dy * dy > snapThreshold * snapThreshold) {
       p.pos.x = _selfTarget.x;
@@ -2207,6 +2211,7 @@ export function onWelcome(data: WelcomePayload): void {
   };
   serverPlayerId = data.playerId;
   serverAuthoritative = true;
+  serverEnemiesReceived = true;
 }
 
 export function onDelta(data: DeltaPayload): void {
@@ -2246,13 +2251,23 @@ export function onSnapshot(data: SnapshotPayload): void {
     p.shield = self.shield;
   }
 
-  // Apply all entity updates from snapshot
+  // Track which entities are in this snapshot
+  const snapshotIds = new Set<string>();
   for (const entity of data.entities) {
+    snapshotIds.add(entity.id);
     applyEntityUpdate(entity);
   }
 
-  // Don't aggressively filter - deltas handle removals
-  // Snapshot is just a resync, not a replacement of all state
+  // Snapshot is a full state resync - remove entities not present (out of view or dead)
+  if (!state.dungeon) {
+    state.enemies = state.enemies.filter(e => snapshotIds.has(e.id));
+    state.npcShips = state.npcShips.filter(n => snapshotIds.has(n.id));
+    state.others = state.others.filter(o => snapshotIds.has(`p-${o.id}`));
+    // Clean up stale entity targets
+    for (const id of _entityTargets.keys()) {
+      if (!snapshotIds.has(id)) _entityTargets.delete(id);
+    }
+  }
 
   bump();
 }

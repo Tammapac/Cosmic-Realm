@@ -111,6 +111,8 @@ export function setupSocket(io: Server) {
 
     // Send initial zone asteroids (static, not in per-tick state)
     socket.emit("zone:asteroids", engine.getZoneAsteroids(online.zone));
+    socket.emit("zone:enemies", engine.getZoneEnemies(online.zone));
+    socket.emit("zone:npcs", engine.getZoneNpcs(online.zone));
 
     // ── INPUT: MOVE (click target) ────────────────────────────────
     socket.on("input:move", (data: { x: number; y: number }) => {
@@ -164,6 +166,8 @@ export function setupSocket(io: Server) {
 
       // Send asteroids for new zone
       socket.emit("zone:asteroids", engine.getZoneAsteroids(data.toZone));
+      socket.emit("zone:enemies", engine.getZoneEnemies(data.toZone));
+      socket.emit("zone:npcs", engine.getZoneNpcs(data.toZone));
     });
 
     // ── PVP COMBAT (visual broadcast for now) ───────────────────────
