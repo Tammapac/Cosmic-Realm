@@ -1346,6 +1346,10 @@ export class GameEngine {
           e.pos.y += e.vel.y * dt;
           e.vel.x *= 0.95;
           e.vel.y *= 0.95;
+          if (e.vel.x * e.vel.x + e.vel.y * e.vel.y < 4) {
+            e.vel.x = 0;
+            e.vel.y = 0;
+          }
           if (Math.random() < 0.02) {
             const ang = Math.random() * Math.PI * 2;
             e.vel.x = Math.cos(ang) * e.speed * 0.2;

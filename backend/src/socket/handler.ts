@@ -75,7 +75,7 @@ export function setupSocket(io: Server) {
       velX: 0,
       velY: 0,
       angle: 0,
-      hull: dbPlayer.hull > 0 ? dbPlayer.hull : stats.hullMax,
+      hull: dbPlayer.hull > 0 ? Math.min(dbPlayer.hull, stats.hullMax) : stats.hullMax,
       hullMax: stats.hullMax,
       shield: dbPlayer.shield,
       shieldMax: stats.shieldMax,
@@ -378,7 +378,7 @@ export function setupSocket(io: Server) {
                 // Check if entity changed (position moved >1 unit or health changed)
                 const dx = entity.x - prev.x;
                 const dy = entity.y - prev.y;
-                const moved = dx * dx + dy * dy > 1;
+                const moved = dx * dx + dy * dy > 4;
                 const healthChanged = entity.hp !== prev.hp || entity.shield !== prev.shield;
                 const angleChanged = Math.abs(entity.angle - prev.angle) > 0.1;
 

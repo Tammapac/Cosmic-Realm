@@ -32,6 +32,10 @@ router.post("/save", async (req, res) => {
     const { playerId } = (req as any).user;
     const data = req.body;
 
+    // Sanitize hull/shield: never persist 0 or negative values
+    const hull = typeof data.hull === "number" && data.hull > 0 ? data.hull : 100;
+    const shield = typeof data.shield === "number" && data.shield >= 0 ? data.shield : 70;
+
     await db
       .update(schema.players)
       .set({
@@ -40,8 +44,8 @@ router.post("/save", async (req, res) => {
         exp: data.exp,
         credits: data.credits,
         honor: data.honor,
-        hull: data.hull,
-        shield: data.shield,
+        hull,
+        shield,
         zone: data.zone,
         posX: data.pos?.x ?? 0,
         posY: data.pos?.y ?? 0,
