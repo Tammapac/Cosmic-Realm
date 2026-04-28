@@ -1267,10 +1267,17 @@ export class GameEngine {
 
   private tickPirateSpawns(zoneId: string, zs: ZoneState, players: OnlinePlayer[], dt: number, events: GameEvent[]): void {
     if (players.length === 0) return;
-    // Pirate group spawn timer (every 60-120 seconds)
-    zs.pirateTimer = (zs.pirateTimer ?? randRange(60, 120)) - dt;
+    // Pirate group spawn timer (every 90-180 seconds)
+    zs.pirateTimer = (zs.pirateTimer ?? randRange(90, 180)) - dt;
     if (zs.pirateTimer > 0) return;
-    zs.pirateTimer = randRange(60, 120);
+    zs.pirateTimer = randRange(90, 180);
+
+    // Cap pirates per zone - count existing pirates
+    let pirateCount = 0;
+    for (const e of zs.enemies.values()) {
+      if (e.id.startsWith("pir") || e.id.startsWith("pboss")) pirateCount++;
+    }
+    if (pirateCount >= 10) return;
 
     const zoneDef = ZONES[zoneId as ZoneId];
     if (!zoneDef) return;
@@ -1283,8 +1290,10 @@ export class GameEngine {
     const baseX = clamp(rp.posX + Math.cos(baseAng) * baseDist, -MAP_RADIUS * 0.9, MAP_RADIUS * 0.9);
     const baseY = clamp(rp.posY + Math.sin(baseAng) * baseDist, -MAP_RADIUS * 0.9, MAP_RADIUS * 0.9);
 
-    // Spawn 5-10 pirates in a group
-    const groupSize = 5 + Math.floor(Math.random() * 6);
+    // Spawn 3-6 pirates in a group (capped to not exceed zone limit)
+    const maxToSpawn = Math.max(0, 10 - pirateCount);
+    const groupSize = Math.min(3 + Math.floor(Math.random() * 4), maxToSpawn);
+    if (groupSize <= 0) return;
     const pirateTypes: EnemyType[] = ["raider", "scout", "destroyer"];
     const pirateColor = "#ff6633";
 
@@ -1303,7 +1312,7 @@ export class GameEngine {
         behavior: baseDef.behavior,
         name: "Pirate",
         pos: { x: baseX + offsetX, y: baseY + offsetY },
-        vel: { x: 0, y: 0 },
+        vel: { x: Math.cos(Math.random() * Math.PI * 2) * baseDef.speed * 0.5, y: Math.sin(Math.random() * Math.PI * 2) * baseDef.speed * 0.5 },
         angle: Math.random() * Math.PI * 2,
         hull: Math.round(baseDef.hullMax * tierMult * 1.2),
         hullMax: Math.round(baseDef.hullMax * tierMult * 1.2),
@@ -1341,7 +1350,7 @@ export class GameEngine {
         behavior: "tank",
         name: "Pirate Captain",
         pos: { x: baseX, y: baseY },
-        vel: { x: 0, y: 0 },
+        vel: { x: Math.cos(Math.random() * Math.PI * 2) * 20, y: Math.sin(Math.random() * Math.PI * 2) * 20 },
         angle: Math.random() * Math.PI * 2,
         hull: Math.round(bossDef.hullMax * tierMult * 4),
         hullMax: Math.round(bossDef.hullMax * tierMult * 4),

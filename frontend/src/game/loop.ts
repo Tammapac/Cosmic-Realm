@@ -1183,10 +1183,12 @@ function tickWorld(dt: number): void {
       }
       // Enemy engine trail even in server mode
       const eSpd2 = Math.sqrt(e.vel.x * e.vel.x + e.vel.y * e.vel.y);
-      if (eSpd2 > 15) {
+      if (eSpd2 > 5) {
         const eBack2 = e.angle + Math.PI;
-        if (Math.random() < Math.min(0.7, eSpd2 / 100)) {
-          emitTrail(e.pos.x + Math.cos(eBack2) * (e.size * 0.6), e.pos.y + Math.sin(eBack2) * (e.size * 0.6), e.color, 0.5, 2.5);
+        const trailRate = Math.min(0.8, eSpd2 / 60);
+        if (Math.random() < trailRate) {
+          const trailSz = Math.min(4, 1.5 + eSpd2 / 40);
+          emitTrail(e.pos.x + Math.cos(eBack2) * (e.size * 0.6), e.pos.y + Math.sin(eBack2) * (e.size * 0.6), e.color, 0.5, trailSz);
         }
       }
       // Burning smoke/fire when damaged (<30% HP)
@@ -2680,9 +2682,45 @@ export function onEnemyAttack(data: EnemyAttackEvent): void {
     projSize = eType === "titan" ? 6 : 5;
     projSpeed = eType === "titan" ? 2.0 : 2.5;
   }
+  // Muzzle flash at enemy position
+  state.particles.push({
+    id: `emf-${Math.random().toString(36).slice(2, 8)}`,
+    pos: { x: data.pos.x, y: data.pos.y },
+    vel: { x: 0, y: 0 }, ttl: 0.2, maxTtl: 0.2,
+    color: projColor, size: 60 + (projSize * 8), kind: "flash",
+  });
+  state.particles.push({
+    id: `emf2-${Math.random().toString(36).slice(2, 8)}`,
+    pos: { x: data.pos.x + Math.cos(ang) * 10, y: data.pos.y + Math.sin(ang) * 10 },
+    vel: { x: 0, y: 0 }, ttl: 0.12, maxTtl: 0.12,
+    color: "#ffffff", size: 40 + (projSize * 5), kind: "flash",
+  });
   fireProjectile("enemy", data.pos.x, data.pos.y, ang, data.damage, projColor, projSize, { renderOnly: !isTargetingMe, speedMul: projSpeed, weaponKind: projWk as any });
   if (!serverAuthoritative && isTargetingMe) {
     damagePlayer(data.damage);
+  }
+  // Impact particles at player position when hit
+  if (isTargetingMe) {
+    const px = state.player?.pos.x ?? data.targetPos.x;
+    const py = state.player?.pos.y ?? data.targetPos.y;
+    const impactDelay = 0;
+    for (let i = 0; i < 6; i++) {
+      const ia = Math.random() * Math.PI * 2;
+      const iv = 40 + Math.random() * 80;
+      state.particles.push({
+        id: `eimp-${Math.random().toString(36).slice(2, 8)}`,
+        pos: { x: px + Math.cos(ia) * 5, y: py + Math.sin(ia) * 5 },
+        vel: { x: Math.cos(ia) * iv, y: Math.sin(ia) * iv },
+        ttl: 0.3 + Math.random() * 0.2, maxTtl: 0.5,
+        color: projColor, size: 2 + Math.random() * 3, kind: "ember",
+      });
+    }
+    state.particles.push({
+      id: `eimpf-${Math.random().toString(36).slice(2, 8)}`,
+      pos: { x: px, y: py },
+      vel: { x: 0, y: 0 }, ttl: 0.15, maxTtl: 0.15,
+      color: "#ffffff", size: 80, kind: "flash",
+    });
   }
 }
 
