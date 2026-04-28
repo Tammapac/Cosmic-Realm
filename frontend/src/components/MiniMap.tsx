@@ -109,10 +109,16 @@ export function MiniMap() {
             {STATIONS.filter(s => s.zone === player.zone).map((s) => {
               const x = fullSize / 2 + s.pos.x * fullScale;
               const y = fullSize / 2 + s.pos.y * fullScale;
+              const isFactory = s.kind === "factory";
+              const color = isFactory ? "#ff8844" : "#4ee2ff";
               return (
                 <g key={s.id}>
-                  <rect x={x - 5} y={y - 5} width={10} height={10} fill="#4ee2ff" stroke="#fff" strokeWidth={0.5} />
-                  <text x={x} y={y + 16} fill="#4ee2ff" fontSize={8} textAnchor="middle">{s.name}</text>
+                  {isFactory ? (
+                    <polygon points={`${x},${y-6} ${x+6},${y} ${x},${y+6} ${x-6},${y}`} fill={color} stroke="#fff" strokeWidth={0.5} />
+                  ) : (
+                    <rect x={x - 5} y={y - 5} width={10} height={10} fill={color} stroke="#fff" strokeWidth={0.5} />
+                  )}
+                  <text x={x} y={y + 16} fill={color} fontSize={8} textAnchor="middle">{s.name}</text>
                 </g>
               );
             })}
@@ -215,9 +221,15 @@ export function MiniMap() {
           const x = SIZE / 2 + (s.pos.x - player.pos.x) * scale;
           const y = SIZE / 2 + (s.pos.y - player.pos.y) * scale;
           if (x < 0 || x > SIZE || y < 0 || y > SIZE) return null;
+          const isFactory = s.kind === "factory";
+          const color = isFactory ? "#ff8844" : "#4ee2ff";
           return (
             <g key={s.id}>
-              <rect x={x - 3} y={y - 3} width={6} height={6} fill="#4ee2ff" stroke="#fff" strokeWidth={0.5} />
+              {isFactory ? (
+                <polygon points={`${x},${y-3} ${x+3},${y} ${x},${y+3} ${x-3},${y}`} fill={color} stroke="#fff" strokeWidth={0.5} />
+              ) : (
+                <rect x={x - 3} y={y - 3} width={6} height={6} fill={color} stroke="#fff" strokeWidth={0.5} />
+              )}
             </g>
           );
         })}

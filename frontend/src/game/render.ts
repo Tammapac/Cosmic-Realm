@@ -2236,7 +2236,7 @@ const STATION_GLYPH: Record<string, string> = {
   hub: "✦", trade: "$", mining: "▰", military: "⚔", outpost: "□",
 };
 const STATION_COLOR: Record<string, string> = {
-  hub: "#4ee2ff", trade: "#5cff8a", mining: "#ffd24a", military: "#ff5c6c", outpost: "#7ad8ff",
+  hub: "#4ee2ff", trade: "#5cff8a", mining: "#ffd24a", military: "#ff5c6c", outpost: "#7ad8ff", factory: "#ff8844",
 };
 
 function drawStation(
@@ -2314,6 +2314,17 @@ function drawStation(
     px(ctx,  12, -2, 4, 4, accent);
     px(ctx, -2, -16, 4, 4, accent);
     px(ctx, -2,  12, 4, 4, accent);
+  } else if (kind === "factory") {
+    // factory: gear/cog shape
+    px(ctx, -16, -6, 32, 12, "#3a2010");
+    px(ctx, -6, -16, 12, 32, "#3a2010");
+    px(ctx, -12, -12, 24, 24, accent);
+    px(ctx, -8, -8, 16, 16, "#1a0e04");
+    px(ctx, -4, -4, 8, 8, accent);
+    px(ctx, -14, -14, 6, 6, accent);
+    px(ctx,  8, -14, 6, 6, accent);
+    px(ctx, -14,  8, 6, 6, accent);
+    px(ctx,  8,  8, 6, 6, accent);
   } else {
     // outpost
     px(ctx, -10, -10, 20, 20, "#0c2050");

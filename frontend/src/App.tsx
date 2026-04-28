@@ -265,6 +265,7 @@ function DockPrompt() {
           style={{ animation: "pulse-glow 2s ease-in-out infinite", whiteSpace: "nowrap", minWidth: "fit-content" }}
           onClick={() => {
             state.dockedAt = station.id;
+            state.hangarTab = station.kind === "factory" ? "refinery" : "bounties";
             state.player.vel = { x: 0, y: 0 };
             pushNotification(`Docking with ${station.name}`, "good");
             save(); bump();
@@ -545,6 +546,7 @@ function GameApp() {
         const sid = checkStationDock();
         if (sid) {
           state.dockedAt = sid;
+          { const _st = STATIONS.find(s => s.id === sid); if (_st?.kind === "factory") state.hangarTab = "refinery"; else state.hangarTab = "bounties"; }
           state.player.vel = { x: 0, y: 0 };
           pushNotification("Docking...", "good");
           save(); bump();

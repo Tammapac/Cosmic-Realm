@@ -18,7 +18,6 @@ const TABS: { id: HangarTab; label: string; glyph: string }[] = [
   { id: "loadout",  label: "Loadout",  glyph: "⚙" },
   { id: "drones",   label: "Drones",   glyph: "✦" },
   { id: "market",   label: "Market",   glyph: "$" },
-  { id: "refinery", label: "Refinery", glyph: "⚒" },
   { id: "repair",   label: "Services", glyph: "✚" },
 ];
 
@@ -54,7 +53,7 @@ export function Hangar({ stationId }: { stationId: string }) {
 
         {/* Tabs */}
         <div className="flex border-b overflow-x-auto" style={{ borderColor: "var(--border-soft)" }}>
-          {TABS.map((t) => (
+          {[...TABS, ...(station.kind === "factory" ? [{ id: "refinery" as HangarTab, label: "Refinery", glyph: "⚒" }] : [])].map((t) => (
             <button
               key={t.id}
               className="px-4 py-2.5 text-[13px] tracking-widest uppercase whitespace-nowrap transition-colors"

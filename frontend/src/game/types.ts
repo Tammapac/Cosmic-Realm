@@ -629,7 +629,7 @@ export type Particle = {
   alpha?: number;
 };
 
-export type StationKind = "hub" | "trade" | "mining" | "military" | "outpost";
+export type StationKind = "hub" | "trade" | "mining" | "military" | "outpost" | "factory";
 
 export type Station = {
   id: string;
@@ -1425,6 +1425,44 @@ export const STATIONS: Station[] = [
   { id: "abyss-gate", name: "Abyss Gate Station",  pos: { x: -2400, y: -2800 }, zone: "danger5", kind: "trade",
     description: "The deepest station in known space. Legendary equipment and resources.", controlledBy: "mars",
     prices: { dread: 3.0, void: 3.0, quantum: 2.5, precursor: 0.3, relic: 0.3, exotic: 0.3, "fusion-lattice": 0.2, "star-map": 0.2 } },
+
+  // ── FACTORY STATIONS (standalone refineries) ──
+  { id: "alpha-foundry",    name: "Alpha Foundry",       pos: { x: -2800, y: 1800 },  zone: "alpha",    kind: "factory",
+    description: "Automated smelting complex. Converts raw ores into refined alloys.", controlledBy: "earth",
+    prices: { iron: 0.7, copper: 0.75, "refined-alloy": 0.9, scrap: 0.8 } },
+  { id: "nebula-works",     name: "Nebula Works",        pos: { x: 1200, y: 3200 },   zone: "nebula",   kind: "factory",
+    description: "Crystal processing facility hidden in the nebula.", controlledBy: "earth",
+    prices: { cobalt: 0.7, "crystal-shard": 0.75, "crystal-matrix": 0.9, plasma: 0.8 } },
+  { id: "crimson-forge",    name: "Crimson Forge",       pos: { x: 3200, y: -1400 },  zone: "crimson",  kind: "factory",
+    description: "Heavy industrial forge in the Crimson sector.", controlledBy: "earth",
+    prices: { iron: 0.65, copper: 0.7, cobalt: 0.7, "refined-alloy": 0.85, "plasma-cell": 0.9 } },
+  { id: "void-refinery",    name: "Void Refinery",       pos: { x: -2200, y: -2800 }, zone: "void",     kind: "factory",
+    description: "Deep-space processing plant. Handles exotic materials.", controlledBy: "mars",
+    prices: { obsidian: 0.65, "void-steel": 0.85, "nano-compound": 0.9, "crystal-shard": 0.7 } },
+  { id: "forge-smelter",    name: "Forge Smelter",       pos: { x: -3500, y: 2000 },  zone: "forge",    kind: "factory",
+    description: "White-hot smelting station orbiting the Forge.", controlledBy: "mars",
+    prices: { iron: 0.6, copper: 0.65, cobalt: 0.65, "refined-alloy": 0.8, "fusion-core": 0.9 } },
+  { id: "corona-refinery",  name: "Corona Refinery",     pos: { x: -2800, y: -2000 }, zone: "corona",   kind: "factory",
+    description: "Solar-powered refinery extracting energy crystals.", controlledBy: "mars",
+    prices: { "helium-3": 0.6, palladium: 0.7, "fusion-core": 0.85, "crystal-matrix": 0.9 } },
+  { id: "fracture-mill",    name: "Fracture Mill",       pos: { x: -2500, y: -2200 }, zone: "fracture", kind: "factory",
+    description: "Salvage processing mill at the edge of fractured space.", controlledBy: "earth",
+    prices: { obsidian: 0.7, iridium: 0.75, "void-steel": 0.9, "nano-compound": 0.85 } },
+  { id: "venus-foundry",    name: "Venus Cloud Foundry", pos: { x: 2800, y: -1800 },  zone: "venus1",   kind: "factory",
+    description: "Cloud-suspended foundry using Venus atmospheric heat.", controlledBy: "venus",
+    prices: { sulfur: 0.6, copper: 0.65, iron: 0.7, "refined-alloy": 0.85, "plasma-cell": 0.85 } },
+  { id: "venus3-refinery",  name: "Acid Vat Refinery",   pos: { x: 2800, y: 2200 },   zone: "venus3",   kind: "factory",
+    description: "Uses corrosive Venus atmosphere for material processing.", controlledBy: "venus",
+    prices: { sulfur: 0.55, cobalt: 0.65, "crystal-shard": 0.7, "nano-compound": 0.8, "crystal-matrix": 0.85 } },
+  { id: "venus5-forge",     name: "Eye Forge",           pos: { x: -3200, y: 2800 },  zone: "venus5",   kind: "factory",
+    description: "Advanced forge near the Eye of Venus. Handles all material types.", controlledBy: "venus",
+    prices: { obsidian: 0.6, iridium: 0.65, palladium: 0.65, "void-steel": 0.8, "fusion-core": 0.8 } },
+  { id: "mars-refinery",    name: "Deep Mars Refinery",  pos: { x: 2800, y: 2800 },   zone: "marsdepth", kind: "factory",
+    description: "Underground Martian refinery processing rare deep-field ores.", controlledBy: "mars",
+    prices: { cobalt: 0.6, palladium: 0.65, "helium-3": 0.65, "fusion-core": 0.85, "crystal-matrix": 0.85 } },
+  { id: "storm-works",      name: "Storm Works",         pos: { x: -3200, y: -2400 }, zone: "maelstrom", kind: "factory",
+    description: "Storm-shielded factory in the Maelstrom core.", controlledBy: "mars",
+    prices: { iron: 0.6, obsidian: 0.65, copper: 0.6, "refined-alloy": 0.8, "void-steel": 0.85 } },
 ];
 
 export const PORTALS: Portal[] = [
