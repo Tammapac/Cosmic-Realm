@@ -49,6 +49,7 @@ import {
   SkillId,
   ZONES, pickAsteroidYield, ASTEROID_BELTS, RefineJob, REFINE_RECIPES, FACTORY_SPEED_BONUS, FACTORY_UPGRADE_COSTS,
   ZoneId,
+  MISSION_BOARD_POOL, MissionCategory,
 } from "./types";
 import { sfx } from "./sound";
 import { sendWarp, sendStatsUpdate, sendDockRepair } from "../net/socket";
@@ -146,6 +147,22 @@ function rollDailyMissions(): ActiveMission[] {
   }
   return out;
 }
+
+function rollMissionBoard(): ActiveMission[] {
+  const pool = [...MISSION_BOARD_POOL];
+  const out: ActiveMission[] = [];
+  const categories: MissionCategory[] = ["transport", "gathering", "delivery", "exploration"];
+  for (const cat of categories) {
+    const catPool = pool.filter(m => m.category === cat);
+    const shuffled = catPool.sort(() => Math.random() - 0.5);
+    const picked = shuffled.slice(0, 3);
+    for (const m of picked) {
+      out.push({ ...m, progress: 0, completed: false, claimed: false });
+    }
+  }
+  return out;
+}
+
 
 let _instanceSeq = 1;
 export function newInstanceId(): string {
@@ -305,8 +322,8 @@ function makeAsteroids(zone: ZoneId): Asteroid[] {
   return out;
 }
 
-function pickQuests(zone: ZoneId): Quest[] {
-  return QUEST_POOL.filter((q) => q.zone === zone);
+function pickQuests(_zone: ZoneId): Quest[] {
+  return [...QUEST_POOL];
 }
 
 const saved = loadSaved();
@@ -422,6 +439,7 @@ const dayMs = 24 * 60 * 60 * 1000;
 if (Date.now() - initialPlayer.lastDailyReset > dayMs) {
   initialPlayer.dailyMissions = rollDailyMissions();
   initialPlayer.lastDailyReset = Date.now();
+
 }
 
 const cls = SHIP_CLASSES[initialPlayer.shipClass];
@@ -462,6 +480,7 @@ export const state: GameState = {
   paused: false,
   notifications: [],
   availableQuests: pickQuests(initialPlayer.zone),
+  missionBoard: rollMissionBoard(),
   tick: 0,
   recentHonor: [],
   levelUpFlash: 0,
@@ -548,6 +567,7 @@ export function save(): void {
       skillPoints: p.skillPoints,
       milestones: p.milestones,
       dailyMissions: p.dailyMissions,
+      missionBoard: state.missionBoard,
       lastDailyReset: p.lastDailyReset,
       lastSeen: p.lastSeen,
       ammo: p.ammo,
@@ -624,6 +644,7 @@ export function loadServerPlayer(data: any): void {
   if (data.autoShieldRecharge != null) p.autoShieldRecharge = data.autoShieldRecharge;
   if (data.activeQuests) p.activeQuests = data.activeQuests;
   if (data.completedQuests) p.completedQuests = data.completedQuests;
+  if (data.missionBoard) state.missionBoard = data.missionBoard;
   if (data.dailyMissions) p.dailyMissions = data.dailyMissions;
   if (data.lastDailyReset != null) p.lastDailyReset = data.lastDailyReset;
   if (data.milestones) p.milestones = data.milestones;
@@ -694,6 +715,8 @@ export function travelToZone(zoneId: ZoneId): void {
   if (state.player.zone !== zoneId) {
     state.player.milestones.totalWarps++;
     bumpMission("warp-zones", 1);
+    bumpMission("travel-gates", 1);
+    bumpMission("visit-zones", 1);
   }
   state.player.zone = zoneId;
   state.player.pos = { x: 0, y: 80 };
@@ -1170,21 +1193,25 @@ export function resetSkills(): void {
 }
 
 // ── MISSIONS / MILESTONES ─────────────────────────────────────────────────
-export function bumpMission(kind: ActiveMission["kind"], amount: number, zone?: ZoneId): void {
-  for (const m of state.player.dailyMissions) {
+export function bumpMission(kind: ActiveMission["kind"], amount: number, zone?: ZoneId, extra?: { resourceId?: string; stationId?: string }): void {
+  const allMissions = [...state.player.dailyMissions, ...state.missionBoard];
+  for (const m of allMissions) {
     if (m.completed) continue;
     if (m.kind !== kind) continue;
     if (m.zoneFilter && m.zoneFilter !== zone) continue;
+    if (m.targetResourceId && extra?.resourceId && m.targetResourceId !== extra.resourceId) continue;
+    if (m.targetStationId && extra?.stationId && m.targetStationId !== extra.stationId) continue;
     m.progress = Math.min(m.target, m.progress + amount);
     if (m.progress >= m.target) {
       m.completed = true;
-      pushNotification(`Daily complete: ${m.title}`, "good");
+      pushNotification(`Mission complete: ${m.title}`, "good");
     }
   }
 }
 
 export function claimMission(missionId: string): void {
-  const m = state.player.dailyMissions.find((x) => x.id === missionId);
+  const m = state.player.dailyMissions.find((x) => x.id === missionId)
+    ?? state.missionBoard.find((x) => x.id === missionId);
   if (!m || !m.completed || m.claimed) return;
   m.claimed = true;
   state.player.credits += m.rewardCredits;
@@ -1202,6 +1229,14 @@ export function rerollDaily(): void {
   pushNotification("Daily missions rerolled", "good");
   save(); bump();
 }
+export function rerollMissionBoard(): void {
+  if (state.player.credits < 2000) { pushNotification("Board reroll costs 2,000cr", "bad"); return; }
+  state.player.credits -= 2000;
+  state.missionBoard = rollMissionBoard();
+  pushNotification("Mission board refreshed", "good");
+  save(); bump();
+}
+
 
 export function checkMilestones(): void {
   const p = state.player;

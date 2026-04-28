@@ -2209,6 +2209,7 @@ function destroyAsteroid(id: string): void {
     sfx.pickup();
     state.player.milestones.totalMined += got;
     bumpMission("mine", got);
+    bumpMission("gather", got, state.player.zone, { resourceId: a.yields });
     const prev = state.player.milestones.totalMined - got;
     checkMilestoneTier("totalMined", prev, state.player.milestones.totalMined);
   } else {
@@ -2499,6 +2500,7 @@ export function onAsteroidDestroy(data: { asteroidId: string; playerId: number; 
       sfx.pickup();
       state.player.milestones.totalMined += got;
       bumpMission("mine", got);
+      bumpMission("gather", got, state.player.zone, { resourceId: data.ore.resourceId as string });
     }
   }
   state.asteroids = state.asteroids.filter((ast) => ast.id !== data.asteroidId);

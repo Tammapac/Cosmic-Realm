@@ -114,6 +114,7 @@ export type Quest = {
   rewardCredits: number;
   rewardExp: number;
   rewardHonor: number;
+  tier: number;
 };
 
 export type ActiveQuest = Quest & {
@@ -404,11 +405,15 @@ export const SKILL_NODES: SkillNode[] = [
 
 // ── MISSIONS & MILESTONES ────────────────────────────────────────────────
 export type MissionKind =
-  | "kill-any" | "kill-zone" | "mine" | "earn-credits" | "spend-credits" | "warp-zones" | "level-up";
+  | "kill-any" | "kill-zone" | "mine" | "earn-credits" | "spend-credits" | "warp-zones" | "level-up"
+  | "transport" | "gather" | "deliver" | "travel-gates" | "visit-zones";
+
+export type MissionCategory = "combat" | "transport" | "gathering" | "delivery" | "exploration";
 
 export type Mission = {
   id: string;
   kind: MissionKind;
+  category: MissionCategory;
   title: string;
   description: string;
   target: number;
@@ -416,6 +421,8 @@ export type Mission = {
   rewardExp: number;
   rewardHonor: number;
   zoneFilter?: ZoneId;
+  targetStationId?: string;
+  targetResourceId?: string;
 };
 
 export type ActiveMission = Mission & {
@@ -442,15 +449,59 @@ export const MILESTONE_TIERS: { kind: keyof Milestones; name: string; tiers: num
 ];
 
 export const DAILY_MISSION_POOL: Mission[] = [
-  { id: "d-kills-10",   kind: "kill-any", title: "Daily: Bug Sweep",      description: "Eliminate 10 hostiles anywhere.",          target: 10,    rewardCredits: 600,  rewardExp: 200, rewardHonor: 8 },
-  { id: "d-kills-25",   kind: "kill-any", title: "Daily: Patrol Duty",    description: "Eliminate 25 hostiles anywhere.",          target: 25,    rewardCredits: 1500, rewardExp: 500, rewardHonor: 18 },
-  { id: "d-mine-30",    kind: "mine",     title: "Daily: Belt Run",       description: "Mine 30 units of any ore.",                target: 30,    rewardCredits: 800,  rewardExp: 250, rewardHonor: 6 },
-  { id: "d-credits-5k", kind: "earn-credits", title: "Daily: Hustler",    description: "Earn 5,000 credits.",                       target: 5000,  rewardCredits: 1500, rewardExp: 300, rewardHonor: 10 },
-  { id: "d-warp-3",     kind: "warp-zones",  title: "Daily: Sector Rounds", description: "Warp between sectors 3 times.",         target: 3,     rewardCredits: 700,  rewardExp: 200, rewardHonor: 6 },
-  { id: "d-spend-3k",   kind: "spend-credits", title: "Daily: Resupply",  description: "Spend 3,000 credits at stations.",         target: 3000,  rewardCredits: 600,  rewardExp: 150, rewardHonor: 4 },
-  { id: "d-zone-alpha", kind: "kill-zone", title: "Daily: Alpha Sweep",   description: "Kill 8 hostiles in Alpha Sector.",         target: 8,     rewardCredits: 700,  rewardExp: 220, rewardHonor: 7,  zoneFilter: "alpha" },
-  { id: "d-zone-nebula",kind: "kill-zone", title: "Daily: Nebula Cleanup",description: "Kill 6 hostiles in Veil Nebula.",          target: 6,     rewardCredits: 1400, rewardExp: 400, rewardHonor: 14, zoneFilter: "nebula" },
+  { id: "d-kills-10",   kind: "kill-any", category: "combat", title: "Daily: Bug Sweep",      description: "Eliminate 10 hostiles anywhere.",          target: 10,    rewardCredits: 600,  rewardExp: 200, rewardHonor: 8 },
+  { id: "d-kills-25",   kind: "kill-any", category: "combat", title: "Daily: Patrol Duty",    description: "Eliminate 25 hostiles anywhere.",          target: 25,    rewardCredits: 1500, rewardExp: 500, rewardHonor: 18 },
+  { id: "d-mine-30",    kind: "mine",     category: "gathering", title: "Daily: Belt Run",       description: "Mine 30 units of any ore.",                target: 30,    rewardCredits: 800,  rewardExp: 250, rewardHonor: 6 },
+  { id: "d-credits-5k", kind: "earn-credits", category: "transport", title: "Daily: Hustler",    description: "Earn 5,000 credits.",                       target: 5000,  rewardCredits: 1500, rewardExp: 300, rewardHonor: 10 },
+  { id: "d-warp-3",     kind: "warp-zones", category: "exploration", title: "Daily: Sector Rounds", description: "Warp between sectors 3 times.",         target: 3,     rewardCredits: 700,  rewardExp: 200, rewardHonor: 6 },
+  { id: "d-spend-3k",   kind: "spend-credits", category: "delivery", title: "Daily: Resupply",  description: "Spend 3,000 credits at stations.",         target: 3000,  rewardCredits: 600,  rewardExp: 150, rewardHonor: 4 },
+  { id: "d-zone-alpha", kind: "kill-zone", category: "combat", title: "Daily: Alpha Sweep",   description: "Kill 8 hostiles in Alpha Sector.",         target: 8,     rewardCredits: 700,  rewardExp: 220, rewardHonor: 7,  zoneFilter: "alpha" },
+  { id: "d-zone-nebula",kind: "kill-zone", category: "combat", title: "Daily: Nebula Cleanup",description: "Kill 6 hostiles in Veil Nebula.",          target: 6,     rewardCredits: 1400, rewardExp: 400, rewardHonor: 14, zoneFilter: "nebula" },
 ];
+
+// ── MISSION BOARD (categorized missions available at stations) ────────────
+export const MISSION_BOARD_POOL: Mission[] = [
+  // ── TRANSPORT (move cargo between stations for profit) ──
+  { id: "m-trans-1",  kind: "transport", category: "transport", title: "Supply Run: Food",         description: "Buy 20 food supplies and sell at any military station.",   target: 20,   rewardCredits: 1200,  rewardExp: 300,  rewardHonor: 8,  targetResourceId: "food" },
+  { id: "m-trans-2",  kind: "transport", category: "transport", title: "Fuel Delivery",            description: "Transport 15 fuel cells to a trade station.",             target: 15,   rewardCredits: 1800,  rewardExp: 400,  rewardHonor: 12, targetResourceId: "fuel-cell" },
+  { id: "m-trans-3",  kind: "transport", category: "transport", title: "Medicine Run",             description: "Deliver 10 medicine to any outpost.",                     target: 10,   rewardCredits: 2500,  rewardExp: 500,  rewardHonor: 15, targetResourceId: "medicine" },
+  { id: "m-trans-4",  kind: "transport", category: "transport", title: "Luxury Courier",           description: "Move 8 luxury goods across zones.",                       target: 8,    rewardCredits: 4000,  rewardExp: 800,  rewardHonor: 25, targetResourceId: "luxury" },
+  { id: "m-trans-5",  kind: "transport", category: "transport", title: "Contraband Smuggling",     description: "Sell 5 contraband at any station. No questions asked.",    target: 5,    rewardCredits: 6000,  rewardExp: 1000, rewardHonor: 35, targetResourceId: "contraband" },
+  { id: "m-trans-6",  kind: "transport", category: "transport", title: "Precursor Tech Courier",   description: "Transport 3 precursor tech to a trade station.",           target: 3,    rewardCredits: 8000,  rewardExp: 1500, rewardHonor: 50, targetResourceId: "precursor" },
+  { id: "m-trans-7",  kind: "transport", category: "transport", title: "Nanite Shipment",          description: "Sell 12 nanite paste at any station.",                    target: 12,   rewardCredits: 3200,  rewardExp: 600,  rewardHonor: 18, targetResourceId: "nanite" },
+  { id: "m-trans-8",  kind: "transport", category: "transport", title: "Exotic Cargo",             description: "Transport 4 exotic goods across the system.",             target: 4,    rewardCredits: 10000, rewardExp: 2000, rewardHonor: 60, targetResourceId: "exotic" },
+
+  // ── GATHERING (mine or collect specific resources) ──
+  { id: "m-gath-1",  kind: "gather", category: "gathering", title: "Iron Harvest",             description: "Mine 50 iron ore from asteroid belts.",                     target: 50,   rewardCredits: 1500,  rewardExp: 350,  rewardHonor: 10, targetResourceId: "iron" },
+  { id: "m-gath-2",  kind: "gather", category: "gathering", title: "Lumenite Collection",      description: "Mine 30 lumenite crystals.",                                target: 30,   rewardCredits: 3000,  rewardExp: 600,  rewardHonor: 18, targetResourceId: "lumenite" },
+  { id: "m-gath-3",  kind: "gather", category: "gathering", title: "Scrap Salvage",            description: "Collect 40 scrap plating from destroyed enemies.",          target: 40,   rewardCredits: 1000,  rewardExp: 250,  rewardHonor: 6,  targetResourceId: "scrap" },
+  { id: "m-gath-4",  kind: "gather", category: "gathering", title: "Plasma Cell Harvest",      description: "Collect 25 plasma cells from raiders.",                     target: 25,   rewardCredits: 2200,  rewardExp: 500,  rewardHonor: 14, targetResourceId: "plasma" },
+  { id: "m-gath-5",  kind: "gather", category: "gathering", title: "Void Crystal Hunt",        description: "Collect 15 void crystals.",                                 target: 15,   rewardCredits: 5000,  rewardExp: 1000, rewardHonor: 30, targetResourceId: "void" },
+  { id: "m-gath-6",  kind: "gather", category: "gathering", title: "Dread Core Recovery",      description: "Salvage 5 dread cores from destroyed Dreads.",              target: 5,    rewardCredits: 12000, rewardExp: 2500, rewardHonor: 80, targetResourceId: "dread" },
+  { id: "m-gath-7",  kind: "gather", category: "gathering", title: "Warp Coil Extraction",     description: "Mine or collect 20 warp coils.",                            target: 20,   rewardCredits: 4000,  rewardExp: 800,  rewardHonor: 22, targetResourceId: "warp" },
+  { id: "m-gath-8",  kind: "gather", category: "gathering", title: "Quantum Chip Acquisition", description: "Acquire 10 quantum chips from any source.",                 target: 10,   rewardCredits: 7000,  rewardExp: 1500, rewardHonor: 40, targetResourceId: "quantum" },
+
+  // ── DELIVERY (deliver specific resource to a specific station) ──
+  { id: "m-del-1",  kind: "deliver", category: "delivery", title: "Helix Resupply",           description: "Deliver 30 iron ore to Helix Station.",                      target: 30,   rewardCredits: 2000,  rewardExp: 400,  rewardHonor: 12, targetResourceId: "iron",    targetStationId: "helix" },
+  { id: "m-del-2",  kind: "deliver", category: "delivery", title: "Ember Citadel Arms",       description: "Deliver 10 plasma cells to Ember Citadel.",                  target: 10,   rewardCredits: 3500,  rewardExp: 700,  rewardHonor: 20, targetResourceId: "plasma",  targetStationId: "ember" },
+  { id: "m-del-3",  kind: "deliver", category: "delivery", title: "Cloud Gate Supplies",      description: "Deliver 25 food supplies to Cloud Gate Station.",             target: 25,   rewardCredits: 2800,  rewardExp: 550,  rewardHonor: 15, targetResourceId: "food",    targetStationId: "cloud-gate" },
+  { id: "m-del-4",  kind: "deliver", category: "delivery", title: "Ironclad Ammunition",      description: "Deliver 8 dread cores to Ironclad Bastion.",                 target: 8,    rewardCredits: 15000, rewardExp: 3000, rewardHonor: 100, targetResourceId: "dread",   targetStationId: "ironclad" },
+  { id: "m-del-5",  kind: "deliver", category: "delivery", title: "Echo Anchorage Medicine",  description: "Deliver 15 medicine to Echo Anchorage.",                     target: 15,   rewardCredits: 4000,  rewardExp: 800,  rewardHonor: 25, targetResourceId: "medicine", targetStationId: "echo" },
+  { id: "m-del-6",  kind: "deliver", category: "delivery", title: "Solar Haven Crystals",     description: "Deliver 12 lumenite to Solar Haven.",                        target: 12,   rewardCredits: 5000,  rewardExp: 1000, rewardHonor: 30, targetResourceId: "lumenite", targetStationId: "solar-haven" },
+  { id: "m-del-7",  kind: "deliver", category: "delivery", title: "Void Heart Quantum",       description: "Deliver 6 quantum chips to Void Heart Station.",             target: 6,    rewardCredits: 18000, rewardExp: 4000, rewardHonor: 120, targetResourceId: "quantum",  targetStationId: "void-heart" },
+  { id: "m-del-8",  kind: "deliver", category: "delivery", title: "Storm Eye Fuel",           description: "Deliver 20 fuel cells to Eye of the Storm.",                 target: 20,   rewardCredits: 6000,  rewardExp: 1200, rewardHonor: 35, targetResourceId: "fuel-cell", targetStationId: "storm-eye" },
+
+  // ── EXPLORATION (jump gates, visit zones, travel) ──
+  { id: "m-exp-1",  kind: "travel-gates", category: "exploration", title: "Sector Hopper",          description: "Jump through 5 warp gates.",                         target: 5,    rewardCredits: 1500,  rewardExp: 400,  rewardHonor: 10 },
+  { id: "m-exp-2",  kind: "travel-gates", category: "exploration", title: "Gate Runner",            description: "Jump through 10 warp gates.",                        target: 10,   rewardCredits: 3500,  rewardExp: 800,  rewardHonor: 25 },
+  { id: "m-exp-3",  kind: "travel-gates", category: "exploration", title: "Hyperlane Explorer",     description: "Jump through 20 warp gates.",                        target: 20,   rewardCredits: 8000,  rewardExp: 2000, rewardHonor: 60 },
+  { id: "m-exp-4",  kind: "visit-zones",  category: "exploration", title: "Frontier Scout",         description: "Visit 3 different zones.",                            target: 3,    rewardCredits: 1200,  rewardExp: 350,  rewardHonor: 8 },
+  { id: "m-exp-5",  kind: "visit-zones",  category: "exploration", title: "Deep Space Surveyor",    description: "Visit 6 different zones.",                            target: 6,    rewardCredits: 3000,  rewardExp: 700,  rewardHonor: 20 },
+  { id: "m-exp-6",  kind: "visit-zones",  category: "exploration", title: "Master Cartographer",    description: "Visit 12 different zones.",                           target: 12,   rewardCredits: 8000,  rewardExp: 2000, rewardHonor: 55 },
+  { id: "m-exp-7",  kind: "travel-gates", category: "exploration", title: "Warp Marathon",          description: "Jump through 50 warp gates total.",                  target: 50,   rewardCredits: 20000, rewardExp: 5000, rewardHonor: 150 },
+  { id: "m-exp-8",  kind: "visit-zones",  category: "exploration", title: "Universal Explorer",     description: "Visit every zone in the system (20 zones).",         target: 20,   rewardCredits: 50000, rewardExp: 15000, rewardHonor: 500 },
+];
+
 
 // ── EVENTS ───────────────────────────────────────────────────────────────
 export type GameEvent = {
@@ -1037,38 +1088,38 @@ export const FACTION_ENEMY_MODS: Partial<Record<
 };
 
 export const QUEST_POOL: Quest[] = [
-  { id: "q-alpha-scouts", title: "Sweep the Lanes", description: "Pirate scouts have been raiding traders in Alpha Sector. Eliminate them.", zone: "alpha", killType: "scout", killCount: 5, rewardCredits: 350, rewardExp: 80, rewardHonor: 5 },
-  { id: "q-alpha-raiders", title: "Raider Bounty", description: "A raider crew is harassing the Helix Station. Take them down.", zone: "alpha", killType: "raider", killCount: 3, rewardCredits: 600, rewardExp: 140, rewardHonor: 10 },
-  { id: "q-nebula-raiders", title: "Veil Cleanup", description: "The Veil Nebula is thick with raider holdouts. Clear them.", zone: "nebula", killType: "raider", killCount: 6, rewardCredits: 1400, rewardExp: 320, rewardHonor: 18 },
-  { id: "q-nebula-destroyers", title: "Hunt the Hunters", description: "Hostile destroyers prowl the Veil. End their patrol.", zone: "nebula", killType: "destroyer", killCount: 3, rewardCredits: 2400, rewardExp: 600, rewardHonor: 30 },
-  { id: "q-crimson-destroyers", title: "Crimson Purge", description: "Destroyers have established a beachhead in Crimson Reach.", zone: "crimson", killType: "destroyer", killCount: 5, rewardCredits: 4000, rewardExp: 1100, rewardHonor: 50 },
-  { id: "q-crimson-dread", title: "Bring Down a Dread", description: "A Dread-class warship looms in Crimson Reach. Send it home in pieces.", zone: "crimson", killType: "dread", killCount: 1, rewardCredits: 6000, rewardExp: 1800, rewardHonor: 100 },
-  { id: "q-void-voidlings", title: "Voidling Eradication", description: "Voidlings flicker between dimensions in The Void. Banish them.", zone: "void", killType: "voidling", killCount: 6, rewardCredits: 9000, rewardExp: 2600, rewardHonor: 140 },
-  { id: "q-void-dread", title: "Apex Predator", description: "A Dread haunts The Void. Become its end.", zone: "void", killType: "dread", killCount: 2, rewardCredits: 18000, rewardExp: 5000, rewardHonor: 280 },
-  { id: "q-forge-destroyers", title: "Iron Curtain", description: "Destroyer squadrons have locked down the Iron Forge supply lanes. Break through.", zone: "forge", killType: "destroyer", killCount: 8, rewardCredits: 32000, rewardExp: 9500, rewardHonor: 500 },
-  { id: "q-forge-voidlings", title: "Forge Phantoms", description: "Voidlings are warping through the superheated forges, disrupting production. Eliminate them.", zone: "forge", killType: "voidling", killCount: 5, rewardCredits: 55000, rewardExp: 16000, rewardHonor: 850 },
-  { id: "q-corona-voidlings", title: "Solar Infestation", description: "A voidling swarm orbits the corona, feeding on solar energy. Cleanse it before they breach the station.", zone: "corona", killType: "voidling", killCount: 7, rewardCredits: 90000, rewardExp: 26000, rewardHonor: 1400 },
-  { id: "q-corona-dread", title: "Solarburn Contract", description: "Two Dread-class warships are using the corona as cover. Flush them out and destroy them.", zone: "corona", killType: "dread", killCount: 2, rewardCredits: 150000, rewardExp: 44000, rewardHonor: 2300 },
-  { id: "q-fracture-voidlings", title: "Rift Surge", description: "Voidlings pour through a dimensional fracture in waves. Seal it with their destruction.", zone: "fracture", killType: "voidling", killCount: 9, rewardCredits: 240000, rewardExp: 70000, rewardHonor: 3800 },
-  { id: "q-fracture-dread", title: "Fracture Wardens", description: "Three Dreads patrol the Fracture Zone, blockading the path to the Abyss. Remove them.", zone: "fracture", killType: "dread", killCount: 3, rewardCredits: 400000, rewardExp: 115000, rewardHonor: 6000 },
-  { id: "q-abyss-dread", title: "Into the Dark", description: "The Abyss harbors a pack of Dreads unlike any seen before. Hunt them down and return with proof.", zone: "abyss", killType: "dread", killCount: 4, rewardCredits: 650000, rewardExp: 190000, rewardHonor: 10000 },
-  { id: "q-abyss-apex", title: "God of the Abyss", description: "A legendary Dread fleet dominates the deepest sector of known space. Become the last thing they see.", zone: "abyss", killType: "dread", killCount: 6, rewardCredits: 1100000, rewardExp: 320000, rewardHonor: 17000 },
+  { id: "q-alpha-scouts", title: "Sweep the Lanes", description: "Pirate scouts have been raiding traders in Alpha Sector. Eliminate them.", zone: "alpha", tier: 1, killType: "scout", killCount: 5, rewardCredits: 350, rewardExp: 80, rewardHonor: 5 },
+  { id: "q-alpha-raiders", title: "Raider Bounty", description: "A raider crew is harassing the Helix Station. Take them down.", zone: "alpha", tier: 1, killType: "raider", killCount: 3, rewardCredits: 600, rewardExp: 140, rewardHonor: 10 },
+  { id: "q-nebula-raiders", title: "Veil Cleanup", description: "The Veil Nebula is thick with raider holdouts. Clear them.", zone: "nebula", tier: 2, killType: "raider", killCount: 6, rewardCredits: 1400, rewardExp: 320, rewardHonor: 18 },
+  { id: "q-nebula-destroyers", title: "Hunt the Hunters", description: "Hostile destroyers prowl the Veil. End their patrol.", zone: "nebula", tier: 2, killType: "destroyer", killCount: 3, rewardCredits: 2400, rewardExp: 600, rewardHonor: 30 },
+  { id: "q-crimson-destroyers", title: "Crimson Purge", description: "Destroyers have established a beachhead in Crimson Reach.", zone: "crimson", tier: 3, killType: "destroyer", killCount: 5, rewardCredits: 4000, rewardExp: 1100, rewardHonor: 50 },
+  { id: "q-crimson-dread", title: "Bring Down a Dread", description: "A Dread-class warship looms in Crimson Reach. Send it home in pieces.", zone: "crimson", tier: 3, killType: "dread", killCount: 1, rewardCredits: 6000, rewardExp: 1800, rewardHonor: 100 },
+  { id: "q-void-voidlings", title: "Voidling Eradication", description: "Voidlings flicker between dimensions in The Void. Banish them.", zone: "void", tier: 4, killType: "voidling", killCount: 6, rewardCredits: 9000, rewardExp: 2600, rewardHonor: 140 },
+  { id: "q-void-dread", title: "Apex Predator", description: "A Dread haunts The Void. Become its end.", zone: "void", tier: 4, killType: "dread", killCount: 2, rewardCredits: 18000, rewardExp: 5000, rewardHonor: 280 },
+  { id: "q-forge-destroyers", title: "Iron Curtain", description: "Destroyer squadrons have locked down the Iron Forge supply lanes. Break through.", zone: "forge", tier: 5, killType: "destroyer", killCount: 8, rewardCredits: 32000, rewardExp: 9500, rewardHonor: 500 },
+  { id: "q-forge-voidlings", title: "Forge Phantoms", description: "Voidlings are warping through the superheated forges, disrupting production. Eliminate them.", zone: "forge", tier: 5, killType: "voidling", killCount: 5, rewardCredits: 55000, rewardExp: 16000, rewardHonor: 850 },
+  { id: "q-corona-voidlings", title: "Solar Infestation", description: "A voidling swarm orbits the corona, feeding on solar energy. Cleanse it before they breach the station.", zone: "corona", tier: 6, killType: "voidling", killCount: 7, rewardCredits: 90000, rewardExp: 26000, rewardHonor: 1400 },
+  { id: "q-corona-dread", title: "Solarburn Contract", description: "Two Dread-class warships are using the corona as cover. Flush them out and destroy them.", zone: "corona", tier: 6, killType: "dread", killCount: 2, rewardCredits: 150000, rewardExp: 44000, rewardHonor: 2300 },
+  { id: "q-fracture-voidlings", title: "Rift Surge", description: "Voidlings pour through a dimensional fracture in waves. Seal it with their destruction.", zone: "fracture", tier: 7, killType: "voidling", killCount: 9, rewardCredits: 240000, rewardExp: 70000, rewardHonor: 3800 },
+  { id: "q-fracture-dread", title: "Fracture Wardens", description: "Three Dreads patrol the Fracture Zone, blockading the path to the Abyss. Remove them.", zone: "fracture", tier: 7, killType: "dread", killCount: 3, rewardCredits: 400000, rewardExp: 115000, rewardHonor: 6000 },
+  { id: "q-abyss-dread", title: "Into the Dark", description: "The Abyss harbors a pack of Dreads unlike any seen before. Hunt them down and return with proof.", zone: "abyss", tier: 8, killType: "dread", killCount: 4, rewardCredits: 650000, rewardExp: 190000, rewardHonor: 10000 },
+  { id: "q-abyss-apex", title: "God of the Abyss", description: "A legendary Dread fleet dominates the deepest sector of known space. Become the last thing they see.", zone: "abyss", tier: 8, killType: "dread", killCount: 6, rewardCredits: 1100000, rewardExp: 320000, rewardHonor: 17000 },
   // Mars deep zones
-  { id: "q-marsdepth-voidlings", title: "Deep Field Haunting", description: "Voidlings have swarmed the outer Martian deep field, disrupting passage. Clear the infestation.", zone: "marsdepth", killType: "voidling", killCount: 6, rewardCredits: 9500, rewardExp: 2800, rewardHonor: 150 },
-  { id: "q-marsdepth-dread", title: "Martian Apex", description: "A Dread warship lurks in the Martian deep. Bring back its core as proof.", zone: "marsdepth", killType: "dread", killCount: 2, rewardCredits: 19000, rewardExp: 5500, rewardHonor: 300 },
-  { id: "q-maelstrom-dread", title: "Eye of the Storm", description: "A Dread armada is using The Maelstrom as a staging ground. Tear through them.", zone: "maelstrom", killType: "dread", killCount: 4, rewardCredits: 34000, rewardExp: 10000, rewardHonor: 550 },
-  { id: "q-maelstrom-apex", title: "Master of the Maelstrom", description: "The Maelstrom's supreme Dread fleet blocks all passage. Eliminate them completely.", zone: "maelstrom", killType: "dread", killCount: 6, rewardCredits: 58000, rewardExp: 17000, rewardHonor: 920 },
+  { id: "q-marsdepth-voidlings", title: "Deep Field Haunting", description: "Voidlings have swarmed the outer Martian deep field, disrupting passage. Clear the infestation.", zone: "marsdepth", tier: 2, killType: "voidling", killCount: 6, rewardCredits: 9500, rewardExp: 2800, rewardHonor: 150 },
+  { id: "q-marsdepth-dread", title: "Martian Apex", description: "A Dread warship lurks in the Martian deep. Bring back its core as proof.", zone: "marsdepth", tier: 2, killType: "dread", killCount: 2, rewardCredits: 19000, rewardExp: 5500, rewardHonor: 300 },
+  { id: "q-maelstrom-dread", title: "Eye of the Storm", description: "A Dread armada is using The Maelstrom as a staging ground. Tear through them.", zone: "maelstrom", tier: 3, killType: "dread", killCount: 4, rewardCredits: 34000, rewardExp: 10000, rewardHonor: 550 },
+  { id: "q-maelstrom-apex", title: "Master of the Maelstrom", description: "The Maelstrom's supreme Dread fleet blocks all passage. Eliminate them completely.", zone: "maelstrom", tier: 3, killType: "dread", killCount: 6, rewardCredits: 58000, rewardExp: 17000, rewardHonor: 920 },
   // Venus zones
-  { id: "q-venus1-scouts", title: "Cloud Layer Sweep", description: "Scout ships harry the upper Venus cloud lanes. Dispatch them and restore safe passage.", zone: "venus1", killType: "scout", killCount: 5, rewardCredits: 380, rewardExp: 90, rewardHonor: 6 },
-  { id: "q-venus1-raiders", title: "Citadel Raiders", description: "A raider gang has been looting Venusian cloud-city outposts. Shut them down.", zone: "venus1", killType: "raider", killCount: 3, rewardCredits: 650, rewardExp: 150, rewardHonor: 11 },
-  { id: "q-venus2-raiders", title: "Sulphur Gate Cleanup", description: "Raider packs lurk in the sulphur wind corridors. Clear the route.", zone: "venus2", killType: "raider", killCount: 6, rewardCredits: 1500, rewardExp: 340, rewardHonor: 19 },
-  { id: "q-venus2-destroyers", title: "Atmospheric Threat", description: "Destroyer squadrons patrol the Sulphur Winds, enforcing blockades. Break them.", zone: "venus2", killType: "destroyer", killCount: 3, rewardCredits: 2600, rewardExp: 650, rewardHonor: 32 },
-  { id: "q-venus3-destroyers", title: "Acid Corridor Purge", description: "Destroyer packs control the Acidic Deep passages. Burn through them.", zone: "venus3", killType: "destroyer", killCount: 5, rewardCredits: 4200, rewardExp: 1200, rewardHonor: 55 },
-  { id: "q-venus3-dread", title: "Venusian Dread Hunt", description: "A Dread-class warship lurks in the corrosive depths. Its reactor is your prize.", zone: "venus3", killType: "dread", killCount: 1, rewardCredits: 6500, rewardExp: 1900, rewardHonor: 110 },
-  { id: "q-venus4-voidlings", title: "Pressure Zone Phantoms", description: "Voidlings phase in and out of the crushing core. Exterminate them before the breach widens.", zone: "venus4", killType: "voidling", killCount: 6, rewardCredits: 9500, rewardExp: 2800, rewardHonor: 150 },
-  { id: "q-venus4-dread", title: "Core Guardian", description: "Two Dread warships orbit the Pressure Core as self-appointed warlords. Dethrone them.", zone: "venus4", killType: "dread", killCount: 2, rewardCredits: 19000, rewardExp: 5500, rewardHonor: 300 },
-  { id: "q-venus5-dread", title: "Eye of Venus", description: "The Eye of Venus is guarded by a Dread armada. Only the bold enter — and fewer leave.", zone: "venus5", killType: "dread", killCount: 4, rewardCredits: 34000, rewardExp: 10000, rewardHonor: 550 },
-  { id: "q-venus5-apex", title: "Sovereign of Venus", description: "Six Dread warships orbit the Eye's singularity. Destroy them all and claim the title.", zone: "venus5", killType: "dread", killCount: 6, rewardCredits: 58000, rewardExp: 17000, rewardHonor: 920 },
+  { id: "q-venus1-scouts", title: "Cloud Layer Sweep", description: "Scout ships harry the upper Venus cloud lanes. Dispatch them and restore safe passage.", zone: "venus1", tier: 1, killType: "scout", killCount: 5, rewardCredits: 380, rewardExp: 90, rewardHonor: 6 },
+  { id: "q-venus1-raiders", title: "Citadel Raiders", description: "A raider gang has been looting Venusian cloud-city outposts. Shut them down.", zone: "venus1", tier: 1, killType: "raider", killCount: 3, rewardCredits: 650, rewardExp: 150, rewardHonor: 11 },
+  { id: "q-venus2-raiders", title: "Sulphur Gate Cleanup", description: "Raider packs lurk in the sulphur wind corridors. Clear the route.", zone: "venus2", tier: 2, killType: "raider", killCount: 6, rewardCredits: 1500, rewardExp: 340, rewardHonor: 19 },
+  { id: "q-venus2-destroyers", title: "Atmospheric Threat", description: "Destroyer squadrons patrol the Sulphur Winds, enforcing blockades. Break them.", zone: "venus2", tier: 2, killType: "destroyer", killCount: 3, rewardCredits: 2600, rewardExp: 650, rewardHonor: 32 },
+  { id: "q-venus3-destroyers", title: "Acid Corridor Purge", description: "Destroyer packs control the Acidic Deep passages. Burn through them.", zone: "venus3", tier: 3, killType: "destroyer", killCount: 5, rewardCredits: 4200, rewardExp: 1200, rewardHonor: 55 },
+  { id: "q-venus3-dread", title: "Venusian Dread Hunt", description: "A Dread-class warship lurks in the corrosive depths. Its reactor is your prize.", zone: "venus3", tier: 3, killType: "dread", killCount: 1, rewardCredits: 6500, rewardExp: 1900, rewardHonor: 110 },
+  { id: "q-venus4-voidlings", title: "Pressure Zone Phantoms", description: "Voidlings phase in and out of the crushing core. Exterminate them before the breach widens.", zone: "venus4", tier: 4, killType: "voidling", killCount: 6, rewardCredits: 9500, rewardExp: 2800, rewardHonor: 150 },
+  { id: "q-venus4-dread", title: "Core Guardian", description: "Two Dread warships orbit the Pressure Core as self-appointed warlords. Dethrone them.", zone: "venus4", tier: 4, killType: "dread", killCount: 2, rewardCredits: 19000, rewardExp: 5500, rewardHonor: 300 },
+  { id: "q-venus5-dread", title: "Eye of Venus", description: "The Eye of Venus is guarded by a Dread armada. Only the bold enter — and fewer leave.", zone: "venus5", tier: 5, killType: "dread", killCount: 4, rewardCredits: 34000, rewardExp: 10000, rewardHonor: 550 },
+  { id: "q-venus5-apex", title: "Sovereign of Venus", description: "Six Dread warships orbit the Eye's singularity. Destroy them all and claim the title.", zone: "venus5", tier: 5, killType: "dread", killCount: 6, rewardCredits: 58000, rewardExp: 17000, rewardHonor: 920 },
 ];
 
 // ── ECONOMY ────────────────────────────────────────────────────────────────

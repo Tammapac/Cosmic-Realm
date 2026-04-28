@@ -1,8 +1,8 @@
 import { sendDockRepair } from "../net/socket";
-import { state, bump, useGame, pushNotification, save, stationPrice, priceDirection, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, rocketAmmoMax, getAmmoWeaponIds, ensureAmmoInitialized, setAutoRestock, setAutoRepairHull, setAutoShieldRecharge, getActiveAmmoType, switchAmmoType, purchaseAmmoAmount, getAmmoCount, ROCKET_AMMO_COST_PER, rocketMissileMax, getActiveRocketAmmoType, switchRocketAmmoType, purchaseRocketAmmo, getRocketAmmoCount, startRefineJob, collectRefineJob, upgradeFactory } from "../game/store";
+import { state, bump, useGame, pushNotification, save, stationPrice, priceDirection, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, rerollMissionBoard, bumpMission, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, rocketAmmoMax, getAmmoWeaponIds, ensureAmmoInitialized, setAutoRestock, setAutoRepairHull, setAutoShieldRecharge, getActiveAmmoType, switchAmmoType, purchaseAmmoAmount, getAmmoCount, ROCKET_AMMO_COST_PER, rocketMissileMax, getActiveRocketAmmoType, switchRocketAmmoType, purchaseRocketAmmo, getRocketAmmoCount, startRefineJob, collectRefineJob, upgradeFactory } from "../game/store";
 import {
   ActiveQuest, CONSUMABLE_DEFS, ConsumableId, DAILY_DUNGEON_BONUS, DRONE_DEFS, DroneKind, DroneMode, DUNGEONS, DungeonId, FACTIONS, MODULE_DEFS, ModuleDef, ModuleSlot, ModuleStats, RARITY_COLOR,
-  Quest, QUEST_POOL, RESOURCES, ResourceId, ROCKET_AMMO_TYPE_DEFS, RocketAmmoType, ROCKET_MISSILE_TYPE_DEFS, RocketMissileType, ROCKET_MISSILE_TYPE_ORDER, SHIP_CLASSES, SKILL_NODES, SkillNode, STATIONS, ShipClassId, SkillBranch,
+  Quest, QUEST_POOL, MISSION_BOARD_POOL, MissionCategory, RESOURCES, ResourceId, ROCKET_AMMO_TYPE_DEFS, RocketAmmoType, ROCKET_MISSILE_TYPE_DEFS, RocketMissileType, ROCKET_MISSILE_TYPE_ORDER, SHIP_CLASSES, SKILL_NODES, SkillNode, STATIONS, ShipClassId, SkillBranch,
   SkillId, ZONES, getDailyFeaturedDungeon, REFINE_RECIPES, FACTORY_SPEED_BONUS, FACTORY_UPGRADE_COSTS,
 } from "../game/types";
 import type { HangarTab } from "../game/store";
@@ -104,32 +104,14 @@ const ZONE_FACTION_META: Record<string, { label: string; color: string; glyph: s
 
 function BountiesTab() {
   const player = useGame((s) => s.player);
-  const available = useGame((s) => s.availableQuests);
+  const [tierFilter, setTierFilter] = useState<number>(0);
 
-  // Cross-faction: quests from other factions' zones that the player's level unlocks
-  const currentFaction = ZONES[player.zone as keyof typeof ZONES]?.faction ?? "earth";
-  const crossFactionQuests = useMemo(() =>
-    QUEST_POOL.filter((q) => {
-      const z = ZONES[q.zone as keyof typeof ZONES];
-      return z && z.faction !== currentFaction && z.unlockLevel <= player.level && !player.completedQuests.includes(q.id);
-    }),
-    // Using join as dependency so memo invalidates on any quest completion change
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [currentFaction, player.level, player.completedQuests.join(",")]
-  );
+  const allBounties = QUEST_POOL;
+  const tiers = [...new Set(allBounties.map(q => q.tier ?? 1))].sort((a, b) => a - b);
+  const filtered = tierFilter === 0 ? allBounties : allBounties.filter(q => (q.tier ?? 1) === tierFilter);
 
-  const crossByFaction = useMemo(() =>
-    crossFactionQuests.reduce<Record<string, Quest[]>>((acc, q) => {
-      const f = ZONES[q.zone as keyof typeof ZONES].faction;
-      if (!acc[f]) acc[f] = [];
-      acc[f].push(q);
-      return acc;
-    }, {}),
-    [crossFactionQuests]
-  );
-
-  const accept = (q: Quest) => {
-    if (player.activeQuests.find((x) => x.id === q.id)) return;
+  const accept = (q: any) => {
+    if (player.activeQuests.find((x: any) => x.id === q.id)) return;
     if (player.activeQuests.length >= 5) {
       pushNotification("Quest log full (5 max)", "bad");
       return;
@@ -139,45 +121,64 @@ function BountiesTab() {
     save(); bump();
   };
 
-  const turnIn = (q: ActiveQuest) => {
+  const turnIn = (q: any) => {
     if (!q.completed) return;
     player.credits += q.rewardCredits;
     player.exp += q.rewardExp;
     player.honor += q.rewardHonor;
-    player.completedQuests.push(q.id);
-    player.activeQuests = player.activeQuests.filter((x) => x.id !== q.id);
+    player.activeQuests = player.activeQuests.filter((x: any) => x.id !== q.id);
+    player.milestones.totalKills += 0;
     pushNotification(`+${q.rewardCredits}cr +${q.rewardExp}xp +${q.rewardHonor} honor`, "good");
     save(); bump();
   };
 
+  const tierColors: Record<number, string> = { 1: "#5cff8a", 2: "#4ee2ff", 3: "#ffcc44", 4: "#ff8a4e", 5: "#ff5c6c", 6: "#ff5cf0", 7: "#aa44ff", 8: "#ff4466", 9: "#ffffff" };
+
   return (
     <div className="p-4 space-y-4">
-      {/* Top row: available bounties (current zone) + active log */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="flex items-center justify-between">
         <div>
-          <div className="text-cyan tracking-widest text-sm mb-3">▶ AVAILABLE BOUNTIES</div>
-          <div className="space-y-2">
-            {available.length === 0 && (
-              <div className="text-mute text-sm italic">No bounties posted in this zone.</div>
-            )}
-            {available.map((q) => {
-              const has = player.activeQuests.find((x) => x.id === q.id);
-              const done = player.completedQuests.includes(q.id);
+          <div className="text-cyan tracking-widest text-sm">BOUNTY BOARD</div>
+          <div className="text-mute text-[13px] mt-1">Kill contracts available across all sectors. Repeatable.</div>
+        </div>
+      </div>
+
+      {/* Tier filter */}
+      <div className="flex gap-2 flex-wrap">
+        <button className={"btn " + (tierFilter === 0 ? "btn-primary" : "")} style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => setTierFilter(0)}>ALL</button>
+        {tiers.map(t => (
+          <button key={t} className={"btn " + (tierFilter === t ? "btn-primary" : "")} style={{ padding: "4px 10px", fontSize: 12, borderColor: tierColors[t] ?? "#888" }} onClick={() => setTierFilter(t)}>
+            T{t}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        {/* Available bounties */}
+        <div>
+          <div className="text-cyan tracking-widest text-sm mb-3">AVAILABLE ({filtered.length})</div>
+          <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+            {filtered.map((q) => {
+              const has = player.activeQuests.find((x: any) => x.id === q.id);
+              const tierColor = tierColors[q.tier ?? 1] ?? "#888";
               return (
-                <div key={q.id} className="panel p-3">
+                <div key={q.id} className="panel p-3" style={{ borderLeft: `2px solid ${tierColor}` }}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1">
-                      <div className="text-amber glow-amber text-sm font-bold">{q.title}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-bold px-1 rounded" style={{ background: tierColor + "22", color: tierColor }}>T{q.tier ?? 1}</span>
+                        <span className="text-amber glow-amber text-sm font-bold">{q.title}</span>
+                      </div>
                       <div className="text-dim text-[13px] mt-1 mb-2">{q.description}</div>
                       <div className="flex gap-3 text-[13px] flex-wrap">
-                        <span className="text-cyan">⚔ {q.killCount}× {q.killType}</span>
+                        <span className="text-cyan">{q.killCount}x {q.killType}</span>
                         <span className="text-amber">+{q.rewardCredits.toLocaleString()}cr</span>
                         <span className="text-magenta">+{q.rewardExp.toLocaleString()}xp</span>
                         <span className="text-green">+{q.rewardHonor} honor</span>
                       </div>
                     </div>
-                    <button className="btn btn-primary" disabled={!!has || done} onClick={() => accept(q)}>
-                      {done ? "Done" : has ? "Active" : "Accept"}
+                    <button className="btn btn-primary" disabled={!!has} onClick={() => accept(q)}>
+                      {has ? "Active" : "Accept"}
                     </button>
                   </div>
                 </div>
@@ -185,13 +186,15 @@ function BountiesTab() {
             })}
           </div>
         </div>
+
+        {/* Active quests */}
         <div>
-          <div className="text-cyan tracking-widest text-sm mb-3">▶ ACTIVE QUESTS ({player.activeQuests.length}/5)</div>
+          <div className="text-cyan tracking-widest text-sm mb-3">ACTIVE QUESTS ({player.activeQuests.length}/5)</div>
           <div className="space-y-2">
             {player.activeQuests.length === 0 && (
               <div className="text-mute text-sm italic">No active quests. Take a contract from the board.</div>
             )}
-            {player.activeQuests.map((q) => (
+            {player.activeQuests.map((q: any) => (
               <div key={q.id} className="panel p-3">
                 <div className="text-amber glow-amber text-sm font-bold">{q.title}</div>
                 <div className="text-dim text-[13px] mt-1 mb-2">
@@ -212,58 +215,6 @@ function BountiesTab() {
           </div>
         </div>
       </div>
-
-      {/* Cross-faction contracts */}
-      {Object.keys(crossByFaction).length > 0 && (
-        <div className="border-t pt-4" style={{ borderColor: "var(--border-soft)" }}>
-          <div className="text-cyan tracking-widest text-sm mb-1">▶ CROSS-FACTION CONTRACTS</div>
-          <div className="text-mute text-[13px] mb-3">Accept now — progress counts when you arrive in that zone.</div>
-          {Object.entries(crossByFaction).map(([faction, quests]) => {
-            const meta = ZONE_FACTION_META[faction] ?? ZONE_FACTION_META.earth;
-            return (
-              <div key={faction} className="mb-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-sm tracking-widest font-bold" style={{ color: meta.color }}>
-                    {meta.glyph} {meta.label.toUpperCase()}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {quests.map((q) => {
-                    const has = player.activeQuests.find((x) => x.id === q.id);
-                    const done = player.completedQuests.includes(q.id);
-                    const zone = ZONES[q.zone as keyof typeof ZONES];
-                    return (
-                      <div
-                        key={q.id}
-                        className="panel p-3"
-                        style={{ borderLeft: `2px solid ${meta.color}55` }}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="text-[12px] tracking-widest mb-1" style={{ color: meta.color }}>
-                              {zone.label} · {zone.name.toUpperCase()}
-                            </div>
-                            <div className="text-amber text-sm font-bold truncate">{q.title}</div>
-                            <div className="text-dim text-[13px] mt-1 mb-2 line-clamp-2">{q.description}</div>
-                            <div className="flex gap-2 text-[13px] flex-wrap">
-                              <span className="text-cyan">⚔ {q.killCount}× {q.killType}</span>
-                              <span className="text-amber">+{q.rewardCredits.toLocaleString()}cr</span>
-                              <span className="text-magenta">+{q.rewardExp.toLocaleString()}xp</span>
-                            </div>
-                          </div>
-                          <button className="btn btn-primary shrink-0" disabled={!!has || done} onClick={() => accept(q)}>
-                            {done ? "Done" : has ? "Active" : "Accept"}
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }
@@ -1116,7 +1067,10 @@ function MarketTab({ stationId }: { stationId: string }) {
     removeCargo(rid, take);
     player.credits += earn;
     pushNotification(`Sold ${take}× ${RESOURCES[rid].name} · +${earn.toLocaleString()}cr`, "good");
-    save(); bump();
+        bumpMission("transport", take, undefined, { resourceId: rid });
+    bumpMission("deliver", take, undefined, { resourceId: rid, stationId });
+    bumpMission("earn-credits", earn);
+save(); bump();
   };
 
   // Show resources this station trades + any the player is carrying
@@ -1138,6 +1092,8 @@ function MarketTab({ stationId }: { stationId: string }) {
     if (totalEarn > 0) {
       player.credits += totalEarn;
       pushNotification(`Sold all cargo · +${totalEarn.toLocaleString()}cr`, "good");
+            bumpMission("transport", 1, undefined, {});
+      bumpMission("earn-credits", totalEarn);
       save(); bump();
     } else {
       pushNotification("Nothing to sell", "bad");
@@ -1832,80 +1788,143 @@ function SkillsTab() {
 // ── MISSIONS ──────────────────────────────────────────────────────────────
 function MissionsTab() {
   const player = useGame((s) => s.player);
+  const missionBoard = useGame((s) => s.missionBoard);
+  useGame((s) => s.tick);
+  const [activeTab, setActiveTab] = useState<"daily" | "combat" | "transport" | "gathering" | "delivery" | "exploration">("daily");
+
   const next = new Date(player.lastDailyReset + 24 * 3600 * 1000);
   const hrs = Math.max(0, Math.floor((next.getTime() - Date.now()) / 3600000));
   const mins = Math.max(0, Math.floor(((next.getTime() - Date.now()) % 3600000) / 60000));
 
-  return (
-    <div className="p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-cyan tracking-widest text-sm">▶ DAILY MISSIONS</div>
-          <div className="text-mute text-[13px] mt-1">Resets in {hrs}h {mins}m</div>
+  const tabs = [
+    { id: "daily" as const, label: "Daily", icon: "\u2605" },
+    { id: "transport" as const, label: "Transport", icon: "\u25B6" },
+    { id: "gathering" as const, label: "Gathering", icon: "\u25B0" },
+    { id: "delivery" as const, label: "Delivery", icon: "\u25C6" },
+    { id: "exploration" as const, label: "Exploration", icon: "\u2726" },
+  ];
+
+  const boardByCategory = (cat: string) => (missionBoard ?? []).filter((m: any) => m.category === cat);
+
+  const renderMission = (m: any) => {
+    const pct = Math.min(1, m.progress / m.target);
+    const claimed = m.claimed;
+    const ready = m.completed && !claimed;
+    return (
+      <div
+        key={m.id}
+        className="panel p-3"
+        style={{
+          opacity: claimed ? 0.5 : 1,
+          borderColor: ready ? "#5cff8a" : "var(--border-soft)",
+        }}
+      >
+        <div className="font-bold text-[13px] text-cyan mb-1">{m.title}</div>
+        <div className="text-dim text-[13px] mb-2">{m.description}</div>
+        {m.targetStationId && (
+          <div className="text-[12px] text-magenta mb-1">Target: {STATIONS.find((s: any) => s.id === m.targetStationId)?.name ?? m.targetStationId}</div>
+        )}
+        <div className="text-mute text-[13px] tabular-nums mb-1">
+          {m.progress}/{m.target}
+        </div>
+        <div className="w-full h-1 mb-2" style={{ background: "rgba(255,255,255,0.08)" }}>
+          <div
+            className="h-full"
+            style={{
+              width: `${pct * 100}%`,
+              background: ready ? "#5cff8a" : "var(--accent-cyan)",
+            }}
+          />
+        </div>
+        <div className="text-amber text-[13px] mb-2">
+          +{m.rewardCredits.toLocaleString()}cr +{m.rewardExp.toLocaleString()}xp +{m.rewardHonor}hr
         </div>
         <button
-          className="btn btn-amber"
-          style={{ padding: "6px 12px", fontSize: 13 }}
-          onClick={rerollDaily}
-          disabled={player.credits < 500}
+          className="btn btn-primary w-full"
+          style={{ padding: "4px 8px", fontSize: 13 }}
+          disabled={!ready}
+          onClick={() => claimMission(m.id)}
         >
-          REROLL · 500cr
+          {claimed ? "CLAIMED" : ready ? "CLAIM" : "IN PROGRESS"}
         </button>
       </div>
-      <div className="grid grid-cols-3 gap-3">
-        {player.dailyMissions.map((m) => {
-          const pct = Math.min(1, m.progress / m.target);
-          const claimed = m.claimed;
-          const ready = m.completed && !claimed;
-          return (
-            <div
-              key={m.id}
-              className="panel p-3"
-              style={{
-                opacity: claimed ? 0.5 : 1,
-                borderColor: ready ? "#5cff8a" : "var(--border-soft)",
-              }}
-            >
-              <div className="font-bold text-[13px] text-cyan mb-1">{m.title}</div>
-              <div className="text-dim text-[13px] mb-2">{m.description}</div>
-              <div className="text-mute text-[13px] tabular-nums mb-1">
-                {m.progress}/{m.target}
-              </div>
-              <div className="w-full h-1 mb-2" style={{ background: "rgba(255,255,255,0.08)" }}>
-                <div
-                  className="h-full"
-                  style={{
-                    width: `${pct * 100}%`,
-                    background: ready ? "#5cff8a" : "var(--accent-cyan)",
-                  }}
-                />
-              </div>
-              <div className="text-amber text-[13px] mb-2">
-                +{m.rewardCredits}cr · +{m.rewardExp}xp · +{m.rewardHonor}✪
-              </div>
-              <button
-                className="btn btn-primary w-full"
-                style={{ padding: "4px 8px", fontSize: 13 }}
-                disabled={!ready}
-                onClick={() => claimMission(m.id)}
-              >
-                {claimed ? "CLAIMED" : ready ? "CLAIM" : "IN PROGRESS"}
-              </button>
-            </div>
-          );
-        })}
-      </div>
+    );
+  };
 
-      {/* Milestones */}
-      <div className="text-cyan tracking-widest text-sm mt-4 mb-2">▶ LIFETIME MILESTONES</div>
-      <div className="grid grid-cols-3 gap-2">
-        {Object.entries(player.milestones).map(([k, v]) => (
-          <div key={k} className="panel p-2">
-            <div className="text-mute text-[12px] tracking-widest uppercase">{k}</div>
-            <div className="text-amber font-bold text-sm tabular-nums">{(v as number).toLocaleString()}</div>
-          </div>
+  return (
+    <div className="p-4 space-y-3">
+      {/* Sub-tabs */}
+      <div className="flex gap-1 flex-wrap border-b pb-2" style={{ borderColor: "var(--border-soft)" }}>
+        {tabs.map(t => (
+          <button
+            key={t.id}
+            className={"btn " + (activeTab === t.id ? "btn-primary" : "")}
+            style={{ padding: "5px 12px", fontSize: 12 }}
+            onClick={() => setActiveTab(t.id)}
+          >
+            {t.icon} {t.label}
+          </button>
         ))}
       </div>
+
+      {/* Daily tab */}
+      {activeTab === "daily" && (
+        <>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-cyan tracking-widest text-sm">DAILY MISSIONS</div>
+              <div className="text-mute text-[13px] mt-1">Resets in {hrs}h {mins}m</div>
+            </div>
+            <button
+              className="btn btn-amber"
+              style={{ padding: "6px 12px", fontSize: 13 }}
+              onClick={rerollDaily}
+              disabled={player.credits < 500}
+            >
+              REROLL 500cr
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            {player.dailyMissions.map((m: any) => renderMission(m))}
+          </div>
+          {/* Milestones */}
+          <div className="text-cyan tracking-widest text-sm mt-4 mb-2">LIFETIME MILESTONES</div>
+          <div className="grid grid-cols-3 gap-2">
+            {Object.entries(player.milestones).map(([k, v]) => (
+              <div key={k} className="panel p-2">
+                <div className="text-mute text-[12px] tracking-widest uppercase">{k}</div>
+                <div className="text-amber font-bold text-sm tabular-nums">{(v as number).toLocaleString()}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Category tabs */}
+      {activeTab !== "daily" && (
+        <>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-cyan tracking-widest text-sm">{activeTab.toUpperCase()} MISSIONS</div>
+              <div className="text-mute text-[13px] mt-1">Complete missions to earn credits, XP, and honor.</div>
+            </div>
+            <button
+              className="btn btn-amber"
+              style={{ padding: "6px 12px", fontSize: 13 }}
+              onClick={rerollMissionBoard}
+              disabled={player.credits < 2000}
+            >
+              REFRESH 2,000cr
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            {boardByCategory(activeTab).map((m: any) => renderMission(m))}
+            {boardByCategory(activeTab).length === 0 && (
+              <div className="text-mute text-sm italic col-span-3">No missions available. Try refreshing the board.</div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
