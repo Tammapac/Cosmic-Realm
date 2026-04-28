@@ -793,7 +793,9 @@ function applyKill(e: Enemy, killerCrit: boolean): void {
   }
 
   // Ammo drop (x1 basic ammo)
-  const ammoDrop = 1 + Math.floor(Math.random() * 3);
+  const zDef = ZONES[state.player.zone];
+  const zTier = zDef ? zDef.enemyTier : 1;
+  const ammoDrop = Math.ceil((1 + Math.floor(Math.random() * 3)) * (1 + (zTier - 1) * 0.4));
   p2.ammo.x1 = (p2.ammo.x1 ?? 0) + ammoDrop;
   pushFloater({ text: `+${ammoDrop} x1 ammo`, color: "#aabbcc", x: e.pos.x + 30, y: e.pos.y - 20, scale: 0.7, bold: false });
 

@@ -502,6 +502,7 @@ export class GameEngine {
 
       if (players.length > 0) {
         this.tickEnemySpawns(zoneId, zs, players, dt, events);
+        this.tickPirateSpawns(zoneId, zs, players, dt, events);
         this.tickBossSpawn(zoneId, zs, players, dt, events);
         this.tickNpcSpawns(zoneId, zs, dt, events);
       }
@@ -873,13 +874,16 @@ export class GameEngine {
 
             if (e.hull <= 0) {
               const tierMult = this.getZoneTierMult(zoneId);
+              const zoneDef = ZONES[zoneId as ZoneId];
               // Bonus loot variety: chance to drop extra trade goods
               const dropResource = e.loot ? { ...e.loot } : pickLoot(e.type);
+              if (dropResource) dropResource.qty = Math.ceil(dropResource.qty * (1 + (zoneDef.enemyTier - 1) * 0.5));
               const bonusDrops: ResourceId[] = ["fuel-cell", "synth", "nanite", "food", "spice", "titanium", "medpack", "iron", "silk", "ore"];
               let bonusResource: { resourceId: ResourceId; qty: number } | undefined;
-              if (Math.random() < 0.40 && !e.isBoss) {
+              const bonusChance = 0.40 + zoneDef.enemyTier * 0.05;
+              if (Math.random() < bonusChance && !e.isBoss) {
                 const bonusRes = bonusDrops[Math.floor(Math.random() * bonusDrops.length)];
-                bonusResource = { resourceId: bonusRes, qty: 1 + Math.floor(Math.random() * 2) };
+                bonusResource = { resourceId: bonusRes, qty: Math.ceil((1 + Math.floor(Math.random() * 2)) * (1 + (zoneDef.enemyTier - 1) * 0.3)) };
               }
               const loot: LootDrop = {
                 credits: Math.round(e.credits * tierMult) + Math.round((proj.fromPlayerId != null ? (this.playerStatsCache.get(proj.fromPlayerId)?.lootBonus ?? 0) : 0) * 2),
@@ -1261,7 +1265,124 @@ export class GameEngine {
 
   // ── ENEMY SPAWNING ──────────────────────────────────────────��────────
 
-  private tickEnemySpawns(zoneId: string, zs: ZoneState, players: OnlinePlayer[], dt: number, events: GameEvent[]): void {
+  private tickPirateSpawns(zoneId: string, zs: ZoneState, players: OnlinePlayer[], dt: number, events: GameEvent[]): void {
+    if (players.length === 0) return;
+    // Pirate group spawn timer (every 60-120 seconds)
+    zs.pirateTimer = (zs.pirateTimer ?? randRange(60, 120)) - dt;
+    if (zs.pirateTimer > 0) return;
+    zs.pirateTimer = randRange(60, 120);
+
+    const zoneDef = ZONES[zoneId as ZoneId];
+    if (!zoneDef) return;
+    const tierMult = Math.pow(2, zoneDef.enemyTier - 1);
+
+    // Pick a random player to spawn near
+    const rp = players[Math.floor(Math.random() * players.length)];
+    const baseAng = Math.random() * Math.PI * 2;
+    const baseDist = 600 + Math.random() * 800;
+    const baseX = clamp(rp.posX + Math.cos(baseAng) * baseDist, -MAP_RADIUS * 0.9, MAP_RADIUS * 0.9);
+    const baseY = clamp(rp.posY + Math.sin(baseAng) * baseDist, -MAP_RADIUS * 0.9, MAP_RADIUS * 0.9);
+
+    // Spawn 5-10 pirates in a group
+    const groupSize = 5 + Math.floor(Math.random() * 6);
+    const pirateTypes: EnemyType[] = ["raider", "scout", "destroyer"];
+    const pirateColor = "#ff6633";
+
+    // 15% chance for bounty boss pirate event
+    const isBountyEvent = Math.random() < 0.15;
+
+    for (let i = 0; i < groupSize; i++) {
+      const pType = pirateTypes[Math.floor(Math.random() * pirateTypes.length)];
+      const baseDef = ENEMY_DEFS[pType];
+      const offsetX = (Math.random() - 0.5) * 300;
+      const offsetY = (Math.random() - 0.5) * 300;
+
+      const pirate: ServerEnemy = {
+        id: eid("pir"),
+        type: pType,
+        behavior: baseDef.behavior,
+        name: "Pirate",
+        pos: { x: baseX + offsetX, y: baseY + offsetY },
+        vel: { x: 0, y: 0 },
+        angle: Math.random() * Math.PI * 2,
+        hull: Math.round(baseDef.hullMax * tierMult * 1.2),
+        hullMax: Math.round(baseDef.hullMax * tierMult * 1.2),
+        damage: Math.round(baseDef.damage * tierMult * 1.1),
+        speed: Math.round(baseDef.speed * 1.2),
+        exp: Math.round(baseDef.exp * 1.5),
+        credits: Math.round(baseDef.credits * 2),
+        honor: baseDef.honor + 2,
+        loot: { resourceId: "plasma" as any, qty: Math.ceil(2 * (1 + (zoneDef.enemyTier - 1) * 0.5)) },
+        color: pirateColor,
+        size: baseDef.size + 2,
+        isBoss: false,
+        bossPhase: 0,
+        phaseTimer: 0,
+        fireTimer: randRange(0.5, 1.5),
+        burstCd: 0,
+        burstShots: 0,
+        aggroTarget: null, retargetCd: 0,
+        aggroRange: 500,
+        spawnPos: { x: baseX + offsetX, y: baseY + offsetY },
+        stunUntil: 0,
+        combo: new Map(),
+      };
+      zs.enemies.set(pirate.id, pirate);
+      events.push({ type: "enemy:spawn", zone: zoneId, enemy: this.serializeEnemy(pirate) });
+    }
+
+    // Bounty boss pirate (special event)
+    if (isBountyEvent) {
+      const bossType: EnemyType = "dread";
+      const bossDef = ENEMY_DEFS[bossType];
+      const boss: ServerEnemy = {
+        id: eid("pboss"),
+        type: bossType,
+        behavior: "tank",
+        name: "Pirate Captain",
+        pos: { x: baseX, y: baseY },
+        vel: { x: 0, y: 0 },
+        angle: Math.random() * Math.PI * 2,
+        hull: Math.round(bossDef.hullMax * tierMult * 4),
+        hullMax: Math.round(bossDef.hullMax * tierMult * 4),
+        damage: Math.round(bossDef.damage * tierMult * 2.5),
+        speed: Math.round(bossDef.speed * 0.8),
+        exp: Math.round(bossDef.exp * 5),
+        credits: Math.round(bossDef.credits * 8),
+        honor: bossDef.honor * 3,
+        loot: { resourceId: "dread" as any, qty: Math.ceil(5 * (1 + (zoneDef.enemyTier - 1) * 0.5)) },
+        color: "#ff2200",
+        size: bossDef.size + 8,
+        isBoss: true,
+        bossPhase: 0,
+        phaseTimer: randRange(8, 14),
+        fireTimer: 1.0,
+        burstCd: 0,
+        burstShots: 0,
+        aggroTarget: null, retargetCd: 0,
+        aggroRange: 800,
+        spawnPos: { x: baseX, y: baseY },
+        stunUntil: 0,
+        combo: new Map(),
+      };
+      zs.enemies.set(boss.id, boss);
+      events.push({ type: "enemy:spawn", zone: zoneId, enemy: this.serializeEnemy(boss) });
+      events.push({ type: "boss:warn", zone: zoneId });
+    }
+  }
+
+  private serializeEnemy(e: ServerEnemy): ClientEnemy {
+    return {
+      id: e.id, type: e.type, behavior: e.behavior, name: e.name,
+      x: e.pos.x, y: e.pos.y, vx: e.vel.x, vy: e.vel.y, angle: e.angle,
+      hull: e.hull, hullMax: e.hullMax, damage: e.damage, speed: e.speed,
+      color: e.color, size: e.size,
+      isBoss: e.isBoss, bossPhase: e.bossPhase,
+      aggro: e.aggroTarget !== null,
+    };
+  }
+
+    private tickEnemySpawns(zoneId: string, zs: ZoneState, players: OnlinePlayer[], dt: number, events: GameEvent[]): void {
     zs.spawnTimer -= dt;
     if (zs.spawnTimer > 0) return;
     zs.spawnTimer = randRange(0.4, 1.0);
