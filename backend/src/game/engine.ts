@@ -1541,28 +1541,61 @@ export class GameEngine {
               }
             }
           } else if (e.type === "sentinel") {
-            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.9), projAng - 0.03, e.color, "energy", 4);
-            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.9), projAng + 0.03, e.color, "energy", 4);
+            // Predictive aim + area denial
+            const pVelX = target.targetX !== null ? (target.targetX - target.posX) * 0.3 : 0;
+            const pVelY = target.targetY !== null ? (target.targetY - target.posY) * 0.3 : 0;
+            const predTime = d / (600 * 1.2);
+            const predAng = angleFromTo(e.pos, { x: tPos.x + pVelX * predTime * 80, y: tPos.y + pVelY * predTime * 80 });
+            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.9), predAng - 0.04, e.color, "energy", 4, 1.2);
+            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.9), predAng + 0.04, e.color, "energy", 4, 1.2);
+            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.4), predAng + 0.3, e.color, "energy", 3, 0.9);
+            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.4), predAng - 0.3, e.color, "energy", 3, 0.9);
           } else if (e.type === "wraith") {
+            // Fast predictive burst + flanking
+            const pVelX = target.targetX !== null ? (target.targetX - target.posX) * 0.3 : 0;
+            const pVelY = target.targetY !== null ? (target.targetY - target.posY) * 0.3 : 0;
+            const predTime = d / (600 * 1.4);
+            const predAng = angleFromTo(e.pos, { x: tPos.x + pVelX * predTime * 90, y: tPos.y + pVelY * predTime * 90 });
             for (let i = -1; i <= 1; i++) {
-              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.7), projAng + i * 0.15, e.color, "energy", 3, 1.3);
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.6), predAng + i * 0.12, e.color, "energy", 3, 1.4);
             }
+            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.3), predAng + Math.PI * 0.4, e.color, "energy", 2, 1.6);
+            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.3), predAng - Math.PI * 0.4, e.color, "energy", 2, 1.6);
           } else if (e.type === "titan") {
+            // Heavy spread + area denial around player
             for (let i = -1; i <= 1; i++) {
-              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 1.1), projAng + i * 0.08, e.color, "plasma", 6, 0.7);
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 1.0), projAng + i * 0.08, e.color, "plasma", 6, 0.7);
+            }
+            for (let i = 0; i < 4; i++) {
+              const offsetAng = projAng + (i - 1.5) * 0.25;
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.5), offsetAng, "#ff6644", "plasma", 5, 0.5);
             }
           } else if (e.type === "overlord") {
+            // Predictive barrage + area denial ring
+            const pVelX = target.targetX !== null ? (target.targetX - target.posX) * 0.3 : 0;
+            const pVelY = target.targetY !== null ? (target.targetY - target.posY) * 0.3 : 0;
+            const predTime = d / (600 * 1.1);
+            const predAng = angleFromTo(e.pos, { x: tPos.x + pVelX * predTime * 70, y: tPos.y + pVelY * predTime * 70 });
             for (let i = -2; i <= 2; i++) {
-              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.6), projAng + i * 0.1, e.color, "energy", 4, 1.1);
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.5), predAng + i * 0.09, e.color, "energy", 4, 1.1);
             }
-            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 1.3), projAng, "#ff4466", "plasma", 7, 0.8);
+            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 1.2), predAng, "#ff4466", "plasma", 7, 0.8);
+            for (let i = 0; i < 4; i++) {
+              const ringAng = predAng + (Math.PI / 3) * (i - 1.5);
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.3), ringAng, e.color, "energy", 3, 0.7);
+            }
           } else if (e.type === "dread") {
+            // Predictive plasma spread
+            const pVelX = target.targetX !== null ? (target.targetX - target.posX) * 0.3 : 0;
+            const pVelY = target.targetY !== null ? (target.targetY - target.posY) * 0.3 : 0;
+            const predTime = d / (600 * 0.9);
+            const predAng = angleFromTo(e.pos, { x: tPos.x + pVelX * predTime * 60, y: tPos.y + pVelY * predTime * 60 });
             for (let i = -1; i <= 1; i++) {
-              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.9), projAng + i * 0.06, e.color, "plasma", 5, 0.9);
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.8), predAng + i * 0.06, e.color, "plasma", 5, 0.9);
             }
           } else if (e.type === "destroyer") {
             for (let i = -1; i <= 1; i++) {
-              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.8), projAng + i * 0.06, e.color, "plasma", 4);
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.7), projAng + i * 0.06, e.color, "plasma", 4);
             }
           } else if (e.type === "voidling") {
             this.spawnEnemyProjectile(zoneId, zs, e, dmg, projAng, e.color, "energy", 4);
@@ -1577,6 +1610,30 @@ export class GameEngine {
             damage: dmg, pos: { ...e.pos },
             targetPos: tPos,
           });
+        }
+
+        // Boss secondary attacks (spiral + area denial between main volleys)
+        if (e.isBoss) {
+          e.secondaryTimer = (e.secondaryTimer ?? 0.5) - dt;
+          if (e.secondaryTimer <= 0 && d < 700) {
+            const phase = e.bossPhase ?? 0;
+            if (phase >= 1) {
+              // Rotating spiral (2 arms)
+              const spiralBase = (this.tickCount ?? 0) * 0.08;
+              for (let arm = 0; arm < 2; arm++) {
+                const sAng = spiralBase + arm * Math.PI;
+                this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.3), sAng, e.color, "energy", 3, 0.55);
+              }
+            }
+            if (phase >= 2) {
+              // Area denial around player
+              for (let i = 0; i < 3; i++) {
+                const offsetAng = projAng + (i - 1) * 0.4 + (Math.random() - 0.5) * 0.2;
+                this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.4), offsetAng, "#ff8844", "plasma", 4, 0.6);
+              }
+            }
+            e.secondaryTimer = phase >= 2 ? 0.35 : 0.6;
+          }
         }
 
         // Boss phase cycling

@@ -1441,42 +1441,122 @@ function tickWorld(dt: number): void {
           e.burstCd = 0.1;
         }
       }
+      // Boss secondary attacks: spiral + area denial (runs between main volleys)
+      e.secondaryCd = (e.secondaryCd ?? 0.5) - dt;
+      if (e.secondaryCd <= 0 && ed < 700) {
+        const p = state.player;
+        const pAng = Math.atan2(p.pos.y - e.pos.y, p.pos.x - e.pos.x);
+        if (phase >= 1) {
+          // Rotating spiral pattern (2 arms)
+          const spiralBase = state.tick * 2.5;
+          for (let arm = 0; arm < 2; arm++) {
+            const sAng = spiralBase + arm * Math.PI;
+            fireProjectile("enemy", e.pos.x, e.pos.y, sAng, e.damage * 0.4, e.color, 3, { weaponKind: "energy", speedMul: 0.55 });
+          }
+        }
+        if (phase >= 2) {
+          // Area denial: fire at positions around the player
+          const pDist = ed * 0.8;
+          for (let i = 0; i < 3; i++) {
+            const offsetAng = pAng + (i - 1) * 0.4 + (Math.random() - 0.5) * 0.2;
+            fireProjectile("enemy", e.pos.x, e.pos.y, offsetAng, e.damage * 0.5, "#ff8844", 4, { weaponKind: "plasma", speedMul: 0.6, aoeRadius: 35 });
+          }
+          // Slow homing orb (aims at player predicted position)
+          const projSpd = 220 * 0.4;
+          const tHit = ed / projSpd;
+          const predX = p.pos.x + p.vel.x * tHit * 0.5;
+          const predY = p.pos.y + p.vel.y * tHit * 0.5;
+          const homingAng = Math.atan2(predY - e.pos.y, predX - e.pos.x);
+          fireProjectile("enemy", e.pos.x, e.pos.y, homingAng, e.damage * 0.8, "#ffcc00", 5, { weaponKind: "energy", speedMul: 0.4, homing: true });
+        }
+        e.secondaryCd = phase >= 2 ? 0.35 : 0.6;
+      }
       if (phase >= 2) { e.speed = 55; }
     } else if (e.type === "sentinel") {
-      // Sentinel: rapid energy double-tap
+      // Sentinel: predictive double-tap + area denial bursts
       if (e.fireCd <= 0 && ed < 520) {
-        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle - 0.03, e.damage, e.color, 4, { weaponKind: "energy" });
-        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + 0.03, e.damage, e.color, 4, { weaponKind: "energy" });
-        e.fireCd = 0.7 + Math.random() * 0.3;
+        const p = state.player;
+        // Predictive aim: lead the target based on player velocity
+        const projSpd = 220 * 1.2;
+        const tHit = ed / projSpd;
+        const predX = p.pos.x + p.vel.x * tHit * 0.6;
+        const predY = p.pos.y + p.vel.y * tHit * 0.6;
+        const predAng = Math.atan2(predY - e.pos.y, predX - e.pos.x);
+        // Main shots aimed at predicted position
+        fireProjectile("enemy", e.pos.x, e.pos.y, predAng - 0.04, e.damage, e.color, 4, { weaponKind: "energy", speedMul: 1.2 });
+        fireProjectile("enemy", e.pos.x, e.pos.y, predAng + 0.04, e.damage, e.color, 4, { weaponKind: "energy", speedMul: 1.2 });
+        // Area denial: shots offset to sides of player
+        fireProjectile("enemy", e.pos.x, e.pos.y, predAng + 0.3, e.damage * 0.5, e.color, 3, { weaponKind: "energy", speedMul: 0.9 });
+        fireProjectile("enemy", e.pos.x, e.pos.y, predAng - 0.3, e.damage * 0.5, e.color, 3, { weaponKind: "energy", speedMul: 0.9 });
+        e.fireCd = 0.6 + Math.random() * 0.3;
       }
     } else if (e.type === "wraith") {
-      // Wraith: fast triple-shot energy bolts
-      if (e.fireCd <= 0 && ed < 350) {
+      // Wraith: fast predictive burst + flanking shots
+      if (e.fireCd <= 0 && ed < 400) {
+        const p = state.player;
+        const projSpd = 220 * 1.4;
+        const tHit = ed / projSpd;
+        const predX = p.pos.x + p.vel.x * tHit * 0.7;
+        const predY = p.pos.y + p.vel.y * tHit * 0.7;
+        const predAng = Math.atan2(predY - e.pos.y, predX - e.pos.x);
+        // Fast triple burst at predicted position
         for (let i = -1; i <= 1; i++) {
-          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.15, e.damage * 0.8, e.color, 3, { weaponKind: "energy", speedMul: 1.3 });
+          fireProjectile("enemy", e.pos.x, e.pos.y, predAng + i * 0.12, e.damage * 0.7, e.color, 3, { weaponKind: "energy", speedMul: 1.4 });
         }
-        e.fireCd = 0.4 + Math.random() * 0.3;
+        // Two flanking shots aimed where player might dodge
+        const dodgeAng1 = predAng + Math.PI * 0.4;
+        const dodgeAng2 = predAng - Math.PI * 0.4;
+        fireProjectile("enemy", e.pos.x, e.pos.y, dodgeAng1, e.damage * 0.4, e.color, 2, { weaponKind: "energy", speedMul: 1.6 });
+        fireProjectile("enemy", e.pos.x, e.pos.y, dodgeAng2, e.damage * 0.4, e.color, 2, { weaponKind: "energy", speedMul: 1.6 });
+        e.fireCd = 0.35 + Math.random() * 0.25;
       }
     } else if (e.type === "titan") {
-      // Titan: slow heavy plasma with splash
-      if (e.fireCd <= 0 && ed < 500) {
+      // Titan: heavy plasma spread + slow homing orb + ground denial
+      if (e.fireCd <= 0 && ed < 520) {
+        const p = state.player;
+        // Main heavy spread
         for (let i = -1; i <= 1; i++) {
-          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.08, e.damage * 1.3, e.color, 6, { weaponKind: "plasma", speedMul: 0.7, aoeRadius: 30 });
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.08, e.damage * 1.2, e.color, 6, { weaponKind: "plasma", speedMul: 0.7, aoeRadius: 30 });
         }
-        e.fireCd = 1.2 + Math.random() * 0.4;
+        // Area denial: shots aimed around the player (not at them)
+        const pAng = Math.atan2(p.pos.y - e.pos.y, p.pos.x - e.pos.x);
+        for (let i = 0; i < 4; i++) {
+          const offsetAng = pAng + (i - 1.5) * 0.25;
+          fireProjectile("enemy", e.pos.x, e.pos.y, offsetAng, e.damage * 0.6, "#ff6644", 5, { weaponKind: "plasma", speedMul: 0.5, aoeRadius: 40 });
+        }
+        e.fireCd = 1.0 + Math.random() * 0.3;
       }
     } else if (e.type === "overlord") {
-      // Overlord: mixed energy barrage + plasma
-      if (e.fireCd <= 0 && ed < 550) {
+      // Overlord: predictive barrage + 360 pulse + homing
+      if (e.fireCd <= 0 && ed < 600) {
+        const p = state.player;
+        const projSpd = 220 * 1.1;
+        const tHit = ed / projSpd;
+        const predX = p.pos.x + p.vel.x * tHit * 0.5;
+        const predY = p.pos.y + p.vel.y * tHit * 0.5;
+        const predAng = Math.atan2(predY - e.pos.y, predX - e.pos.x);
+        // Main barrage at predicted position
         for (let i = -2; i <= 2; i++) {
-          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.1, e.damage * 0.7, e.color, 4, { weaponKind: "energy", speedMul: 1.1 });
+          fireProjectile("enemy", e.pos.x, e.pos.y, predAng + i * 0.09, e.damage * 0.7, e.color, 4, { weaponKind: "energy", speedMul: 1.1 });
         }
-        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage * 1.5, "#ff4466", 7, { weaponKind: "plasma", speedMul: 0.8, aoeRadius: 40 });
-        e.fireCd = 0.9 + Math.random() * 0.3;
+        // Heavy center shot
+        fireProjectile("enemy", e.pos.x, e.pos.y, predAng, e.damage * 1.5, "#ff4466", 7, { weaponKind: "plasma", speedMul: 0.8, aoeRadius: 40 });
+        // Area denial ring (4 shots around player area)
+        for (let i = 0; i < 4; i++) {
+          const ringAng = predAng + (Math.PI / 3) * (i - 1.5);
+          fireProjectile("enemy", e.pos.x, e.pos.y, ringAng, e.damage * 0.4, e.color, 3, { weaponKind: "energy", speedMul: 0.7 });
+        }
+        e.fireCd = 0.7 + Math.random() * 0.3;
       }
     } else if (e.type === "dread") {
-      // Dread: heavy plasma spread
-      if (e.fireCd <= 0 && ed < 480) {
+      // Dread: heavy plasma spread + predictive shots
+      if (e.fireCd <= 0 && ed < 500) {
+        const p = state.player;
+        const projSpd = 220 * 0.9;
+        const tHit = ed / projSpd;
+        const predX = p.pos.x + p.vel.x * tHit * 0.4;
+        const predY = p.pos.y + p.vel.y * tHit * 0.4;
+        const predAng = Math.atan2(predY - e.pos.y, predX - e.pos.x);
         for (let i = -1; i <= 1; i++) {
           fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.06, e.damage, e.color, 5, { weaponKind: "plasma", speedMul: 0.9 });
         }
