@@ -2834,6 +2834,11 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
     sy = (Math.random() - 0.5) * m;
   }
   const zoom = state.cameraZoom;
+  // Viewport culling bounds
+  const cullMargin = 100;
+  const camX = cam.x, camY = cam.y;
+  const halfW = w / 2 / zoom + cullMargin;
+  const halfH = h / 2 / zoom + cullMargin;
   ctx.translate(w / 2 + sx, h / 2 + sy);
   ctx.scale(zoom, zoom);
   ctx.translate(-cam.x, -cam.y);
@@ -2904,12 +2909,7 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
   for (const o of state.others) drawOtherPlayer(ctx, o);
   for (const npc of state.npcShips) drawNpcShip(ctx, npc);
 
-  // Enemies
-  // Viewport culling - skip off-screen enemies
-  const cullMargin = 100;
-  const camX = cam.x, camY = cam.y;
-  const halfW = w / 2 / zoom + cullMargin;
-  const halfH = h / 2 / zoom + cullMargin;
+  // Enemies - viewport culling
   for (const e of state.enemies) {
     if (Math.abs(e.pos.x - camX) < halfW + e.size && Math.abs(e.pos.y - camY) < halfH + e.size) {
       drawEnemy(ctx, e);
