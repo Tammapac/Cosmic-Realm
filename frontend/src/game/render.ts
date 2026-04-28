@@ -66,7 +66,7 @@ regenNebula(state.player.zone);
 let lastZone = state.player.zone;
 
 // ── PIXEL HELPERS ─────────────────────────────────────────────────────────
-function px(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string): void {
+export function px(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string): void {
   ctx.fillStyle = color;
   ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
 }
@@ -2328,10 +2328,10 @@ export function drawParticle(ctx: CanvasRenderingContext2D, pa: Particle): void 
 }
 
 // ── STATIONS ──────────────────────────────────────────────────────────────
-const STATION_GLYPH: Record<string, string> = {
+export const STATION_GLYPH: Record<string, string> = {
   hub: "✦", trade: "$", mining: "▰", military: "⚔", outpost: "□",
 };
-const STATION_COLOR: Record<string, string> = {
+export const STATION_COLOR: Record<string, string> = {
   hub: "#4ee2ff", trade: "#5cff8a", mining: "#ffd24a", military: "#ff5c6c", outpost: "#7ad8ff", factory: "#ff8844",
 };
 

@@ -13,7 +13,7 @@ import * as PIXI from "pixi.js";
 import { state } from "./store";
 import { effectiveStats } from "./loop";
 import {
-  Enemy, Projectile, Particle, Floater, NpcShip, OtherPlayer, Asteroid,
+  Enemy, Projectile, Particle, Floater, NpcShip, OtherPlayer, Asteroid, RESOURCES,
   CargoBox, Drone, ZONES, STATIONS, PORTALS, DUNGEONS, SHIP_CLASSES,
   MAP_RADIUS, FACTIONS, ShipClassId, EnemyType, rankFor, Station,
   ZoneId,
@@ -22,7 +22,7 @@ import {
   drawShipPixels, drawEnemy, shadeHex, drawProjectile, drawParticle,
   drawStation, drawPortal, drawAsteroid, drawCargoBox, drawFloater,
   drawOtherPlayer, drawNpcShip, drawDrone, drawShip, drawHealthBar,
-  drawHullShieldBars, drawRift,
+  drawHullShieldBars, drawRift, px, STATION_COLOR, STATION_GLYPH,
 } from "./render";
 import { DEBUG_OVERLAY } from "./renderer-config";
 
@@ -134,6 +134,26 @@ function getEnemyTex(e: Enemy): PIXI.Texture {
 }
 
 // Simple circle texture for particles
+function getAsteroidTex(a: Asteroid): PIXI.Texture {
+  const key = `asteroid-${a.yields}-${a.size}`;
+  let tex = texCache.get(key);
+  if (tex) return tex;
+
+  const canvasSz = Math.ceil(a.size * 3) + 20;
+  const c2 = document.createElement("canvas");
+  c2.width = canvasSz;
+  c2.height = canvasSz;
+  const ctx = c2.getContext("2d")!;
+
+  // drawAsteroid draws at a.pos, so we create a fake with pos at center
+  const fakeAsteroid = { ...a, pos: { x: canvasSz / 2, y: canvasSz / 2 }, rotation: 0 };
+  drawAsteroid(ctx, fakeAsteroid);
+
+  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
+  texCache.set(key, tex);
+  return tex;
+}
+
 function getCircleTex(radius: number): PIXI.Texture {
   const key = `circle-${radius}`;
   let tex = texCache.get(key);
@@ -444,6 +464,9 @@ export function pixiRender(): void {
   // ── Dungeon rifts ──────────────────────────────────────────────────
   syncDungeonRifts();
 
+  // ── Mining laser beam ────────────────────────────────────────────
+  syncMiningLaser();
+
   // ── Move target ────────────────────────────────────────────────────
   syncMoveTarget();
 
@@ -553,10 +576,10 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
 
       const nameText = new PIXI.Text(e.name || "", {
         fontFamily: "Courier New",
-        fontSize: 11,
+        fontSize: 14,
         fill: e.color,
         stroke: "#000000",
-        strokeThickness: 2,
+        strokeThickness: 3,
         fontWeight: "bold",
       });
       nameText.anchor.set(0.5, 1);
@@ -650,7 +673,15 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
     let data = projectileSprites.get(pr.id);
 
     if (!data) {
-      const tex = getGlowTex(Math.max(pr.size, 4));
+      // Bake projectile texture using existing Canvas2D code
+      const canvasSz = Math.max(pr.size * 3, 30) + 20;
+      const c2 = document.createElement("canvas");
+      c2.width = canvasSz;
+      c2.height = canvasSz;
+      const ctx2d = c2.getContext("2d")!;
+      const fakePr = { ...pr, pos: { x: canvasSz / 2, y: canvasSz / 2 }, vel: { x: 1, y: 0 } };
+      drawProjectile(ctx2d, fakePr);
+      const tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
       const sprite = new PIXI.Sprite(tex);
       sprite.anchor.set(0.5);
       projectileLayer.addChild(sprite);
@@ -661,8 +692,6 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
     data.sprite.visible = true;
     data.sprite.position.set(pr.pos.x, pr.pos.y);
     data.sprite.rotation = Math.atan2(pr.vel.y, pr.vel.x);
-    data.sprite.tint = PIXI.utils.string2hex(pr.color);
-    data.sprite.scale.set(pr.size / 6);
   }
 
   // Remove dead projectiles
@@ -691,9 +720,10 @@ function syncTrailParticles(cam: { x: number; y: number }, halfW: number, halfH:
     let data = particleSprites.get(pa.id);
 
     if (!data) {
-      const tex = getCircleTex(Math.max(2, Math.ceil(pa.size)));
+      const tex = getGlowTex(Math.max(4, Math.ceil(pa.size * 2)));
       const sprite = new PIXI.Sprite(tex);
       sprite.anchor.set(0.5);
+      sprite.blendMode = PIXI.BLEND_MODES.ADD;
       trailLayer.addChild(sprite);
       data = { sprite };
       particleSprites.set(pa.id, data);
@@ -703,9 +733,9 @@ function syncTrailParticles(cam: { x: number; y: number }, halfW: number, halfH:
     const baseAlpha = pa.alpha ?? 1;
     data.sprite.visible = true;
     data.sprite.position.set(pa.pos.x, pa.pos.y);
-    data.sprite.alpha = a * a * 0.5 * baseAlpha;
+    data.sprite.alpha = a * a * 0.6 * baseAlpha;
     data.sprite.tint = PIXI.utils.string2hex(pa.color);
-    data.sprite.scale.set(a * pa.size / Math.max(2, Math.ceil(pa.size)));
+    data.sprite.scale.set(a * pa.size / Math.max(4, Math.ceil(pa.size * 2)));
   }
 }
 
@@ -721,10 +751,13 @@ function syncEffectParticles(cam: { x: number; y: number }, halfW: number, halfH
     let data = particleSprites.get(key);
 
     if (!data) {
-      const r = Math.max(3, Math.ceil(pa.size));
-      const tex = pa.kind === "ring" ? getCircleTex(r) : getGlowTex(r);
+      const r = Math.max(4, Math.ceil(pa.size));
+      const tex = getGlowTex(r);
       const sprite = new PIXI.Sprite(tex);
       sprite.anchor.set(0.5);
+      if (pa.kind !== "debris" && pa.kind !== "smoke") {
+        sprite.blendMode = PIXI.BLEND_MODES.ADD;
+      }
       effectsLayer.addChild(sprite);
       data = { sprite };
       particleSprites.set(key, data);
@@ -735,19 +768,34 @@ function syncEffectParticles(cam: { x: number; y: number }, halfW: number, halfH
     data.sprite.position.set(pa.pos.x, pa.pos.y);
     data.sprite.tint = PIXI.utils.string2hex(pa.color);
 
+    const r = Math.max(4, Math.ceil(pa.size));
     if (pa.kind === "ring") {
       const t = 1 - a;
-      data.sprite.alpha = a * 0.9;
-      data.sprite.scale.set(t * pa.size / Math.max(3, Math.ceil(pa.size)));
-    } else if (pa.kind === "flash" || pa.kind === "fireball") {
+      data.sprite.alpha = a * 0.8;
+      data.sprite.scale.set(t * pa.size / r);
+    } else if (pa.kind === "flash") {
       const t = 1 - a;
-      const sz = pa.size * (0.2 + t * 0.8);
+      data.sprite.alpha = a * a * 0.9;
+      data.sprite.scale.set(pa.size * (0.3 + t * 0.7) / r);
+    } else if (pa.kind === "fireball") {
+      const t = 1 - a;
+      data.sprite.alpha = a * 0.85;
+      data.sprite.scale.set(pa.size * (0.3 + t * 0.85) / r);
+    } else if (pa.kind === "spark") {
+      data.sprite.alpha = a * 0.9;
+      data.sprite.scale.set(a * pa.size / r);
+    } else if (pa.kind === "debris") {
+      data.sprite.alpha = a * 0.7;
+      data.sprite.scale.set(pa.size / r);
+    } else if (pa.kind === "smoke") {
+      data.sprite.alpha = a * 0.4;
+      data.sprite.scale.set(pa.size * (1 + (1 - a) * 0.5) / r);
+    } else if (pa.kind === "ember") {
       data.sprite.alpha = a * a;
-      data.sprite.scale.set(sz / Math.max(3, Math.ceil(pa.size)));
+      data.sprite.scale.set(a * pa.size / r);
     } else {
-      // spark, debris, smoke, ember
       data.sprite.alpha = a;
-      data.sprite.scale.set(a * pa.size / Math.max(3, Math.ceil(pa.size)));
+      data.sprite.scale.set(a * pa.size / r);
     }
     if (pa.rot !== undefined) {
       data.sprite.rotation = pa.rot;
@@ -1032,10 +1080,9 @@ function syncAsteroids(cam: { x: number; y: number }, halfW: number, halfH: numb
     let sprite = asteroidSprites.get(a.id);
 
     if (!sprite) {
-      const tex = getCircleTex(Math.max(4, a.size));
+      const tex = getAsteroidTex(a);
       sprite = new PIXI.Sprite(tex);
       sprite.anchor.set(0.5);
-      sprite.tint = 0x888888;
       asteroidLayer.addChild(sprite);
       asteroidSprites.set(a.id, sprite);
     }
@@ -1043,8 +1090,6 @@ function syncAsteroids(cam: { x: number; y: number }, halfW: number, halfH: numb
     sprite.visible = true;
     sprite.position.set(a.pos.x, a.pos.y);
     sprite.rotation = a.rotation;
-    sprite.scale.set(a.size / Math.max(4, a.size));
-    sprite.alpha = 0.8;
   }
 
   for (const [id, sprite] of asteroidSprites) {
@@ -1072,38 +1117,63 @@ function syncStations(): void {
 
     if (stationSpritesMap.has(st.id)) continue;
 
-    // Create station visual
+    // Create station visual using Canvas2D texture baking
     const container = new PIXI.Container();
     container.position.set(st.pos.x, st.pos.y);
 
-    // Station body - hexagonal shape
-    const g = new PIXI.Graphics();
-    g.lineStyle(2, 0x4ee2ff, 0.8);
-    g.beginFill(0x1a2040, 0.6);
-    const r = 22;
-    g.drawRegularPolygon?.(0, 0, r, 6) ??
-      (() => {
-        g.moveTo(r, 0);
-        for (let i = 1; i <= 6; i++) {
-          const angle = (i * Math.PI * 2) / 6;
-          g.lineTo(r * Math.cos(angle), r * Math.sin(angle));
-        }
-        g.closePath();
-      })();
-    g.endFill();
-    container.addChild(g);
+    // Bake station body texture using existing Canvas2D code
+    const canvasSz = 220;
+    const c2 = document.createElement("canvas");
+    c2.width = canvasSz;
+    c2.height = canvasSz;
+    const ctx2d = c2.getContext("2d")!;
+    // drawStation draws at x,y so center it
+    drawStation(ctx2d, canvasSz / 2, canvasSz / 2, "", st.kind, 0, st);
+    const tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+    const stBody = new PIXI.Sprite(tex);
+    stBody.anchor.set(0.5);
+    container.addChild(stBody);
 
-    // Station name
-    const nameText = new PIXI.Text(st.name, {
+    // Station name (separate so it stays crisp)
+    const accent = STATION_COLOR[st.kind] || "#4ee2ff";
+    const stName = new PIXI.Text(st.name, {
       fontFamily: "Courier New",
-      fontSize: 10,
-      fill: "#4ee2ff",
+      fontSize: 16,
+      fill: "#ffffff",
+      stroke: "#000000",
+      strokeThickness: 3,
+      fontWeight: "bold",
+    });
+    stName.anchor.set(0.5, 1);
+    stName.position.set(0, -68);
+    container.addChild(stName);
+
+    // Station kind label
+    const glyph = STATION_GLYPH[st.kind] || "□";
+    const kindLabel = new PIXI.Text(`${glyph} ${st.kind.toUpperCase()}`, {
+      fontFamily: "Courier New",
+      fontSize: 12,
+      fill: accent,
       stroke: "#000000",
       strokeThickness: 2,
+      fontWeight: "bold",
     });
-    nameText.anchor.set(0.5, 0);
-    nameText.position.set(0, r + 4);
-    container.addChild(nameText);
+    kindLabel.anchor.set(0.5, 1);
+    kindLabel.position.set(0, -48);
+    container.addChild(kindLabel);
+
+    // Dock label
+    const dockLabel = new PIXI.Text("[ DOCK ]", {
+      fontFamily: "Courier New",
+      fontSize: 12,
+      fill: accent,
+      stroke: "#000000",
+      strokeThickness: 2,
+      fontWeight: "bold",
+    });
+    dockLabel.anchor.set(0.5, 0);
+    dockLabel.position.set(0, 72);
+    container.addChild(dockLabel);
 
     stationLayer.addChild(container);
     stationSpritesMap.set(st.id, container);
@@ -1274,6 +1344,63 @@ function renderOverlays(w: number, h: number): void {
 // ══════════════════════════════════════════════════════════════════════════
 
 // ══════════════════════════════════════════════════════════════════════════
+// MINING LASER BEAM
+// ══════════════════════════════════════════════════════════════════════════
+
+let miningLaserGraphics: PIXI.Graphics | null = null;
+
+function syncMiningLaser(): void {
+  if (!state.miningTargetId) {
+    if (miningLaserGraphics) miningLaserGraphics.visible = false;
+    return;
+  }
+
+  const ta = state.asteroids.find((a: Asteroid) => a.id === state.miningTargetId);
+  if (!ta) {
+    if (miningLaserGraphics) miningLaserGraphics.visible = false;
+    return;
+  }
+
+  if (!miningLaserGraphics) {
+    miningLaserGraphics = new PIXI.Graphics();
+    worldLayer.addChild(miningLaserGraphics);
+  }
+
+  miningLaserGraphics.visible = true;
+  miningLaserGraphics.clear();
+
+  const pp = state.player.pos;
+  const t = state.tick;
+  const pulse = 0.55 + 0.45 * Math.abs(Math.sin(t * 18));
+
+  // Outer glow beam
+  miningLaserGraphics.lineStyle(14, 0x44ffcc, 0.3 + 0.15 * Math.sin(t * 12));
+  miningLaserGraphics.moveTo(pp.x, pp.y);
+  miningLaserGraphics.lineTo(ta.pos.x, ta.pos.y);
+
+  // Core beam
+  miningLaserGraphics.lineStyle(3 + pulse, 0xffffff, 0.85);
+  miningLaserGraphics.moveTo(pp.x, pp.y);
+  miningLaserGraphics.lineTo(ta.pos.x, ta.pos.y);
+
+  // Inner cyan beam
+  miningLaserGraphics.lineStyle(1.5 + pulse * 0.5, 0x44ffcc, 0.9);
+  miningLaserGraphics.moveTo(pp.x, pp.y);
+  miningLaserGraphics.lineTo(ta.pos.x, ta.pos.y);
+
+  // Impact point
+  miningLaserGraphics.lineStyle(0);
+  miningLaserGraphics.beginFill(0xffffff, 0.9);
+  miningLaserGraphics.drawCircle(ta.pos.x, ta.pos.y, 3 + pulse * 2);
+  miningLaserGraphics.endFill();
+
+  // Impact ring
+  const ringR = 6 + pulse * 4 + Math.sin(t * 20) * 2;
+  miningLaserGraphics.lineStyle(1.5, 0x44ffcc, 0.5 + 0.3 * Math.sin(t * 15));
+  miningLaserGraphics.drawCircle(ta.pos.x, ta.pos.y, ringR);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // MAP BOUNDARY
 // ══════════════════════════════════════════════════════════════════════════
 
@@ -1345,16 +1472,32 @@ function syncCargoBoxes(cam: { x: number; y: number }, halfW: number, halfH: num
     g.clear();
     g.position.set(cb.pos.x, cb.pos.y);
 
-    // Box shape
     const color = PIXI.utils.string2hex(cb.color);
+    const t = state.tick;
+    const bob = Math.sin(t * 3 + cb.pos.x * 0.01) * 2;
+
+    // Outer glow ring
+    g.lineStyle(1, color, 0.2 + 0.1 * Math.sin(t * 4));
+    g.drawCircle(0, bob, 12);
+
+    // Box shape (diamond rotated)
     g.lineStyle(1.5, color, 0.9);
-    g.beginFill(color, 0.3);
-    g.drawRect(-5, -5, 10, 10);
+    g.beginFill(color, 0.4);
+    g.moveTo(0, -6 + bob);
+    g.lineTo(6, 0 + bob);
+    g.lineTo(0, 6 + bob);
+    g.lineTo(-6, 0 + bob);
+    g.closePath();
     g.endFill();
 
-    // Glow
-    g.lineStyle(1, color, 0.3);
-    g.drawRect(-8, -8, 16, 16);
+    // Inner highlight
+    g.beginFill(0xffffff, 0.4);
+    g.moveTo(0, -3 + bob);
+    g.lineTo(3, 0 + bob);
+    g.lineTo(0, 3 + bob);
+    g.lineTo(-3, 0 + bob);
+    g.closePath();
+    g.endFill();
 
     // Tractor beam to player if close
     const pl = state.player;
