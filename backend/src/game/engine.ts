@@ -1613,23 +1613,26 @@ export class GameEngine {
         }
 
         // Boss secondary attacks (spiral + area denial between main volleys)
-        if (e.isBoss) {
+        if (e.isBoss && target) {
           e.secondaryTimer = (e.secondaryTimer ?? 0.5) - dt;
           if (e.secondaryTimer <= 0 && d < 700) {
+            const secDmg = this.calcEnemyDamage(e, target);
+            const secTPos = { x: target.posX, y: target.posY };
+            const secAng = angleFromTo(e.pos, secTPos);
             const phase = e.bossPhase ?? 0;
             if (phase >= 1) {
               // Rotating spiral (2 arms)
               const spiralBase = (this.tickCount ?? 0) * 0.08;
               for (let arm = 0; arm < 2; arm++) {
                 const sAng = spiralBase + arm * Math.PI;
-                this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.3), sAng, e.color, "energy", 3, 0.55);
+                this.spawnEnemyProjectile(zoneId, zs, e, Math.round(secDmg * 0.3), sAng, e.color, "energy", 3, 0.55);
               }
             }
             if (phase >= 2) {
               // Area denial around player
               for (let i = 0; i < 3; i++) {
-                const offsetAng = projAng + (i - 1) * 0.4 + (Math.random() - 0.5) * 0.2;
-                this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.4), offsetAng, "#ff8844", "plasma", 4, 0.6);
+                const offsetAng = secAng + (i - 1) * 0.4 + (Math.random() - 0.5) * 0.2;
+                this.spawnEnemyProjectile(zoneId, zs, e, Math.round(secDmg * 0.4), offsetAng, "#ff8844", "plasma", 4, 0.6);
               }
             }
             e.secondaryTimer = phase >= 2 ? 0.35 : 0.6;
