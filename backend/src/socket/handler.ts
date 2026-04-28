@@ -214,6 +214,13 @@ export function setupSocket(io: Server) {
     });
 
     // ── STATS UPDATE (syncs player data for engine computation) ─────
+    socket.on("dock:repair", (data: { hull: number; shield: number }) => {
+      const p = getPlayer(user.playerId);
+      if (!p) return;
+      if (data.hull > 0) p.hull = Math.min(data.hull, p.hullMax);
+      if (data.shield >= 0) p.shield = Math.min(data.shield, p.shieldMax);
+    });
+
     socket.on("stats:update", (data: {
       hull: number; shield: number; level: number;
       shipClass: string; honor: number;
@@ -239,10 +246,14 @@ export function setupSocket(io: Server) {
       }
 
       const newStats = engine.refreshPlayerStats(user.playerId) ?? computeStats(cached || data);
+      const oldSpeed = p.speed;
       p.speed = newStats.speed;
       p.hullMax = newStats.hullMax;
       p.shieldMax = newStats.shieldMax;
       p.shieldRegen = newStats.shieldRegen;
+      if (data.skills && Object.keys(data.skills).length > 0) {
+        console.log(`[STATS] ${user.username} skills updated: SPD ${Math.round(oldSpeed)}->${Math.round(p.speed)}, DMG ${Math.round(newStats.damage)}, RATE ${newStats.fireRate.toFixed(2)}, HUL ${Math.round(p.hullMax)}, SHD ${Math.round(p.shieldMax)}`);
+      }
     });
 
     // ── DISCONNECT ──────────────────────────────────────────────────
@@ -292,10 +303,12 @@ export function setupSocket(io: Server) {
                 shipClass: other.shipClass,
                 level: other.level,
                 faction: other.faction,
+                honor: other.honor,
+                miningTargetId: other.miningTargetId,
                 x: other.posX, y: other.posY,
                 vx: other.velX, vy: other.velY,
                 a: other.angle,
-                hp: other.hull, sp: other.shield,
+                hp: other.hull, hpMax: other.hullMax, sp: other.shield,
               });
             }
           }
@@ -309,8 +322,8 @@ export function setupSocket(io: Server) {
             entities.push({
               id: `p-${o.id}`, entityType: "player",
               x: o.x, y: o.y, vx: o.vx, vy: o.vy, angle: o.a,
-              hp: o.hp, shield: o.sp, version: tickCounter,
-              name: o.name, shipClass: o.shipClass, level: o.level, faction: o.faction,
+              hp: o.hp, hpMax: o.hpMax, shield: o.sp, version: tickCounter,
+              name: o.name, shipClass: o.shipClass, level: o.level, faction: o.faction, honor: o.honor, miningTargetId: o.miningTargetId,
             });
           }
           for (const e of culled.enemies as any[]) {
@@ -510,6 +523,16 @@ function broadcastEvents(io: Server, events: GameEvent[]): void {
               fromPlayer: true,
             });
           }
+        } else {
+          // NPC or system projectile (no associated player)
+          const isNpc = ev.fromPlayerId === 0;
+          io.to(`zone:${ev.zone}`).emit("projectile:spawn", {
+            x: ev.x, y: ev.y, vx: ev.vx, vy: ev.vy,
+            damage: ev.damage, color: ev.color, size: ev.size,
+            crit: ev.crit, weaponKind: ev.weaponKind, homing: ev.homing,
+            fromPlayer: isNpc,
+            fromNpc: isNpc,
+          });
         }
         break;
       }

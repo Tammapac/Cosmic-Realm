@@ -59,6 +59,8 @@ export type DeltaEntity = {
   state?: string;
   // Asteroid-specific
   yields?: string;
+  // Mining state
+  miningTargetId?: string | null;
 };
 
 export type DeltaPayload = {
@@ -172,7 +174,7 @@ type SocketEvents = {
   onWelcome: (payload: WelcomePayload) => void;
   onDelta: (payload: DeltaPayload) => void;
   onSnapshot: (payload: SnapshotPayload) => void;
-  onPlayerJoin: (player: { id: number; name: string; shipClass: string; level: number; faction: string | null; zone: string }) => void;
+  onPlayerJoin: (player: { id: number; name: string; shipClass: string; level: number; faction: string | null; honor: number; zone: string }) => void;
   onPlayerLeave: (data: { playerId: number }) => void;
   onCombatAttack: (event: CombatEvent) => void;
   onChatMessage: (msg: { from: string; text: string; channel: string; time: number }) => void;
@@ -433,6 +435,10 @@ export function sendStatsUpdate(data: {
   inventory?: any[]; equipped?: any; skills?: any; drones?: any[]; faction?: string;
 }) {
   socket?.emit("stats:update", data);
+}
+
+export function sendDockRepair(hull: number, shield: number) {
+  socket?.emit("dock:repair", { hull, shield });
 }
 
 export function isConnected(): boolean {

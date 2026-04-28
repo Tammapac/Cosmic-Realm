@@ -1,5 +1,5 @@
 import { useGame, state, bump } from "../game/store";
-import { DUNGEONS, MAP_RADIUS, STATIONS, PORTALS, ZONES } from "../game/types";
+import { DUNGEONS, MAP_RADIUS, STATIONS, PORTALS, ZONES, RESOURCES, ASTEROID_BELTS, } from "../game/types";
 
 const BASE_SIZE = 130;
 const BASE_RANGE = 1800;
@@ -23,11 +23,11 @@ export function MiniMap() {
 
   const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
     if (state.dockedAt) return;
-    const rect = (e.target as SVGSVGElement).getBoundingClientRect();
-    const cx = e.clientX - rect.left;
-    const cy = e.clientY - rect.top;
-    const dx = (cx - SIZE / 2) / scale;
-    const dy = (cy - SIZE / 2) / scale;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const rx = (e.clientX - rect.left) / rect.width;
+    const ry = (e.clientY - rect.top) / rect.height;
+    const dx = (rx - 0.5) * RANGE * 2;
+    const dy = (ry - 0.5) * RANGE * 2;
     state.cameraTarget = {
       x: state.player.pos.x + dx,
       y: state.player.pos.y + dy,
@@ -42,11 +42,11 @@ export function MiniMap() {
     const fullSize = 500;
     const fullScale = fullSize / (zoneRadius * 2.2);
     const handleFullClick = (e: React.MouseEvent<SVGSVGElement>) => {
-      const rect = (e.target as SVGSVGElement).getBoundingClientRect();
-      const cx = e.clientX - rect.left;
-      const cy = e.clientY - rect.top;
-      const wx = (cx - fullSize / 2) / fullScale;
-      const wy = (cy - fullSize / 2) / fullScale;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const rx = (e.clientX - rect.left) / rect.width;
+      const ry = (e.clientY - rect.top) / rect.height;
+      const wx = (rx - 0.5) * zoneRadius * 2.2;
+      const wy = (ry - 0.5) * zoneRadius * 2.2;
       state.cameraTarget = { x: wx, y: wy };
       bump();
     };
@@ -86,6 +86,16 @@ export function MiniMap() {
             </defs>
             <rect width={fullSize} height={fullSize} fill="url(#fm-bg)" rx={4} />
             <circle cx={fullSize / 2} cy={fullSize / 2} r={zoneRadius * fullScale} fill="none" stroke="#1a234866" strokeDasharray="4 6" />
+
+            {(ASTEROID_BELTS[player.zone] ?? []).map((belt, i) => (
+              <ellipse key={`belt-${i}`}
+                cx={fullSize / 2 + belt.cx * fullScale}
+                cy={fullSize / 2 + belt.cy * fullScale}
+                rx={belt.rx * fullScale}
+                ry={belt.ry * fullScale}
+                fill="#a8784a11" stroke="#a8784a33" strokeDasharray="3 5" strokeWidth={1}
+              />
+            ))}
             <line x1={fullSize / 2} y1={4} x2={fullSize / 2} y2={fullSize - 4} stroke="#1a234844" />
             <line x1={4} y1={fullSize / 2} x2={fullSize - 4} y2={fullSize / 2} stroke="#1a234844" />
 
@@ -93,7 +103,7 @@ export function MiniMap() {
               const x = fullSize / 2 + a.pos.x * fullScale;
               const y = fullSize / 2 + a.pos.y * fullScale;
               if (x < 0 || x > fullSize || y < 0 || y > fullSize) return null;
-              return <rect key={a.id} x={x - 1.5} y={y - 1.5} width={3} height={3} fill={a.yields === "lumenite" ? "#7ad8ff" : "#a8784a"} opacity={0.6} />;
+              return <rect key={a.id} x={x - 1.5} y={y - 1.5} width={3} height={3} fill={RESOURCES[a.yields]?.color ?? "#a8784a"} opacity={0.6} />;
             })}
 
             {STATIONS.filter(s => s.zone === player.zone).map((s) => {
@@ -198,7 +208,7 @@ export function MiniMap() {
           const x = SIZE / 2 + (a.pos.x - player.pos.x) * scale;
           const y = SIZE / 2 + (a.pos.y - player.pos.y) * scale;
           if (x < 0 || x > SIZE || y < 0 || y > SIZE) return null;
-          return <rect key={a.id} x={x - 1} y={y - 1} width={2} height={2} fill={a.yields === "lumenite" ? "#7ad8ff" : "#a8784a"} />;
+          return <rect key={a.id} x={x - 1} y={y - 1} width={2} height={2} fill={RESOURCES[a.yields]?.color ?? "#a8784a"} />;
         })}
 
         {STATIONS.filter((s) => s.zone === player.zone).map((s) => {

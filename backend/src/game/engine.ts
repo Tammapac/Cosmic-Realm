@@ -7,6 +7,7 @@ import {
   ROCKET_AMMO_TYPE_DEFS, ROCKET_MISSILE_TYPE_DEFS,
   MAP_RADIUS, EXP_FOR_LEVEL,
   MINING_RANGE, MINING_DPS_FACTOR,
+  pickAsteroidYield,
 } from "./data.js";
 import type { OnlinePlayer } from "../socket/state.js";
 import { MOVEMENT } from "../../../lib/game-constants.js";
@@ -71,6 +72,7 @@ export type ServerEnemy = {
   burstCd: number;
   burstShots: number;
   aggroTarget: number | null;
+  retargetCd: number;
   aggroRange: number;
   spawnPos: Vec2;
   stunUntil: number;
@@ -109,6 +111,7 @@ export type LootDrop = {
   credits: number;
   exp: number;
   honor: number;
+  bonusResource?: { resourceId: ResourceId; qty: number };
   resource?: { resourceId: ResourceId; qty: number };
 };
 
@@ -212,51 +215,57 @@ export function computeStats(playerData: any): EffectiveStats {
   const mod = sumEquippedStats(playerData.inventory, playerData.equipped);
   const sk = (id: SkillId) => (playerData.skills?.[id] ?? 0) as number;
 
-  let damage = (cls.baseDamage + (mod.damage ?? 0)) * (1 + sk("off-power") * 0.05);
-  let hullMax = (cls.hullMax + (mod.hullMax ?? 0)) * (1 + sk("def-armor") * 0.08);
-  let shieldMax = (cls.shieldMax + (mod.shieldMax ?? 0)) * (1 + sk("def-shield") * 0.08 + sk("def-barrier") * 0.12);
-  let speed = (cls.baseSpeed + (mod.speed ?? 0)) * (1 + sk("ut-thrust") * 0.05);
+  // Debug: log when skills are non-empty
+  const skillEntries = Object.entries(playerData.skills || {}).filter(([_, v]) => (v as number) > 0);
+  if (skillEntries.length > 0) {
+    console.log("[SERVER SKILLS]", JSON.stringify(playerData.skills));
+  }
+
+  let damage = (cls.baseDamage + (mod.damage ?? 0)) * (1 + sk("off-power") * 0.10);
+  let hullMax = (cls.hullMax + (mod.hullMax ?? 0)) * (1 + sk("def-armor") * 0.15);
+  let shieldMax = (cls.shieldMax + (mod.shieldMax ?? 0)) * (1 + sk("def-shield") * 0.15 + sk("def-barrier") * 0.20);
+  let speed = (cls.baseSpeed + (mod.speed ?? 0)) * (1 + sk("ut-thrust") * 0.10);
   let shieldRegen = 5 + (mod.shieldRegen ?? 0);
-  let damageReduction = (sk("def-bulwark") * 0.04) + (mod.damageReduction ?? 0);
+  let damageReduction = (sk("def-bulwark") * 0.08) + (mod.damageReduction ?? 0);
   let shieldAbsorb = Math.min(0.5, mod.shieldAbsorb ?? 0);
-  let aoeRadius = (sk("off-pierce") * 4) + (mod.aoeRadius ?? 0);
-  let critChance = 0.03 + sk("off-crit") * 0.03 + (mod.critChance ?? 0);
-  let fireRate = (1 + sk("off-rapid") * 0.08) * (mod.fireRate ?? 1);
+  let aoeRadius = (sk("off-pierce") * 6) + (mod.aoeRadius ?? 0);
+  let critChance = 0.03 + sk("off-crit") * 0.05 + (mod.critChance ?? 0);
+  let fireRate = (1 + sk("off-rapid") * 0.15) * (mod.fireRate ?? 1);
   let lootBonus = (mod.lootBonus ?? 0);
   let cargoMax = cls.cargoMax;
 
   // Snipe skill
-  damage *= (1 + sk("off-snipe") * 0.04);
-  critChance += sk("off-snipe") * 0.02;
+  damage *= (1 + sk("off-snipe") * 0.08);
+  critChance += sk("off-snipe") * 0.04;
 
   // Engineering skills
-  fireRate *= (1 + sk("eng-coolant") * 0.10);
-  damage *= (1 + sk("eng-capacitor") * 0.06);
-  shieldRegen *= (1 + sk("eng-capacitor") * 0.05);
-  critChance += sk("eng-targeting") * 0.05;
-  speed *= (1 + sk("eng-warp-core") * 0.08);
+  fireRate *= (1 + sk("eng-coolant") * 0.15);
+  damage *= (1 + sk("eng-capacitor") * 0.10);
+  shieldRegen *= (1 + sk("eng-capacitor") * 0.10);
+  critChance += sk("eng-targeting") * 0.08;
+  speed *= (1 + sk("eng-warp-core") * 0.15);
 
   // Overdrive & singularity
   const od = sk("eng-overdrive");
   if (od > 0) {
-    damage *= (1 + od * 0.12);
-    shieldMax *= (1 + od * 0.12);
-    speed *= (1 + od * 0.12);
+    damage *= (1 + od * 0.18);
+    shieldMax *= (1 + od * 0.18);
+    speed *= (1 + od * 0.18);
   }
   if (sk("eng-singularity") > 0) {
-    damage *= 1.20;
-    fireRate *= 1.15;
-    speed *= 1.10;
+    damage *= 1.30;
+    fireRate *= 1.25;
+    speed *= 1.15;
   }
 
   // Nano-repair
-  shieldRegen *= (1 + sk("def-nano") * 0.10);
-  hullMax *= (1 + sk("def-nano") * 0.05);
+  shieldRegen *= (1 + sk("def-nano") * 0.15);
+  hullMax *= (1 + sk("def-nano") * 0.10);
 
   // Volley
-  fireRate *= (1 + sk("off-volley") * 0.15);
+  fireRate *= (1 + sk("off-volley") * 0.20);
 
-  shieldRegen *= (1 + sk("def-regen") * 0.15);
+  shieldRegen *= (1 + sk("def-regen") * 0.20);
 
   // Drone bonuses
   const drones = playerData.drones ?? [];
@@ -363,6 +372,61 @@ function angleFromTo(from: Vec2, to: Vec2): number {
   return Math.atan2(to.y - from.y, to.x - from.x);
 }
 
+// ── LOOT POOLS (variety per enemy tier) ──────────────────────────────────────
+const LOOT_POOLS: Record<string, { resourceId: ResourceId; qty: number; weight: number }[]> = {
+  scout: [
+    { resourceId: "scrap", qty: 2, weight: 3 },
+    { resourceId: "iron", qty: 1, weight: 2 },
+    { resourceId: "fuel-cell", qty: 1, weight: 2 },
+    { resourceId: "food", qty: 1, weight: 1 },
+    { resourceId: "medpack", qty: 1, weight: 1 },
+  ],
+  raider: [
+    { resourceId: "plasma", qty: 2, weight: 3 },
+    { resourceId: "scrap", qty: 2, weight: 1 },
+    { resourceId: "synth", qty: 1, weight: 2 },
+    { resourceId: "nanite", qty: 1, weight: 2 },
+    { resourceId: "spice", qty: 1, weight: 1 },
+    { resourceId: "titanium", qty: 1, weight: 1 },
+  ],
+  destroyer: [
+    { resourceId: "warp", qty: 2, weight: 3 },
+    { resourceId: "plasma", qty: 2, weight: 1 },
+    { resourceId: "titanium", qty: 2, weight: 2 },
+    { resourceId: "fusion-lattice", qty: 1, weight: 1 },
+    { resourceId: "plasma-coil", qty: 1, weight: 2 },
+    { resourceId: "neural-chip", qty: 1, weight: 1 },
+  ],
+  voidling: [
+    { resourceId: "void", qty: 2, weight: 3 },
+    { resourceId: "dark-matter", qty: 1, weight: 2 },
+    { resourceId: "bio-crystal", qty: 1, weight: 2 },
+    { resourceId: "exotic", qty: 1, weight: 1 },
+    { resourceId: "cryo-fluid", qty: 1, weight: 1 },
+    { resourceId: "quantum", qty: 1, weight: 1 },
+  ],
+  dread: [
+    { resourceId: "dread", qty: 3, weight: 3 },
+    { resourceId: "quantum", qty: 2, weight: 2 },
+    { resourceId: "precursor", qty: 1, weight: 1 },
+    { resourceId: "relic", qty: 1, weight: 1 },
+    { resourceId: "dark-matter", qty: 2, weight: 2 },
+    { resourceId: "blackglass", qty: 1, weight: 1 },
+  ],
+};
+
+function pickLoot(enemyType: string): { resourceId: ResourceId; qty: number } {
+  const pool = LOOT_POOLS[enemyType];
+  if (!pool || pool.length === 0) return { resourceId: "scrap" as ResourceId, qty: 1 };
+  const totalWeight = pool.reduce((s, e) => s + e.weight, 0);
+  let roll = Math.random() * totalWeight;
+  for (const entry of pool) {
+    roll -= entry.weight;
+    if (roll <= 0) return { resourceId: entry.resourceId, qty: entry.qty };
+  }
+  return { resourceId: pool[0].resourceId, qty: pool[0].qty };
+}
+
 export class GameEngine {
   zones = new Map<string, ZoneState>();
   playerDataCache = new Map<number, any>();
@@ -375,7 +439,7 @@ export class GameEngine {
         asteroids: new Map(),
         npcShips: new Map(),
         projectiles: new Map(),
-        spawnTimer: randRange(0.5, 1.5),
+        spawnTimer: randRange(0.05, 0.15),
         bossTimer: randRange(120, 300),
         bossActive: false,
         npcSpawnTimer: randRange(5, 15),
@@ -483,7 +547,7 @@ export class GameEngine {
           const d = Math.sqrt(distSqToTarget);
           const toAngle = Math.atan2(dy, dx);
           if (d > 40) p.angle = toAngle;
-          const accel = p.speed * MOVEMENT.ACCELERATION_MULTIPLIER;
+          const accel = 500;
           p.velX += Math.cos(toAngle) * accel * dt;
           p.velY += Math.sin(toAngle) * accel * dt;
         }
@@ -521,10 +585,33 @@ export class GameEngine {
         }
       }
 
+      // Asteroid collision - push player out of asteroids
+      const pZone = this.zones.get(p.zone);
+      if (pZone) {
+        for (const ast of pZone.asteroids.values()) {
+          if (ast.hp <= 0) continue;
+          const adx = p.posX - ast.pos.x;
+          const ady = p.posY - ast.pos.y;
+          const adist = Math.sqrt(adx * adx + ady * ady);
+          const minDist = ast.size + 12;
+          if (adist < minDist && adist > 0) {
+            const pushX = (adx / adist) * minDist;
+            const pushY = (ady / adist) * minDist;
+            p.posX = ast.pos.x + pushX;
+            p.posY = ast.pos.y + pushY;
+            const dot = p.velX * (adx / adist) + p.velY * (ady / adist);
+            if (dot < 0) {
+              p.velX -= (adx / adist) * dot * 1.5;
+              p.velY -= (ady / adist) * dot * 1.5;
+            }
+          }
+        }
+      }
+
       p.posX = clamp(p.posX, -MAP_RADIUS, MAP_RADIUS);
       p.posY = clamp(p.posY, -MAP_RADIUS, MAP_RADIUS);
 
-      if (p.attackTargetId) {
+      if (p.attackTargetId && (p.isLaserFiring || p.isRocketFiring)) {
         const zs = this.zones.get(p.zone);
         if (zs) {
           const enemy = zs.enemies.get(p.attackTargetId);
@@ -563,35 +650,33 @@ export class GameEngine {
         const ammoDef = ROCKET_AMMO_TYPE_DEFS[p.laserAmmoType as RocketAmmoType];
         const mul = ammoDef ? ammoDef.damageMul : 1;
         const laserDmg = stats.damage * mul * 0.4;
-        const perShot = Math.round(laserDmg / 2);
         const perpAng = ang + Math.PI / 2;
         const crit = Math.random() < stats.critChance;
         const laserColor = "#4ee2ff";
 
-        for (let si = 0; si < 2; si++) {
-          const side = si === 0 ? -1 : 1;
-          const ox = p.posX + Math.cos(perpAng) * 14 * side;
-          const oy = p.posY + Math.sin(perpAng) * 14 * side;
-          const projSpeed = 600;
+        // Determine firing pattern from equipped weapon
+        const pCache = this.playerDataCache.get(p.playerId);
+        let firingPattern = "standard";
+        if (pCache?.equipped?.weapon) {
+          for (const wid of pCache.equipped.weapon) {
+            if (!wid) continue;
+            const wi = pCache.inventory?.find((m: any) => m.instanceId === wid);
+            if (wi && MODULE_DEFS[wi.defId]?.weaponKind === "laser") {
+              firingPattern = (MODULE_DEFS[wi.defId] as any).firingPattern || "standard";
+              break;
+            }
+          }
+        }
+
+        const fireProj = (ox: number, oy: number, fireAng: number, dmg: number, sz: number, spd: number) => {
           const proj: ServerProjectile = {
-            id: eid("proj"),
-            zone: zoneId,
-            fromPlayerId: p.playerId,
-            fromEnemyId: null,
-            fromNpcId: null,
+            id: eid("proj"), zone: zoneId, fromPlayerId: p.playerId,
+            fromEnemyId: null, fromNpcId: null,
             pos: { x: ox, y: oy },
-            vel: { x: Math.cos(ang - side * 0.03) * projSpeed, y: Math.sin(ang - side * 0.03) * projSpeed },
-            damage: perShot,
-            ttl: 1.5,
-            color: laserColor,
-            size: 4,
-            crit,
-            weaponKind: "laser",
-            homing: false,
-            homingTargetId: null,
-            aoeRadius: stats.aoeRadius,
-            empStun: 0,
-            armorPiercing: false,
+            vel: { x: Math.cos(fireAng) * spd, y: Math.sin(fireAng) * spd },
+            damage: dmg, ttl: 1.5, color: laserColor, size: sz, crit,
+            weaponKind: "laser", homing: false, homingTargetId: null,
+            aoeRadius: stats.aoeRadius, empStun: 0, armorPiercing: false,
           };
           zs.projectiles.set(proj.id, proj);
           events.push({
@@ -600,14 +685,55 @@ export class GameEngine {
             damage: proj.damage, color: proj.color, size: proj.size,
             crit: proj.crit, weaponKind: proj.weaponKind, homing: proj.homing,
           });
+        };
+
+        if (firingPattern === "sniper") {
+          const dmg = Math.round(laserDmg);
+          const ox = p.posX + Math.cos(ang) * 10;
+          const oy = p.posY + Math.sin(ang) * 10;
+          fireProj(ox, oy, ang, dmg, 6, 900);
+        } else if (firingPattern === "scatter") {
+          const pellets = 3;
+          const perPellet = Math.round(laserDmg * 2.5 / pellets);
+          const spread = 0.1;
+          for (let si = 0; si < pellets; si++) {
+            const spreadAng = ang + (si - 1) * spread;
+            const side = si === 0 ? -1 : si === 2 ? 1 : 0;
+            const ox = p.posX + Math.cos(perpAng) * 10 * side;
+            const oy = p.posY + Math.sin(perpAng) * 10 * side;
+            fireProj(ox, oy, spreadAng, perPellet, 4, 500);
+          }
+        } else if (firingPattern === "rail") {
+          const perBurst = Math.round(laserDmg * 1.3 / 3);
+          for (let bi = 0; bi < 3; bi++) {
+            const side = bi === 0 ? -1 : bi === 1 ? 1 : 0;
+            const ox = p.posX + Math.cos(perpAng) * 10 * side;
+            const oy = p.posY + Math.sin(perpAng) * 10 * side;
+            const burstAng = ang + (Math.random() - 0.5) * 0.04;
+            fireProj(ox, oy, burstAng, perBurst, 4, 700);
+          }
+        } else {
+          const perShot = Math.round(laserDmg / 2);
+          for (let si = 0; si < 2; si++) {
+            const side = si === 0 ? -1 : 1;
+            const ox = p.posX + Math.cos(perpAng) * 14 * side;
+            const oy = p.posY + Math.sin(perpAng) * 14 * side;
+            fireProj(ox, oy, ang - side * 0.03, perShot, 4, 600);
+          }
         }
 
         const cd = Math.max(0.2, 0.85 / stats.fireRate);
         p.laserFireCd = cd;
       }
 
-      // Fire rocket
-      if (p.isRocketFiring && p.rocketFireCd <= 0) {
+      // Fire rocket (only if player has a rocket weapon equipped)
+      const pCached = this.playerDataCache.get(p.playerId);
+      const hasRocket = pCached?.equipped?.weapon?.some((wid: string | null) => {
+        if (!wid) return false;
+        const item = pCached.inventory?.find((m: any) => m.instanceId === wid);
+        return item && MODULE_DEFS[item.defId]?.weaponKind === "rocket";
+      }) ?? false;
+      if (p.isRocketFiring && p.rocketFireCd <= 0 && hasRocket) {
         const missileDef = ROCKET_MISSILE_TYPE_DEFS[p.rocketAmmoType as RocketMissileType];
         const mul = missileDef ? missileDef.damageMul : 1;
         const rocketDmg = Math.round(stats.damage * mul * 0.4 * 2.5);
@@ -662,7 +788,7 @@ export class GameEngine {
 
       const stats = this.playerStatsCache.get(p.playerId);
       if (!stats) continue;
-      const miningDps = stats.damage * MINING_DPS_FACTOR;
+      const miningDps = stats.damage * MINING_DPS_FACTOR * (1 + (stats.miningBonus ?? 0));
       ast.hp -= miningDps * dt;
 
       if (ast.hp <= 0) {
@@ -740,15 +866,27 @@ export class GameEngine {
             let dmg = Math.round(proj.damage * comboMul * critMul * execMul * voidMul);
             if (dmg < 1) dmg = 1;
             e.hull -= dmg;
-            e.aggroTarget = proj.fromPlayerId;
+            if (e.aggroTarget !== proj.fromPlayerId && (!e.retargetCd || e.retargetCd <= 0)) {
+              e.aggroTarget = proj.fromPlayerId;
+              e.retargetCd = 2.5;
+            }
 
             if (e.hull <= 0) {
               const tierMult = this.getZoneTierMult(zoneId);
+              // Bonus loot variety: chance to drop extra trade goods
+              const dropResource = e.loot ? { ...e.loot } : pickLoot(e.type);
+              const bonusDrops: ResourceId[] = ["fuel-cell", "synth", "nanite", "food", "spice", "titanium", "medpack", "iron", "silk", "ore"];
+              let bonusResource: { resourceId: ResourceId; qty: number } | undefined;
+              if (Math.random() < 0.40 && !e.isBoss) {
+                const bonusRes = bonusDrops[Math.floor(Math.random() * bonusDrops.length)];
+                bonusResource = { resourceId: bonusRes, qty: 1 + Math.floor(Math.random() * 2) };
+              }
               const loot: LootDrop = {
                 credits: Math.round(e.credits * tierMult) + Math.round((proj.fromPlayerId != null ? (this.playerStatsCache.get(proj.fromPlayerId)?.lootBonus ?? 0) : 0) * 2),
                 exp: Math.round(e.exp * tierMult * (e.isBoss ? 2 : 1)),
                 honor: e.honor,
-                resource: e.loot ? { ...e.loot } : undefined,
+                resource: dropResource,
+                bonusResource,
               };
               events.push({ type: "enemy:die", zone: zoneId, enemyId: e.id, killerId: proj.fromPlayerId, loot, pos: { ...e.pos } });
               zs.enemies.delete(e.id);
@@ -1036,11 +1174,17 @@ export class GameEngine {
     if (e.hull <= 0) {
       // Enemy killed
       const tierMult = this.getZoneTierMult(zone);
+      let dropResource2 = e.loot ? { ...e.loot } : undefined;
+      const bonusDrops2: ResourceId[] = ["fuel-cell", "synth", "nanite", "food", "spice", "titanium"];
+      if (Math.random() < 0.25 && !e.isBoss) {
+        const bonusRes2 = bonusDrops2[Math.floor(Math.random() * bonusDrops2.length)];
+        dropResource2 = { resourceId: bonusRes2, qty: 1 + Math.floor(Math.random() * 2) };
+      }
       const loot: LootDrop = {
         credits: Math.round(e.credits * tierMult) + Math.round(stats.lootBonus * 2),
         exp: Math.round(e.exp * tierMult * (e.isBoss ? 2 : 1)),
         honor: e.honor,
-        resource: e.loot ? { ...e.loot } : undefined,
+        resource: dropResource2,
       };
       events.push({
         type: "enemy:die", zone, enemyId: e.id,
@@ -1096,7 +1240,7 @@ export class GameEngine {
     const stats = this.playerStatsCache.get(playerId);
     if (!stats) return events;
 
-    const miningDps = stats.damage * 0.25;
+    const miningDps = stats.damage * 0.25 * (1 + (stats.miningBonus ?? 0));
     ast.hp -= miningDps * dt;
 
     if (ast.hp <= 0) {
@@ -1120,12 +1264,12 @@ export class GameEngine {
   private tickEnemySpawns(zoneId: string, zs: ZoneState, players: OnlinePlayer[], dt: number, events: GameEvent[]): void {
     zs.spawnTimer -= dt;
     if (zs.spawnTimer > 0) return;
-    zs.spawnTimer = randRange(0.5, 1.5);
+    zs.spawnTimer = randRange(0.4, 1.0);
 
     const zoneDef = ZONES[zoneId as ZoneId];
     if (!zoneDef) return;
 
-    const maxEnemies = 18 + zoneDef.enemyTier * 4;
+    const maxEnemies = 40 + zoneDef.enemyTier * 5;
     const nonBossCount = Array.from(zs.enemies.values()).filter(e => !e.isBoss).length;
     if (nonBossCount >= maxEnemies) return;
 
@@ -1142,12 +1286,12 @@ export class GameEngine {
     const spdMul = fMods?.speedMul ?? 1;
     const color = fMods?.color ?? baseDef.color;
 
-    // Spawn position: 40% near a random player, 60% random on map
+    // Spawn position: 65% near a player (but at distance), 35% random on map
     let spawnPos: Vec2;
-    if (players.length > 0 && Math.random() < 0.4) {
+    if (players.length > 0 && Math.random() < 0.50) {
       const rp = players[Math.floor(Math.random() * players.length)];
       const ang = Math.random() * Math.PI * 2;
-      const d = 500 + Math.random() * 500;
+      const d = 800 + Math.random() * 1000;
       spawnPos = {
         x: clamp(rp.posX + Math.cos(ang) * d, -MAP_RADIUS, MAP_RADIUS),
         y: clamp(rp.posY + Math.sin(ang) * d, -MAP_RADIUS, MAP_RADIUS),
@@ -1177,7 +1321,7 @@ export class GameEngine {
       exp: baseDef.exp,
       credits: baseDef.credits,
       honor: baseDef.honor,
-      loot: baseDef.loot ? { ...baseDef.loot } : undefined,
+      loot: pickLoot(enemyType),
       color,
       size: baseDef.size,
       isBoss: false,
@@ -1186,7 +1330,7 @@ export class GameEngine {
       fireTimer: randRange(1, 3),
       burstCd: 0,
       burstShots: 0,
-      aggroTarget: null,
+      aggroTarget: null, retargetCd: 0,
       aggroRange: 400,
       spawnPos: { ...spawnPos },
       stunUntil: 0,
@@ -1251,7 +1395,7 @@ export class GameEngine {
       fireTimer: 1.4,
       burstCd: 0,
       burstShots: 3,
-      aggroTarget: null,
+      aggroTarget: null, retargetCd: 0,
       aggroRange: 800,
       spawnPos: { ...spawnPos },
       stunUntil: 0,
@@ -1268,6 +1412,7 @@ export class GameEngine {
 
   private tickEnemyAI(zoneId: string, zs: ZoneState, players: OnlinePlayer[], dt: number, events: GameEvent[]): void {
     for (const e of zs.enemies.values()) {
+      if (e.retargetCd && e.retargetCd > 0) e.retargetCd -= dt;
       if (Date.now() < e.stunUntil) continue;
 
       // Find aggro target
@@ -1289,7 +1434,10 @@ export class GameEngine {
             target = p;
           }
         }
-        if (target) e.aggroTarget = target.playerId;
+        if (target) {
+          e.aggroTarget = target.playerId;
+          e.retargetCd = 2.5;
+        }
       }
 
       if (target) {
@@ -1356,30 +1504,29 @@ export class GameEngine {
           }
         }
       } else {
-        // Idle: wander near spawn
+        // Idle: patrol around spawn area actively
         const dFromSpawn = dist(e.pos, e.spawnPos);
-        if (dFromSpawn > 300) {
+        if (dFromSpawn > 500) {
+          // Too far from spawn - head back
           const ang = angleFromTo(e.pos, e.spawnPos);
-          e.pos.x += Math.cos(ang) * e.speed * 0.3 * dt;
-          e.pos.y += Math.sin(ang) * e.speed * 0.3 * dt;
+          e.vel.x = Math.cos(ang) * e.speed * 0.5;
+          e.vel.y = Math.sin(ang) * e.speed * 0.5;
           e.angle = ang;
         } else {
-          // Slow drift
+          // Active patrol: fly in a direction, change often
           e.pos.x += e.vel.x * dt;
           e.pos.y += e.vel.y * dt;
-          e.vel.x *= 0.95;
-          e.vel.y *= 0.95;
-          if (e.vel.x * e.vel.x + e.vel.y * e.vel.y < 4) {
-            e.vel.x = 0;
-            e.vel.y = 0;
-          }
-          if (Math.random() < 0.02) {
+          const spdSq = e.vel.x * e.vel.x + e.vel.y * e.vel.y;
+          if (spdSq < e.speed * e.speed * 0.04 || Math.random() < 0.03) {
             const ang = Math.random() * Math.PI * 2;
-            e.vel.x = Math.cos(ang) * e.speed * 0.2;
-            e.vel.y = Math.sin(ang) * e.speed * 0.2;
+            const patrolSpd = e.speed * (0.3 + Math.random() * 0.3);
+            e.vel.x = Math.cos(ang) * patrolSpd;
+            e.vel.y = Math.sin(ang) * patrolSpd;
             e.angle = ang;
           }
         }
+        e.pos.x += e.vel.x * dt;
+        e.pos.y += e.vel.y * dt;
       }
 
       // Clamp to map
@@ -1389,7 +1536,7 @@ export class GameEngine {
   }
 
   private spawnEnemyProjectile(zoneId: string, zs: ZoneState, e: ServerEnemy, damage: number, angle: number, color: string): void {
-    const projSpeed = 300;
+    const projSpeed = 600;
     const proj: ServerProjectile = {
       id: eid("ep"),
       zone: zoneId,
@@ -1432,9 +1579,9 @@ export class GameEngine {
   private tickNpcSpawns(zoneId: string, zs: ZoneState, dt: number, events: GameEvent[]): void {
     zs.npcSpawnTimer -= dt;
     if (zs.npcSpawnTimer > 0) return;
-    zs.npcSpawnTimer = randRange(8, 20);
+    zs.npcSpawnTimer = randRange(5, 12);
 
-    if (zs.npcShips.size >= 5) return;
+    if (zs.npcShips.size >= 8) return;
 
     const spawnPos: Vec2 = {
       x: randRange(-MAP_RADIUS * 0.7, MAP_RADIUS * 0.7),
@@ -1445,21 +1592,23 @@ export class GameEngine {
       y: randRange(-MAP_RADIUS * 0.7, MAP_RADIUS * 0.7),
     };
 
+    const npcNames = ["Patrol Hawk", "Sentinel Ray", "Enforcer", "Marshal", "Ranger Kel", "Warden Pax", "Scout Nova", "Navigator", "Trader Vex", "Cargo Runner", "Merchant Iris", "Hauler Kain"];
+    const npcColors = ["#4ee2ff", "#5cff8a", "#ffd24a", "#ff8a4e", "#c8a0ff", "#7ad8ff"];
     const npc: ServerNpc = {
       id: eid("npc"),
-      name: `NPC-${randInt(100, 999)}`,
+      name: npcNames[Math.floor(Math.random() * npcNames.length)],
       pos: { ...spawnPos },
       vel: { x: 0, y: 0 },
       angle: angleFromTo(spawnPos, targetPos),
-      hull: 200,
-      hullMax: 200,
-      speed: randRange(80, 120),
-      damage: randRange(8, 14),
+      hull: 300,
+      hullMax: 300,
+      speed: randRange(90, 140),
+      damage: randRange(10, 18),
       fireTimer: randRange(0.8, 1.2),
       targetPos: { ...targetPos },
       state: "patrol",
       targetEnemyId: null,
-      color: "#4ee2ff",
+      color: npcColors[Math.floor(Math.random() * npcColors.length)],
       size: 12,
     };
 
@@ -1469,6 +1618,21 @@ export class GameEngine {
 
   private tickNpcAI(zoneId: string, zs: ZoneState, dt: number, events: GameEvent[]): void {
     for (const npc of zs.npcShips.values()) {
+      // Always scan for nearby enemies regardless of state
+      let closestEnemy: ServerEnemy | null = null;
+      let closestDist = 500;
+      for (const e of zs.enemies.values()) {
+        const ed = dist(npc.pos, e.pos);
+        if (ed < closestDist) {
+          closestDist = ed;
+          closestEnemy = e;
+        }
+      }
+      if (closestEnemy && npc.state !== "fight") {
+        npc.state = "fight";
+        npc.targetEnemyId = closestEnemy.id;
+      }
+
       if (npc.state === "patrol") {
         // Move toward target position
         const d = dist(npc.pos, npc.targetPos);
@@ -1485,21 +1649,6 @@ export class GameEngine {
         npc.vel.y = Math.sin(ang) * npc.speed;
         npc.pos.x += npc.vel.x * dt;
         npc.pos.y += npc.vel.y * dt;
-
-        // Check for nearby enemies to fight
-        let closestEnemy: ServerEnemy | null = null;
-        let closestDist = 350;
-        for (const e of zs.enemies.values()) {
-          const ed = dist(npc.pos, e.pos);
-          if (ed < closestDist) {
-            closestDist = ed;
-            closestEnemy = e;
-          }
-        }
-        if (closestEnemy) {
-          npc.state = "fight";
-          npc.targetEnemyId = closestEnemy.id;
-        }
       } else {
         // Fighting
         const target = npc.targetEnemyId ? zs.enemies.get(npc.targetEnemyId) : null;
@@ -1524,10 +1673,10 @@ export class GameEngine {
         }
 
         npc.fireTimer -= dt;
-        if (npc.fireTimer <= 0 && d < 300) {
-          npc.fireTimer = randRange(0.8, 1.2);
+        if (npc.fireTimer <= 0 && d < 400) {
+          npc.fireTimer = randRange(0.5, 0.9);
           const npcAng = angleFromTo(npc.pos, target.pos);
-          const npcProjSpeed = 350;
+          const npcProjSpeed = 600;
           const npcProj: ServerProjectile = {
             id: eid("np"),
             zone: zoneId,
@@ -1549,9 +1698,16 @@ export class GameEngine {
             armorPiercing: false,
           };
           zs.projectiles.set(npcProj.id, npcProj);
+          events.push({
+            type: "projectile:spawn", zone: zoneId, fromPlayerId: 0,
+            x: npcProj.pos.x, y: npcProj.pos.y,
+            vx: npcProj.vel.x, vy: npcProj.vel.y,
+            damage: npcProj.damage, color: npcProj.color, size: npcProj.size,
+            crit: false, weaponKind: "laser" as const, homing: false,
+          });
         }
 
-        if (d > 600) {
+        if (d > 800) {
           npc.state = "patrol";
           npc.targetEnemyId = null;
         }
@@ -1574,7 +1730,6 @@ export class GameEngine {
 
     for (let i = 0; i < count; i++) {
       const size = randRange(14, 36);
-      const isLumenite = Math.random() < 0.18;
       const ast: ServerAsteroid = {
         id: eid("ast"),
         pos: {
@@ -1584,7 +1739,7 @@ export class GameEngine {
         hp: size * 4,
         hpMax: size * 4,
         size,
-        yields: isLumenite ? "lumenite" as ResourceId : "iron" as ResourceId,
+        yields: pickAsteroidYield(zoneId),
         respawnAt: 0,
       };
       zs.asteroids.set(ast.id, ast);
@@ -1594,7 +1749,7 @@ export class GameEngine {
   private spawnInitialEnemies(zoneId: string, zs: ZoneState): void {
     const zoneDef = ZONES[zoneId as ZoneId];
     if (!zoneDef) return;
-    const initialCount = 8 + zoneDef.enemyTier * 2;
+    const initialCount = 25 + zoneDef.enemyTier * 4;
     const tierMult = 1 + (zoneDef.enemyTier - 1) * 0.5;
     for (let i = 0; i < initialCount; i++) {
       const enemyType = zoneDef.enemyTypes[Math.floor(Math.random() * zoneDef.enemyTypes.length)];
@@ -1620,11 +1775,11 @@ export class GameEngine {
         damage: Math.round(baseDef.damage * dmgMul),
         speed: Math.round(baseDef.speed * spdMul),
         exp: baseDef.exp, credits: baseDef.credits, honor: baseDef.honor,
-        loot: baseDef.loot ? { ...baseDef.loot } : undefined,
+        loot: pickLoot(enemyType),
         color, size: baseDef.size,
         isBoss: false, bossPhase: 0, phaseTimer: 0,
         fireTimer: randRange(1, 3), burstCd: 0, burstShots: 0,
-        aggroTarget: null, aggroRange: 400,
+        aggroTarget: null, retargetCd: 0, aggroRange: 400,
         spawnPos: { ...spawnPos }, stunUntil: 0, combo: new Map(),
       };
       zs.enemies.set(enemy.id, enemy);
@@ -1644,7 +1799,7 @@ export class GameEngine {
           x: randRange(-MAP_RADIUS * 0.85, MAP_RADIUS * 0.85),
           y: randRange(-MAP_RADIUS * 0.85, MAP_RADIUS * 0.85),
         };
-        ast.yields = (Math.random() < 0.18 ? "lumenite" : "iron") as ResourceId;
+        ast.yields = pickAsteroidYield(zoneId);
         events.push({ type: "asteroid:respawn", zone: zoneId, asteroid: asteroidToClient(ast) });
       }
     }

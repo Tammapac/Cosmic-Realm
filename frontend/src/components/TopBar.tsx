@@ -1,8 +1,8 @@
+import { useState } from "react";
 import { useGame, state, bump, save, pushNotification, maxDroneSlots, cargoCapacity } from "../game/store";
-import { EXP_FOR_LEVEL, FACTIONS, MODULE_DEFS, SHIP_CLASSES, ZONES, rankFor, HONOR_RANKS, DRONE_DEFS } from "../game/types";
+import { EXP_FOR_LEVEL, FACTIONS, MODULE_DEFS, SHIP_CLASSES, ZONES, rankFor, HONOR_RANKS, DRONE_DEFS, RESOURCES } from "../game/types";
 import { effectiveStats } from "../game/loop";
 import { setMuted, getMuted, setVolume, getVolume } from "../game/sound";
-import { useState } from "react";
 
 export function TopBar() {
   const player = useGame((s) => s.player);
@@ -67,7 +67,7 @@ export function TopBar() {
       <div className="panel pointer-events-auto flex items-center gap-3 px-3 py-2 text-[15px] tracking-widest">
         <Stat label="CR" value={player.credits.toLocaleString()} color="#ffd24a" />
         <Stat label="HONOR" value={player.honor.toLocaleString()} color={rank.color} />
-        <Stat label="CARGO" value={`${cargoUsed}/${cargoCapacity()}`} color="#4ee2ff" />
+        <Stat label="CARGO [J]" value={`${cargoUsed}/${cargoCapacity()}`} color="#4ee2ff" />
         <Stat label="DRONES" value={`${player.drones.length}/${maxDroneSlots()}`} color="#aaff5c" />
       </div>
 

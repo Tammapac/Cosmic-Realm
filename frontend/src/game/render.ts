@@ -1,7 +1,7 @@
 import {
   Asteroid, CargoBox, DRONE_DEFS, Drone, DUNGEONS, Enemy, FACTIONS, Floater, MAP_RADIUS, NpcShip, OtherPlayer, Particle,
   PORTALS, Projectile, SHIP_CLASSES, STATIONS, ShipClassId, Station, ZONES, rankFor,
-} from "./types";
+RESOURCES, } from "./types";
 import { state } from "./store";
 import { effectiveStats } from "./loop";
 
@@ -2093,15 +2093,16 @@ function drawParticle(ctx: CanvasRenderingContext2D, pa: Particle): void {
   }
   if (pa.kind === "trail") {
     const r = pa.size * a;
+    const baseAlpha = pa.alpha ?? 1;
     ctx.save();
-    ctx.globalAlpha = a * a * 0.5;
+    ctx.globalAlpha = a * a * 0.5 * baseAlpha;
     ctx.shadowColor = pa.color;
     ctx.shadowBlur = 6 * a;
     ctx.fillStyle = pa.color;
     ctx.beginPath();
     ctx.arc(pa.pos.x, pa.pos.y, r, 0, Math.PI * 2);
     ctx.fill();
-    ctx.globalAlpha = a * a * 0.8;
+    ctx.globalAlpha = a * a * 0.8 * baseAlpha;
     ctx.fillStyle = "#ffffff";
     ctx.beginPath();
     ctx.arc(pa.pos.x, pa.pos.y, r * 0.4, 0, Math.PI * 2);
@@ -2478,10 +2479,11 @@ function drawAsteroid(ctx: CanvasRenderingContext2D, a: Asteroid): void {
   ctx.save();
   ctx.translate(a.pos.x, a.pos.y);
   ctx.rotate(a.rotation);
-  const isLumen = a.yields === "lumenite";
-  const c = isLumen ? "#7ad8ff" : "#a8784a";
-  const dk = isLumen ? "#3a78a8" : "#604028";
-  const lt = isLumen ? "#cdeaff" : "#d8a888";
+  const res = RESOURCES[a.yields];
+  const c = res ? res.color : "#a8784a";
+  const dk = shadeHex(c, -0.4);
+  const lt = shadeHex(c, 0.4);
+  const isGlowing = ["lumenite", "crystal-shard", "helium-3", "palladium", "iridium"].includes(a.yields);
   const s = a.size / 18;
   px(ctx, -10*s, -8*s, 20*s, 16*s, c);
   px(ctx, -8*s, -10*s, 14*s, 4*s, c);
@@ -2489,7 +2491,7 @@ function drawAsteroid(ctx: CanvasRenderingContext2D, a: Asteroid): void {
   px(ctx, -12*s, -4*s, 4*s, 8*s, dk);
   px(ctx,  10*s, -4*s, 4*s, 8*s, dk);
   px(ctx, -4*s, -4*s, 6*s, 6*s, lt);
-  if (isLumen) {
+  if (isGlowing) {
     px(ctx, -2*s, -2*s, 2*s, 2*s, "#ffffff");
     px(ctx, 2*s, 2*s, 2*s, 2*s, "#ffffff");
   } else {
@@ -2528,18 +2530,115 @@ function drawDrone(ctx: CanvasRenderingContext2D, d: Drone): void {
 // ── OTHER PLAYERS ─────────────────────────────────────────────────────────
 function drawOtherPlayer(ctx: CanvasRenderingContext2D, o: OtherPlayer): void {
   drawShip(ctx, o.pos.x, o.pos.y, o.angle, o.shipClass, 0.85);
-  ctx.fillStyle = o.inParty ? "#5cff8a" : "#8a9ac8";
-  ctx.font = "18px 'Courier New', monospace";
+  if ((o as any).hull != null && (o as any).hullMax != null && (o as any).hull < (o as any).hullMax) {
+    const hpRatio = (o as any).hullMax > 0 ? (o as any).hull / (o as any).hullMax : 1;
+    const spRatio = (o as any).shieldMax > 0 ? ((o as any).shield ?? 0) / (o as any).shieldMax : 0;
+    drawHullShieldBars(ctx, o.pos.x, o.pos.y - 26, Math.max(0, hpRatio), Math.max(0, spRatio));
+  }
+  const rank = rankFor(o.honor ?? 0);
+  const factionColor = o.faction ? FACTIONS[o.faction as keyof typeof FACTIONS]?.color ?? "#7a8ad8" : "#7a8ad8";
+  ctx.font = "bold 18px 'Courier New', monospace";
   ctx.textAlign = "center";
+  ctx.fillStyle = o.inParty ? "#5cff8a" : "#e8f0ff";
   ctx.shadowColor = "#000";
   ctx.shadowBlur = 3;
-  ctx.fillText(`${o.name} [${o.level}]`, o.pos.x, o.pos.y - 26);
-  if (o.clan) {
-    ctx.fillStyle = "#4ee2ff";
-    ctx.font = "16px 'Courier New', monospace";
-    ctx.fillText(`<${o.clan}>`, o.pos.x, o.pos.y - 42);
+  const nameY = o.pos.y + 36;
+  ctx.fillText(o.name, o.pos.x, nameY);
+  const nameWidth = ctx.measureText(o.name).width;
+  ctx.fillStyle = rank.color;
+  ctx.shadowColor = rank.color;
+  ctx.shadowBlur = 4;
+  ctx.fillText(rank.symbol, o.pos.x + nameWidth / 2 + 8, nameY);
+  if (o.faction) {
+    ctx.fillStyle = factionColor;
+    ctx.shadowColor = factionColor;
+    ctx.fillText("\u25c6", o.pos.x - nameWidth / 2 - 8, nameY);
   }
   ctx.shadowBlur = 0;
+  ctx.fillStyle = "#7a8ad8";
+  ctx.font = "14px 'Courier New', monospace";
+  ctx.fillText(`Lv.${o.level}`, o.pos.x, nameY + 16);
+  if (o.clan) {
+    ctx.fillStyle = "#4ee2ff";
+    ctx.font = "14px 'Courier New', monospace";
+    ctx.fillText(`<${o.clan}>`, o.pos.x, nameY + 30);
+  }
+  if (o.miningTargetId) {
+    const ta = state.asteroids.find((a: any) => a.id === o.miningTargetId);
+    if (ta) {
+      const t = state.tick;
+      const pulse = 0.55 + 0.45 * Math.abs(Math.sin(t * 18));
+      const bdx = ta.pos.x - o.pos.x;
+      const bdy = ta.pos.y - o.pos.y;
+      const bDist = Math.max(1, Math.hypot(bdx, bdy));
+      const bnx = bdx / bDist;
+      const bny = bdy / bDist;
+      const box = -bny;
+      const boy = bnx;
+      ctx.save();
+      ctx.lineCap = "round";
+      ctx.shadowColor = "#44ffcc";
+      ctx.shadowBlur = 20;
+      ctx.globalAlpha = 0.25 + 0.12 * Math.sin(t * 12);
+      ctx.strokeStyle = "#44ffcc";
+      ctx.lineWidth = 12;
+      ctx.beginPath();
+      ctx.moveTo(o.pos.x, o.pos.y);
+      ctx.lineTo(ta.pos.x, ta.pos.y);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      const segCount = Math.floor(bDist / 18);
+      for (let bi = 0; bi < segCount; bi++) {
+        const progress = ((bi / segCount) + t * 3.0) % 1.0;
+        const bpx = o.pos.x + bdx * progress;
+        const bpy = o.pos.y + bdy * progress;
+        const wobble = Math.sin(progress * 20 + t * 14) * (3 + pulse);
+        const ppx = bpx + box * wobble;
+        const ppy = bpy + boy * wobble;
+        const alpha = 0.5 + 0.5 * Math.sin(progress * Math.PI);
+        ctx.globalAlpha = alpha * 0.8;
+        ctx.fillStyle = bi % 3 === 0 ? "#ffffff" : "#44ffcc";
+        ctx.beginPath();
+        ctx.arc(ppx, ppy, 1.5 + pulse * 0.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 0.85;
+      ctx.strokeStyle = "rgba(255,255,255,0.8)";
+      ctx.lineWidth = 3 + pulse;
+      ctx.shadowColor = "#ffffff";
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.moveTo(o.pos.x, o.pos.y);
+      ctx.lineTo(ta.pos.x, ta.pos.y);
+      ctx.stroke();
+      ctx.strokeStyle = "#44ffcc";
+      ctx.lineWidth = 1.5 + pulse * 0.5;
+      ctx.shadowColor = "#44ffcc";
+      ctx.shadowBlur = 12;
+      ctx.beginPath();
+      ctx.moveTo(o.pos.x, o.pos.y);
+      ctx.lineTo(ta.pos.x, ta.pos.y);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.restore();
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = "#ffffff";
+      ctx.shadowColor = "#44ffcc";
+      ctx.shadowBlur = 16;
+      ctx.beginPath();
+      ctx.arc(ta.pos.x, ta.pos.y, 3 + pulse * 2, 0, Math.PI * 2);
+      ctx.fill();
+      const ringR = 6 + pulse * 4 + Math.sin(t * 20) * 2;
+      ctx.strokeStyle = "#44ffcc";
+      ctx.lineWidth = 1.5;
+      ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 15);
+      ctx.beginPath();
+      ctx.arc(ta.pos.x, ta.pos.y, ringR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
 }
 
 function drawNpcShip(ctx: CanvasRenderingContext2D, npc: NpcShip): void {

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { state, bump, useGame, save, pushNotification, pushChat, abandonDungeon, useConsumable, runDockingServices, loadServerPlayer, collectCargoBox, enterDungeon } from "./game/store";
-import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats } from "./game/loop";
+import { state, bump, useGame, save, pushNotification, pushChat, abandonDungeon, useConsumable, runDockingServices, loadServerPlayer, collectCargoBox, enterDungeon, stationPrice } from "./game/store";
+import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats, hasRocketWeapon } from "./game/loop";
 import { render } from "./game/render";
 import { TopBar, WorldTargetHud } from "./components/TopBar";
 import { MiniMap } from "./components/MiniMap";
@@ -11,7 +11,8 @@ import { IdleRewardModal } from "./components/IdleRewardModal";
 import { EventBanners } from "./components/EventBanners";
 import { Hotbar } from "./components/Hotbar";
 import { QuestTracker } from "./components/QuestTracker";
-import { DUNGEONS, STATIONS, PORTALS, ZONES, MODULE_DEFS } from "./game/types";
+import SettingsMenu from "./components/SettingsMenu";
+import { DUNGEONS, STATIONS, PORTALS, ZONES, MODULE_DEFS, RESOURCES, SHIP_CLASSES } from "./game/types";
 import { travelToZone, state as gameState } from "./game/store";
 import AuthScreen from "./components/AuthScreen";
 import { hasToken, getPlayer, clearToken } from "./net/api";
@@ -98,8 +99,8 @@ function GameCanvas() {
       state.selectedWorldTarget = {
         kind: "asteroid",
         id: asteroid.id,
-        name: asteroid.yields === "lumenite" ? "LUMENITE ROCK" : "ORE ROCK",
-        detail: `${asteroid.yields.toUpperCase()} · ${Math.round(asteroid.hp)}/${Math.round(asteroid.hpMax)} HP`,
+        name: `${(RESOURCES[asteroid.yields]?.name ?? "Ore").toUpperCase()} ROCK`,
+        detail: `${Math.round(asteroid.hp)}/${Math.round(asteroid.hpMax)} HP`,
       };
       state.miningTargetId = asteroid.id;
       bump();
@@ -158,9 +159,9 @@ function GameCanvas() {
       };
       state.attackTargetId = enemy.id;
       state.miningTargetId = null;
-      // Double-click starts both lasers and rockets
+      // Double-click starts lasers (and rockets only if equipped)
       state.isLaserFiring = true;
-      state.isRocketFiring = true;
+      state.isRocketFiring = hasRocketWeapon();
       state.isAttacking = true;
       bump();
     }
@@ -376,6 +377,65 @@ function DockingSummary() {
   );
 }
 
+function CargoOverlay() {
+  const showCargo = useGame((s) => s.showCargo);
+  const player = useGame((s) => s.player);
+  if (!showCargo) return null;
+
+  const used = player.cargo.reduce((a: number, c: any) => a + c.qty, 0);
+  const cls = SHIP_CLASSES[player.shipClass];
+  const maxCargo = cls.cargoMax;
+
+  return (
+    <div
+      className="fixed z-50"
+      style={{ top: 80, right: 16, width: 340, pointerEvents: "auto" }}
+    >
+      <div className="panel" style={{ maxHeight: "calc(100vh - 160px)", overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 0 30px rgba(78,226,255,0.15)" }}>
+        <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "var(--border-soft)" }}>
+          <div>
+            <div className="text-cyan tracking-widest text-sm font-bold">CARGO HOLD</div>
+            <div className="text-mute text-[12px]">{used}/{maxCargo} units</div>
+          </div>
+          <div className="text-right">
+            <div className="text-amber font-bold text-[14px]">{player.cargo.reduce((s: number, c: any) => s + ((RESOURCES as any)[c.resourceId]?.basePrice ?? 0) * c.qty, 0).toLocaleString()}cr</div>
+            <button
+              className="text-mute hover:text-bright text-[11px] tracking-widest"
+              onClick={() => { state.showCargo = false; bump(); }}
+            >[J] CLOSE</button>
+          </div>
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: 8 }}>
+          {player.cargo.length === 0 ? (
+            <div className="text-mute text-sm italic text-center py-6">
+              Cargo bay empty
+            </div>
+          ) : player.cargo.map((c: any) => {
+            const r = (RESOURCES as any)[c.resourceId];
+            if (!r) return null;
+            return (
+              <div key={c.resourceId} className="flex items-center gap-2 px-2 py-1.5 hover:bg-white/5 border-b" style={{ borderColor: "var(--border-soft)" }}>
+                <div
+                  className="flex items-center justify-center flex-shrink-0"
+                  style={{ width: 28, height: 28, background: r.color + "22", border: "1px solid " + r.color, color: r.color, fontSize: 14 }}
+                >{r.glyph}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-bright text-[12px] font-bold truncate">{r.name}</div>
+                </div>
+                <div className="text-cyan text-[13px] font-bold tabular-nums">x{c.qty}</div>
+                <div className="text-amber text-[12px] tabular-nums" style={{ minWidth: 50, textAlign: "right" }}>{(c.qty * r.basePrice).toLocaleString()}cr</div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="px-3 py-2 border-t text-mute text-[11px] tracking-widest" style={{ borderColor: "var(--border-soft)" }}>
+          {used > 0 ? "DOCK TO SELL" : "MINE OR TRADE"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function GameApp() {
   // Wire socket listeners to game state
   useEffect(() => {
@@ -391,6 +451,9 @@ function GameApp() {
           level: p.level, clan: null, zone: p.zone as any,
           pos: { x: 0, y: 0 }, vel: { x: 0, y: 0 }, angle: 0,
           inParty: false,
+          faction: (p as any).faction ?? null,
+          honor: (p as any).honor ?? 0,
+          miningTargetId: null,
         });
         bump();
       },
@@ -498,12 +561,69 @@ function GameApp() {
         state.showClan = !state.showClan; bump();
       } else if (e.key === "h" || e.key === "H") {
         state.showSocial = !state.showSocial; bump();
+      } else if (e.key === "j" || e.key === "J") {
+        state.showCargo = !state.showCargo; bump();
       } else if (e.key === "Escape") {
-        state.showMap = false;
-        state.showClan = false;
-        state.showAmmoSelector = false;
-        state.showRocketAmmoSelector = false;
-        state.showFullZoneMap = false;
+        if (state.showSettings) {
+          state.showSettings = false;
+        } else if (state.showMap || state.showClan || state.showAmmoSelector || state.showRocketAmmoSelector || state.showFullZoneMap) {
+          state.showMap = false;
+          state.showClan = false;
+          state.showAmmoSelector = false;
+          state.showRocketAmmoSelector = false;
+          state.showFullZoneMap = false;
+        } else {
+          state.showSettings = true;
+        }
+        bump();
+      } else if (e.key === "Tab") {
+        e.preventDefault();
+        if (!state.dockedAt) {
+          const p = state.player;
+          const enemies = state.enemies.filter(en => en.hull > 0);
+          if (enemies.length > 0) {
+            enemies.sort((a, b) => {
+              const da = Math.hypot(a.pos.x - p.pos.x, a.pos.y - p.pos.y);
+              const db = Math.hypot(b.pos.x - p.pos.x, b.pos.y - p.pos.y);
+              return da - db;
+            });
+            const currentIdx = state.attackTargetId
+              ? enemies.findIndex(en => en.id === state.attackTargetId)
+              : -1;
+            const nextIdx = (currentIdx + 1) % enemies.length;
+            const target = enemies[nextIdx];
+            state.attackTargetId = target.id;
+            state.selectedWorldTarget = {
+              kind: "enemy",
+              id: target.id,
+              name: target.type.toUpperCase() + (target.isBoss ? " (BOSS)" : ""),
+              detail: `HP ${Math.round(target.hull)}/${Math.round(target.hullMax)}`,
+            };
+            state.isLaserFiring = true;
+            state.isAttacking = true;
+            state.miningTargetId = null;
+          } else {
+            // No enemies - try targeting nearest asteroid
+            const asteroids = state.asteroids.filter((a: any) => a.zone === p.zone && a.hp > 0);
+            if (asteroids.length > 0) {
+              asteroids.sort((a: any, b: any) => {
+                const da = Math.hypot(a.pos.x - p.pos.x, a.pos.y - p.pos.y);
+                const db = Math.hypot(b.pos.x - p.pos.x, b.pos.y - p.pos.y);
+                return da - db;
+              });
+              const ast = asteroids[0];
+              state.miningTargetId = ast.id;
+              state.selectedWorldTarget = {
+                kind: "asteroid",
+                id: ast.id,
+                name: ast.yields === "lumenite" ? "LUMENITE ROCK" : "ORE ROCK",
+                detail: ast.yields.toUpperCase() + " · " + Math.round(ast.hp) + "/" + Math.round(ast.hpMax) + " HP",
+              };
+              state.isLaserFiring = false;
+              state.isAttacking = false;
+            }
+          }
+        }
         bump();
       } else if (e.key === "1") {
         if (!state.dockedAt) {
@@ -542,10 +662,15 @@ function GameApp() {
 
   const docked = useGame((s) => s.dockedAt);
   const showSocial = useGame((s) => s.showSocial);
+  const showSettings = useGame((s) => s.showSettings);
+
+  const currentUiScale = useGame((s) => s.uiScale ?? 1);
 
   return (
     <div className="relative w-full h-full overflow-hidden" style={{ background: "#02040c" }}>
       <GameCanvas />
+      <div style={{ transform: `scale(${currentUiScale})`, transformOrigin: "top left", width: `${100 / (currentUiScale || 1)}%`, height: `${100 / (currentUiScale || 1)}%`, position: "absolute", top: 0, left: 0, pointerEvents: "none" }}>
+      <div style={{ pointerEvents: "auto" }}>
       <TopBar />
       <WorldTargetHud />
       <MiniMap />
@@ -573,8 +698,12 @@ function GameApp() {
         <DockPrompt />
       </div>
       <Hotbar />
+      <CargoOverlay />
       <IdleRewardModal />
       <FactionPicker />
+      </div>
+      </div>
+      {showSettings && <SettingsMenu onClose={() => { state.showSettings = false; bump(); }} />}
       <button
         onClick={() => { clearToken(); disconnectSocket(); window.location.reload(); }}
         style={{

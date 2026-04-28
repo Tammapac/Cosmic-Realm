@@ -1,13 +1,14 @@
-import { state, bump, useGame, pushNotification, save, stationPrice, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, rocketAmmoMax, getAmmoWeaponIds, ensureAmmoInitialized, setAutoRestock, setAutoRepairHull, setAutoShieldRecharge, getActiveAmmoType, switchAmmoType, purchaseAmmoAmount, getAmmoCount, ROCKET_AMMO_COST_PER, rocketMissileMax, getActiveRocketAmmoType, switchRocketAmmoType, purchaseRocketAmmo, getRocketAmmoCount } from "../game/store";
+import { sendDockRepair } from "../net/socket";
+import { state, bump, useGame, pushNotification, save, stationPrice, priceDirection, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, rocketAmmoMax, getAmmoWeaponIds, ensureAmmoInitialized, setAutoRestock, setAutoRepairHull, setAutoShieldRecharge, getActiveAmmoType, switchAmmoType, purchaseAmmoAmount, getAmmoCount, ROCKET_AMMO_COST_PER, rocketMissileMax, getActiveRocketAmmoType, switchRocketAmmoType, purchaseRocketAmmo, getRocketAmmoCount, startRefineJob, collectRefineJob, upgradeFactory } from "../game/store";
 import {
   ActiveQuest, CONSUMABLE_DEFS, ConsumableId, DAILY_DUNGEON_BONUS, DRONE_DEFS, DroneKind, DroneMode, DUNGEONS, DungeonId, FACTIONS, MODULE_DEFS, ModuleDef, ModuleSlot, ModuleStats, RARITY_COLOR,
   Quest, QUEST_POOL, RESOURCES, ResourceId, ROCKET_AMMO_TYPE_DEFS, RocketAmmoType, ROCKET_MISSILE_TYPE_DEFS, RocketMissileType, ROCKET_MISSILE_TYPE_ORDER, SHIP_CLASSES, SKILL_NODES, SkillNode, STATIONS, ShipClassId, SkillBranch,
-  SkillId, ZONES, getDailyFeaturedDungeon,
+  SkillId, ZONES, getDailyFeaturedDungeon, REFINE_RECIPES, FACTORY_SPEED_BONUS, FACTORY_UPGRADE_COSTS,
 } from "../game/types";
 import type { HangarTab } from "../game/store";
 import { effectiveStats } from "../game/loop";
 import { buySkillRank, resetSkills } from "../game/store";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 
 const TABS: { id: HangarTab; label: string; glyph: string }[] = [
   { id: "bounties", label: "Bounties", glyph: "★" },
@@ -17,7 +18,7 @@ const TABS: { id: HangarTab; label: string; glyph: string }[] = [
   { id: "loadout",  label: "Loadout",  glyph: "⚙" },
   { id: "drones",   label: "Drones",   glyph: "✦" },
   { id: "market",   label: "Market",   glyph: "$" },
-  { id: "cargo",    label: "Cargo",    glyph: "▤" },
+  { id: "refinery", label: "Refinery", glyph: "⚒" },
   { id: "repair",   label: "Services", glyph: "✚" },
 ];
 
@@ -80,6 +81,7 @@ export function Hangar({ stationId }: { stationId: string }) {
           {tab === "market" && <MarketTab stationId={stationId} />}
           {tab === "ammo" && <AmmoTab />}  {/* kept for loadout inline popup */}
           {tab === "cargo" && <CargoTab />}
+          {tab === "refinery" && <RefineryTab stationId={stationId} />}
           {tab === "repair" && <RepairTab stationId={stationId} />}
         </div>
       </div>
@@ -492,8 +494,10 @@ function LoadoutTab({ stationId }: { stationId: string }) {
   })();
 
   // Shop offer: 4 random buyable modules, capped to ones unlocked by ship tier-ish
-  const shopPool = Object.values(MODULE_DEFS).filter((d) => d.tier <= Math.min(5, Math.max(1, Math.ceil(player.level / 4))));
-  const shopOffer = shopPool.slice(0, 8); // simple: show first 8 affordable ones
+  const tierCap2 = Math.min(5, Math.max(1, Math.ceil(player.level / 4)));
+  const shopPool = Object.values(MODULE_DEFS).filter((d) => d.tier <= tierCap2);
+  // Show all available weapons + generators + modules (no arbitrary limit)
+  const shopOffer = shopPool;
 
   // Determine which shop module is the single best upgrade for the player's current build
   const bestUpgradeDefId = useMemo(() => {
@@ -1075,6 +1079,11 @@ function DronesTab() {
 // ── MARKET ────────────────────────────────────────────────────────────────
 function MarketTab({ stationId }: { stationId: string }) {
   const player = useGame((s) => s.player);
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const iv = setInterval(() => setTick((t) => t + 1), 10000);
+    return () => clearInterval(iv);
+  }, []);
   const station = STATIONS.find((s) => s.id === stationId)!;
   const cls = SHIP_CLASSES[player.shipClass];
   const tierCap = Math.min(5, Math.max(1, Math.ceil(player.level / 4)));
@@ -1104,7 +1113,12 @@ function MarketTab({ stationId }: { stationId: string }) {
     save(); bump();
   };
 
-  const allRes = Object.values(RESOURCES);
+  // Show resources this station trades + any the player is carrying
+  const stationResIds = new Set(Object.keys(station.prices));
+  const cargoResIds = new Set(player.cargo.map(c => c.resourceId));
+  const allRes = Object.values(RESOURCES).filter(
+    r => stationResIds.has(r.id) || cargoResIds.has(r.id)
+  );
   const isTrade = true;
 
   const sellAll = () => {
@@ -1146,12 +1160,13 @@ function MarketTab({ stationId }: { stationId: string }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-7 gap-2 px-2 py-1 text-[12px] tracking-widest text-mute border-b" style={{ borderColor: "var(--border-soft)" }}>
-            <div className="col-span-2">RESOURCE</div>
+          <div className="grid gap-2 px-2 py-1 text-[12px] tracking-widest text-mute border-b" style={{ borderColor: "var(--border-soft)", gridTemplateColumns: "2fr 50px 55px 45px 40px 90px 160px" }}>
+            <div>RESOURCE</div>
             <div className="text-right">BASE</div>
             <div className="text-right">HERE</div>
             <div className="text-right">±</div>
-            <div className="text-right">CARGO</div>
+            <div className="text-right">QTY</div>
+            <div className="text-center">BEST SELL</div>
             <div className="text-center">TRADE</div>
           </div>
 
@@ -1160,9 +1175,20 @@ function MarketTab({ stationId }: { stationId: string }) {
               const price = stationPrice(stationId, r.id);
               const diff = ((price - r.basePrice) / r.basePrice) * 100;
               const have = player.cargo.find((c) => c.resourceId === r.id)?.qty ?? 0;
+              // Find best station to sell this resource
+              const bestStation = STATIONS.reduce<{ name: string; price: number; zone: string } | null>((best, s) => {
+                if (s.id === stationId) return best;
+                const sp = stationPrice(s.id, r.id);
+                if (!best || sp > best.price) return { name: s.name, price: sp, zone: s.zone };
+                return best;
+              }, null);
+              const dir = priceDirection(stationId, r.id);
+              const dirIcon = dir === "up" ? "▲" : dir === "down" ? "▼" : "●";
+              const dirColor = dir === "up" ? "#ff5c6c" : dir === "down" ? "#5cff8a" : "#666";
+              const profitVsHere = bestStation ? bestStation.price - price : 0;
               return (
-                <div key={r.id} className="grid grid-cols-7 gap-2 items-center px-2 py-1.5 hover:bg-white/5 border-b" style={{ borderColor: "var(--border-soft)" }}>
-                  <div className="col-span-2 flex items-center gap-2">
+                <div key={r.id} className="grid gap-2 items-center px-2 py-1.5 hover:bg-white/5 border-b" style={{ borderColor: "var(--border-soft)", gridTemplateColumns: "2fr 50px 55px 45px 40px 90px 160px" }}>
+                  <div className="flex items-center gap-2">
                     <div
                       className="flex items-center justify-center"
                       style={{ width: 22, height: 22, background: `${r.color}22`, border: `1px solid ${r.color}`, color: r.color, fontSize: 12 }}
@@ -1171,23 +1197,35 @@ function MarketTab({ stationId }: { stationId: string }) {
                     </div>
                     <div>
                       <div className="text-bright text-[13px]">{r.name}</div>
-                      <div className="text-mute text-[13px]">{r.description}</div>
+                      <div className="text-mute text-[11px] truncate" style={{ maxWidth: 160 }}>{r.description}</div>
                     </div>
                   </div>
                   <div className="text-right text-mute text-[13px] tabular-nums">{r.basePrice}</div>
-                  <div className="text-right font-bold tabular-nums" style={{ color: diff < 0 ? "#5cff8a" : diff > 0 ? "#ff5c6c" : "var(--text-dim)" }}>
+                  <div className="text-right font-bold tabular-nums flex items-center justify-end gap-1" style={{ color: diff < 0 ? "#5cff8a" : diff > 0 ? "#ff5c6c" : "var(--text-dim)" }}>
+                    <span style={{ color: dirColor, fontSize: 8 }}>{dirIcon}</span>
                     {price}
                   </div>
-                  <div className="text-right text-[13px] tabular-nums" style={{ color: diff < 0 ? "#5cff8a" : "#ff5c6c" }}>
+                  <div className="text-right text-[12px] tabular-nums" style={{ color: diff < 0 ? "#5cff8a" : "#ff5c6c" }}>
                     {diff > 0 ? "+" : ""}{diff.toFixed(0)}%
                   </div>
                   <div className="text-right text-cyan text-[13px] tabular-nums">{have}</div>
+                  <div className="text-center text-[11px]" title={bestStation ? `${bestStation.name} (${(ZONES as any)[bestStation.zone]?.label ?? bestStation.zone}) — ${(ZONES as any)[bestStation.zone]?.name ?? ""} — pays ${bestStation.price}cr` : ""}>
+                    {bestStation && profitVsHere > 0 ? (
+                      <div>
+                        <div style={{ color: "#5cff8a", fontWeight: "bold" }}>+{profitVsHere}cr</div>
+                        <div className="text-mute truncate" style={{ maxWidth: 85, fontSize: 10 }}>{bestStation.name}</div>
+                        <div className="text-cyan" style={{ fontSize: 9 }}>[{(ZONES as any)[bestStation.zone]?.label ?? "?"}]</div>
+                      </div>
+                    ) : (
+                      <span style={{ color: "#ffd24a" }}>BEST</span>
+                    )}
+                  </div>
                   <div className="flex gap-1 justify-center">
-                    <button className="btn" style={{ padding: "2px 6px", fontSize: 13 }} onClick={() => buy(r.id, 1)}>+1</button>
-                    <button className="btn" style={{ padding: "2px 6px", fontSize: 13 }} onClick={() => buy(r.id, 10)}>+10</button>
-                    <button className="btn btn-amber" style={{ padding: "2px 6px", fontSize: 13 }} disabled={have <= 0} onClick={() => sell(r.id, 1)}>-1</button>
-                    <button className="btn btn-amber" style={{ padding: "2px 6px", fontSize: 13 }} disabled={have < 10} onClick={() => sell(r.id, 10)}>-10</button>
-                    <button className="btn btn-amber" style={{ padding: "2px 6px", fontSize: 13 }} disabled={have <= 0} onClick={() => sell(r.id, have)}>All</button>
+                    <button className="btn" style={{ padding: "2px 5px", fontSize: 12 }} onClick={() => buy(r.id, 1)}>+1</button>
+                    <button className="btn" style={{ padding: "2px 5px", fontSize: 12 }} onClick={() => buy(r.id, 10)}>+10</button>
+                    <button className="btn btn-amber" style={{ padding: "2px 5px", fontSize: 12 }} disabled={have <= 0} onClick={() => sell(r.id, 1)}>-1</button>
+                    <button className="btn btn-amber" style={{ padding: "2px 5px", fontSize: 12 }} disabled={have < 10} onClick={() => sell(r.id, 10)}>-10</button>
+                    <button className="btn btn-amber" style={{ padding: "2px 5px", fontSize: 12 }} disabled={have <= 0} onClick={() => sell(r.id, have)}>All</button>
                   </div>
                 </div>
               );
@@ -1195,7 +1233,8 @@ function MarketTab({ stationId }: { stationId: string }) {
           </div>
 
           <div className="mt-3 text-mute text-[13px] italic">
-            Tip: visit Iron Belt Refinery for cheap iron and lumenite. Resell quantum chips at Crimson stations for premium.
+            Prices fluctuate over time — watch the arrows for trends. Buy when low (green arrow down), sell when high.
+            The BEST SELL column shows potential profit if you sell at a different station.
           </div>
         </>
       )}
@@ -1348,6 +1387,166 @@ function CargoTab() {
 }
 
 // ── REPAIR / SERVICES ─────────────────────────────────────────────────────
+
+// ── REFINERY ──────────────────────────────────────────────────────────────
+function RefineryTab({ stationId }: { stationId: string }) {
+  const player = useGame((s) => s.player);
+  const jobs = useGame((s) => s.refiningJobs);
+  const factoryLevel = useGame((s) => s.factoryLevel);
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const iv = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(iv);
+  }, []);
+
+  const now = Date.now();
+  const maxSlots = factoryLevel + 1;
+  const speedMul = FACTORY_SPEED_BONUS[factoryLevel] ?? 1.0;
+  const nextCost = factoryLevel < 5 ? FACTORY_UPGRADE_COSTS[factoryLevel] : null;
+
+  function hasInputs(recipe: typeof REFINE_RECIPES[0]): boolean {
+    return recipe.inputs.every(inp => {
+      const c = player.cargo.find(ci => ci.resourceId === inp.resourceId);
+      return c && c.qty >= inp.qty;
+    });
+  }
+
+  function fmtTime(ms: number): string {
+    const s = Math.max(0, Math.ceil(ms / 1000));
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+  }
+
+  return (
+    <div className="p-4">
+      {/* Factory Level Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <div className="text-cyan tracking-widest text-sm font-bold">REFINERY — LEVEL {factoryLevel}</div>
+          <div className="text-mute text-[12px]">
+            {jobs.length}/{maxSlots} slots used · Processing speed: {Math.round((1 - speedMul) * 100)}% faster
+          </div>
+        </div>
+        {nextCost !== null && (
+          <button
+            className="btn btn-primary text-[12px] px-3 py-1.5"
+            style={{ opacity: player.credits >= nextCost ? 1 : 0.4 }}
+            onClick={() => { if (player.credits >= nextCost) upgradeFactory(); }}
+          >
+            UPGRADE LV{factoryLevel + 1} — {nextCost.toLocaleString()}cr
+          </button>
+        )}
+        {nextCost === null && (
+          <div className="text-amber text-[12px] tracking-widest">MAX LEVEL</div>
+        )}
+      </div>
+
+      {/* Active Jobs */}
+      {jobs.length > 0 && (
+        <div className="mb-4">
+          <div className="text-mute text-[11px] tracking-widest mb-2">ACTIVE JOBS</div>
+          {jobs.map((job, i) => {
+            const recipe = REFINE_RECIPES.find(r => r.id === job.recipeId);
+            if (!recipe) return null;
+            const outRes = (RESOURCES as any)[recipe.output.resourceId];
+            const done = now >= job.completesAt;
+            const elapsed = now - job.startedAt;
+            const total = job.completesAt - job.startedAt;
+            const pct = Math.min(100, (elapsed / total) * 100);
+            return (
+              <div key={i} className="flex items-center gap-3 p-3 mb-2 border" style={{ borderColor: done ? "#5cff8a44" : "var(--border-soft)", background: done ? "#5cff8a08" : "transparent" }}>
+                <div style={{ width: 32, height: 32, background: (outRes?.color ?? "#aaa") + "22", border: "1px solid " + (outRes?.color ?? "#aaa"), color: outRes?.color ?? "#aaa", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {outRes?.glyph ?? "?"}
+                </div>
+                <div className="flex-1">
+                  <div className="text-bright text-[13px] font-bold">{recipe.name}</div>
+                  <div className="text-mute text-[11px]">
+                    {done ? "READY TO COLLECT" : fmtTime(job.completesAt - now) + " remaining"}
+                  </div>
+                  {!done && (
+                    <div style={{ height: 3, background: "#1a2348", marginTop: 4, borderRadius: 2 }}>
+                      <div style={{ height: 3, background: "#4ee2ff", width: pct + "%", borderRadius: 2, transition: "width 1s linear" }} />
+                    </div>
+                  )}
+                </div>
+                <div className="text-right">
+                  <div className="text-[12px]" style={{ color: outRes?.color ?? "#aaa" }}>{recipe.output.qty}x {outRes?.name ?? recipe.output.resourceId}</div>
+                  {done && (
+                    <button
+                      className="btn btn-primary text-[11px] px-2 py-1 mt-1"
+                      onClick={() => collectRefineJob(i)}
+                    >COLLECT</button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Recipes */}
+      <div className="text-mute text-[11px] tracking-widest mb-2">RECIPES</div>
+      <div className="grid gap-2">
+        {REFINE_RECIPES.map((recipe) => {
+          const outRes = (RESOURCES as any)[recipe.output.resourceId];
+          const locked = factoryLevel < recipe.minFactoryLevel;
+          const canStart = !locked && hasInputs(recipe) && jobs.length < maxSlots;
+          const timeSec = Math.round(recipe.timeSeconds * speedMul);
+
+          return (
+            <div key={recipe.id} className="p-3 border" style={{ borderColor: locked ? "#333" : "var(--border-soft)", opacity: locked ? 0.5 : 1 }}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div style={{ width: 28, height: 28, background: (outRes?.color ?? "#aaa") + "22", border: "1px solid " + (outRes?.color ?? "#aaa"), color: outRes?.color ?? "#aaa", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    {outRes?.glyph ?? "?"}
+                  </div>
+                  <div>
+                    <div className="text-bright text-[13px] font-bold">{recipe.name}</div>
+                    <div className="text-mute text-[11px]">
+                      {locked ? `Requires Factory Lv${recipe.minFactoryLevel}` : `${Math.floor(timeSec / 60)}m ${timeSec % 60}s`}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="text-right">
+                    <div className="text-[12px]" style={{ color: outRes?.color ?? "#aaa" }}>{recipe.output.qty}x {outRes?.name ?? "?"}</div>
+                    <div className="text-amber text-[11px]">~{(recipe.output.qty * (outRes?.basePrice ?? 0)).toLocaleString()}cr base</div>
+                  </div>
+                  <button
+                    className="btn btn-primary text-[11px] px-3 py-1.5"
+                    style={{ opacity: canStart ? 1 : 0.3 }}
+                    onClick={() => { if (canStart) startRefineJob(recipe.id); }}
+                    disabled={!canStart}
+                  >
+                    {locked ? "LOCKED" : "START"}
+                  </button>
+                </div>
+              </div>
+              {/* Inputs */}
+              <div className="flex flex-wrap gap-2">
+                {recipe.inputs.map((inp, j) => {
+                  const inRes = (RESOURCES as any)[inp.resourceId];
+                  const have = player.cargo.find(c => c.resourceId === inp.resourceId)?.qty ?? 0;
+                  const enough = have >= inp.qty;
+                  return (
+                    <div key={j} className="flex items-center gap-1 px-2 py-1" style={{ background: enough ? "#5cff8a11" : "#ff5c6c11", border: "1px solid " + (enough ? "#5cff8a33" : "#ff5c6c33"), fontSize: 11 }}>
+                      <span style={{ color: inRes?.color ?? "#aaa" }}>{inRes?.glyph ?? "?"}</span>
+                      <span className="text-bright">{inp.qty}x {inRes?.name ?? inp.resourceId}</span>
+                      <span style={{ color: enough ? "#5cff8a" : "#ff5c6c" }}>({have})</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function RepairTab({ stationId: _stationId }: { stationId: string }) {
   const player = useGame((s) => s.player);
   const stats = effectiveStats();
@@ -1356,6 +1555,7 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
   const repairCost = Math.ceil(hullDamage * 2);
   const refillShield = () => {
     player.shield = stats.shieldMax;
+    sendDockRepair(player.hull, stats.shieldMax);
     pushNotification("Shields recharged", "good");
     save(); bump();
   };
@@ -1364,6 +1564,7 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
     if (player.credits < repairCost) { pushNotification("Not enough credits", "bad"); return; }
     player.credits -= repairCost;
     player.hull = stats.hullMax;
+    sendDockRepair(stats.hullMax, player.shield);
     pushNotification(`Hull repaired · -${repairCost}cr`, "good");
     save(); bump();
   };
