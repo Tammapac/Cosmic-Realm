@@ -2049,6 +2049,76 @@ function drawProjectile(ctx: CanvasRenderingContext2D, pr: Projectile): void {
     ctx.fillStyle = "#ffd24a";
     ctx.fillRect(-15, -1, 3, 2);
     ctx.globalAlpha = 1;
+  } else if (pr.weaponKind === "energy") {
+    // ── Energy Ball: pulsing glowing sphere ──
+    const pulse = 0.8 + 0.2 * Math.sin(Date.now() * 0.015);
+    ctx.shadowColor = pr.color;
+    ctx.shadowBlur = 28 * pulse;
+    // Outer glow ring
+    ctx.globalAlpha = 0.3 * pulse;
+    ctx.fillStyle = pr.color;
+    ctx.beginPath();
+    ctx.arc(0, 0, pr.size * 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    // Main sphere
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = pr.color;
+    ctx.beginPath();
+    ctx.arc(0, 0, pr.size * 1.2, 0, Math.PI * 2);
+    ctx.fill();
+    // Bright white core
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.arc(0, 0, pr.size * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    // Crackling sparks
+    ctx.strokeStyle = pr.color;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.7 * pulse;
+    for (let s = 0; s < 3; s++) {
+      const sa = (Date.now() * 0.003 + s * 2.1) % (Math.PI * 2);
+      const sr = pr.size * 1.8;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(sa) * pr.size * 0.8, Math.sin(sa) * pr.size * 0.8);
+      ctx.lineTo(Math.cos(sa + 0.3) * sr, Math.sin(sa + 0.3) * sr);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  } else if (pr.weaponKind === "plasma") {
+    // ── Plasma Bolt: elongated fiery bolt with trail ──
+    ctx.shadowColor = pr.color;
+    ctx.shadowBlur = 22;
+    // Trail particles (fading behind)
+    ctx.globalAlpha = 0.15;
+    ctx.fillStyle = pr.color;
+    ctx.beginPath();
+    ctx.ellipse(-14, 0, 12, pr.size * 0.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.25;
+    ctx.beginPath();
+    ctx.ellipse(-8, 0, 8, pr.size * 0.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Main plasma body (elongated oval)
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = pr.color;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, pr.size * 2, pr.size * 1.1, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Hot core
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.ellipse(2, 0, pr.size * 0.8, pr.size * 0.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Leading edge flare
+    const flare = 0.7 + 0.3 * Math.sin(Date.now() * 0.02);
+    ctx.globalAlpha = 0.6 * flare;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.arc(pr.size * 1.8, 0, pr.size * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
   } else {
     // ── Laser: solid glowing beam ──
     ctx.shadowColor = pr.color;

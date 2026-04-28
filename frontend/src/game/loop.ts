@@ -1348,63 +1348,166 @@ function tickWorld(dt: number): void {
         emitRing(e.pos.x, e.pos.y, "#ff8a4e", 60);
         emitSpark(e.pos.x, e.pos.y, "#ff8a4e", 20, 200, 3);
         pushNotification(newPhase === 1 ? "BOSS ENRAGED — Phase 2!" : "BOSS BERSERK — Phase 3!", "bad");
-        pushChat("system", "SYSTEM", newPhase === 1 ? "The dreadnought powers up its secondary weapons!" : "The dreadnought enters berserk mode!");
+        const bossName = e.type === "titan" ? "Titan" : e.type === "overlord" ? "Overlord" : e.type === "wraith" ? "Wraith" : e.type === "sentinel" ? "Sentinel" : "Dreadnought";
+        pushChat("system", "SYSTEM", newPhase === 1 ? `The ${bossName} powers up its secondary weapons!` : `The ${bossName} enters berserk mode!`);
         sfx.bossWarn();
       }
       const phase = e.bossPhase ?? 0;
-      if (e.fireCd <= 0 && ed < 600) {
-        if (phase === 0) {
-          for (let i = -2; i <= 2; i++) {
-            fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.1, e.damage, e.color, 4, { speedMul: 0.95 });
+      if (e.fireCd <= 0 && ed < 700) {
+        if (e.type === "titan" || e.type === "overlord") {
+          // TITAN/OVERLORD BOSS: Heavy plasma barrage + energy ring
+          if (phase === 0) {
+            for (let i = -3; i <= 3; i++) {
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.09, e.damage, e.color, 6, { weaponKind: "plasma", speedMul: 0.8, aoeRadius: 25 });
+            }
+            e.fireCd = 1.3;
+          } else if (phase === 1) {
+            for (let i = -4; i <= 4; i++) {
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.1, e.damage * 1.2, "#ff4466", 6, { weaponKind: "plasma", speedMul: 0.9, aoeRadius: 30 });
+            }
+            for (let i = 0; i < 8; i++) {
+              const ra = (Math.PI * 2 / 8) * i + state.tick * 0.3;
+              fireProjectile("enemy", e.pos.x, e.pos.y, ra, e.damage * 0.6, e.color, 5, { weaponKind: "energy", speedMul: 0.6 });
+            }
+            e.fireCd = 1.0;
+          } else {
+            for (let i = 0; i < 16; i++) {
+              const ra = (Math.PI * 2 / 16) * i + state.tick * 0.4;
+              fireProjectile("enemy", e.pos.x, e.pos.y, ra, e.damage * 0.9, "#ff2244", 5, { weaponKind: "energy", speedMul: 0.65 });
+            }
+            for (let i = -3; i <= 3; i++) {
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.07, e.damage * 1.5, "#ffffff", 7, { weaponKind: "plasma", speedMul: 1.0, aoeRadius: 35 });
+            }
+            e.fireCd = 0.9;
           }
-          e.fireCd = 1.4;
-        } else if (phase === 1) {
-          for (let i = -3; i <= 3; i++) {
-            fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.12, e.damage * 1.2, "#ff5c6c", 4, { speedMul: 1.05 });
+        } else if (e.type === "wraith" || e.type === "sentinel") {
+          // WRAITH/SENTINEL BOSS: Rapid energy storm
+          if (phase === 0) {
+            for (let i = -3; i <= 3; i++) {
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.12, e.damage * 0.8, e.color, 4, { weaponKind: "energy", speedMul: 1.2 });
+            }
+            e.fireCd = 0.8;
+          } else if (phase === 1) {
+            for (let i = -4; i <= 4; i++) {
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.1, e.damage * 0.9, "#cc44ff", 4, { weaponKind: "energy", speedMul: 1.4 });
+            }
+            e.fireCd = 0.5;
+          } else {
+            for (let i = 0; i < 20; i++) {
+              const ra = (Math.PI * 2 / 20) * i + state.tick * 0.7;
+              fireProjectile("enemy", e.pos.x, e.pos.y, ra, e.damage * 0.6, "#cc44ff", 3, { weaponKind: "energy", speedMul: 1.1 });
+            }
+            for (let i = -3; i <= 3; i++) {
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.06, e.damage * 1.3, "#ffffff", 5, { weaponKind: "energy", speedMul: 1.5 });
+            }
+            e.fireCd = 0.4;
           }
-          e.fireCd = 1.0;
         } else {
-          for (let i = 0; i < 12; i++) {
-            const ra = (Math.PI * 2 / 12) * i + state.tick * 0.5;
-            fireProjectile("enemy", e.pos.x, e.pos.y, ra, e.damage * 0.8, "#ff3b4d", 3, { speedMul: 0.7 });
+          // DREAD BOSS (default): Massive plasma barrage - WAY more projectiles
+          if (phase === 0) {
+            for (let i = -4; i <= 4; i++) {
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.08, e.damage, e.color, 5, { weaponKind: "plasma", speedMul: 0.95 });
+            }
+            e.fireCd = 1.1;
+          } else if (phase === 1) {
+            for (let i = -5; i <= 5; i++) {
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.09, e.damage * 1.2, "#ff5c6c", 5, { weaponKind: "plasma", speedMul: 1.1 });
+            }
+            for (let i = 0; i < 6; i++) {
+              const ra = (Math.PI * 2 / 6) * i + state.tick * 0.4;
+              fireProjectile("enemy", e.pos.x, e.pos.y, ra, e.damage * 0.7, "#ffaa22", 4, { weaponKind: "energy", speedMul: 0.7 });
+            }
+            e.fireCd = 0.7;
+          } else {
+            for (let i = 0; i < 24; i++) {
+              const ra = (Math.PI * 2 / 24) * i + state.tick * 0.5;
+              fireProjectile("enemy", e.pos.x, e.pos.y, ra, e.damage * 0.7, "#ff3b4d", 4, { weaponKind: "plasma", speedMul: 0.75 });
+            }
+            for (let i = -4; i <= 4; i++) {
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.06, e.damage * 1.5, "#ffffff", 6, { weaponKind: "plasma", speedMul: 1.2 });
+            }
+            e.fireCd = 0.6;
           }
-          for (let i = -2; i <= 2; i++) {
-            fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.08, e.damage * 1.5, "#ffffff", 5, { speedMul: 1.1 });
-          }
-          e.fireCd = 1.2;
         }
-        e.burstShots = phase >= 1 ? 5 : 3;
-        e.burstCd = 0.12;
+        e.burstShots = phase >= 1 ? 6 : 4;
+        e.burstCd = 0.1;
       }
       if ((e.burstShots ?? 0) > 0) {
         e.burstCd = (e.burstCd ?? 0) - dt;
         if ((e.burstCd ?? 0) <= 0) {
-          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage * 0.7, e.color, 3);
+          const bWk = (e.type === "wraith" || e.type === "sentinel") ? "energy" : "plasma";
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + (Math.random() - 0.5) * 0.2, e.damage * 0.6, e.color, 3, { weaponKind: bWk as any });
           e.burstShots = (e.burstShots ?? 0) - 1;
-          e.burstCd = 0.12;
+          e.burstCd = 0.1;
         }
       }
       if (phase >= 2) { e.speed = 55; }
-    } else if (e.behavior === "ranged") {
-      if (e.fireCd <= 0 && ed < 480) {
-        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage, e.color);
-        e.fireCd = 0.6 + Math.random() * 0.4;
+    } else if (e.type === "sentinel") {
+      // Sentinel: rapid energy double-tap
+      if (e.fireCd <= 0 && ed < 520) {
+        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle - 0.03, e.damage, e.color, 4, { weaponKind: "energy" });
+        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + 0.03, e.damage, e.color, 4, { weaponKind: "energy" });
+        e.fireCd = 0.7 + Math.random() * 0.3;
       }
-    } else if (e.behavior === "tank") {
+    } else if (e.type === "wraith") {
+      // Wraith: fast triple-shot energy bolts
+      if (e.fireCd <= 0 && ed < 350) {
+        for (let i = -1; i <= 1; i++) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.15, e.damage * 0.8, e.color, 3, { weaponKind: "energy", speedMul: 1.3 });
+        }
+        e.fireCd = 0.4 + Math.random() * 0.3;
+      }
+    } else if (e.type === "titan") {
+      // Titan: slow heavy plasma with splash
+      if (e.fireCd <= 0 && ed < 500) {
+        for (let i = -1; i <= 1; i++) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.08, e.damage * 1.3, e.color, 6, { weaponKind: "plasma", speedMul: 0.7, aoeRadius: 30 });
+        }
+        e.fireCd = 1.2 + Math.random() * 0.4;
+      }
+    } else if (e.type === "overlord") {
+      // Overlord: mixed energy barrage + plasma
+      if (e.fireCd <= 0 && ed < 550) {
+        for (let i = -2; i <= 2; i++) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.1, e.damage * 0.7, e.color, 4, { weaponKind: "energy", speedMul: 1.1 });
+        }
+        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage * 1.5, "#ff4466", 7, { weaponKind: "plasma", speedMul: 0.8, aoeRadius: 40 });
+        e.fireCd = 0.9 + Math.random() * 0.3;
+      }
+    } else if (e.type === "dread") {
+      // Dread: heavy plasma spread
+      if (e.fireCd <= 0 && ed < 480) {
+        for (let i = -1; i <= 1; i++) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.06, e.damage, e.color, 5, { weaponKind: "plasma", speedMul: 0.9 });
+        }
+        e.fireCd = 1.0 + Math.random() * 0.4;
+      }
+    } else if (e.type === "voidling") {
+      // Voidling: pulsing energy shots
+      if (e.fireCd <= 0 && ed < 480) {
+        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage, e.color, 4, { weaponKind: "energy" });
+        e.fireCd = 0.6 + Math.random() * 0.3;
+      }
+    } else if (e.type === "destroyer") {
+      // Destroyer: triple plasma spread
       if (e.fireCd <= 0 && ed < 440) {
-        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle - 0.04, e.damage * 0.9, e.color);
-        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + 0.04, e.damage * 0.9, e.color);
-        e.fireCd = 1.4 + Math.random() * 0.6;
+        for (let i = -1; i <= 1; i++) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.06, e.damage * 0.8, e.color, 4, { weaponKind: "plasma" });
+        }
+        e.fireCd = 1.2 + Math.random() * 0.5;
       }
     } else if (e.behavior === "fast") {
-      if (e.fireCd <= 0 && ed < 280) {
+      // Scout: rapid small lasers
+      if (e.fireCd <= 0 && ed < 300) {
         fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage, e.color, 2);
-        e.fireCd = 0.5 + Math.random() * 0.4;
+        e.fireCd = 0.45 + Math.random() * 0.3;
       }
     } else {
+      // Raider/default: dual laser
       if (e.fireCd <= 0 && ed < 500) {
-        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage, e.color);
-        e.fireCd = 1.0 + Math.random() * 0.8;
+        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle - 0.03, e.damage * 0.9, e.color);
+        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + 0.03, e.damage * 0.9, e.color);
+        e.fireCd = 0.8 + Math.random() * 0.5;
       }
     }
   }

@@ -37,7 +37,7 @@ export type ServerProjectile = {
   color: string;
   size: number;
   crit: boolean;
-  weaponKind: "laser" | "rocket";
+  weaponKind: "laser" | "rocket" | "energy" | "plasma";
   homing: boolean;
   homingTargetId: string | null;
   aoeRadius: number;
@@ -1473,7 +1473,7 @@ export class GameEngine {
         // Fire at target
         e.fireTimer -= dt;
         if (e.fireTimer <= 0 && d < fireRange) {
-          e.fireTimer = e.isBoss ? this.bossFireCd(e) : (e.behavior === "fast" ? randRange(0.6, 1.0) : randRange(0.8, 1.5));
+          e.fireTimer = e.isBoss ? this.bossFireCd(e) : (e.type === "wraith" ? randRange(0.4, 0.7) : e.type === "sentinel" ? randRange(0.5, 0.8) : e.type === "overlord" ? randRange(0.7, 1.0) : e.behavior === "fast" ? randRange(0.5, 0.8) : randRange(0.7, 1.2));
 
           const dmg = this.calcEnemyDamage(e, target);
           const tPos = { x: target.posX, y: target.posY };
@@ -1481,17 +1481,92 @@ export class GameEngine {
 
           // Spawn server projectile(s) - ROTMG style
           if (e.isBoss) {
-            const shotCount = e.bossPhase === 0 ? 5 : e.bossPhase === 1 ? 7 : 12;
-            const spread = e.bossPhase === 2 ? Math.PI * 2 : (shotCount * 0.1);
-            for (let i = 0; i < shotCount; i++) {
-              const shotAng = e.bossPhase === 2
-                ? (Math.PI * 2 / shotCount) * i
-                : projAng + (i - (shotCount - 1) / 2) * 0.1;
-              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg / shotCount), shotAng, e.color);
+            const phase = e.bossPhase ?? 0;
+            if (e.type === "titan" || e.type === "overlord") {
+              // TITAN/OVERLORD: Heavy plasma + energy ring
+              const shotCount = phase === 0 ? 7 : phase === 1 ? 9 : 16;
+              if (phase < 2) {
+                for (let i = 0; i < shotCount; i++) {
+                  const shotAng = projAng + (i - (shotCount - 1) / 2) * 0.09;
+                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg / shotCount), shotAng, e.color, "plasma", 6, 0.8);
+                }
+              } else {
+                for (let i = 0; i < 16; i++) {
+                  const ra = (Math.PI * 2 / 16) * i;
+                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.6 / 16), ra, "#ff2244", "energy", 5, 0.65);
+                }
+                for (let i = -3; i <= 3; i++) {
+                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 1.2 / 7), projAng + i * 0.07, "#ffffff", "plasma", 7, 1.0);
+                }
+              }
+            } else if (e.type === "wraith" || e.type === "sentinel") {
+              // WRAITH/SENTINEL: Rapid energy storm
+              const shotCount = phase === 0 ? 7 : phase === 1 ? 9 : 20;
+              const spd = phase === 0 ? 1.2 : phase === 1 ? 1.4 : 1.1;
+              if (phase < 2) {
+                for (let i = 0; i < shotCount; i++) {
+                  const shotAng = projAng + (i - (shotCount - 1) / 2) * 0.12;
+                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg / shotCount), shotAng, e.color, "energy", 4, spd);
+                }
+              } else {
+                for (let i = 0; i < 20; i++) {
+                  const ra = (Math.PI * 2 / 20) * i;
+                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.5 / 20), ra, "#cc44ff", "energy", 3, 1.1);
+                }
+                for (let i = -3; i <= 3; i++) {
+                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 1.0 / 7), projAng + i * 0.06, "#ffffff", "energy", 5, 1.5);
+                }
+              }
+            } else {
+              // DREAD (default): Massive plasma barrage
+              const shotCount = phase === 0 ? 9 : phase === 1 ? 11 : 24;
+              if (phase < 2) {
+                for (let i = 0; i < shotCount; i++) {
+                  const shotAng = projAng + (i - (shotCount - 1) / 2) * 0.08;
+                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg / shotCount), shotAng, e.color, "plasma", 5, phase === 1 ? 1.1 : 0.95);
+                }
+                if (phase === 1) {
+                  for (let i = 0; i < 6; i++) {
+                    const ra = (Math.PI * 2 / 6) * i;
+                    this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.5 / 6), ra, "#ffaa22", "energy", 4, 0.7);
+                  }
+                }
+              } else {
+                for (let i = 0; i < 24; i++) {
+                  const ra = (Math.PI * 2 / 24) * i;
+                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.6 / 24), ra, "#ff3b4d", "plasma", 4, 0.75);
+                }
+                for (let i = -4; i <= 4; i++) {
+                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 1.2 / 9), projAng + i * 0.06, "#ffffff", "plasma", 6, 1.2);
+                }
+              }
             }
-          } else if (e.behavior === "tank") {
-            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.9), projAng - 0.04, e.color);
-            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.9), projAng + 0.04, e.color);
+          } else if (e.type === "sentinel") {
+            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.9), projAng - 0.03, e.color, "energy", 4);
+            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.9), projAng + 0.03, e.color, "energy", 4);
+          } else if (e.type === "wraith") {
+            for (let i = -1; i <= 1; i++) {
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.7), projAng + i * 0.15, e.color, "energy", 3, 1.3);
+            }
+          } else if (e.type === "titan") {
+            for (let i = -1; i <= 1; i++) {
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 1.1), projAng + i * 0.08, e.color, "plasma", 6, 0.7);
+            }
+          } else if (e.type === "overlord") {
+            for (let i = -2; i <= 2; i++) {
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.6), projAng + i * 0.1, e.color, "energy", 4, 1.1);
+            }
+            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 1.3), projAng, "#ff4466", "plasma", 7, 0.8);
+          } else if (e.type === "dread") {
+            for (let i = -1; i <= 1; i++) {
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.9), projAng + i * 0.06, e.color, "plasma", 5, 0.9);
+            }
+          } else if (e.type === "destroyer") {
+            for (let i = -1; i <= 1; i++) {
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.8), projAng + i * 0.06, e.color, "plasma", 4);
+            }
+          } else if (e.type === "voidling") {
+            this.spawnEnemyProjectile(zoneId, zs, e, dmg, projAng, e.color, "energy", 4);
           } else {
             this.spawnEnemyProjectile(zoneId, zs, e, dmg, projAng, e.color);
           }
@@ -1545,8 +1620,8 @@ export class GameEngine {
     }
   }
 
-  private spawnEnemyProjectile(zoneId: string, zs: ZoneState, e: ServerEnemy, damage: number, angle: number, color: string): void {
-    const projSpeed = 600;
+  private spawnEnemyProjectile(zoneId: string, zs: ZoneState, e: ServerEnemy, damage: number, angle: number, color: string, weaponKind: string = "laser", size: number = 3, speedMul: number = 1): void {
+    const projSpeed = 600 * speedMul;
     const proj: ServerProjectile = {
       id: eid("ep"),
       zone: zoneId,
@@ -1558,9 +1633,9 @@ export class GameEngine {
       damage,
       ttl: 2.5,
       color,
-      size: 3,
+      size,
       crit: false,
-      weaponKind: "laser",
+      weaponKind: weaponKind as any,
       homing: false,
       homingTargetId: null,
       aoeRadius: 0,
@@ -1571,9 +1646,20 @@ export class GameEngine {
   }
 
   private bossFireCd(e: ServerEnemy): number {
-    if (e.bossPhase === 0) return 1.4;
-    if (e.bossPhase === 1) return 1.0;
-    return 1.2;
+    if (e.type === "wraith" || e.type === "sentinel") {
+      if (e.bossPhase === 0) return 0.8;
+      if (e.bossPhase === 1) return 0.5;
+      return 0.4;
+    }
+    if (e.type === "titan" || e.type === "overlord") {
+      if (e.bossPhase === 0) return 1.3;
+      if (e.bossPhase === 1) return 1.0;
+      return 0.9;
+    }
+    // Dread default - slightly faster than before
+    if (e.bossPhase === 0) return 1.1;
+    if (e.bossPhase === 1) return 0.7;
+    return 0.6;
   }
 
   private calcEnemyDamage(e: ServerEnemy, target: OnlinePlayer): number {

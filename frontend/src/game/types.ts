@@ -76,7 +76,7 @@ export type ModuleStats = {
   miningBonus?: number;     // multiplier bonus to mining DPS (0.5 = +50%)
 };
 
-export type WeaponKind = "laser" | "rocket";
+export type WeaponKind = "laser" | "rocket" | "energy" | "plasma";
 
 export type ModuleDef = {
   id: string;

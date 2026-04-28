@@ -37,7 +37,7 @@ export type ShipClassId =
 
 export type ModuleSlot = "weapon" | "generator" | "module";
 export type ModuleRarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
-export type WeaponKind = "laser" | "rocket";
+export type WeaponKind = "laser" | "rocket" | "energy" | "plasma";
 
 export type ModuleStats = {
   damage?: number;
