@@ -2887,16 +2887,37 @@ function applyServerSmoothing(dt: number): void {
   for (const e of state.enemies) {
     const tgt = _entityTargets.get(e.id);
     if (!tgt) continue;
-    e.pos.x += (tgt.x - e.pos.x) * lerp;
-    e.pos.y += (tgt.y - e.pos.y) * lerp;
+    // Velocity extrapolation: move with current velocity for smooth motion
+    e.pos.x += tgt.vx * dt;
+    e.pos.y += tgt.vy * dt;
+    // Correction: smoothly nudge toward server position to prevent drift
+    const corrLerp = Math.min(lerp * 1.5, 0.4);
+    e.pos.x += (tgt.x - e.pos.x) * corrLerp;
+    e.pos.y += (tgt.y - e.pos.y) * corrLerp;
+    // Snap if too far off (teleport/respawn)
+    const edx = tgt.x - e.pos.x;
+    const edy = tgt.y - e.pos.y;
+    if (edx * edx + edy * edy > 200 * 200) {
+      e.pos.x = tgt.x;
+      e.pos.y = tgt.y;
+    }
     e.vel.x = tgt.vx;
     e.vel.y = tgt.vy;
   }
   for (const n of state.npcShips) {
     const tgt = _entityTargets.get(n.id);
     if (!tgt) continue;
-    n.pos.x += (tgt.x - n.pos.x) * lerp;
-    n.pos.y += (tgt.y - n.pos.y) * lerp;
+    n.pos.x += tgt.vx * dt;
+    n.pos.y += tgt.vy * dt;
+    const nCorrLerp = Math.min(lerp * 1.5, 0.4);
+    n.pos.x += (tgt.x - n.pos.x) * nCorrLerp;
+    n.pos.y += (tgt.y - n.pos.y) * nCorrLerp;
+    const ndx = tgt.x - n.pos.x;
+    const ndy = tgt.y - n.pos.y;
+    if (ndx * ndx + ndy * ndy > 200 * 200) {
+      n.pos.x = tgt.x;
+      n.pos.y = tgt.y;
+    }
     n.vel.x = tgt.vx;
     n.vel.y = tgt.vy;
   }

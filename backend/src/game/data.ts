@@ -1295,8 +1295,8 @@ export const ENEMY_NAMES: Record<EnemyType, string[]> = {
   destroyer: ["Destroyer"],
   voidling:  ["Voidling"],
   dread:     ["Dread"],
-  sentinel: ["Sentinel", "Warden", "Guardian", "Seraph", "Enforcer", "Protector"],
-  wraith: ["Wraith", "Phantom", "Specter", "Shade", "Banshee", "Ghost"],
-  titan: ["Titan", "Colossus", "Goliath", "Juggernaut", "Monolith", "Fortress"],
-  overlord: ["Overlord", "Sovereign", "Emperor", "Archon", "Supreme", "Dominator"],
+  sentinel:  ["Sentinel"],
+  wraith:    ["Wraith"],
+  titan:     ["Titan"],
+  overlord:  ["Overlord"],
 };
