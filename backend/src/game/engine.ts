@@ -120,7 +120,7 @@ export type GameEvent =
   | { type: "enemy:spawn"; zone: string; enemy: ClientEnemy }
   | { type: "enemy:die"; zone: string; enemyId: string; killerId: number; loot: LootDrop; pos: Vec2 }
   | { type: "enemy:hit"; zone: string; enemyId: string; damage: number; hp: number; hpMax: number; crit: boolean; attackerId: number }
-  | { type: "enemy:attack"; zone: string; enemyId: string; targetId: number; damage: number; pos: Vec2; targetPos: Vec2 }
+  | { type: "enemy:attack"; zone: string; enemyId: string; enemyType: string; targetId: number; damage: number; pos: Vec2; targetPos: Vec2 }
   | { type: "player:damage"; playerId: number; damage: number; shieldDmg: number; hullDmg: number }
   | { type: "asteroid:mine"; zone: string; asteroidId: string; hp: number; hpMax: number }
   | { type: "asteroid:destroy"; zone: string; asteroidId: string; playerId: number; ore: { resourceId: ResourceId; qty: number } }
@@ -129,7 +129,7 @@ export type GameEvent =
   | { type: "npc:spawn"; zone: string; npc: ClientNpc }
   | { type: "npc:die"; zone: string; npcId: string }
   | { type: "player:hit"; playerId: number; damage: number; zone: string }
-  | { type: "projectile:spawn"; zone: string; fromPlayerId: number; x: number; y: number; vx: number; vy: number; damage: number; color: string; size: number; crit: boolean; weaponKind: "laser" | "rocket"; homing: boolean };
+  | { type: "projectile:spawn"; zone: string; fromPlayerId: number; x: number; y: number; vx: number; vy: number; damage: number; color: string; size: number; crit: boolean; weaponKind: "laser" | "rocket" | "energy" | "plasma"; homing: boolean };
 
 export type ClientEnemy = {
   id: string;
@@ -180,7 +180,7 @@ export type ClientProjectile = {
   size: number;
   fromPlayer: boolean;
   crit: boolean;
-  weaponKind: "laser" | "rocket";
+  weaponKind: "laser" | "rocket" | "energy" | "plasma";
   homing: boolean;
 };
 
@@ -645,9 +645,8 @@ export class GameEngine {
       if (!stats) continue;
       const ang = angleFromTo({ x: p.posX, y: p.posY }, target.pos);
 
-      // Fire laser (only if player has ammo)
-      const pLaserAmmo = pData?.ammo?.[p.laserAmmoType as string] ?? 0;
-      if (p.isLaserFiring && p.laserFireCd <= 0 && pLaserAmmo >= 1) {
+      // Fire laser
+      if (p.isLaserFiring && p.laserFireCd <= 0) {
         const ammoDef = ROCKET_AMMO_TYPE_DEFS[p.laserAmmoType as RocketAmmoType];
         const mul = ammoDef ? ammoDef.damageMul : 1;
         const laserDmg = stats.damage * mul * 0.4;
@@ -1124,7 +1123,7 @@ export class GameEngine {
 
   playerAttackEnemy(
     playerId: number, enemyId: string, zone: string,
-    weaponKind: "laser" | "rocket", ammoType: string,
+    weaponKind: "laser" | "rocket" | "energy" | "plasma", ammoType: string,
   ): GameEvent[] {
     const events: GameEvent[] = [];
     const zs = this.zones.get(zone);
@@ -1574,7 +1573,7 @@ export class GameEngine {
           // Also emit the event for VFX purposes
           events.push({
             type: "enemy:attack", zone: zoneId,
-            enemyId: e.id, targetId: target.playerId,
+            enemyId: e.id, enemyType: e.type, targetId: target.playerId,
             damage: dmg, pos: { ...e.pos },
             targetPos: tPos,
           });

@@ -1544,6 +1544,9 @@ function tickWorld(dt: number): void {
 
       // Fire lasers on laser cooldown (uses laser ammo) - only when laser firing is active
       const laserAmmo = p.ammo[laserAmmoType] ?? 0;
+      if (laserAmmo < 1 && state.isLaserFiring) {
+        state.isLaserFiring = false;
+      }
       if (state.isLaserFiring && playerFireCd.value <= 0 && laserIds.length > 0 && laserAmmo >= 1) {
         p.ammo[laserAmmoType] = laserAmmo - 1;
         const laserDmg = stats.damage * laserDmgMul;
@@ -1626,6 +1629,9 @@ function tickWorld(dt: number): void {
 
       // Fire rockets on separate slower cooldown (uses rocket ammo, higher damage) - only when rocket firing is active
       const rocketAmmo = p.rocketAmmo[rocketAmmoType] ?? 0;
+      if (rocketAmmo < 1 && state.isRocketFiring) {
+        state.isRocketFiring = false;
+      }
       if (state.isRocketFiring && rocketFireCd.value <= 0 && rocketIds.length > 0 && rocketAmmo >= 1) {
         p.rocketAmmo[rocketAmmoType] = rocketAmmo - 1;
         for (const rId of rocketIds) {
@@ -2575,9 +2581,24 @@ export function onEnemyDie(data: EnemyDieEvent): void {
 
 export function onEnemyAttack(data: EnemyAttackEvent): void {
   const isTargetingMe = data.targetId === serverPlayerId;
-  fireProjectile("enemy", data.pos.x, data.pos.y,
-    Math.atan2(data.targetPos.y - data.pos.y, data.targetPos.x - data.pos.x),
-    data.damage, "#ff5c6c", 3, { renderOnly: !isTargetingMe, speedMul: 2.73 });
+  const ang = Math.atan2(data.targetPos.y - data.pos.y, data.targetPos.x - data.pos.x);
+  // Look up the enemy to determine projectile style
+  const srcEnemy = state.enemies.find(e => e.id === data.enemyId);
+  const eType = srcEnemy?.type ?? (data as any).enemyType;
+  let projColor = srcEnemy?.color ?? "#ff5c6c";
+  let projSize = 3;
+  let projWk: "laser" | "energy" | "plasma" | undefined = undefined;
+  let projSpeed = 2.73;
+  if (eType === "sentinel" || eType === "wraith" || eType === "voidling" || eType === "overlord") {
+    projWk = "energy";
+    projSize = 4;
+    projSpeed = eType === "wraith" ? 3.2 : 2.8;
+  } else if (eType === "dread" || eType === "titan" || eType === "destroyer") {
+    projWk = "plasma";
+    projSize = eType === "titan" ? 6 : 5;
+    projSpeed = eType === "titan" ? 2.0 : 2.5;
+  }
+  fireProjectile("enemy", data.pos.x, data.pos.y, ang, data.damage, projColor, projSize, { renderOnly: !isTargetingMe, speedMul: projSpeed, weaponKind: projWk as any });
   if (!serverAuthoritative && isTargetingMe) {
     damagePlayer(data.damage);
   }
