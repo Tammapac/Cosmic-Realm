@@ -6,6 +6,7 @@ import { state } from "./store";
 import { effectiveStats } from "./loop";
 
 // ── STAR FIELDS ────────────────────────────────────────────────────────────
+const MAX_PARTICLES = 600;
 const STAR_LAYERS = [
   { count: 220, speed: 0.1, size: 1, color: "#3a4980" },
   { count: 130, speed: 0.3, size: 1, color: "#7a8ad8" },
@@ -23,6 +24,30 @@ const stars: Star[][] = STAR_LAYERS.map((layer) => {
   }
   return arr;
 });
+
+// ── SHIP TEXTURE CACHE (GPU-like optimization for Canvas 2D) ──────────
+const _shipTexCache = new Map<string, HTMLCanvasElement>();
+
+function getCachedShipTex(
+  drawFn: (ctx: CanvasRenderingContext2D) => void,
+  key: string, width: number, height: number
+): HTMLCanvasElement {
+  let cached = _shipTexCache.get(key);
+  if (cached) return cached;
+  cached = document.createElement("canvas");
+  cached.width = width;
+  cached.height = height;
+  const c = cached.getContext("2d")!;
+  c.translate(width / 2, height / 2);
+  drawFn(c);
+  _shipTexCache.set(key, cached);
+  return cached;
+}
+
+function invalidateShipCache(): void {
+  _shipTexCache.clear();
+}
+
 
 let nebulaSeed: { x: number; y: number; r: number; c: string }[] = [];
 function regenNebula(zone: keyof typeof ZONES): void {
@@ -526,7 +551,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
     ctx.restore();
   }
   ctx.shadowColor = e.color;
-  ctx.shadowBlur = e.isBoss ? 18 : 8;
+  ctx.shadowBlur = e.isBoss ? 10 : 4;
   if (e.isBoss) {
     // Telegraph circle
     ctx.save();
@@ -2695,7 +2720,7 @@ function drawOtherPlayer(ctx: CanvasRenderingContext2D, o: OtherPlayer): void {
       ctx.strokeStyle = "#44ffcc";
       ctx.lineWidth = 1.5 + pulse * 0.5;
       ctx.shadowColor = "#44ffcc";
-      ctx.shadowBlur = 12;
+      ctx.shadowBlur = 6;
       ctx.beginPath();
       ctx.moveTo(o.pos.x, o.pos.y);
       ctx.lineTo(ta.pos.x, ta.pos.y);
@@ -2822,7 +2847,11 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
 
   // Trail particles draw FIRST (behind ship)
   for (const pa of state.particles) {
-    if (pa.kind === "trail" || pa.kind === "engine") drawParticle(ctx, pa);
+    if (pa.kind === "trail" || pa.kind === "engine") {
+      if (Math.abs(pa.pos.x - camX) < halfW + 30 && Math.abs(pa.pos.y - camY) < halfH + 30) {
+        drawParticle(ctx, pa);
+      }
+    }
   }
 
   // Asteroids
@@ -2876,14 +2905,31 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
   for (const npc of state.npcShips) drawNpcShip(ctx, npc);
 
   // Enemies
-  for (const e of state.enemies) drawEnemy(ctx, e);
+  // Viewport culling - skip off-screen enemies
+  const cullMargin = 100;
+  const camX = cam.x, camY = cam.y;
+  const halfW = w / 2 / zoom + cullMargin;
+  const halfH = h / 2 / zoom + cullMargin;
+  for (const e of state.enemies) {
+    if (Math.abs(e.pos.x - camX) < halfW + e.size && Math.abs(e.pos.y - camY) < halfH + e.size) {
+      drawEnemy(ctx, e);
+    }
+  }
 
   // Projectiles
-  for (const pr of state.projectiles) drawProjectile(ctx, pr);
+  for (const pr of state.projectiles) {
+    if (Math.abs(pr.pos.x - camX) < halfW + 20 && Math.abs(pr.pos.y - camY) < halfH + 20) {
+      drawProjectile(ctx, pr);
+    }
+  }
 
   // Other particles (sparks, rings)
   for (const pa of state.particles) {
-    if (pa.kind !== "trail" && pa.kind !== "engine") drawParticle(ctx, pa);
+    if (pa.kind !== "trail" && pa.kind !== "engine") {
+      if (Math.abs(pa.pos.x - camX) < halfW + pa.size && Math.abs(pa.pos.y - camY) < halfH + pa.size) {
+        drawParticle(ctx, pa);
+      }
+    }
   }
 
   // Player drones

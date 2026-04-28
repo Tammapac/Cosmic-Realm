@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { state, bump, useGame, save, pushNotification, pushChat, abandonDungeon, useConsumable, runDockingServices, loadServerPlayer, collectCargoBox, enterDungeon, stationPrice } from "./game/store";
 import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats, hasRocketWeapon } from "./game/loop";
-import { initPixi, pixiRender, destroyPixi } from "./game/pixi-renderer";
-// import { render } from "./game/render"; // Legacy Canvas 2D renderer
+import { render } from "./game/render";
 import { TopBar, WorldTargetHud } from "./components/TopBar";
 import { MiniMap } from "./components/MiniMap";
 import { Hangar } from "./components/Hangar";
@@ -32,7 +31,7 @@ import {
 } from "./game/loop";
 
 function GameCanvas() {
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     startLoop();
@@ -40,25 +39,32 @@ function GameCanvas() {
   }, []);
 
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    initPixi(container);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d", { alpha: false });
+    if (!ctx) return;
+    ctx.imageSmoothingEnabled = false;
 
     let raf = 0;
     const draw = () => {
-      pixiRender();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+        canvas.width = w * dpr;
+        canvas.height = h * dpr;
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.imageSmoothingEnabled = false;
+      render(ctx, w, h);
       raf = requestAnimationFrame(draw);
     };
     raf = requestAnimationFrame(draw);
-    return () => {
-      cancelAnimationFrame(raf);
-      destroyPixi();
-    };
+    return () => cancelAnimationFrame(raf);
   }, []);
 
-  const screenToWorld = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = (e.target as HTMLElement).getBoundingClientRect();
+  const screenToWorld = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
     const cx = e.clientX - rect.left;
     const cy = e.clientY - rect.top;
     const zoom = state.cameraZoom;
@@ -68,7 +74,7 @@ function GameCanvas() {
     };
   };
 
-  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (state.dockedAt) return;
     const { x: wx, y: wy } = screenToWorld(e);
 
@@ -140,7 +146,7 @@ function GameCanvas() {
     bump();
   };
 
-  const handleDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (state.dockedAt) return;
     const { x: wx, y: wy } = screenToWorld(e);
     const enemy = state.enemies.find((en) => Math.hypot(en.pos.x - wx, en.pos.y - wy) < Math.max(24, en.size + 14));
@@ -161,9 +167,9 @@ function GameCanvas() {
     }
   };
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (e.buttons !== 1 || state.dockedAt) return;
-    const rect = (e.target as HTMLElement).getBoundingClientRect();
+    const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
     const cx = e.clientX - rect.left;
     const cy = e.clientY - rect.top;
     state.cameraTarget = {
@@ -181,7 +187,7 @@ function GameCanvas() {
 
   return (
     <div
-      ref={containerRef}
+      ref={canvasRef}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onMouseMove={handleMouseMove}
@@ -533,7 +539,7 @@ function GameApp() {
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.target && (e.target as HTMLElement).tagName === "INPUT") return;
+      if (e.target && (e.target as HTMLCanvasElement).tagName === "INPUT") return;
       if (e.code === "Space") {
         e.preventDefault();
         if (state.dockedAt) return;

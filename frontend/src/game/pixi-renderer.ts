@@ -178,11 +178,16 @@ export function destroyPixi(): void {
 // Texture Generation
 // ══════════════════════════════════════════════════════════════════════════
 function genCircleTex(r: number, color: number): PIXI.Texture {
-  const g = new PIXI.Graphics();
-  g.beginFill(color);
-  g.drawCircle(0, 0, r);
-  g.endFill();
-  return app!.renderer.generateTexture(g, { resolution: 2, region: new PIXI.Rectangle(-r - 2, -r - 2, (r + 2) * 2, (r + 2) * 2) });
+  const canvas = document.createElement("canvas");
+  const sz = (r + 2) * 4;
+  canvas.width = sz;
+  canvas.height = sz;
+  const ctx = canvas.getContext("2d")!;
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.arc(sz / 2, sz / 2, r * 2, 0, Math.PI * 2);
+  ctx.fill();
+  return PIXI.Texture.from(canvas);
 }
 
 function genGlowTex(r: number, color: number): PIXI.Texture {
@@ -670,7 +675,8 @@ function initStars(): void {
 }
 
 function updateBackground(w: number, h: number): void {
-  const z = ZONES[state.player.zone as ZoneId];
+  const zoneId = state.player.zone as ZoneId;
+  const z = ZONES[zoneId];
   if (!z) return;
   const cam = state.player.pos;
 
@@ -706,7 +712,7 @@ function updateBackground(w: number, h: number): void {
     currentBgZone = state.player.zone;
 
     // Update background color
-    if (app) (app.renderer as any).background.color.setValue(cssHex(z.bgHueB));
+    if (app) (app.renderer as any).backgroundColor = cssHex(z.bgHueB);
   }
 
   for (const ns of nebulaSprites) {
@@ -730,7 +736,7 @@ function syncEnemies(): void {
       cont = new PIXI.Container();
       cont.zIndex = 10;
 
-      const tex = getShipTexture(e.type, e.color, e.size, e.isBoss);
+      const tex = getShipTexture(e.type, e.color, e.size, !!e.isBoss);
       const spr = new PIXI.Sprite(tex);
       spr.anchor.set(0.5);
       spr.name = "body";
@@ -816,7 +822,7 @@ function syncEnemies(): void {
 function syncOtherPlayers(): void {
   const seen = new Set<string>();
   for (const o of state.others) {
-    const sid = String(o.id);
+    const sid = o.id;
     seen.add(sid);
     let cont = otherSprites.get(sid);
     if (!cont) {
@@ -829,7 +835,7 @@ function syncOtherPlayers(): void {
       cont.addChild(spr);
       const nameText = new PIXI.Text(o.name, {
         fontFamily: "Courier New, monospace", fontSize: 13, fontWeight: "bold",
-        fill: o.faction ? FACTIONS[o.faction as keyof typeof FACTIONS]?.color ?? "#7a8ad8" : "#7a8ad8",
+        fill: (o as any).faction ? FACTIONS[(o as any).faction as keyof typeof FACTIONS]?.color ?? "#7a8ad8" : "#7a8ad8",
       });
       nameText.anchor.set(0.5);
       nameText.position.set(0, 30);
@@ -858,23 +864,23 @@ function syncNpcs(): void {
     if (!cont) {
       cont = new PIXI.Container();
       cont.zIndex = 8;
-      const tex = getShipTexture(n.type as EnemyType, n.color ?? "#44aaff", n.size ?? 12, false);
+      const tex = getShipTexture("sentinel" as EnemyType, n.color ?? "#44aaff", n.size ?? 12, false);
       const spr = new PIXI.Sprite(tex);
       spr.anchor.set(0.5);
       spr.name = "body";
       cont.addChild(spr);
-      const nameText = new PIXI.Text(n.name ?? "NPC", {
+      const nameText = new PIXI.Text(n.name, {
         fontFamily: "Courier New, monospace", fontSize: 11, fontWeight: "bold", fill: "#44ddff",
       });
       nameText.anchor.set(0.5);
-      nameText.position.set(0, -(n.size ?? 12) - 14);
+      nameText.position.set(0, -n.size - 14);
       cont.addChild(nameText);
       worldContainer.addChild(cont);
       npcSprites.set(n.id, cont);
     }
     cont.position.set(n.pos.x, n.pos.y);
     const body = cont.getChildByName("body") as PIXI.Sprite;
-    if (body) body.rotation = (n as any).angle + Math.PI / 2;
+    if (body) body.rotation = n.angle + Math.PI / 2;
   }
   for (const [id, cont] of npcSprites) {
     if (!seen.has(id)) {
@@ -891,7 +897,7 @@ function syncProjectiles(): void {
     seen.add(pr.id);
     let spr = projSprites.get(pr.id);
     if (!spr) {
-      const kind = (pr as any).weaponKind ?? "laser";
+      const kind = pr.weaponKind ?? "laser";
       const tex = getProjTexture(kind, pr.color, pr.size);
       spr = new PIXI.Sprite(tex);
       spr.anchor.set(0.5);
@@ -900,7 +906,7 @@ function syncProjectiles(): void {
       projSprites.set(pr.id, spr);
     }
     spr.position.set(pr.pos.x, pr.pos.y);
-    spr.rotation = pr.angle + Math.PI / 2;
+    spr.rotation = Math.atan2(pr.vel.y, pr.vel.x) + Math.PI / 2;
     spr.alpha = pr.ttl < 0.3 ? pr.ttl / 0.3 : 1;
   }
   for (const [id, spr] of projSprites) {
@@ -970,7 +976,7 @@ function syncAsteroids(): void {
       cont = new PIXI.Container();
       cont.zIndex = 2;
       const g = new PIXI.Graphics();
-      g.beginFill(cssHex(a.color ?? "#888888"), 0.8);
+      g.beginFill(0x888888, 0.8);
       // Draw rocky polygon
       const pts = 7;
       for (let i = 0; i < pts; i++) {
@@ -1021,9 +1027,18 @@ function syncAsteroids(): void {
 }
 
 function syncStations(): void {
+  // Clear stations from other zones
+  for (const [key, cont] of stationGfxMap) {
+    const st = STATIONS.find(s => s.id === key);
+    if (!st || st.zone !== state.player.zone) {
+      worldContainer.removeChild(cont);
+      cont.destroy({ children: true });
+      stationGfxMap.delete(key);
+    }
+  }
   for (const st of STATIONS) {
     if (st.zone !== state.player.zone) continue;
-    const key = `${st.zone}-${st.name}`;
+    const key = st.id;
     if (stationGfxMap.has(key)) continue;
 
     const cont = new PIXI.Container();
@@ -1052,15 +1067,14 @@ function syncStations(): void {
   }
   // Hide stations from other zones
   for (const [key, cont] of stationGfxMap) {
-    const zone = key.split("-")[0];
-    cont.visible = zone === state.player.zone;
+    cont.visible = true; // only created for current zone
   }
 }
 
 function syncPortals(): void {
   for (const po of PORTALS) {
     if (po.fromZone !== state.player.zone) continue;
-    const key = `${po.fromZone}-${po.toZone}`;
+    const key = `portal-${po.fromZone}-${po.toZone}`;
     let cont = portalGfxMap.get(key);
     if (!cont) {
       cont = new PIXI.Container();
@@ -1095,8 +1109,7 @@ function syncPortals(): void {
     }
   }
   for (const [key, cont] of portalGfxMap) {
-    const fromZone = key.split("-")[0];
-    cont.visible = fromZone === state.player.zone;
+    cont.visible = true; // only created for current zone
   }
 }
 
@@ -1132,11 +1145,10 @@ function syncFloaters(): void {
     seen.add(f.id);
     let txt = floaterTexts.get(f.id);
     if (!txt) {
-      const color = f.kind === "dmg" ? "#ff5c6c" : f.kind === "xp" ? "#ffd24a" :
-        f.kind === "crit" ? "#ff3b4d" : f.kind === "heal" ? "#44ff66" : "#4ee2ff";
+      const color = f.color;
       txt = new PIXI.Text(f.text, {
         fontFamily: "Courier New, monospace",
-        fontSize: f.kind === "crit" ? 18 : 14,
+        fontSize: f.bold ? 18 : 14,
         fontWeight: "bold",
         fill: color,
       });
@@ -1343,6 +1355,7 @@ function renderHonorFloaters(): void {
 // ══════════════════════════════════════════════════════════════════════════
 export function pixiRender(): void {
   if (!app) return;
+  try {
 
   const w = app.screen.width;
   const h = app.screen.height;
@@ -1380,4 +1393,7 @@ export function pixiRender(): void {
   syncFloaters();
   renderHonorFloaters();
   renderOverlays(w, h);
+  } catch (err) {
+    console.error("[PixiRenderer]", err);
+  }
 }
