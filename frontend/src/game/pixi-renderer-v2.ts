@@ -124,7 +124,7 @@ function getEnemyTex(e: Enemy): PIXI.Texture {
 
   // The drawEnemy function does: ctx.save, translate(pos), rotate(angle+PI/2), draw, restore
   // Since we set pos=0,0 and angle=-PI/2, the rotation is 0 and body draws centered
-  drawEnemy(ctx, fakeEnemy);
+  drawEnemy(ctx, fakeEnemy, true);
 
   state.selectedWorldTarget = savedTarget;
 
@@ -434,6 +434,21 @@ export function pixiRender(): void {
 
   // ── Player ──────────────────────────────────────────────────────────
   syncPlayer();
+
+  // ── Map boundary ────────────────────────────────────────────────────
+  syncMapBoundary();
+
+  // ── Cargo boxes ────────────────────────────────────────────────────
+  syncCargoBoxes(cam, halfW, halfH);
+
+  // ── Dungeon rifts ──────────────────────────────────────────────────
+  syncDungeonRifts();
+
+  // ── Move target ────────────────────────────────────────────────────
+  syncMoveTarget();
+
+  // ── Player drones ──────────────────────────────────────────────────
+  syncDrones();
 
   // ── Floaters ────────────────────────────────────────────────────────
   syncFloaters(cam, halfW, halfH);
@@ -800,6 +815,23 @@ function syncPlayer(): void {
   }
 
   playerContainer.visible = true;
+
+  // Shield ring
+  if (p.shield > 0) {
+    if (!playerContainer.getChildByName("shieldRing")) {
+      const ring = new PIXI.Graphics();
+      ring.name = "shieldRing";
+      playerContainer.addChildAt(ring, 0);
+    }
+    const ring = playerContainer.getChildByName("shieldRing") as PIXI.Graphics;
+    ring.clear();
+    ring.lineStyle(2, 0x4ee2ff, 0.3 + 0.3 * Math.sin(state.tick * 4));
+    ring.drawCircle(0, 0, 22);
+    ring.visible = true;
+  } else {
+    const ring = playerContainer.getChildByName("shieldRing") as PIXI.Graphics;
+    if (ring) ring.visible = false;
+  }
   playerContainer.position.set(p.pos.x, p.pos.y);
   playerBody!.rotation = p.angle + Math.PI / 2;
 
@@ -1241,6 +1273,207 @@ function renderOverlays(w: number, h: number): void {
 // UTILITIES
 // ══════════════════════════════════════════════════════════════════════════
 
+// ══════════════════════════════════════════════════════════════════════════
+// MAP BOUNDARY
+// ══════════════════════════════════════════════════════════════════════════
+
+let mapBoundaryGraphics: PIXI.Graphics | null = null;
+
+function syncMapBoundary(): void {
+  if (!mapBoundaryGraphics) {
+    mapBoundaryGraphics = new PIXI.Graphics();
+    worldLayer.addChildAt(mapBoundaryGraphics, 0);
+  }
+  mapBoundaryGraphics.clear();
+  mapBoundaryGraphics.lineStyle(2, 0x4ee2ff, 0.15);
+  mapBoundaryGraphics.drawCircle(0, 0, MAP_RADIUS);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// MOVE TARGET INDICATOR
+// ══════════════════════════════════════════════════════════════════════════
+
+let moveTargetGraphics: PIXI.Graphics | null = null;
+
+function syncMoveTarget(): void {
+  const p = state.player;
+  const dx = state.cameraTarget.x - p.pos.x;
+  const dy = state.cameraTarget.y - p.pos.y;
+
+  if (Math.sqrt(dx * dx + dy * dy) > 20) {
+    if (!moveTargetGraphics) {
+      moveTargetGraphics = new PIXI.Graphics();
+      worldLayer.addChild(moveTargetGraphics);
+    }
+    moveTargetGraphics.visible = true;
+    moveTargetGraphics.clear();
+    moveTargetGraphics.position.set(state.cameraTarget.x, state.cameraTarget.y);
+
+    // Crosshair circle
+    moveTargetGraphics.lineStyle(1, 0x4ee2ff, 0.6);
+    moveTargetGraphics.drawCircle(0, 0, 10);
+    // Cross lines
+    moveTargetGraphics.moveTo(-14, 0);
+    moveTargetGraphics.lineTo(14, 0);
+    moveTargetGraphics.moveTo(0, -14);
+    moveTargetGraphics.lineTo(0, 14);
+  } else if (moveTargetGraphics) {
+    moveTargetGraphics.visible = false;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// CARGO BOXES
+// ══════════════════════════════════════════════════════════════════════════
+
+const cargoBoxSprites = new Map<string, PIXI.Graphics>();
+
+function syncCargoBoxes(cam: { x: number; y: number }, halfW: number, halfH: number): void {
+  const activeIds = new Set<string>();
+
+  for (const cb of state.cargoBoxes) {
+    if (Math.abs(cb.pos.x - cam.x) > halfW + 20 || Math.abs(cb.pos.y - cam.y) > halfH + 20) continue;
+    activeIds.add(cb.id);
+
+    let g = cargoBoxSprites.get(cb.id);
+    if (!g) {
+      g = new PIXI.Graphics();
+      worldLayer.addChild(g);
+      cargoBoxSprites.set(cb.id, g);
+    }
+
+    g.clear();
+    g.position.set(cb.pos.x, cb.pos.y);
+
+    // Box shape
+    const color = PIXI.utils.string2hex(cb.color);
+    g.lineStyle(1.5, color, 0.9);
+    g.beginFill(color, 0.3);
+    g.drawRect(-5, -5, 10, 10);
+    g.endFill();
+
+    // Glow
+    g.lineStyle(1, color, 0.3);
+    g.drawRect(-8, -8, 16, 16);
+
+    // Tractor beam to player if close
+    const pl = state.player;
+    const dist = Math.hypot(cb.pos.x - pl.pos.x, cb.pos.y - pl.pos.y);
+    if (dist < 120 && dist > 10) {
+      g.lineStyle(2, color, 0.4 * (1 - dist / 120));
+      g.moveTo(pl.pos.x - cb.pos.x, pl.pos.y - cb.pos.y + 10);
+      g.lineTo(0, 0);
+    }
+  }
+
+  for (const [id, g] of cargoBoxSprites) {
+    if (!activeIds.has(id)) {
+      worldLayer.removeChild(g);
+      g.destroy();
+      cargoBoxSprites.delete(id);
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// DUNGEON RIFTS
+// ══════════════════════════════════════════════════════════════════════════
+
+const riftSprites = new Map<string, PIXI.Container>();
+
+function syncDungeonRifts(): void {
+  const zone = state.player.zone;
+  const activeIds = new Set<string>();
+
+  for (const d of Object.values(DUNGEONS)) {
+    if (d.zone !== zone) continue;
+    activeIds.add(d.id);
+
+    let cont = riftSprites.get(d.id);
+    if (!cont) {
+      cont = new PIXI.Container();
+      cont.position.set(d.pos.x, d.pos.y);
+
+      const label = new PIXI.Text(d.name, {
+        fontFamily: "Courier New",
+        fontSize: 10,
+        fill: d.color,
+        stroke: "#000000",
+        strokeThickness: 2,
+      });
+      label.anchor.set(0.5, 0);
+      label.position.set(0, 22);
+      cont.addChild(label);
+
+      worldLayer.addChild(cont);
+      riftSprites.set(d.id, cont);
+    }
+
+    // Update animated ring
+    if (cont.children.length < 2) {
+      const ring = new PIXI.Graphics();
+      cont.addChildAt(ring, 0);
+    }
+    const ring = cont.getChildAt(0) as PIXI.Graphics;
+    ring.clear();
+    const active = state.dungeon?.id === d.id;
+    const color = PIXI.utils.string2hex(d.color);
+    const pulse = 0.6 + 0.3 * Math.sin(state.tick * 4);
+    ring.lineStyle(active ? 3 : 2, color, pulse);
+    ring.drawCircle(0, 0, 14);
+    ring.lineStyle(1, color, pulse * 0.5);
+    ring.drawCircle(0, 0, 20);
+  }
+
+  for (const [id, cont] of riftSprites) {
+    if (!activeIds.has(id)) {
+      worldLayer.removeChild(cont);
+      cont.destroy({ children: true });
+      riftSprites.delete(id);
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// PLAYER DRONES
+// ══════════════════════════════════════════════════════════════════════════
+
+const droneSprites = new Map<number, PIXI.Graphics>();
+
+function syncDrones(): void {
+  const activeIds = new Set<number>();
+  for (let i = 0; i < state.player.drones.length; i++) {
+    const d = state.player.drones[i];
+    activeIds.add(i);
+
+    let g = droneSprites.get(i);
+    if (!g) {
+      g = new PIXI.Graphics();
+      playerLayer.addChild(g);
+      droneSprites.set(i, g);
+    }
+
+    g.clear();
+    g.position.set(d.pos.x, d.pos.y);
+
+    // Simple drone shape
+    const color = 0x4ee2ff;
+    g.beginFill(color, 0.8);
+    g.drawCircle(0, 0, 4);
+    g.endFill();
+    g.lineStyle(1, color, 0.5);
+    g.drawCircle(0, 0, 7);
+  }
+
+  for (const [i, g] of droneSprites) {
+    if (!activeIds.has(i)) {
+      playerLayer.removeChild(g);
+      g.destroy();
+      droneSprites.delete(i);
+    }
+  }
+}
+
 function clearZoneEntities(): void {
   // Clear stations
   for (const [, cont] of stationSpritesMap) {
@@ -1262,6 +1495,20 @@ function clearZoneEntities(): void {
     sprite.destroy();
   }
   asteroidSprites.clear();
+
+  // Clear dungeon rifts
+  for (const [, cont] of riftSprites) {
+    worldLayer.removeChild(cont);
+    cont.destroy({ children: true });
+  }
+  riftSprites.clear();
+
+  // Clear cargo boxes
+  for (const [, g] of cargoBoxSprites) {
+    worldLayer.removeChild(g);
+    g.destroy();
+  }
+  cargoBoxSprites.clear();
 
   // Clear texture cache for zone-specific textures
   // (enemies may have different colors in different zones)

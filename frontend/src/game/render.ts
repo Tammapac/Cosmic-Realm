@@ -534,7 +534,7 @@ export function drawShipPixels(
 }
 
 // ── ENEMY SPRITES ─────────────────────────────────────────────────────────
-export function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
+export function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy, bodyOnly = false): void {
   ctx.save();
   ctx.translate(e.pos.x, e.pos.y);
   ctx.rotate(e.angle + Math.PI / 2);
@@ -1910,6 +1910,7 @@ export function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
   }
   ctx.restore();
 
+  if (bodyOnly) return;
   // health bar above
   const barW = e.isBoss ? 64 : 28;
   drawHealthBar(ctx, e.pos.x, e.pos.y - e.size - 10, barW, e.hull / e.hullMax);
