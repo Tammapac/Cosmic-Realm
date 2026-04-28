@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { state, bump, useGame, save, pushNotification, pushChat, abandonDungeon, useConsumable, runDockingServices, loadServerPlayer, collectCargoBox, enterDungeon, stationPrice } from "./game/store";
 import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats, hasRocketWeapon } from "./game/loop";
-import { render } from "./game/render";
+import { initPixi, pixiRender, destroyPixi } from "./game/pixi-renderer";
+// import { render } from "./game/render"; // Legacy Canvas 2D renderer
 import { TopBar, WorldTargetHud } from "./components/TopBar";
 import { MiniMap } from "./components/MiniMap";
 import { Hangar } from "./components/Hangar";
@@ -31,7 +32,7 @@ import {
 } from "./game/loop";
 
 function GameCanvas() {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     startLoop();
@@ -39,32 +40,25 @@ function GameCanvas() {
   }, []);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d", { alpha: false });
-    if (!ctx) return;
-    ctx.imageSmoothingEnabled = false;
+    const container = containerRef.current;
+    if (!container) return;
+
+    initPixi(container);
 
     let raf = 0;
     const draw = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const w = canvas.clientWidth;
-      const h = canvas.clientHeight;
-      if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
-        canvas.width = w * dpr;
-        canvas.height = h * dpr;
-      }
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.imageSmoothingEnabled = false;
-      render(ctx, w, h);
+      pixiRender();
       raf = requestAnimationFrame(draw);
     };
     raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      destroyPixi();
+    };
   }, []);
 
-  const screenToWorld = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+  const screenToWorld = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = (e.target as HTMLElement).getBoundingClientRect();
     const cx = e.clientX - rect.left;
     const cy = e.clientY - rect.top;
     const zoom = state.cameraZoom;
@@ -74,7 +68,7 @@ function GameCanvas() {
     };
   };
 
-  const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (state.dockedAt) return;
     const { x: wx, y: wy } = screenToWorld(e);
 
@@ -146,7 +140,7 @@ function GameCanvas() {
     bump();
   };
 
-  const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleDoubleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (state.dockedAt) return;
     const { x: wx, y: wy } = screenToWorld(e);
     const enemy = state.enemies.find((en) => Math.hypot(en.pos.x - wx, en.pos.y - wy) < Math.max(24, en.size + 14));
@@ -167,9 +161,9 @@ function GameCanvas() {
     }
   };
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.buttons !== 1 || state.dockedAt) return;
-    const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+    const rect = (e.target as HTMLElement).getBoundingClientRect();
     const cx = e.clientX - rect.left;
     const cy = e.clientY - rect.top;
     state.cameraTarget = {
@@ -186,8 +180,8 @@ function GameCanvas() {
   };
 
   return (
-    <canvas
-      ref={canvasRef}
+    <div
+      ref={containerRef}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       onMouseMove={handleMouseMove}
