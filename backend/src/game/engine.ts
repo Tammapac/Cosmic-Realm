@@ -1273,7 +1273,7 @@ export class GameEngine {
     const nonBossCount = Array.from(zs.enemies.values()).filter(e => !e.isBoss).length;
     if (nonBossCount >= maxEnemies) return;
 
-    const tierMult = 1 + (zoneDef.enemyTier - 1) * 0.5;
+    const tierMult = Math.pow(2, zoneDef.enemyTier - 1);
     const typePool = zoneDef.enemyTypes;
     const enemyType = typePool[Math.floor(Math.random() * typePool.length)];
     const baseDef = ENEMY_DEFS[enemyType];
@@ -1350,7 +1350,7 @@ export class GameEngine {
 
     const zoneDef = ZONES[zoneId as ZoneId];
     if (!zoneDef) return;
-    const tierMult = 1 + (zoneDef.enemyTier - 1) * 0.5;
+    const tierMult = Math.pow(2, zoneDef.enemyTier - 1);
 
     // Pick the strongest enemy type in this zone for the boss
     const bossType = zoneDef.enemyTypes[zoneDef.enemyTypes.length - 1];
@@ -1384,7 +1384,7 @@ export class GameEngine {
       damage: Math.round(baseDef.damage * dmgMul),
       speed: Math.round(baseDef.speed * 0.6),
       exp: Math.round(baseDef.exp * hpMul),
-      credits: Math.round(baseDef.credits * hpMul * 2),
+      credits: Math.round(baseDef.credits * hpMul * 1.2),
       honor: Math.round(baseDef.honor * hpMul),
       loot: { resourceId: "dread" as ResourceId, qty: Math.ceil(tierMult * 2) },
       color,
@@ -1404,6 +1404,15 @@ export class GameEngine {
 
     zs.enemies.set(boss.id, boss);
     zs.bossActive = true;
+    // 40% chance for carrier boss variant (spawns fighters)
+    if (Math.random() < 0.4 && zoneDef.enemyTier >= 3) {
+      boss.behavior = "carrier" as any;
+      boss.hullMax = Math.round(boss.hullMax * 1.5);
+      boss.hull = boss.hullMax;
+      boss.speed = Math.round(boss.speed * 0.5);
+      boss.size = Math.round(boss.size * 1.3);
+      boss.name = "CARRIER " + boss.name.replace("BOSS ", "");
+    }
     events.push({ type: "boss:warn", zone: zoneId });
     events.push({ type: "enemy:spawn", zone: zoneId, enemy: enemyToClient(boss) });
   }
@@ -1750,7 +1759,7 @@ export class GameEngine {
     const zoneDef = ZONES[zoneId as ZoneId];
     if (!zoneDef) return;
     const initialCount = 25 + zoneDef.enemyTier * 4;
-    const tierMult = 1 + (zoneDef.enemyTier - 1) * 0.5;
+    const tierMult = Math.pow(2, zoneDef.enemyTier - 1);
     for (let i = 0; i < initialCount; i++) {
       const enemyType = zoneDef.enemyTypes[Math.floor(Math.random() * zoneDef.enemyTypes.length)];
       const baseDef = ENEMY_DEFS[enemyType];

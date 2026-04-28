@@ -19,7 +19,7 @@ export type Zone = {
   unlockLevel: number;
 };
 
-export type EnemyType = "scout" | "raider" | "destroyer" | "voidling" | "dread";
+export type EnemyType = "scout" | "raider" | "destroyer" | "voidling" | "dread" | "sentinel" | "wraith" | "titan" | "overlord";
 export type EnemyBehavior = "fast" | "chaser" | "tank" | "ranged";
 
 export type ShipClassId =
@@ -777,19 +777,19 @@ export const ZONES: Record<ZoneId, Zone> = {
   crimson: {
     id: "crimson", name: "Crimson Reach", label: "1-3", faction: "earth",
     bgHueA: "#4a0a18", bgHueB: "#1a0208", enemyTier: 3,
-    enemyTypes: ["destroyer", "dread"],
+    enemyTypes: ["destroyer", "sentinel", "dread"],
     description: "Blood-red expanse. Destroyers hunt in packs.", unlockLevel: 16,
   },
   void: {
     id: "void", name: "The Void", label: "1-4", faction: "earth",
     bgHueA: "#001a1a", bgHueB: "#000508", enemyTier: 4,
-    enemyTypes: ["voidling", "dread"],
+    enemyTypes: ["sentinel", "wraith", "dread"],
     description: "An empty stretch where reality bends. Voidlings dwell here.", unlockLevel: 24,
   },
   forge: {
     id: "forge", name: "Iron Forge", label: "1-5", faction: "earth",
     bgHueA: "#3a2210", bgHueB: "#1a0c04", enemyTier: 5,
-    enemyTypes: ["dread"],
+    enemyTypes: ["wraith", "titan", "dread"],
     description: "Industrial hellscape. Only Dreadnoughts remain here.", unlockLevel: 32,
   },
   // ── MARS FACTION (2-1 → 2-5) ─────────────────────────────────────────────
@@ -808,19 +808,19 @@ export const ZONES: Record<ZoneId, Zone> = {
   abyss: {
     id: "abyss", name: "Red Reaches", label: "2-3", faction: "mars",
     bgHueA: "#5a0a0a", bgHueB: "#220404", enemyTier: 3,
-    enemyTypes: ["destroyer", "dread"],
+    enemyTypes: ["destroyer", "sentinel", "dread"],
     description: "Combat-torn Martian space. Destroyer fleets fight for control.", unlockLevel: 16,
   },
   marsdepth: {
     id: "marsdepth", name: "Mars Deep Field", label: "2-4", faction: "mars",
     bgHueA: "#400010", bgHueB: "#180006", enemyTier: 4,
-    enemyTypes: ["voidling", "dread"],
+    enemyTypes: ["sentinel", "wraith", "dread"],
     description: "The deep unknown of Martian space. Void entities breach the hull lines.", unlockLevel: 24,
   },
   maelstrom: {
     id: "maelstrom", name: "The Maelstrom", label: "2-5", faction: "mars",
     bgHueA: "#2a0020", bgHueB: "#0e0008", enemyTier: 5,
-    enemyTypes: ["dread"],
+    enemyTypes: ["wraith", "titan", "dread"],
     description: "A perpetual storm of wreckage and dread. The ultimate Martian challenge.", unlockLevel: 32,
   },
   // ── VENUS FACTION (3-1 → 3-5) ────────────────────────────────────────────
@@ -839,50 +839,50 @@ export const ZONES: Record<ZoneId, Zone> = {
   venus3: {
     id: "venus3", name: "Acidic Deep", label: "3-3", faction: "venus",
     bgHueA: "#400a30", bgHueB: "#1a0418", enemyTier: 3,
-    enemyTypes: ["destroyer", "dread"],
+    enemyTypes: ["destroyer", "sentinel", "dread"],
     description: "The pressure increases. Heavy destroyer fleets guard Venusian secrets.", unlockLevel: 16,
   },
   venus4: {
     id: "venus4", name: "Pressure Core", label: "3-4", faction: "venus",
     bgHueA: "#2a003a", bgHueB: "#0e0018", enemyTier: 4,
-    enemyTypes: ["voidling", "dread"],
+    enemyTypes: ["sentinel", "wraith", "dread"],
     description: "Near the crushing core of Venus. Reality warps under immense force.", unlockLevel: 24,
   },
   venus5: {
     id: "venus5", name: "Eye of Venus", label: "3-5", faction: "venus",
     bgHueA: "#1a0030", bgHueB: "#080010", enemyTier: 5,
-    enemyTypes: ["dread"],
+    enemyTypes: ["wraith", "titan", "dread"],
     description: "The heart of Venusian mystery. Legendary endgame territory.", unlockLevel: 32,
   },
   // ── DANGER ZONES (4-1 → 4-5) — center, free PvP, no faction ─────────────
   danger1: {
     id: "danger1", name: "Outer Rift", label: "4-1", faction: "earth",
     bgHueA: "#1a0000", bgHueB: "#0a0000", enemyTier: 4,
-    enemyTypes: ["destroyer", "voidling", "dread"],
+    enemyTypes: ["sentinel", "wraith", "titan"],
     description: "Contested space. All factions fight here. PvP enabled.", unlockLevel: 20,
   },
   danger2: {
     id: "danger2", name: "Dead Zone", label: "4-2", faction: "mars",
     bgHueA: "#200008", bgHueB: "#0c0004", enemyTier: 5,
-    enemyTypes: ["voidling", "dread"],
+    enemyTypes: ["wraith", "titan", "dread"],
     description: "Wrecked fleets drift here. Extreme danger, extreme loot.", unlockLevel: 26,
   },
   danger3: {
     id: "danger3", name: "Pirate Haven", label: "4-3", faction: "venus",
     bgHueA: "#180018", bgHueB: "#08000a", enemyTier: 5,
-    enemyTypes: ["dread", "voidling"],
+    enemyTypes: ["titan", "dread", "overlord"],
     description: "Pirate stronghold. High-value loot crates and deadly ambushes.", unlockLevel: 30,
   },
   danger4: {
     id: "danger4", name: "Null Sector", label: "4-4", faction: "earth",
     bgHueA: "#0a0a1a", bgHueB: "#020208", enemyTier: 6,
-    enemyTypes: ["dread"],
+    enemyTypes: ["titan", "overlord", "dread"],
     description: "Reality collapses. Only the strongest survive. Premium loot.", unlockLevel: 36,
   },
   danger5: {
     id: "danger5", name: "The Abyss Gate", label: "4-5", faction: "mars",
     bgHueA: "#100005", bgHueB: "#050002", enemyTier: 7,
-    enemyTypes: ["dread"],
+    enemyTypes: ["overlord", "titan", "dread"],
     description: "The deepest point. Legendary enemies and endgame rewards.", unlockLevel: 42,
   },
 };
@@ -1061,6 +1061,31 @@ export const ENEMY_DEFS: Record<
     color: "#ffaa22", size: 24,
     loot: { resourceId: "dread", qty: 1 },
   },
+  sentinel: {
+    type: "sentinel", behavior: "ranged",
+    hullMax: 450, damage: 48, speed: 100, exp: 65, credits: 220, honor: 8,
+    color: "#22ccff", size: 16,
+    loot: { resourceId: "quantum", qty: 2 },
+  },
+  wraith: {
+    type: "wraith", behavior: "fast",
+    hullMax: 320, damage: 60, speed: 160, exp: 80, credits: 280, honor: 10,
+    color: "#cc44ff", size: 12,
+    loot: { resourceId: "void", qty: 3 },
+  },
+  titan: {
+    type: "titan", behavior: "tank",
+    hullMax: 1500, damage: 75, speed: 35, exp: 150, credits: 500, honor: 18,
+    color: "#ff2244", size: 30,
+    loot: { resourceId: "dread", qty: 4 },
+  },
+  overlord: {
+    type: "overlord", behavior: "tank",
+    hullMax: 2200, damage: 95, speed: 30, exp: 250, credits: 800, honor: 30,
+    color: "#ffffff", size: 35,
+    loot: { resourceId: "dread", qty: 6 },
+  },
+
 };
 
 // Faction-specific stat/color overrides applied at enemy spawn time.
@@ -1077,6 +1102,10 @@ export const FACTION_ENEMY_MODS: Partial<Record<
     destroyer: { color: "#cc2200", hullMul: 1.12, damageMul: 1.18 },
     voidling:  { color: "#ff6600", speedMul: 1.20 },
     dread:     { color: "#ff8800", hullMul: 1.15, damageMul: 1.10 },
+    sentinel:  { color: "#ff6622", damageMul: 1.15, speedMul: 1.10 },
+    wraith:    { color: "#ff4400", speedMul: 1.25, damageMul: 1.10 },
+    titan:     { color: "#cc2200", hullMul: 1.20, damageMul: 1.15 },
+    overlord:  { color: "#ff0000", hullMul: 1.25, damageMul: 1.20 },
   },
   venus: {
     scout:     { color: "#ffee22", damageMul: 1.22 },
@@ -1084,42 +1113,53 @@ export const FACTION_ENEMY_MODS: Partial<Record<
     destroyer: { color: "#9911cc", hullMul: 1.12, damageMul: 1.12 },
     voidling:  { color: "#ff44cc", damageMul: 1.28, speedMul: 0.88 },
     dread:     { color: "#aa00ff", hullMul: 1.20, damageMul: 1.12 },
+    sentinel:  { color: "#8844ff", damageMul: 1.20, hullMul: 1.10 },
+    wraith:    { color: "#ff22cc", speedMul: 1.15, damageMul: 1.25 },
+    titan:     { color: "#9900cc", hullMul: 1.15, damageMul: 1.20 },
+    overlord:  { color: "#cc00ff", hullMul: 1.30, damageMul: 1.25 },
   },
 };
 
 export const QUEST_POOL: Quest[] = [
-  { id: "q-alpha-scouts", title: "Sweep the Lanes", description: "Pirate scouts have been raiding traders in Alpha Sector. Eliminate them.", zone: "alpha", tier: 1, killType: "scout", killCount: 5, rewardCredits: 350, rewardExp: 80, rewardHonor: 5 },
-  { id: "q-alpha-raiders", title: "Raider Bounty", description: "A raider crew is harassing the Helix Station. Take them down.", zone: "alpha", tier: 1, killType: "raider", killCount: 3, rewardCredits: 600, rewardExp: 140, rewardHonor: 10 },
-  { id: "q-nebula-raiders", title: "Veil Cleanup", description: "The Veil Nebula is thick with raider holdouts. Clear them.", zone: "nebula", tier: 2, killType: "raider", killCount: 6, rewardCredits: 1400, rewardExp: 320, rewardHonor: 18 },
-  { id: "q-nebula-destroyers", title: "Hunt the Hunters", description: "Hostile destroyers prowl the Veil. End their patrol.", zone: "nebula", tier: 2, killType: "destroyer", killCount: 3, rewardCredits: 2400, rewardExp: 600, rewardHonor: 30 },
-  { id: "q-crimson-destroyers", title: "Crimson Purge", description: "Destroyers have established a beachhead in Crimson Reach.", zone: "crimson", tier: 3, killType: "destroyer", killCount: 5, rewardCredits: 4000, rewardExp: 1100, rewardHonor: 50 },
-  { id: "q-crimson-dread", title: "Bring Down a Dread", description: "A Dread-class warship looms in Crimson Reach. Send it home in pieces.", zone: "crimson", tier: 3, killType: "dread", killCount: 1, rewardCredits: 6000, rewardExp: 1800, rewardHonor: 100 },
-  { id: "q-void-voidlings", title: "Voidling Eradication", description: "Voidlings flicker between dimensions in The Void. Banish them.", zone: "void", tier: 4, killType: "voidling", killCount: 6, rewardCredits: 9000, rewardExp: 2600, rewardHonor: 140 },
-  { id: "q-void-dread", title: "Apex Predator", description: "A Dread haunts The Void. Become its end.", zone: "void", tier: 4, killType: "dread", killCount: 2, rewardCredits: 18000, rewardExp: 5000, rewardHonor: 280 },
-  { id: "q-forge-destroyers", title: "Iron Curtain", description: "Destroyer squadrons have locked down the Iron Forge supply lanes. Break through.", zone: "forge", tier: 5, killType: "destroyer", killCount: 8, rewardCredits: 32000, rewardExp: 9500, rewardHonor: 500 },
-  { id: "q-forge-voidlings", title: "Forge Phantoms", description: "Voidlings are warping through the superheated forges, disrupting production. Eliminate them.", zone: "forge", tier: 5, killType: "voidling", killCount: 5, rewardCredits: 55000, rewardExp: 16000, rewardHonor: 850 },
-  { id: "q-corona-voidlings", title: "Solar Infestation", description: "A voidling swarm orbits the corona, feeding on solar energy. Cleanse it before they breach the station.", zone: "corona", tier: 6, killType: "voidling", killCount: 7, rewardCredits: 90000, rewardExp: 26000, rewardHonor: 1400 },
-  { id: "q-corona-dread", title: "Solarburn Contract", description: "Two Dread-class warships are using the corona as cover. Flush them out and destroy them.", zone: "corona", tier: 6, killType: "dread", killCount: 2, rewardCredits: 150000, rewardExp: 44000, rewardHonor: 2300 },
-  { id: "q-fracture-voidlings", title: "Rift Surge", description: "Voidlings pour through a dimensional fracture in waves. Seal it with their destruction.", zone: "fracture", tier: 7, killType: "voidling", killCount: 9, rewardCredits: 240000, rewardExp: 70000, rewardHonor: 3800 },
-  { id: "q-fracture-dread", title: "Fracture Wardens", description: "Three Dreads patrol the Fracture Zone, blockading the path to the Abyss. Remove them.", zone: "fracture", tier: 7, killType: "dread", killCount: 3, rewardCredits: 400000, rewardExp: 115000, rewardHonor: 6000 },
-  { id: "q-abyss-dread", title: "Into the Dark", description: "The Abyss harbors a pack of Dreads unlike any seen before. Hunt them down and return with proof.", zone: "abyss", tier: 8, killType: "dread", killCount: 4, rewardCredits: 650000, rewardExp: 190000, rewardHonor: 10000 },
-  { id: "q-abyss-apex", title: "God of the Abyss", description: "A legendary Dread fleet dominates the deepest sector of known space. Become the last thing they see.", zone: "abyss", tier: 8, killType: "dread", killCount: 6, rewardCredits: 1100000, rewardExp: 320000, rewardHonor: 17000 },
-  // Mars deep zones
-  { id: "q-marsdepth-voidlings", title: "Deep Field Haunting", description: "Voidlings have swarmed the outer Martian deep field, disrupting passage. Clear the infestation.", zone: "marsdepth", tier: 2, killType: "voidling", killCount: 6, rewardCredits: 9500, rewardExp: 2800, rewardHonor: 150 },
-  { id: "q-marsdepth-dread", title: "Martian Apex", description: "A Dread warship lurks in the Martian deep. Bring back its core as proof.", zone: "marsdepth", tier: 2, killType: "dread", killCount: 2, rewardCredits: 19000, rewardExp: 5500, rewardHonor: 300 },
-  { id: "q-maelstrom-dread", title: "Eye of the Storm", description: "A Dread armada is using The Maelstrom as a staging ground. Tear through them.", zone: "maelstrom", tier: 3, killType: "dread", killCount: 4, rewardCredits: 34000, rewardExp: 10000, rewardHonor: 550 },
-  { id: "q-maelstrom-apex", title: "Master of the Maelstrom", description: "The Maelstrom's supreme Dread fleet blocks all passage. Eliminate them completely.", zone: "maelstrom", tier: 3, killType: "dread", killCount: 6, rewardCredits: 58000, rewardExp: 17000, rewardHonor: 920 },
-  // Venus zones
-  { id: "q-venus1-scouts", title: "Cloud Layer Sweep", description: "Scout ships harry the upper Venus cloud lanes. Dispatch them and restore safe passage.", zone: "venus1", tier: 1, killType: "scout", killCount: 5, rewardCredits: 380, rewardExp: 90, rewardHonor: 6 },
-  { id: "q-venus1-raiders", title: "Citadel Raiders", description: "A raider gang has been looting Venusian cloud-city outposts. Shut them down.", zone: "venus1", tier: 1, killType: "raider", killCount: 3, rewardCredits: 650, rewardExp: 150, rewardHonor: 11 },
-  { id: "q-venus2-raiders", title: "Sulphur Gate Cleanup", description: "Raider packs lurk in the sulphur wind corridors. Clear the route.", zone: "venus2", tier: 2, killType: "raider", killCount: 6, rewardCredits: 1500, rewardExp: 340, rewardHonor: 19 },
-  { id: "q-venus2-destroyers", title: "Atmospheric Threat", description: "Destroyer squadrons patrol the Sulphur Winds, enforcing blockades. Break them.", zone: "venus2", tier: 2, killType: "destroyer", killCount: 3, rewardCredits: 2600, rewardExp: 650, rewardHonor: 32 },
-  { id: "q-venus3-destroyers", title: "Acid Corridor Purge", description: "Destroyer packs control the Acidic Deep passages. Burn through them.", zone: "venus3", tier: 3, killType: "destroyer", killCount: 5, rewardCredits: 4200, rewardExp: 1200, rewardHonor: 55 },
-  { id: "q-venus3-dread", title: "Venusian Dread Hunt", description: "A Dread-class warship lurks in the corrosive depths. Its reactor is your prize.", zone: "venus3", tier: 3, killType: "dread", killCount: 1, rewardCredits: 6500, rewardExp: 1900, rewardHonor: 110 },
-  { id: "q-venus4-voidlings", title: "Pressure Zone Phantoms", description: "Voidlings phase in and out of the crushing core. Exterminate them before the breach widens.", zone: "venus4", tier: 4, killType: "voidling", killCount: 6, rewardCredits: 9500, rewardExp: 2800, rewardHonor: 150 },
-  { id: "q-venus4-dread", title: "Core Guardian", description: "Two Dread warships orbit the Pressure Core as self-appointed warlords. Dethrone them.", zone: "venus4", tier: 4, killType: "dread", killCount: 2, rewardCredits: 19000, rewardExp: 5500, rewardHonor: 300 },
-  { id: "q-venus5-dread", title: "Eye of Venus", description: "The Eye of Venus is guarded by a Dread armada. Only the bold enter — and fewer leave.", zone: "venus5", tier: 5, killType: "dread", killCount: 4, rewardCredits: 34000, rewardExp: 10000, rewardHonor: 550 },
-  { id: "q-venus5-apex", title: "Sovereign of Venus", description: "Six Dread warships orbit the Eye's singularity. Destroy them all and claim the title.", zone: "venus5", tier: 5, killType: "dread", killCount: 6, rewardCredits: 58000, rewardExp: 17000, rewardHonor: 920 },
+  // Tier 1 - Alpha/Corona/Venus1 (beginner maps)
+  { id: "q-t1-scouts", title: "Sweep the Lanes", description: "Pirate scouts raiding traders. Eliminate them.", zone: "alpha", tier: 1, killType: "scout", killCount: 5, rewardCredits: 150, rewardExp: 40, rewardHonor: 2 },
+  { id: "q-t1-raiders", title: "Raider Bounty", description: "A raider crew is harassing traffic. Take them down.", zone: "alpha", tier: 1, killType: "raider", killCount: 3, rewardCredits: 250, rewardExp: 60, rewardHonor: 4 },
+  { id: "q-t1-scouts2", title: "Scout Patrol", description: "Enemy scouts spotted near the station. Clear them out.", zone: "corona", tier: 1, killType: "scout", killCount: 8, rewardCredits: 200, rewardExp: 50, rewardHonor: 3 },
+  { id: "q-t1-raiders2", title: "Outpost Defense", description: "Raiders attacking the outer perimeter.", zone: "venus1", tier: 1, killType: "raider", killCount: 4, rewardCredits: 300, rewardExp: 70, rewardHonor: 5 },
+
+  // Tier 2 - Nebula/Fracture/Venus2
+  { id: "q-t2-raiders", title: "Veil Cleanup", description: "The Nebula is thick with raider holdouts. Clear them.", zone: "nebula", tier: 2, killType: "raider", killCount: 6, rewardCredits: 500, rewardExp: 120, rewardHonor: 8 },
+  { id: "q-t2-destroyers", title: "Destroy the Destroyers", description: "Heavy destroyers blocking trade routes.", zone: "nebula", tier: 2, killType: "destroyer", killCount: 3, rewardCredits: 800, rewardExp: 200, rewardHonor: 12 },
+  { id: "q-t2-raiders2", title: "Dust Storm Raiders", description: "Raiders hiding in the dust storms.", zone: "fracture", tier: 2, killType: "raider", killCount: 8, rewardCredits: 600, rewardExp: 150, rewardHonor: 10 },
+  { id: "q-t2-destroyers2", title: "Wind Breakers", description: "Destroyer patrol in the sulphur corridors.", zone: "venus2", tier: 2, killType: "destroyer", killCount: 4, rewardCredits: 900, rewardExp: 220, rewardHonor: 14 },
+
+  // Tier 3 - Crimson/Abyss/Venus3 (sentinels appear)
+  { id: "q-t3-destroyers", title: "Crimson Purge", description: "Destroyers established a beachhead in Crimson Reach.", zone: "crimson", tier: 3, killType: "destroyer", killCount: 5, rewardCredits: 1200, rewardExp: 350, rewardHonor: 18 },
+  { id: "q-t3-sentinels", title: "Sentinel Hunt", description: "Armored sentinels are patrolling aggressively. Destroy them.", zone: "crimson", tier: 3, killType: "sentinel", killCount: 4, rewardCredits: 1500, rewardExp: 400, rewardHonor: 22 },
+  { id: "q-t3-dread", title: "Bring Down a Dread", description: "A Dread-class warship in the sector. Send it home in pieces.", zone: "crimson", tier: 3, killType: "dread", killCount: 1, rewardCredits: 2000, rewardExp: 500, rewardHonor: 30 },
+  { id: "q-t3-sentinels2", title: "Red Reach Wardens", description: "Sentinels guarding the Martian reaches. Remove them.", zone: "abyss", tier: 3, killType: "sentinel", killCount: 5, rewardCredits: 1800, rewardExp: 450, rewardHonor: 25 },
+  { id: "q-t3-destroyers2", title: "Acid Corridor Purge", description: "Destroy the heavy ships in the acid corridors.", zone: "venus3", tier: 3, killType: "destroyer", killCount: 6, rewardCredits: 1400, rewardExp: 380, rewardHonor: 20 },
+
+  // Tier 4 - Void/MarsDepth/Venus4 (wraiths appear)
+  { id: "q-t4-wraiths", title: "Phantom Menace", description: "Wraiths phase in and out of reality. Banish them.", zone: "void", tier: 4, killType: "wraith", killCount: 5, rewardCredits: 3000, rewardExp: 800, rewardHonor: 40 },
+  { id: "q-t4-sentinels", title: "Void Wardens", description: "Sentinels guard the dimensional rifts. Clear the path.", zone: "void", tier: 4, killType: "sentinel", killCount: 6, rewardCredits: 3500, rewardExp: 900, rewardHonor: 45 },
+  { id: "q-t4-dread", title: "Apex Predator", description: "A Dread haunts the Void. Become its end.", zone: "void", tier: 4, killType: "dread", killCount: 2, rewardCredits: 5000, rewardExp: 1200, rewardHonor: 60 },
+  { id: "q-t4-wraiths2", title: "Deep Field Phantoms", description: "Wraiths swarming the Martian deep field.", zone: "marsdepth", tier: 4, killType: "wraith", killCount: 6, rewardCredits: 3500, rewardExp: 850, rewardHonor: 42 },
+  { id: "q-t4-sentinels2", title: "Pressure Sentinels", description: "Sentinels adapted to Venus's crushing core.", zone: "venus4", tier: 4, killType: "sentinel", killCount: 7, rewardCredits: 4000, rewardExp: 1000, rewardHonor: 50 },
+
+  // Tier 5 - Forge/Maelstrom/Venus5 (titans appear)
+  { id: "q-t5-titans", title: "Titan Takedown", description: "Massive titans block the Iron Forge supply lanes.", zone: "forge", tier: 5, killType: "titan", killCount: 3, rewardCredits: 8000, rewardExp: 2000, rewardHonor: 100 },
+  { id: "q-t5-wraiths", title: "Forge Phantoms", description: "Wraiths warping through the superheated forges.", zone: "forge", tier: 5, killType: "wraith", killCount: 6, rewardCredits: 6000, rewardExp: 1500, rewardHonor: 75 },
+  { id: "q-t5-dread", title: "Iron Curtain", description: "Dread warships have locked down the Forge. Break through.", zone: "forge", tier: 5, killType: "dread", killCount: 3, rewardCredits: 10000, rewardExp: 2500, rewardHonor: 120 },
+  { id: "q-t5-titans2", title: "Storm Colossi", description: "Titans entrenched in the Maelstrom. Bring them down.", zone: "maelstrom", tier: 5, killType: "titan", killCount: 4, rewardCredits: 9000, rewardExp: 2200, rewardHonor: 110 },
+  { id: "q-t5-wraiths2", title: "Eye Specters", description: "Wraiths haunting the Eye of Venus.", zone: "venus5", tier: 5, killType: "wraith", killCount: 8, rewardCredits: 7000, rewardExp: 1800, rewardHonor: 85 },
+
+  // Tier 6-7 - Danger zones (overlords appear)
+  { id: "q-t6-titans", title: "Rift Titans", description: "Titans command the Outer Rift. Challenge them.", zone: "danger1", tier: 5, killType: "titan", killCount: 4, rewardCredits: 12000, rewardExp: 3000, rewardHonor: 150 },
+  { id: "q-t6-overlords", title: "Dead Zone Overlords", description: "Overlords rule the Dead Zone. Dethrone them.", zone: "danger3", tier: 6, killType: "overlord", killCount: 2, rewardCredits: 18000, rewardExp: 5000, rewardHonor: 250 },
+  { id: "q-t7-overlords", title: "Null Sector Supremacy", description: "The most powerful Overlords in known space. Destroy them all.", zone: "danger4", tier: 7, killType: "overlord", killCount: 3, rewardCredits: 25000, rewardExp: 8000, rewardHonor: 400 },
+  { id: "q-t8-titans", title: "Abyss Gate Titans", description: "Titans guard the deepest gate. Only legends attempt this.", zone: "danger5", tier: 8, killType: "titan", killCount: 5, rewardCredits: 30000, rewardExp: 10000, rewardHonor: 500 },
+  { id: "q-t8-overlords", title: "God of the Abyss", description: "A legendary Overlord dominates the deepest sector. Become the last thing it sees.", zone: "danger5", tier: 8, killType: "overlord", killCount: 4, rewardCredits: 40000, rewardExp: 15000, rewardHonor: 800 },
 ];
 
 // ── ECONOMY ────────────────────────────────────────────────────────────────
