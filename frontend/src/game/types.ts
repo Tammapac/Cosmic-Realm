@@ -1624,11 +1624,15 @@ export const FAKE_CLANS = [
 ];
 
 export const ENEMY_NAMES: Record<EnemyType, string[]> = {
-  scout:     ["Scout"],
-  raider:    ["Raider"],
-  destroyer: ["Destroyer"],
-  voidling:  ["Voidling"],
-  dread:     ["Dread"],
+  scout:     ["Scout", "Dart", "Interceptor", "Stinger", "Wasp"],
+  raider:    ["Raider", "Marauder", "Bandit", "Outlaw", "Pirate"],
+  destroyer: ["Destroyer", "Enforcer", "Warhammer", "Ravager", "Crusher"],
+  voidling:  ["Voidling", "Anomaly", "Shifter", "Phaser", "Glitch"],
+  dread:     ["Dread", "Leviathan", "Warship", "Juggernaut", "Capital"],
+  sentinel:  ["Sentinel", "Warden", "Guardian", "Seraph", "Enforcer"],
+  wraith:    ["Wraith", "Phantom", "Specter", "Shade", "Banshee"],
+  titan:     ["Titan", "Colossus", "Goliath", "Monolith", "Fortress"],
+  overlord:  ["Overlord", "Sovereign", "Emperor", "Archon", "Supreme"],
 };
 
 // ── DRONES ────────────────────────────────────────────────────────────────

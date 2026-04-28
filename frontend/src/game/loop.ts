@@ -335,8 +335,8 @@ function spawnEnemy(): void {
     px = (Math.random() - 0.5) * 2 * mapR;
     py = (Math.random() - 0.5) * 2 * mapR;
   }
-  const tierMult = 1 + (z.enemyTier - 1) * 0.5;
-  const namePool = ENEMY_NAMES[type];
+  const tierMult = Math.pow(2, z.enemyTier - 1);
+  const namePool = ENEMY_NAMES[type] ?? [type];
   const eName = namePool[Math.floor(Math.random() * namePool.length)];
   // Apply faction-specific stat/color overrides
   const fMod = FACTION_ENEMY_MODS[z.faction]?.[type];
@@ -436,7 +436,7 @@ function updateDungeon(dt: number): void {
 
 function spawnBoss(): void {
   const z = ZONES[state.player.zone];
-  const tierMult = 1 + (z.enemyTier - 1) * 0.5;
+  const tierMult = Math.pow(2, z.enemyTier - 1);
   const angle = Math.random() * Math.PI * 2;
   const dist = 600;
   const px = state.player.pos.x + Math.cos(angle) * dist;
