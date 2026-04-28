@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { state, bump, useGame, save, pushNotification, pushChat, abandonDungeon, useConsumable, runDockingServices, loadServerPlayer, collectCargoBox, enterDungeon, stationPrice } from "./game/store";
 import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats, hasRocketWeapon } from "./game/loop";
 import { render } from "./game/render";
+import { initPixiRenderer, destroyPixiRenderer, pixiRender } from "./game/pixi-renderer-v2";
+import { activeRenderer } from "./game/renderer-config";
 import { TopBar, WorldTargetHud } from "./components/TopBar";
 import { MiniMap } from "./components/MiniMap";
 import { Hangar } from "./components/Hangar";
@@ -32,6 +34,7 @@ import {
 
 function GameCanvas() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const pixiContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     startLoop();
@@ -39,32 +42,51 @@ function GameCanvas() {
   }, []);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d", { alpha: false });
-    if (!ctx) return;
-    ctx.imageSmoothingEnabled = false;
+    if (activeRenderer === "pixi") {
+      // PixiJS renderer
+      const container = pixiContainerRef.current;
+      if (!container) return;
+      initPixiRenderer(container);
 
-    let raf = 0;
-    const draw = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const w = canvas.clientWidth;
-      const h = canvas.clientHeight;
-      if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
-        canvas.width = w * dpr;
-        canvas.height = h * dpr;
-      }
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.imageSmoothingEnabled = false;
-      render(ctx, w, h);
+      let raf = 0;
+      const draw = () => {
+        pixiRender();
+        raf = requestAnimationFrame(draw);
+      };
       raf = requestAnimationFrame(draw);
-    };
-    raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
+      return () => {
+        cancelAnimationFrame(raf);
+        destroyPixiRenderer();
+      };
+    } else {
+      // Canvas2D renderer
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d", { alpha: false });
+      if (!ctx) return;
+      ctx.imageSmoothingEnabled = false;
+
+      let raf = 0;
+      const draw = () => {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const w = canvas.clientWidth;
+        const h = canvas.clientHeight;
+        if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+          canvas.width = w * dpr;
+          canvas.height = h * dpr;
+        }
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.imageSmoothingEnabled = false;
+        render(ctx, w, h);
+        raf = requestAnimationFrame(draw);
+      };
+      raf = requestAnimationFrame(draw);
+      return () => cancelAnimationFrame(raf);
+    }
   }, []);
 
-  const screenToWorld = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+  const screenToWorld = (e: React.MouseEvent<HTMLCanvasElement | HTMLDivElement>) => {
+    const rect = (e.target as HTMLElement).getBoundingClientRect();
     const cx = e.clientX - rect.left;
     const cy = e.clientY - rect.top;
     const zoom = state.cameraZoom;
@@ -74,7 +96,7 @@ function GameCanvas() {
     };
   };
 
-  const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleClick = (e: React.MouseEvent<HTMLCanvasElement | HTMLDivElement>) => {
     if (state.dockedAt) return;
     const { x: wx, y: wy } = screenToWorld(e);
 
@@ -146,7 +168,7 @@ function GameCanvas() {
     bump();
   };
 
-  const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement | HTMLDivElement>) => {
     if (state.dockedAt) return;
     const { x: wx, y: wy } = screenToWorld(e);
     const enemy = state.enemies.find((en) => Math.hypot(en.pos.x - wx, en.pos.y - wy) < Math.max(24, en.size + 14));
@@ -167,9 +189,9 @@ function GameCanvas() {
     }
   };
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement | HTMLDivElement>) => {
     if (e.buttons !== 1 || state.dockedAt) return;
-    const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+    const rect = (e.target as HTMLElement).getBoundingClientRect();
     const cx = e.clientX - rect.left;
     const cy = e.clientY - rect.top;
     state.cameraTarget = {
@@ -178,7 +200,7 @@ function GameCanvas() {
     };
   };
 
-  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
+  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement | HTMLDivElement>) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? -0.1 : 0.1;
     state.cameraZoom = Math.max(1.0, Math.min(2.5, state.cameraZoom + delta));
@@ -186,16 +208,29 @@ function GameCanvas() {
   };
 
   return (
-    <canvas
-      ref={canvasRef}
-      onClick={handleClick}
-      onDoubleClick={handleDoubleClick}
-      onMouseMove={handleMouseMove}
-      onWheel={handleWheel}
-      onContextMenu={(e) => e.preventDefault()}
-      className="absolute inset-0 w-full h-full"
-      style={{ cursor: "crosshair", display: "block" }}
-    />
+    activeRenderer === "pixi" ? (
+      <div
+        ref={pixiContainerRef}
+        onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
+        onMouseMove={handleMouseMove}
+        onWheel={handleWheel}
+        onContextMenu={(e) => e.preventDefault()}
+        className="absolute inset-0 w-full h-full"
+        style={{ cursor: "crosshair" }}
+      />
+    ) : (
+      <canvas
+        ref={canvasRef}
+        onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
+        onMouseMove={handleMouseMove}
+        onWheel={handleWheel}
+        onContextMenu={(e) => e.preventDefault()}
+        className="absolute inset-0 w-full h-full"
+        style={{ cursor: "crosshair", display: "block" }}
+      />
+    )
   );
 }
 

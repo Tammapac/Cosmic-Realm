@@ -72,7 +72,7 @@ function px(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: n
 }
 
 // ── 16-bit SHIP SPRITES ──────────────────────────────────────────────────
-function drawShip(
+export function drawShip(
   ctx: CanvasRenderingContext2D,
   x: number, y: number, angle: number, shipClass: ShipClassId,
   scale = 1, glow = true,
@@ -93,7 +93,7 @@ function drawShip(
   ctx.restore();
 }
 
-function shadeHex(hex: string, amt: number): string {
+export function shadeHex(hex: string, amt: number): string {
   // hex #rrggbb, amt in [-1,1]
   const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   if (!m) return hex;
@@ -102,7 +102,7 @@ function shadeHex(hex: string, amt: number): string {
   return `rgb(${f(r)},${f(g)},${f(b)})`;
 }
 
-function drawShipPixels(
+export function drawShipPixels(
   ctx: CanvasRenderingContext2D, id: ShipClassId,
   c: string, a: string, hi: string, dk: string, s: number,
 ): void {
@@ -534,7 +534,7 @@ function drawShipPixels(
 }
 
 // ── ENEMY SPRITES ─────────────────────────────────────────────────────────
-function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
+export function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
   ctx.save();
   ctx.translate(e.pos.x, e.pos.y);
   ctx.rotate(e.angle + Math.PI / 2);
@@ -1943,7 +1943,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
 }
 
 // Mini health/shield bars above ship
-function drawHealthBar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, pct: number): void {
+export function drawHealthBar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, pct: number): void {
   const h = 5;
   ctx.fillStyle = "rgba(0,0,0,0.75)";
   ctx.fillRect(x - w / 2 - 1, y - 1, w + 2, h + 2);
@@ -1964,7 +1964,7 @@ function drawHealthBar(ctx: CanvasRenderingContext2D, x: number, y: number, w: n
   }
 }
 
-function drawHullShieldBars(
+export function drawHullShieldBars(
   ctx: CanvasRenderingContext2D, x: number, y: number,
   hullPct: number, shieldPct: number,
 ): void {
@@ -1982,7 +1982,7 @@ function drawHullShieldBars(
 }
 
 // ── PROJECTILES ───────────────────────────────────────────────────────────
-function drawProjectile(ctx: CanvasRenderingContext2D, pr: Projectile): void {
+export function drawProjectile(ctx: CanvasRenderingContext2D, pr: Projectile): void {
   ctx.save();
   ctx.translate(pr.pos.x, pr.pos.y);
   ctx.rotate(Math.atan2(pr.vel.y, pr.vel.x));
@@ -2168,7 +2168,7 @@ function drawProjectile(ctx: CanvasRenderingContext2D, pr: Projectile): void {
 }
 
 // ── PARTICLES ─────────────────────────────────────────────────────────────
-function drawParticle(ctx: CanvasRenderingContext2D, pa: Particle): void {
+export function drawParticle(ctx: CanvasRenderingContext2D, pa: Particle): void {
   const a = Math.max(0, Math.min(1, pa.ttl / pa.maxTtl));
   if (pa.kind === "ring") {
     const t = 1 - a;
@@ -2334,7 +2334,7 @@ const STATION_COLOR: Record<string, string> = {
   hub: "#4ee2ff", trade: "#5cff8a", mining: "#ffd24a", military: "#ff5c6c", outpost: "#7ad8ff", factory: "#ff8844",
 };
 
-function drawStation(
+export function drawStation(
   ctx: CanvasRenderingContext2D, x: number, y: number, name: string,
   kind: string, t: number, station?: Station,
 ): void {
@@ -2452,7 +2452,7 @@ function drawStation(
 }
 
 // ── FLOATERS ──────────────────────────────────────────────────────────────
-function drawFloater(ctx: CanvasRenderingContext2D, f: Floater): void {
+export function drawFloater(ctx: CanvasRenderingContext2D, f: Floater): void {
   const life = Math.max(0, Math.min(1, f.ttl / f.maxTtl));
   const age = 1 - life;
   // Scale pop: start big, settle to normal, then shrink at end
@@ -2479,7 +2479,7 @@ function drawFloater(ctx: CanvasRenderingContext2D, f: Floater): void {
   ctx.restore();
 }
 
-function drawRift(ctx: CanvasRenderingContext2D, x: number, y: number, color: string, name: string, t: number, active: boolean): void {
+export function drawRift(ctx: CanvasRenderingContext2D, x: number, y: number, color: string, name: string, t: number, active: boolean): void {
   ctx.save();
   ctx.translate(x, y);
   const r = 36;
@@ -2522,7 +2522,7 @@ function drawRift(ctx: CanvasRenderingContext2D, x: number, y: number, color: st
   ctx.restore();
 }
 
-function drawPortal(ctx: CanvasRenderingContext2D, x: number, y: number, toName: string, t: number): void {
+export function drawPortal(ctx: CanvasRenderingContext2D, x: number, y: number, toName: string, t: number): void {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(t);
@@ -2556,7 +2556,7 @@ function drawPortal(ctx: CanvasRenderingContext2D, x: number, y: number, toName:
 }
 
 // ── CARGO BOXES ──────────────────────────────────────────────────────────
-function drawCargoBox(ctx: CanvasRenderingContext2D, cb: CargoBox, t: number): void {
+export function drawCargoBox(ctx: CanvasRenderingContext2D, cb: CargoBox, t: number): void {
   const bob = Math.sin(t * 3) * 3;
   const flash = cb.ttl < 5 ? (Math.sin(t * 12) > 0 ? 1 : 0.3) : 1;
   ctx.save();
@@ -2581,7 +2581,7 @@ function drawCargoBox(ctx: CanvasRenderingContext2D, cb: CargoBox, t: number): v
 }
 
 // ── ASTEROIDS ─────────────────────────────────────────────────────────────
-function drawAsteroid(ctx: CanvasRenderingContext2D, a: Asteroid): void {
+export function drawAsteroid(ctx: CanvasRenderingContext2D, a: Asteroid): void {
   ctx.save();
   ctx.translate(a.pos.x, a.pos.y);
   ctx.rotate(a.rotation);
@@ -2612,7 +2612,7 @@ function drawAsteroid(ctx: CanvasRenderingContext2D, a: Asteroid): void {
 }
 
 // ── DRONES ────────────────────────────────────────────────────────────────
-function drawDrone(ctx: CanvasRenderingContext2D, d: Drone): void {
+export function drawDrone(ctx: CanvasRenderingContext2D, d: Drone): void {
   const anchor = (d as Drone & { anchor?: { x: number; y: number } }).anchor;
   if (!anchor) return;
   const def = DRONE_DEFS[d.kind];
@@ -2634,7 +2634,7 @@ function drawDrone(ctx: CanvasRenderingContext2D, d: Drone): void {
 }
 
 // ── OTHER PLAYERS ─────────────────────────────────────────────────────────
-function drawOtherPlayer(ctx: CanvasRenderingContext2D, o: OtherPlayer): void {
+export function drawOtherPlayer(ctx: CanvasRenderingContext2D, o: OtherPlayer): void {
   drawShip(ctx, o.pos.x, o.pos.y, o.angle, o.shipClass, 0.85);
   if ((o as any).hull != null && (o as any).hullMax != null && (o as any).hull < (o as any).hullMax) {
     const hpRatio = (o as any).hullMax > 0 ? (o as any).hull / (o as any).hullMax : 1;
@@ -2747,7 +2747,7 @@ function drawOtherPlayer(ctx: CanvasRenderingContext2D, o: OtherPlayer): void {
   }
 }
 
-function drawNpcShip(ctx: CanvasRenderingContext2D, npc: NpcShip): void {
+export function drawNpcShip(ctx: CanvasRenderingContext2D, npc: NpcShip): void {
   ctx.save();
   ctx.translate(npc.pos.x, npc.pos.y);
   ctx.rotate(npc.angle);
