@@ -280,7 +280,7 @@ export const ENEMY_DEFS: Record<EnemyType, {
   },
   dread: {
     type: "dread", behavior: "tank",
-    hullMax: 850, damage: 55, speed: 45, exp: 100, credits: 350, honor: 12,
+    hullMax: 850, damage: 55, speed: 55, exp: 100, credits: 350, honor: 12,
     color: "#ffaa22", size: 24,
     loot: { resourceId: "dread", qty: 3 },
   },
@@ -298,7 +298,7 @@ export const ENEMY_DEFS: Record<EnemyType, {
   },
   titan: {
     type: "titan", behavior: "tank",
-    hullMax: 1500, damage: 75, speed: 35, exp: 150, credits: 500, honor: 18,
+    hullMax: 1500, damage: 75, speed: 50, exp: 150, credits: 500, honor: 18,
     color: "#ff2244", size: 30,
     loot: { resourceId: "dread", qty: 4 },
   },

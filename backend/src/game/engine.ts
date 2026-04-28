@@ -1585,9 +1585,23 @@ export class GameEngine {
           e.pos.x += Math.cos(ang) * spd;
           e.pos.y += Math.sin(ang) * spd;
         } else {
-          e.vel.x *= 0.9;
-          e.vel.y *= 0.9;
-          e.angle = angleFromTo(e.pos, tPos);
+          // Orbit/strafe when in range instead of stopping
+          const ang = angleFromTo(e.pos, tPos);
+          e.angle = ang;
+          // Perpendicular orbit direction (alternates based on enemy id hash)
+          const orbitDir = (e.id.charCodeAt(0) % 2 === 0) ? 1 : -1;
+          const orbitAng = ang + (Math.PI / 2) * orbitDir;
+          const orbitSpeed = e.speed * 0.4;
+          e.vel.x = Math.cos(orbitAng) * orbitSpeed;
+          e.vel.y = Math.sin(orbitAng) * orbitSpeed;
+          e.pos.x += e.vel.x * dt;
+          e.pos.y += e.vel.y * dt;
+          // Gently push back to optimal range if too close
+          if (d < fireRange * 0.4) {
+            const pushAng = ang + Math.PI;
+            e.pos.x += Math.cos(pushAng) * e.speed * 0.3 * dt;
+            e.pos.y += Math.sin(pushAng) * e.speed * 0.3 * dt;
+          }
         }
 
         // Fire at target
@@ -1683,13 +1697,19 @@ export class GameEngine {
             this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.3), predAng + Math.PI * 0.4, e.color, "energy", 2, 1.6);
             this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.3), predAng - Math.PI * 0.4, e.color, "energy", 2, 1.6);
           } else if (e.type === "titan") {
-            // Heavy spread + area denial around player
-            for (let i = -1; i <= 1; i++) {
-              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 1.0), projAng + i * 0.08, e.color, "plasma", 6, 0.7);
+            // Predictive heavy spread + area denial
+            const pVelX = target.targetX !== null ? (target.targetX - target.posX) * 0.3 : 0;
+            const pVelY = target.targetY !== null ? (target.targetY - target.posY) * 0.3 : 0;
+            const predTime = d / (600 * 0.7);
+            const predAng = angleFromTo(e.pos, { x: tPos.x + pVelX * predTime * 50, y: tPos.y + pVelY * predTime * 50 });
+            // Heavy predictive plasma volley
+            for (let i = -2; i <= 2; i++) {
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.7), predAng + i * 0.07, e.color, "plasma", 6, 0.75);
             }
-            for (let i = 0; i < 4; i++) {
-              const offsetAng = projAng + (i - 1.5) * 0.25;
-              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.5), offsetAng, "#ff6644", "plasma", 5, 0.5);
+            // Area denial around predicted position
+            for (let i = 0; i < 5; i++) {
+              const offsetAng = predAng + (i - 2) * 0.3 + (Math.random() - 0.5) * 0.15;
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.4), offsetAng, "#ff6644", "plasma", 5, 0.5);
             }
           } else if (e.type === "overlord") {
             // Predictive barrage + area denial ring

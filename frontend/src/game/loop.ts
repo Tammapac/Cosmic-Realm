@@ -2969,17 +2969,21 @@ function applyServerSmoothing(dt: number): void {
   for (const e of state.enemies) {
     const tgt = _entityTargets.get(e.id);
     if (!tgt) continue;
-    // Velocity extrapolation: move with current velocity for smooth motion
-    e.pos.x += tgt.vx * dt;
-    e.pos.y += tgt.vy * dt;
-    // Correction: smoothly nudge toward server position to prevent drift
-    const corrLerp = Math.min(lerp * 1.5, 0.4);
+    // Velocity extrapolation: always move with server velocity for smooth motion
+    const evx = tgt.vx || e.vel.x;
+    const evy = tgt.vy || e.vel.y;
+    e.pos.x += evx * dt;
+    e.pos.y += evy * dt;
+    // Correction: nudge toward server position (stronger for slower entities)
+    const spd = Math.sqrt(evx * evx + evy * evy);
+    const corrStr = spd < 60 ? 0.5 : 0.35;
+    const corrLerp = Math.min(lerp * 2.0, corrStr);
     e.pos.x += (tgt.x - e.pos.x) * corrLerp;
     e.pos.y += (tgt.y - e.pos.y) * corrLerp;
     // Snap if too far off (teleport/respawn)
     const edx = tgt.x - e.pos.x;
     const edy = tgt.y - e.pos.y;
-    if (edx * edx + edy * edy > 200 * 200) {
+    if (edx * edx + edy * edy > 150 * 150) {
       e.pos.x = tgt.x;
       e.pos.y = tgt.y;
     }
