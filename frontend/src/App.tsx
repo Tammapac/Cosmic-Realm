@@ -186,7 +186,7 @@ function GameCanvas() {
   };
 
   return (
-    <div
+    <canvas
       ref={canvasRef}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
