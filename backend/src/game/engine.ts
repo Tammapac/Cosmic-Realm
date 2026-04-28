@@ -221,51 +221,51 @@ export function computeStats(playerData: any): EffectiveStats {
     console.log("[SERVER SKILLS]", JSON.stringify(playerData.skills));
   }
 
-  let damage = (cls.baseDamage + (mod.damage ?? 0)) * (1 + sk("off-power") * 0.10);
-  let hullMax = (cls.hullMax + (mod.hullMax ?? 0)) * (1 + sk("def-armor") * 0.15);
-  let shieldMax = (cls.shieldMax + (mod.shieldMax ?? 0)) * (1 + sk("def-shield") * 0.15 + sk("def-barrier") * 0.20);
-  let speed = (cls.baseSpeed + (mod.speed ?? 0)) * (1 + sk("ut-thrust") * 0.10);
+  let damage = (cls.baseDamage + (mod.damage ?? 0)) + sk("off-power") * 3;
+  let hullMax = (cls.hullMax + (mod.hullMax ?? 0)) + sk("def-armor") * 20;
+  let shieldMax = (cls.shieldMax + (mod.shieldMax ?? 0)) + sk("def-shield") * 15 + sk("def-barrier") * 25;
+  let speed = (cls.baseSpeed + (mod.speed ?? 0)) + sk("ut-thrust") * 5;
   let shieldRegen = 5 + (mod.shieldRegen ?? 0);
-  let damageReduction = (sk("def-bulwark") * 0.08) + (mod.damageReduction ?? 0);
+  let damageReduction = (sk("def-bulwark") * 0.03) + (mod.damageReduction ?? 0);
   let shieldAbsorb = Math.min(0.5, mod.shieldAbsorb ?? 0);
   let aoeRadius = (sk("off-pierce") * 6) + (mod.aoeRadius ?? 0);
-  let critChance = 0.03 + sk("off-crit") * 0.05 + (mod.critChance ?? 0);
-  let fireRate = (1 + sk("off-rapid") * 0.15) * (mod.fireRate ?? 1);
+  let critChance = 0.02 + sk("off-crit") * 0.02 + (mod.critChance ?? 0);
+  let fireRate = (mod.fireRate ?? 1) + sk("off-rapid") * 0.05;
   let lootBonus = (mod.lootBonus ?? 0);
   let cargoMax = cls.cargoMax;
 
   // Snipe skill
-  damage *= (1 + sk("off-snipe") * 0.08);
-  critChance += sk("off-snipe") * 0.04;
+  damage += sk("off-snipe") * 2;
+  critChance += sk("off-snipe") * 0.01;
 
   // Engineering skills
-  fireRate *= (1 + sk("eng-coolant") * 0.15);
-  damage *= (1 + sk("eng-capacitor") * 0.10);
-  shieldRegen *= (1 + sk("eng-capacitor") * 0.10);
-  critChance += sk("eng-targeting") * 0.08;
-  speed *= (1 + sk("eng-warp-core") * 0.15);
+  fireRate += sk("eng-coolant") * 0.04;
+  damage += sk("eng-capacitor") * 2;
+  shieldRegen += sk("eng-capacitor") * 1;
+  critChance += sk("eng-targeting") * 0.02;
+  speed += sk("eng-warp-core") * 4;
 
   // Overdrive & singularity
   const od = sk("eng-overdrive");
   if (od > 0) {
-    damage *= (1 + od * 0.18);
-    shieldMax *= (1 + od * 0.18);
-    speed *= (1 + od * 0.18);
+    damage += od * 4;
+    shieldMax += od * 20;
+    speed += od * 3;
   }
   if (sk("eng-singularity") > 0) {
-    damage *= 1.30;
-    fireRate *= 1.25;
-    speed *= 1.15;
+    damage += 8;
+    fireRate += 0.1;
+    speed += 6;
   }
 
   // Nano-repair
-  shieldRegen *= (1 + sk("def-nano") * 0.15);
-  hullMax *= (1 + sk("def-nano") * 0.10);
+  shieldRegen += sk("def-nano") * 2;
+  hullMax += sk("def-nano") * 15;
 
   // Volley
-  fireRate *= (1 + sk("off-volley") * 0.20);
+  fireRate += sk("off-volley") * 0.06;
 
-  shieldRegen *= (1 + sk("def-regen") * 0.20);
+  shieldRegen += sk("def-regen") * 2;
 
   // Drone bonuses
   const drones = playerData.drones ?? [];
@@ -645,8 +645,9 @@ export class GameEngine {
       if (!stats) continue;
       const ang = angleFromTo({ x: p.posX, y: p.posY }, target.pos);
 
-      // Fire laser
-      if (p.isLaserFiring && p.laserFireCd <= 0) {
+      // Fire laser (only if player has ammo)
+      const pLaserAmmo = pData?.ammo?.[p.laserAmmoType as string] ?? 0;
+      if (p.isLaserFiring && p.laserFireCd <= 0 && pLaserAmmo >= 1) {
         const ammoDef = ROCKET_AMMO_TYPE_DEFS[p.laserAmmoType as RocketAmmoType];
         const mul = ammoDef ? ammoDef.damageMul : 1;
         const laserDmg = stats.damage * mul * 0.4;
