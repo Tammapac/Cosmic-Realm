@@ -91,7 +91,7 @@ function getShipTex(shipClass: ShipClassId, scale: number): PIXI.Texture {
   const dk = shadeHex(c, -0.45);
   drawShipPixels(ctx, shipClass, c, a, hi, dk, scale);
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
   texCache.set(key, tex);
   return tex;
 }
@@ -128,7 +128,7 @@ function getEnemyTex(e: Enemy): PIXI.Texture {
 
   state.selectedWorldTarget = savedTarget;
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
   texCache.set(key, tex);
   return tex;
 }
@@ -175,6 +175,31 @@ function getCircleTex(radius: number): PIXI.Texture {
 }
 
 // Glow circle for particle effects
+// Radial gradient texture for nebulae (matches Canvas2D createRadialGradient)
+function getNebulaTex(radius: number): PIXI.Texture {
+  const key = `nebula-${radius}`;
+  let tex = texCache.get(key);
+  if (tex) return tex;
+
+  const sz = radius * 2 + 4;
+  const c2 = document.createElement("canvas");
+  c2.width = sz;
+  c2.height = sz;
+  const ctx = c2.getContext("2d")!;
+  const cx = sz / 2, cy = sz / 2;
+  const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
+  grd.addColorStop(0, "rgba(255,255,255,0.33)");
+  grd.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = grd;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  texCache.set(key, tex);
+  return tex;
+}
+
 function getGlowTex(radius: number): PIXI.Texture {
   const key = `glow-${radius}`;
   let tex = texCache.get(key);
@@ -273,19 +298,28 @@ function initStars(w: number, h: number): void {
 
 function regenNebula(zone: ZoneId): void {
   nebulae = [];
-  const seed = zone.charCodeAt(0) * 137;
-  for (let i = 0; i < 5; i++) {
-    const rx = ((seed * (i + 1) * 7919) % 10000) / 10000;
-    const ry = ((seed * (i + 1) * 104729) % 10000) / 10000;
-    const rr = ((seed * (i + 1) * 3571) % 10000) / 10000;
-    const colors = ["#4ee2ff", "#ff5cf0", "#ffd24a", "#5cff8a", "#7a8ad8"];
+  const z = ZONES[zone];
+  // Match Canvas2D: 18 nebulae, random positions, zone-based colors
+  for (let i = 0; i < 18; i++) {
     nebulae.push({
-      x: (rx - 0.5) * 4000,
-      y: (ry - 0.5) * 4000,
-      r: 80 + rr * 200,
-      c: colors[i % colors.length],
+      x: (Math.random() - 0.5) * 6000,
+      y: (Math.random() - 0.5) * 6000,
+      r: 300 + Math.random() * 600,
+      c: i % 2 === 0 ? z.bgHueA : z.bgHueB,
     });
   }
+  // Create nebula sprites
+  clearNebulaSprites();
+}
+
+let nebulaSprites: PIXI.Sprite[] = [];
+
+function clearNebulaSprites(): void {
+  for (const s of nebulaSprites) {
+    s.parent?.removeChild(s);
+    s.destroy();
+  }
+  nebulaSprites = [];
 }
 
 // ═══════════════════════════════════════════════════════════════════��══════
@@ -302,6 +336,10 @@ let fps = 0;
 // ══════════════════════════════════════════════════════════════════════════
 
 export function initPixiRenderer(container: HTMLDivElement): void {
+  // Set global defaults for pixel-art sharpness
+  PIXI.settings.SCALE_MODE = PIXI.SCALE_MODES.NEAREST;
+  PIXI.settings.ROUND_PIXELS = true;
+
   app = new PIXI.Application({
     resizeTo: container,
     backgroundColor: 0x020414,
@@ -309,7 +347,11 @@ export function initPixiRenderer(container: HTMLDivElement): void {
     resolution: Math.min(window.devicePixelRatio || 1, 2),
     autoDensity: true,
   });
-  container.appendChild(app.view as HTMLCanvasElement);
+
+  // CSS pixel-art sharpness
+  const view = app.view as HTMLCanvasElement;
+  view.style.imageRendering = "pixelated";
+  container.appendChild(view);
 
   // Layer hierarchy
   bgLayer = new PIXI.Container();
@@ -404,6 +446,7 @@ export function pixiRender(): void {
     lastZone = state.player.zone;
     // Clear entity pools on zone change
     clearZoneEntities();
+    clearNebulaSprites();
   }
 
   // Camera shake
@@ -488,13 +531,15 @@ export function pixiRender(): void {
       frameCount = 0;
       lastFpsTime = now;
     }
+    const cam = state.player.pos;
+    const zoom = state.cameraZoom;
     debugText.text = [
-      `FPS: ${fps}`,
+      `FPS: ${fps}  |  Renderer: PixiJS WebGL`,
+      `Cam: ${Math.round(cam.x)},${Math.round(cam.y)} Zoom: ${zoom.toFixed(2)}`,
+      `Screen: ${w}x${h} DPR: ${(app!.renderer.resolution).toFixed(1)}`,
       `Enemies: ${enemySprites.size}/${state.enemies.length}`,
-      `Projectiles: ${projectileSprites.size}/${state.projectiles.length}`,
-      `Particles: ${particleSprites.size}/${state.particles.length}`,
-      `Others: ${otherPlayerSprites.size}/${state.others.length}`,
-      `Textures: ${texCache.size}`,
+      `Proj: ${projectileSprites.size}/${state.projectiles.length}  Part: ${particleSprites.size}/${state.particles.length}`,
+      `Others: ${otherPlayerSprites.size}  NPCs: ${npcSprites.size}  Textures: ${texCache.size}`,
     ].join("\n");
   }
 }
@@ -508,21 +553,37 @@ function renderBackground(w: number, h: number, cam: { x: number; y: number }): 
 
   const z = ZONES[state.player.zone];
 
-  // Gradient background
+  // Background color
   bgGraphics.clear();
-  // Use solid color approximation (PixiJS doesn't have CSS-style gradients easily)
   bgGraphics.beginFill(PIXI.utils.string2hex(z.bgHueB));
   bgGraphics.drawRect(0, 0, w, h);
   bgGraphics.endFill();
+  // Top gradient overlay
+  bgGraphics.beginFill(PIXI.utils.string2hex(z.bgHueA), 0.5);
+  bgGraphics.drawRect(0, 0, w, h / 2);
+  bgGraphics.endFill();
 
-  // Nebulae (parallax, behind everything)
-  for (const n of nebulae) {
-    const nsx = w / 2 + (n.x - cam.x * 0.05);
-    const nsy = h / 2 + (n.y - cam.y * 0.05);
-    if (nsx < -n.r || nsx > w + n.r || nsy < -n.r || nsy > h + n.r) continue;
-    bgGraphics.beginFill(PIXI.utils.string2hex(n.c), 0.2);
-    bgGraphics.drawCircle(nsx, nsy, n.r);
-    bgGraphics.endFill();
+  // Nebulae as radial gradient sprites (matches Canvas2D createRadialGradient)
+  // Create sprites on first render or after zone change
+  if (nebulaSprites.length === 0 && nebulae.length > 0) {
+    for (const n of nebulae) {
+      const tex = getNebulaTex(Math.round(n.r / 50) * 50);
+      const spr = new PIXI.Sprite(tex);
+      spr.anchor.set(0.5);
+      spr.tint = PIXI.utils.string2hex(n.c);
+      spr.scale.set(n.r / (Math.round(n.r / 50) * 50));
+      bgLayer.addChild(spr);
+      nebulaSprites.push(spr);
+    }
+  }
+  // Update nebula positions (parallax)
+  for (let i = 0; i < nebulaSprites.length && i < nebulae.length; i++) {
+    const n = nebulae[i];
+    const spr = nebulaSprites[i];
+    spr.x = w / 2 + (n.x - cam.x * 0.05);
+    spr.y = h / 2 + (n.y - cam.y * 0.05);
+    // Culling
+    spr.visible = !(spr.x < -n.r || spr.x > w + n.r || spr.y < -n.r || spr.y > h + n.r);
   }
 
   // Stars (parallax layers)
@@ -592,7 +653,7 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
 
     // Update position & rotation
     data.container.visible = true;
-    data.container.position.set(e.pos.x, e.pos.y);
+    data.container.position.set(Math.round(e.pos.x), Math.round(e.pos.y));
     data.body.rotation = e.angle + Math.PI / 2;
 
     // Hit flash effect
@@ -880,7 +941,7 @@ function syncPlayer(): void {
     const ring = playerContainer.getChildByName("shieldRing") as PIXI.Graphics;
     if (ring) ring.visible = false;
   }
-  playerContainer.position.set(p.pos.x, p.pos.y);
+  playerContainer.position.set(Math.round(p.pos.x), Math.round(p.pos.y));
   playerBody!.rotation = p.angle + Math.PI / 2;
 
   // Hull/Shield bars
@@ -953,7 +1014,7 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
     }
 
     data.container.visible = true;
-    data.container.position.set(o.pos.x, o.pos.y);
+    data.container.position.set(Math.round(o.pos.x), Math.round(o.pos.y));
     data.body.rotation = o.angle + Math.PI / 2;
 
     // Update texture if ship class changed
