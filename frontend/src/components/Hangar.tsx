@@ -9,6 +9,7 @@ import type { HangarTab } from "../game/store";
 import { effectiveStats } from "../game/loop";
 import { buySkillRank, resetSkills } from "../game/store";
 import { useState, useMemo, useEffect } from "react";
+import { createPortal } from "react-dom";
 
 const TABS: { id: HangarTab; label: string; glyph: string }[] = [
   { id: "bounties", label: "Bounties", glyph: "★" },
@@ -813,22 +814,25 @@ function DungeonsTab() {
           );
         })}
       </div>
-      {confirmRift && (() => {
-        const cd = DUNGEONS[confirmRift as DungeonId];
-        return (
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
-            <div style={{ background: "#1a1a2e", border: "1px solid #444", borderRadius: 8, padding: 20, maxWidth: 320, textAlign: "center" }}>
-              <div style={{ fontSize: 16, fontWeight: "bold", marginBottom: 8, color: cd?.color || "#fff" }}>Enter {cd?.name}?</div>
-              <div style={{ fontSize: 13, color: "#aaa", marginBottom: 12 }}>SOLO MODE<br/>(Party mode coming soon)</div>
-              <div style={{ fontSize: 13, color: "#ccc", marginBottom: 16 }}>Are you sure you want to teleport to the rift?</div>
-              <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-                <button className="btn" style={{ padding: "6px 18px", background: "#333", color: "#fff", border: "1px solid #555" }} onClick={() => setConfirmRift(null)}>Cancel</button>
-                <button className="btn btn-primary" style={{ padding: "6px 18px" }} onClick={() => { setConfirmRift(null); state.dockedAt = null; enterDungeon(confirmRift as DungeonId); }}>Enter Rift</button>
+      {confirmRift && createPortal(
+        (() => {
+          const cd = DUNGEONS[confirmRift as DungeonId];
+          return (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 99999 }}>
+              <div style={{ background: "#1a1a2e", border: "2px solid #666", borderRadius: 10, padding: 24, maxWidth: 340, textAlign: "center", boxShadow: "0 0 40px rgba(0,0,0,0.8)" }}>
+                <div style={{ fontSize: 18, fontWeight: "bold", marginBottom: 10, color: cd?.color || "#fff" }}>Enter {cd?.name}?</div>
+                <div style={{ fontSize: 14, color: "#aaa", marginBottom: 14 }}>SOLO MODE</div>
+                <div style={{ fontSize: 13, color: "#ccc", marginBottom: 20 }}>Teleport to the rift instance?</div>
+                <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+                  <button style={{ padding: "8px 24px", background: "#333", color: "#fff", border: "1px solid #555", borderRadius: 6, cursor: "pointer", fontSize: 14 }} onClick={() => setConfirmRift(null)}>Cancel</button>
+                  <button style={{ padding: "8px 24px", background: "#4a6cf7", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 14, fontWeight: "bold" }} onClick={() => { setConfirmRift(null); state.dockedAt = null; enterDungeon(confirmRift as DungeonId); }}>Enter Rift</button>
+                </div>
               </div>
             </div>
-          </div>
-        );
-      })()}
+          );
+        })(),
+        document.body
+      )}
     </div>
   );
 }

@@ -968,7 +968,7 @@ function tickWorld(dt: number): void {
       pa.ttl -= dt;
     }
     state.particles = state.particles.filter((pa) => pa.ttl > 0);
-    for (const f of state.floaters) { if (f.trackPlayer) { f.pos.x = state.player.pos.x; f.pos.y = state.player.pos.y - 40 + f.vy * (f.maxTtl - f.ttl); } else { f.pos.y += f.vy * dt; } f.vy *= 0.96; f.ttl -= dt; }
+    for (const f of state.floaters) { if (f.trackPlayer) { const el = f.maxTtl - f.ttl; f.pos.x = state.player.pos.x; f.pos.y = state.player.pos.y - 45 + (f.trackYOff ?? 0) - el * 25; } else { f.pos.y += f.vy * dt; } f.vy *= 0.96; f.ttl -= dt; }
     state.floaters = state.floaters.filter((f) => f.ttl > 0);
     for (const ev of state.events) ev.ttl -= dt;
     state.events = state.events.filter((ev) => ev.ttl > 0);
@@ -2251,8 +2251,9 @@ function tickWorld(dt: number): void {
   // ── Floaters update
   for (const f of state.floaters) {
     if (f.trackPlayer) {
+      const elapsed = f.maxTtl - f.ttl;
       f.pos.x = state.player.pos.x;
-      f.pos.y = state.player.pos.y - 40 + f.vy * (f.maxTtl - f.ttl);
+      f.pos.y = state.player.pos.y - 45 + (f.trackYOff ?? 0) - elapsed * 25;
     } else {
       f.pos.y += f.vy * dt;
     }
@@ -3130,6 +3131,7 @@ export function onPlayerDieFromServer(data: { playerId: number; pos: { x: number
 function applyEntityUpdate(entity: DeltaEntity): void {
   switch (entity.entityType) {
     case "enemy": {
+      if (state.dungeon) break;
       const e = state.enemies.find(en => en.id === entity.id);
       if (e) {
         setEntityTarget(entity.id, entity.x, entity.y, entity.vx ?? 0, entity.vy ?? 0);

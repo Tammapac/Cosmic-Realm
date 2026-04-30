@@ -683,20 +683,26 @@ export function pushFloater(opts: {
   text: string; color: string; x: number; y: number; bold?: boolean; scale?: number; ttl?: number; trackPlayer?: boolean;
 }): void {
   const ttl = opts.ttl ?? 0.8;
-  // Offset Y to avoid overlapping nearby floaters
+  // Count existing trackPlayer floaters to stack them vertically
   let yOff = 0;
-  for (const f of state.floaters) {
-    if (Math.abs(f.pos.x - opts.x) < 60 && Math.abs(f.pos.y - opts.y + yOff) < 16) yOff -= 18;
+  if (opts.trackPlayer) {
+    const trackCount = state.floaters.filter(f => f.trackPlayer).length;
+    yOff = -trackCount * 22;
+  } else {
+    for (const f of state.floaters) {
+      if (Math.abs(f.pos.x - opts.x) < 60 && Math.abs(f.pos.y - opts.y + yOff) < 16) yOff -= 18;
+    }
   }
   state.floaters.push({
     id: `f-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
     text: opts.text, color: opts.color,
     pos: { x: opts.x, y: opts.y + yOff },
-    vy: -40 - Math.random() * 30,
+    vy: -30,
     ttl, maxTtl: ttl,
     scale: opts.scale ?? 1,
     bold: opts.bold,
     trackPlayer: opts.trackPlayer,
+    trackYOff: opts.trackPlayer ? yOff : undefined,
   });
   if (state.floaters.length > 60) state.floaters.shift();
 }

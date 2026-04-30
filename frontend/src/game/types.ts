@@ -653,6 +653,7 @@ export type Floater = {
   scale: number;            // text scale (crits start big)
   bold?: boolean;
   trackPlayer?: boolean;
+  trackYOff?: number;
 };
 
 export type CargoBox = {
