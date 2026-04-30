@@ -501,6 +501,7 @@ let playerContainer: PIXI.Container | null = null;
 let playerBody: PIXI.Sprite | null = null;
 let playerNameText: PIXI.Text | null = null;
 let playerBars: PIXI.Graphics | null = null;
+let playerDockedText: PIXI.Text | null = null;
 let lastPlayerShipClass: ShipClassId | null = null;
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -658,6 +659,7 @@ export function destroyPixiRenderer(): void {
   playerBody = null;
   playerNameText = null;
   playerBars = null;
+  playerDockedText = null;
   lastPlayerShipClass = null;
 
   // Destroy effect manager
@@ -1539,6 +1541,20 @@ function syncPlayer(): void {
     playerNameText.anchor.set(0.5, 0);
     playerContainer.addChild(playerNameText);
 
+    playerDockedText = new PIXI.Text("DOCKED", {
+      fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
+      fontSize: 11,
+      fill: "#44ff88",
+      fontWeight: "bold",
+      stroke: "#000000",
+      strokeThickness: 2,
+    });
+    playerDockedText.resolution = 2;
+    playerDockedText.anchor.set(0.5, 1);
+    playerDockedText.position.set(0, -35);
+    playerDockedText.visible = false;
+    playerContainer.addChild(playerDockedText);
+
     playerLayer.addChild(playerContainer);
     lastPlayerShipClass = p.shipClass;
   }
@@ -1651,6 +1667,11 @@ function syncPlayer(): void {
   // Name
   playerNameText!.position.set(0, 30);
   playerNameText!.text = p.name;
+
+  // DOCKED label
+  if (playerDockedText) {
+    playerDockedText.visible = !!state.dockedAt;
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════

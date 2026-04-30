@@ -218,14 +218,14 @@ export function setupSocket(io: Server) {
     });
 
     // ── STATS UPDATE (syncs player data for engine computation) ─────
-    socket.on("dock:enter", () => {
+    socket.on("dock:enter", () => { console.log("[DOCK] " + (online?.name ?? "?") + " docked");
       if (!online) return;
       online.isDocked = true;
       online.velX = 0;
       online.velY = 0;
     });
 
-    socket.on("dock:leave", () => {
+    socket.on("dock:leave", () => { console.log("[DOCK] " + (online?.name ?? "?") + " undocked");
       if (!online) return;
       online.isDocked = false;
     });
@@ -381,16 +381,54 @@ export function setupSocket(io: Server) {
           instanceMgr.instances.delete(instId);
           continue;
         }
+        // Process movement for instanced players
+        const stopDistSq = 8 * 8;
+        const snapDistSq = 2 * 2;
+        for (const p of instPlayers) {
+          if (p.targetX !== null && p.targetY !== null) {
+            const dx = p.targetX - p.posX;
+            const dy = p.targetY - p.posY;
+            const distSq = dx * dx + dy * dy;
+            if (distSq <= stopDistSq) {
+              if (distSq <= snapDistSq) { p.posX = p.targetX; p.posY = p.targetY; }
+              p.targetX = null; p.targetY = null; p.velX = 0; p.velY = 0;
+            } else {
+              const d = Math.sqrt(distSq);
+              const ang = Math.atan2(dy, dx);
+              if (d > 40) p.angle = ang;
+              p.velX += Math.cos(ang) * 500 * FIXED_DT;
+              p.velY += Math.sin(ang) * 500 * FIXED_DT;
+            }
+          }
+          const v = Math.sqrt(p.velX * p.velX + p.velY * p.velY);
+          if (v > p.speed) { p.velX = (p.velX / v) * p.speed; p.velY = (p.velY / v) * p.speed; }
+          p.velX *= 0.94; p.velY *= 0.94;
+          p.posX += p.velX * FIXED_DT;
+          p.posY += p.velY * FIXED_DT;
+          if (p.velX * p.velX + p.velY * p.velY < 1) { p.velX = 0; p.velY = 0; }
+        }
+
         const result = instanceMgr.tickInstance(inst, instPlayers, FIXED_DT);
-        
-        // Broadcast instance events to players in this instance
+
+        // Broadcast instance events and state to players
         for (const p of instPlayers) {
           const sock = io.sockets.sockets.get(p.socketId);
           if (!sock) continue;
           for (const ev of result.events) {
             sock.emit("instance:event", ev);
           }
-          // Send enemy positions
+          // Send self position so client can move
+          sock.emit("delta", {
+            tick: tickCounter,
+            self: {
+              x: p.posX, y: p.posY, vx: p.velX, vy: p.velY, angle: p.angle,
+              hull: p.hull, hullMax: p.hullMax,
+              shield: p.shield, shieldMax: p.shieldMax,
+              lastProcessedInput: 0,
+            },
+            addOrUpdate: [],
+            removals: [],
+          });
           sock.emit("instance:state", {
             wave: inst.wave,
             totalWaves: inst.totalWaves,
@@ -398,7 +436,7 @@ export function setupSocket(io: Server) {
             completed: inst.completed,
           });
         }
-        
+
         if (result.allCleared) {
           // Instance complete - notify players
           for (const p of instPlayers) {
@@ -421,6 +459,7 @@ export function setupSocket(io: Server) {
           for (const other of playersArr) {
             if (other.playerId === p.playerId) continue;
             if (other.isDocked) continue;
+            if (instanceMgr.isInInstance(other.playerId)) continue;
             const dx = p.posX - other.posX;
             const dy = p.posY - other.posY;
             if (dx * dx + dy * dy < CULL_RADIUS_SQ) {
