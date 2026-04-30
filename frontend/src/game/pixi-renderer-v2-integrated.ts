@@ -502,6 +502,7 @@ let playerBody: PIXI.Sprite | null = null;
 let playerNameText: PIXI.Text | null = null;
 let playerBars: PIXI.Graphics | null = null;
 let playerDockedText: PIXI.Text | null = null;
+let playerSubtitleText: PIXI.Text | null = null;
 let lastPlayerShipClass: ShipClassId | null = null;
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -660,6 +661,7 @@ export function destroyPixiRenderer(): void {
   playerNameText = null;
   playerBars = null;
   playerDockedText = null;
+  playerSubtitleText = null;
   lastPlayerShipClass = null;
 
   // Destroy effect manager
@@ -1541,6 +1543,18 @@ function syncPlayer(): void {
     playerNameText.anchor.set(0.5, 0);
     playerContainer.addChild(playerNameText);
 
+    playerSubtitleText = new PIXI.Text("", {
+      fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
+      fontSize: 10,
+      fill: "#aaaaaa",
+      stroke: "#000000",
+      strokeThickness: 1,
+    });
+    playerSubtitleText.resolution = 2;
+    playerSubtitleText.anchor.set(0.5, 0);
+    playerSubtitleText.position.set(0, 42);
+    playerContainer.addChild(playerSubtitleText);
+
     playerDockedText = new PIXI.Text("DOCKED", {
       fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
       fontSize: 11,
@@ -1664,9 +1678,21 @@ function syncPlayer(): void {
   playerBars!.drawRect(0, 4, 28 * shieldPct, 3);
   playerBars!.endFill();
 
-  // Name
+  // Name with faction color
+  const pFaction = p.faction ? FACTIONS[p.faction as keyof typeof FACTIONS] : null;
+  const pFactionColor = pFaction?.color ?? "#e8f0ff";
   playerNameText!.position.set(0, 30);
   playerNameText!.text = p.name;
+  playerNameText!.style.fill = pFactionColor;
+
+  // Rank + faction subtitle
+  if (playerSubtitleText) {
+    const pRank = rankFor(p.honor);
+    const pFTag = pFaction?.tag ?? "";
+    playerSubtitleText.text = pFTag ? pRank.symbol + " " + pRank.name + " [" + pFTag + "]" : pRank.symbol + " " + pRank.name;
+    playerSubtitleText.style.fill = pRank.color;
+    playerSubtitleText.position.set(0, 42);
+  }
 
   // DOCKED label
   if (playerDockedText) {
