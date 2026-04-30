@@ -232,6 +232,7 @@ export function setupSocket(io: Server) {
 
     socket.on("instance:enter", (data: { dungeonId: string }) => {
       if (!online) return;
+      console.log("[INSTANCE] " + online.name + " entering instance: " + data.dungeonId);
       const def = DUNGEONS[data.dungeonId as keyof typeof DUNGEONS];
       if (!def) return;
       if (instanceMgr.isInInstance(online.playerId)) return;
@@ -254,6 +255,7 @@ export function setupSocket(io: Server) {
       online.targetX = null;
       online.targetY = null;
       
+      console.log("[INSTANCE] " + online.name + " joined instance " + inst.id + " pos=" + online.posX + "," + online.posY);
       socket.emit("instance:joined", {
         instanceId: inst.id,
         dungeonId: data.dungeonId,
@@ -382,6 +384,7 @@ export function setupSocket(io: Server) {
           continue;
         }
         // Process movement for instanced players
+        if (tickCounter % 100 === 0) console.log('[INSTANCE] tick inst=' + instId + ' players=' + instPlayers.length + ' enemies=' + inst.enemies.size);
         const stopDistSq = 8 * 8;
         const snapDistSq = 2 * 2;
         for (const p of instPlayers) {
@@ -429,12 +432,14 @@ export function setupSocket(io: Server) {
             addOrUpdate: [],
             removals: [],
           });
-          sock.emit("instance:state", {
-            wave: inst.wave,
-            totalWaves: inst.totalWaves,
-            enemies: instanceMgr.serializeEnemies(inst),
-            completed: inst.completed,
-          });
+          if (tickCounter % 3 === 0) {
+            sock.emit("instance:state", {
+              wave: inst.wave,
+              totalWaves: inst.totalWaves,
+              enemies: instanceMgr.serializeEnemies(inst),
+              completed: inst.completed,
+            });
+          }
         }
 
         if (result.allCleared) {

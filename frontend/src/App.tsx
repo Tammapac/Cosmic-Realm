@@ -566,7 +566,7 @@ function GameApp() {
         for (const se of serverEnemies) {
           const existing = state.enemies.find(e => e.id === se.id);
           if (existing) {
-            setEntityTarget(existing, se.x, se.y);
+            setEntityTarget(existing.id, se.x, se.y, se.vx ?? 0, se.vy ?? 0);
             existing.hull = se.hp;
             existing.hullMax = se.hpMax;
             existing.angle = se.angle ?? existing.angle;
@@ -597,7 +597,6 @@ function GameApp() {
         }
         const serverIds = new Set(serverEnemies.map((se: any) => se.id));
         state.enemies = state.enemies.filter(e => serverIds.has(e.id));
-        bump();
       },
       onEvent: (data: any) => {
         if (data.type === "wave:clear") {
