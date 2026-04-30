@@ -103,6 +103,10 @@ function preloadShipSprites(): void {
       shipSpriteTextures.set(id, tex);
       shipSpriteLoading.delete(id);
       texCache.forEach((_, k) => { if (k.startsWith(`ship-${id}-`)) texCache.delete(k); });
+      lastPlayerShipClass = "" as ShipClassId;
+      for (const [, data] of otherPlayerSprites) {
+        (data as any)._lastShipClass = "";
+      }
     };
     img.onerror = () => { shipSpriteLoading.delete(id); };
     img.src = url;
@@ -186,6 +190,36 @@ function getShipTex(shipClass: ShipClassId, scale: number): PIXI.Texture {
     // Sharp ship on top
     ctx.globalAlpha = 1.0;
     ctx.drawImage(src, minX, minY, cw, ch, dx, dy, drawW, drawH);
+
+    // 3D lighting: directional light from top-left
+    ctx.save();
+    ctx.globalCompositeOperation = "source-atop";
+
+    // Top highlight (screen blend via lighter)
+    const hlGrad = ctx.createLinearGradient(dx, dy, dx + drawW, dy + drawH);
+    hlGrad.addColorStop(0, "rgba(200,220,255,0.18)");
+    hlGrad.addColorStop(0.4, "rgba(200,220,255,0.04)");
+    hlGrad.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = hlGrad;
+    ctx.fillRect(dx, dy, drawW, drawH);
+
+    // Bottom-right shadow
+    const shGrad = ctx.createLinearGradient(dx, dy, dx + drawW, dy + drawH);
+    shGrad.addColorStop(0, "rgba(0,0,0,0)");
+    shGrad.addColorStop(0.6, "rgba(0,0,0,0.05)");
+    shGrad.addColorStop(1, "rgba(0,0,20,0.22)");
+    ctx.fillStyle = shGrad;
+    ctx.fillRect(dx, dy, drawW, drawH);
+
+    // Rim light (top edge highlight)
+    const rimGrad = ctx.createLinearGradient(dx, dy, dx, dy + drawH * 0.15);
+    rimGrad.addColorStop(0, "rgba(180,210,255,0.15)");
+    rimGrad.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = rimGrad;
+    ctx.fillRect(dx, dy, drawW, drawH * 0.15);
+
+    ctx.restore();
+
     tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
     texCache.set(key, tex);
     return tex;
