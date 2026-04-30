@@ -1543,18 +1543,6 @@ function syncPlayer(): void {
     playerNameText.anchor.set(0.5, 0);
     playerContainer.addChild(playerNameText);
 
-    playerSubtitleText = new PIXI.Text("", {
-      fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
-      fontSize: 10,
-      fill: "#aaaaaa",
-      stroke: "#000000",
-      strokeThickness: 1,
-    });
-    playerSubtitleText.resolution = 2;
-    playerSubtitleText.anchor.set(0.5, 0);
-    playerSubtitleText.position.set(0, 42);
-    playerContainer.addChild(playerSubtitleText);
-
     playerDockedText = new PIXI.Text("DOCKED", {
       fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
       fontSize: 11,
@@ -1678,21 +1666,15 @@ function syncPlayer(): void {
   playerBars!.drawRect(0, 4, 28 * shieldPct, 3);
   playerBars!.endFill();
 
-  // Name with faction color
+  // Name with faction tag + rank symbol inline
   const pFaction = p.faction ? FACTIONS[p.faction as keyof typeof FACTIONS] : null;
-  const pFactionColor = pFaction?.color ?? "#e8f0ff";
+  const pFTag = pFaction?.tag ?? "";
+  const pRank = rankFor(p.honor);
+  const prefix = pFTag ? pFTag + " " : "";
+  const suffix = " " + pRank.symbol;
   playerNameText!.position.set(0, 30);
-  playerNameText!.text = p.name;
-  playerNameText!.style.fill = pFactionColor;
-
-  // Rank + faction subtitle
-  if (playerSubtitleText) {
-    const pRank = rankFor(p.honor);
-    const pFTag = pFaction?.tag ?? "";
-    playerSubtitleText.text = pFTag ? pRank.symbol + " " + pRank.name + " [" + pFTag + "]" : pRank.symbol + " " + pRank.name;
-    playerSubtitleText.style.fill = pRank.color;
-    playerSubtitleText.position.set(0, 42);
-  }
+  playerNameText!.text = prefix + p.name + suffix;
+  playerNameText!.style.fill = "#e8f0ff";
 
   // DOCKED label
   if (playerDockedText) {
@@ -1787,20 +1769,19 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
     data.bars.drawRect(0, 0, 28 * hullPct, 3);
     data.bars.endFill();
 
-    // Name with faction color
-    const factionColor = o.faction ? FACTIONS[o.faction as keyof typeof FACTIONS]?.color ?? "#7a8ad8" : "#7a8ad8";
-    data.nameText.style.fill = factionColor;
-    data.nameText.text = o.name;
+    // Name with faction tag + rank symbol inline
+    const oFTag = o.faction ? FACTIONS[o.faction as keyof typeof FACTIONS]?.tag ?? "" : "";
+    const oRank = rankFor(o.honor);
+    const oPrefix = oFTag ? oFTag + " " : "";
+    const oSuffix = " " + oRank.symbol;
+    data.nameText.style.fill = "#e8f0ff";
+    data.nameText.text = oPrefix + o.name + oSuffix;
     data.nameText.position.set(0, 24);
 
-    // Faction tag + rank subtitle
+    // Hide subtitle (now inline)
     const subtitle = data.container.getChildByName("subtitle") as PIXI.Text;
     if (subtitle) {
-      const rank = rankFor(o.honor);
-      const fTag = o.faction ? FACTIONS[o.faction as keyof typeof FACTIONS]?.tag ?? "" : "";
-      subtitle.text = `${rank.symbol} ${rank.name}${fTag ? " [" + fTag + "]" : ""}`;
-      subtitle.style.fill = rank.color;
-      subtitle.position.set(0, 36);
+      subtitle.text = "";
     }
 
     // Animate body glow with faction color
