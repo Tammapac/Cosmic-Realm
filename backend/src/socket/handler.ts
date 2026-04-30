@@ -36,9 +36,20 @@ export function setupSocket(io: Server) {
     }
   });
 
+  const activeSockets = new Map<number, Socket>();
+
   io.on("connection", async (socket: Socket) => {
     const user: TokenPayload = (socket as any).user;
     console.log(`[IO] ${user.username} connected (player ${user.playerId})`);
+
+    // Kick old session if same player connects again
+    const oldSocket = activeSockets.get(user.playerId);
+    if (oldSocket && oldSocket.id !== socket.id) {
+      console.log(`[IO] ${user.username} duplicate session — kicking old socket ${oldSocket.id}`);
+      oldSocket.emit("kicked", { reason: "Another session connected" });
+      oldSocket.disconnect(true);
+    }
+    activeSockets.set(user.playerId, socket);
 
     const [dbPlayer] = await db
       .select()
@@ -348,6 +359,9 @@ export function setupSocket(io: Server) {
     // ── DISCONNECT ──────────────────────────────────────────────────
     socket.on("disconnect", () => {
       console.log(`[IO] ${user.username} disconnected`);
+      if (activeSockets.get(user.playerId)?.id === socket.id) {
+        activeSockets.delete(user.playerId);
+      }
       engine.removePlayerData(user.playerId);
       const zone = removePlayer(user.playerId);
       if (zone) {

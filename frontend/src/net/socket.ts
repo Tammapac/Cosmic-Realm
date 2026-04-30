@@ -235,6 +235,12 @@ export function connectSocket(token: string) {
     });
   });
 
+  socket.on("kicked", (data: { reason: string }) => {
+    console.warn("[socket] kicked:", data.reason);
+    alert("Session taken over: " + data.reason + ". This tab will reload.");
+    window.location.reload();
+  });
+
   socket.on("disconnect", (reason) => {
     console.warn("[socket] disconnected", reason);
   });
