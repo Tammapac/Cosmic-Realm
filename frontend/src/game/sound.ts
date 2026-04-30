@@ -214,6 +214,8 @@ const THRUSTER_SOUND = "/audio/thruster_hum.mp3";
 const MINING_SOUND = "/audio/mininglaser.mp3";
 const EXPLOSION_SOUNDS = ["/audio/explosion1.mp3", "/audio/explosion2.mp3", "/audio/explosion3.mp3", "/audio/explosion4.mp3"];
 const EXPLOSION_PITCHES = [0.8, 0.9, 1.0, 1.1, 1.2];
+const PICKUP_SOUND = "/audio/pickup.mp3";
+const PICKUP_PITCHES = [0.85, 0.95, 1.0, 1.1, 1.25];
 
 function preloadAll(): void {
   for (const url of LASER_SOUNDS) loadAudioFile(url);
@@ -222,6 +224,7 @@ function preloadAll(): void {
   loadAudioFile(THRUSTER_SOUND);
   loadAudioFile(MINING_SOUND);
   for (const url of EXPLOSION_SOUNDS) loadAudioFile(url);
+  loadAudioFile(PICKUP_SOUND);
 }
 
 // ── PUBLIC SFX ──────────────────────────────────────────────────────────
@@ -285,7 +288,8 @@ export const sfx = {
   },
   pickup(): void {
     if (!throttled("pickup", 40)) return;
-    blip({ freq: 660, freqEnd: 990, dur: 0.05, type: "square", gain: 0.12, release: 0.05 });
+    const pitch = PICKUP_PITCHES[Math.floor(Math.random() * PICKUP_PITCHES.length)];
+    playPooled(PICKUP_SOUND, 0.35, pitch);
   },
   levelUp(): void {
     blip({ freq: 523, dur: 0.08, type: "square", gain: 0.22 });
