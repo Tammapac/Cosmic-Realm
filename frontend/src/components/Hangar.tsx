@@ -1,5 +1,5 @@
 import { sendDockRepair } from "../net/socket";
-import { state, bump, useGame, pushNotification, save, stationPrice, priceDirection, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, rerollMissionBoard, bumpMission, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, rocketAmmoMax, getAmmoWeaponIds, ensureAmmoInitialized, setAutoRestock, setAutoRepairHull, setAutoShieldRecharge, getActiveAmmoType, switchAmmoType, purchaseAmmoAmount, getAmmoCount, ROCKET_AMMO_COST_PER, rocketMissileMax, getActiveRocketAmmoType, switchRocketAmmoType, purchaseRocketAmmo, getRocketAmmoCount, startRefineJob, collectRefineJob, upgradeFactory } from "../game/store";
+import { state, bump, useGame, pushNotification, pushFloater, save, stationPrice, priceDirection, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, rerollMissionBoard, bumpMission, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, rocketAmmoMax, getAmmoWeaponIds, ensureAmmoInitialized, setAutoRestock, setAutoRepairHull, setAutoShieldRecharge, getActiveAmmoType, switchAmmoType, purchaseAmmoAmount, getAmmoCount, ROCKET_AMMO_COST_PER, rocketMissileMax, getActiveRocketAmmoType, switchRocketAmmoType, purchaseRocketAmmo, getRocketAmmoCount, startRefineJob, collectRefineJob, upgradeFactory } from "../game/store";
 import {
   ActiveQuest, CONSUMABLE_DEFS, ConsumableId, DAILY_DUNGEON_BONUS, DRONE_DEFS, DroneKind, DroneMode, DUNGEONS, DungeonId, FACTIONS, MODULE_DEFS, ModuleDef, ModuleSlot, ModuleStats, RARITY_COLOR,
   Quest, QUEST_POOL, MISSION_BOARD_POOL, MissionCategory, RESOURCES, ResourceId, ROCKET_AMMO_TYPE_DEFS, RocketAmmoType, ROCKET_MISSILE_TYPE_DEFS, RocketMissileType, ROCKET_MISSILE_TYPE_ORDER, SHIP_CLASSES, SKILL_NODES, SkillNode, STATIONS, ShipClassId, SkillBranch,
@@ -129,6 +129,9 @@ function BountiesTab() {
     player.activeQuests = player.activeQuests.filter((x: any) => x.id !== q.id);
     player.milestones.totalKills += 0;
     pushNotification(`+${q.rewardCredits}cr +${q.rewardExp}xp +${q.rewardHonor} honor`, "good");
+    pushFloater({ text: `+${q.rewardCredits} CR`, color: "#ffd24a", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.5, bold: true, ttl: 2.5 });
+    pushFloater({ text: `+${q.rewardExp} XP`, color: "#ff5cf0", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.5, bold: true, ttl: 2.5 });
+    if (q.rewardHonor > 0) pushFloater({ text: `+${q.rewardHonor} HONOR`, color: "#c8a0ff", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.5, bold: true, ttl: 2.5 });
     save(); bump();
   };
 
@@ -171,7 +174,7 @@ function BountiesTab() {
                       </div>
                       <div className="text-dim text-[13px] mt-1 mb-2">{q.description}</div>
                       <div className="flex gap-3 text-[13px] flex-wrap">
-                        <span className="text-cyan">{q.killCount}x {q.killType}</span>
+                        <span className="text-cyan">{q.killCount}x {q.killType} in {ZONES[q.zone as keyof typeof ZONES]?.name ?? q.zone}</span>
                         <span className="text-amber">+{q.rewardCredits.toLocaleString()}cr</span>
                         <span className="text-magenta">+{q.rewardExp.toLocaleString()}xp</span>
                         <span className="text-green">+{q.rewardHonor} honor</span>
@@ -198,7 +201,7 @@ function BountiesTab() {
               <div key={q.id} className="panel p-3">
                 <div className="text-amber glow-amber text-sm font-bold">{q.title}</div>
                 <div className="text-dim text-[13px] mt-1 mb-2">
-                  {q.progress}/{q.killCount} {q.killType}s eliminated
+                  {q.progress}/{q.killCount} {q.killType}s eliminated in {ZONES[q.zone as keyof typeof ZONES]?.name ?? q.zone}
                 </div>
                 <div className="bar mb-2">
                   <div className="bar-fill" style={{
@@ -384,16 +387,20 @@ function SlotCell({
             <span style={{ color: def.color, fontSize: 14 }}>{def.glyph}</span>
             <span className="text-[13px] font-bold tracking-widest" style={{ color }}>{def.name}</span>
           </div>
-          <div className="text-mute text-[12px] mt-0.5 leading-tight">{def.description}</div>
-          {ammoCount !== null && (
-            <div className="flex items-center gap-1 mt-1">
-              <span className="text-[12px] tracking-widest" style={{ color: ammoLow ? "#ff5c6c" : ROCKET_AMMO_TYPE_DEFS[activeType].color }}>
-                ⟁ {ROCKET_AMMO_TYPE_DEFS[activeType].shortName}: {ammoCount}/{ammoMax}
-              </span>
-              {ammoLow && ammoCount > 0 && <span className="text-[13px] text-red font-bold">LOW</span>}
-              {ammoCount === 0 && <span className="text-[13px] font-bold" style={{ color: "#ff5c6c" }}>EMPTY</span>}
-            </div>
-          )}
+          <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5 text-[11px] tracking-wider">
+            {def.stats.damage != null && <span style={{color:"#ff5c6c"}}>DMG {def.stats.damage}</span>}
+            {def.stats.fireRate != null && def.stats.fireRate !== 1 && <span style={{color:"#ffaa44"}}>ROF {def.stats.fireRate}x</span>}
+            {def.stats.critChance != null && <span style={{color:"#ff5cf0"}}>CRIT {Math.round(def.stats.critChance*100)}%</span>}
+            {def.stats.aoeRadius != null && <span style={{color:"#ff8844"}}>AOE {def.stats.aoeRadius}</span>}
+            {def.stats.shieldMax != null && <span style={{color:"#4ee2ff"}}>SHD +{def.stats.shieldMax}</span>}
+            {def.stats.shieldRegen != null && <span style={{color:"#4ee2ff"}}>REG +{def.stats.shieldRegen}</span>}
+            {def.stats.hullMax != null && <span style={{color:"#5cff8a"}}>HUL +{def.stats.hullMax}</span>}
+            {def.stats.speed != null && <span style={{color:"#aaff5c"}}>SPD +{def.stats.speed}</span>}
+            {def.stats.damageReduction != null && <span style={{color:"#ffd24a"}}>DR {Math.round(def.stats.damageReduction*100)}%</span>}
+            {def.stats.ammoCapacity != null && <span style={{color:"#ffcc88"}}>AMMO +{def.stats.ammoCapacity}</span>}
+            {def.stats.lootBonus != null && <span style={{color:"#ffd24a"}}>LOOT +{def.stats.lootBonus}</span>}
+          </div>
+
           {isComparing && diffs.length > 0 && (
             <div className="mt-1.5 pt-1" style={{ borderTop: "1px dashed #ffd24a33" }}>
               <div className="text-[13px] tracking-widest mb-0.5" style={{ color: "#ffd24a99" }}>IF REPLACED:</div>
@@ -512,7 +519,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
     <div className="grid gap-3 p-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
       {/* LEFT — equipped slots + stats summary */}
       <div className="space-y-3">
-        <div className="text-cyan tracking-widest text-sm">▶ LOADOUT · {cls.name.toUpperCase()}</div>
+        <div className="flex items-center justify-between"><div className="text-cyan tracking-widest text-sm">▶ LOADOUT · {cls.name.toUpperCase()}</div><div className="text-amber font-bold text-[14px]">{player.credits.toLocaleString()} CR</div></div>
         {renderSlotRow("weapon",    "WEAPONS",    "#ff5c6c")}
         {renderSlotRow("generator", "GENERATORS", "#4ee2ff")}
         {renderSlotRow("module",    "MODULES",    "#ff5cf0")}
@@ -549,7 +556,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
             </button>
           </div>
         </div>
-        {!showShop && (
+        {(
           <div className="flex gap-1">
             {(["all", "weapon", "generator", "module"] as const).map((f) => (
               <button key={f} className="btn"
@@ -565,7 +572,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
           onMouseLeave={() => { setHoveredShopDefId(null); setHoveredInvInstanceId(null); }}
         >
           {showShop ? (
-            shopOffer.map((def) => {
+            shopOffer.filter(d => filter === "all" || d.slot === filter).map((def) => {
               const canAfford = player.credits >= def.price;
               const isHovered = hoveredShopDefId === def.id;
               const isBestUpgrade = bestUpgradeDefId === def.id;
@@ -702,6 +709,7 @@ function fmtClearTime(ms: number): string {
 function DungeonsTab() {
   const player = useGame((s) => s.player);
   const dungeon = useGame((s) => s.dungeon);
+  const [confirmRift, setConfirmRift] = useState<string | null>(null);
   const featuredId = getDailyFeaturedDungeon();
   // Featured dungeon first, rest in original order
   const allDungeons = Object.values(DUNGEONS);
@@ -796,8 +804,7 @@ function DungeonsTab() {
                 style={{ padding: "3px 6px", fontSize: 13, ...(isFeatured && !locked && !dungeon ? { background: "#ffd24a", color: "#000" } : {}) }}
                 disabled={locked || !!dungeon}
                 onClick={() => {
-                  state.dockedAt = null;
-                  enterDungeon(d.id as DungeonId);
+                  setConfirmRift(d.id);
                 }}
               >
                 {locked ? `Locked · Lv ${d.unlockLevel}` : dungeon ? "In a dungeon" : isFeatured ? "⭐ Launch Featured Run" : "Launch run"}
@@ -806,6 +813,22 @@ function DungeonsTab() {
           );
         })}
       </div>
+      {confirmRift && (() => {
+        const cd = DUNGEONS[confirmRift as DungeonId];
+        return (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+            <div style={{ background: "#1a1a2e", border: "1px solid #444", borderRadius: 8, padding: 20, maxWidth: 320, textAlign: "center" }}>
+              <div style={{ fontSize: 16, fontWeight: "bold", marginBottom: 8, color: cd?.color || "#fff" }}>Enter {cd?.name}?</div>
+              <div style={{ fontSize: 13, color: "#aaa", marginBottom: 12 }}>SOLO MODE<br/>(Party mode coming soon)</div>
+              <div style={{ fontSize: 13, color: "#ccc", marginBottom: 16 }}>Are you sure you want to teleport to the rift?</div>
+              <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+                <button className="btn" style={{ padding: "6px 18px", background: "#333", color: "#fff", border: "1px solid #555" }} onClick={() => setConfirmRift(null)}>Cancel</button>
+                <button className="btn btn-primary" style={{ padding: "6px 18px" }} onClick={() => { setConfirmRift(null); state.dockedAt = null; enterDungeon(confirmRift as DungeonId); }}>Enter Rift</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -862,12 +885,17 @@ function ShipsTab() {
               </div>
               {active && <div className="text-cyan text-[12px] tracking-widest">[ACTIVE]</div>}
             </div>
-            <div className="grid grid-cols-5 gap-1 text-[13px] mb-2">
+            <div className="grid grid-cols-4 gap-1 text-[13px] mb-1">
               <Stat label="HUL" v={cls.hullMax} />
               <Stat label="SHD" v={cls.shieldMax} />
               <Stat label="SPD" v={cls.baseSpeed} />
               <Stat label="DMG" v={cls.baseDamage} />
               <Stat label="DRN" v={cls.droneSlots} />
+            </div>
+            <div className="grid grid-cols-3 gap-1 text-[13px] mb-2">
+              <Stat label="WPN" v={cls.slots.weapon} />
+              <Stat label="GEN" v={cls.slots.generator} />
+              <Stat label="MOD" v={cls.slots.module} />
             </div>
             <button className="btn btn-primary w-full" disabled={active || (!owned && player.credits < cls.price)} onClick={() => buy(cls.id)}>
               {active ? "Currently flying" : owned ? "Switch" : `Buy · ${cls.price.toLocaleString()}cr`}
@@ -1050,7 +1078,7 @@ function MarketTab({ stationId }: { stationId: string }) {
     const price = stationPrice(stationId, rid);
     const cost = price * qty;
     if (player.credits < cost) { pushNotification("Not enough credits", "bad"); return; }
-    if (cargoUsed() + qty > cls.cargoMax) { pushNotification("Cargo bay full", "bad"); return; }
+    if (cargoUsed() + qty > cargoCapacity()) { pushNotification("Cargo bay full", "bad"); return; }
     player.credits -= cost;
     addCargo(rid, qty);
     pushNotification(`Bought ${qty}× ${RESOURCES[rid].name} · -${cost.toLocaleString()}cr`, "good");
@@ -1261,46 +1289,7 @@ save(); bump();
         </div>
       </div>
 
-      {/* Weapon Modules Shop */}
-      <div className="mt-5">
-        <div className="text-cyan tracking-widest text-sm mb-2">▶ WEAPON MODULES</div>
-        <div className="space-y-1.5">
-          {marketWeaponModules.map((def) => {
-            const canAfford = player.credits >= def.price;
-            return (
-              <div key={def.id} className="panel p-2 flex items-start gap-2"
-                style={{ borderColor: RARITY_COLOR[def.rarity] }}>
-                <div className="flex items-center justify-center flex-shrink-0"
-                  style={{ width: 28, height: 28, background: `${def.color}22`, border: `1px solid ${def.color}`, color: def.color, fontSize: 14 }}>
-                  {def.glyph}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <div className="text-[13px] font-bold tracking-widest" style={{ color: RARITY_COLOR[def.rarity] }}>{def.name}</div>
-                    <span className="text-[13px] uppercase" style={{ color: RARITY_COLOR[def.rarity] }}>· {def.rarity}</span>
-                  </div>
-                  <div className="text-mute text-[12px] leading-tight">{def.description}</div>
-                  {modStatPills(def.stats)}
-                  {def.weaponKind === "rocket" && <RocketAmmoBadge />}
-                </div>
-                <button className="btn btn-primary"
-                  style={{ padding: "2px 8px", fontSize: 13 }}
-                  disabled={!canAfford}
-                  onClick={() => {
-                    if (!canAfford) return;
-                    state.player.credits -= def.price;
-                    addInventoryItem(def.id);
-                    pushNotification(`Bought ${def.name}`, "good");
-                    save(); bump();
-                  }}>
-                  {def.price.toLocaleString()}cr
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
+          </div>
   );
 }
 
@@ -1315,7 +1304,7 @@ function CargoTab() {
       <div className="flex items-center justify-between mb-3">
         <div>
           <div className="text-cyan tracking-widest text-sm">▶ CARGO BAY</div>
-          <div className="text-mute text-[13px]">Carrying {total}/{cls.cargoMax} units</div>
+          <div className="text-mute text-[13px]">Carrying {total}/{cargoCapacity()} units</div>
         </div>
       </div>
       {player.cargo.length === 0 && (

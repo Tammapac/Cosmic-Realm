@@ -116,7 +116,16 @@ export function TopBar() {
 
 export function WorldTargetHud() {
   const target = useGame((s) => s.selectedWorldTarget);
+  const enemies = useGame((s) => s.enemies);
+  const asteroids = useGame((s) => s.asteroids);
   if (!target) return null;
+  const entity = target.kind === "enemy"
+    ? enemies.find((e) => e.id === target.id)
+    : asteroids.find((a) => a.id === target.id);
+  const hp = entity ? ("hull" in entity ? entity.hull : entity.hp) : 0;
+  const hpMax = entity ? ("hullMax" in entity ? entity.hullMax : entity.hpMax) : 1;
+  const hpPct = Math.max(0, Math.min(100, (hp / Math.max(1, hpMax)) * 100));
+  const hpColor = target.kind === "enemy" ? "#ff5c6c" : "#c69060";
   return (
     <div
       className="panel pointer-events-none"
@@ -126,16 +135,34 @@ export function WorldTargetHud() {
         top: "50%",
         transform: "translateY(-50%)",
         zIndex: 35,
-        minWidth: 160,
-        maxWidth: 220,
+        minWidth: 180,
+        maxWidth: 240,
         padding: "8px 10px",
       }}
     >
       <div className="text-[13px] tracking-widest text-mute">TARGET</div>
-      <div className="text-[15px] font-bold" style={{ color: target.kind === "enemy" ? "#ff5c6c" : "#c69060" }}>
+      <div className="text-[15px] font-bold" style={{ color: hpColor }}>
         {target.name}
       </div>
-      <div className="text-[13px] text-dim mt-1">{target.detail}</div>
+      <div className="text-[13px] text-dim mt-1 mb-2">{target.detail}</div>
+      {entity && (
+        <div>
+          <div className="flex items-center gap-1">
+            <span className="text-[11px] tracking-widest text-mute w-6">HP</span>
+            <div className="flex-1 h-[8px] rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
+              <div className="h-full rounded-full" style={{
+                width: hpPct + "%",
+                background: `linear-gradient(90deg, ${hpColor}66, ${hpColor})`,
+                boxShadow: "0 0 4px " + hpColor,
+                transition: "width 0.15s ease-out",
+              }} />
+            </div>
+            <span className="text-[11px] w-16 text-right tabular-nums" style={{ color: hpColor }}>
+              {Math.round(hp)}/{Math.round(hpMax)}
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

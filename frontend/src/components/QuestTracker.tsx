@@ -1,5 +1,5 @@
 import { useGame } from "../game/store";
-import { ENEMY_DEFS } from "../game/types";
+import { ENEMY_DEFS, ZONES } from "../game/types";
 
 const TYPE_GLYPHS: Record<string, string> = {
   scout:     "◇",
@@ -18,7 +18,7 @@ export function QuestTracker() {
   return (
     <div
       className="absolute z-30 pointer-events-none"
-      style={{ top: 58, left: 12, display: "flex", flexDirection: "column", gap: 8, maxWidth: 360 }}
+      style={{ top: 110, left: 12, display: "flex", flexDirection: "column", gap: 8, maxWidth: 360 }}
     >
       <div className="text-[14px] tracking-[0.25em] text-mute mb-0.5">
         ▸ ACTIVE BOUNTIES
@@ -44,7 +44,7 @@ export function QuestTracker() {
                 style={{ color }}
               >
                 <span style={{ opacity: 0.8 }}>{glyph}</span>
-                <span className="truncate">{q.title}</span>
+                <span className="truncate">{q.title} ({(ZONES as any)[q.zone]?.name ?? q.zone})</span>
               </div>
               <div className="text-[15px] font-bold tabular-nums shrink-0" style={{ color }}>
                 {Math.min(q.progress, q.killCount)}/{q.killCount}

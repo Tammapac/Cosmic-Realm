@@ -291,7 +291,19 @@ export function MiniMap() {
 
         <circle cx={SIZE / 2} cy={SIZE / 2} r={3} fill="#4ee2ff" stroke="#fff" strokeWidth={0.5} />
       </svg>
-      <div className="text-mute text-[8px] tracking-widest text-center mt-0.5">CLICK WARP · M FULL MAP · +/- SIZE</div>
+      <div className="flex items-center justify-center gap-2 mt-0.5">
+        <button
+          className="text-[12px] px-1.5 py-0 leading-none"
+          style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", color: "#4ee2ff", cursor: "pointer", borderRadius: 2 }}
+          onClick={(e) => { e.stopPropagation(); state.minimapScale = Math.max(0.5, state.minimapScale - 0.25); bump(); }}
+        >-</button>
+        <span className="text-mute text-[8px] tracking-widest">M MAP</span>
+        <button
+          className="text-[12px] px-1.5 py-0 leading-none"
+          style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", color: "#4ee2ff", cursor: "pointer", borderRadius: 2 }}
+          onClick={(e) => { e.stopPropagation(); state.minimapScale = Math.min(3, state.minimapScale + 0.25); bump(); }}
+        >+</button>
+      </div>
     </div>
   );
 }

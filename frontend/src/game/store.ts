@@ -680,17 +680,23 @@ export function pushChat(channel: ChatMessage["channel"], from: string, text: st
 }
 
 export function pushFloater(opts: {
-  text: string; color: string; x: number; y: number; bold?: boolean; scale?: number; ttl?: number;
+  text: string; color: string; x: number; y: number; bold?: boolean; scale?: number; ttl?: number; trackPlayer?: boolean;
 }): void {
   const ttl = opts.ttl ?? 0.8;
+  // Offset Y to avoid overlapping nearby floaters
+  let yOff = 0;
+  for (const f of state.floaters) {
+    if (Math.abs(f.pos.x - opts.x) < 60 && Math.abs(f.pos.y - opts.y + yOff) < 16) yOff -= 18;
+  }
   state.floaters.push({
     id: `f-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
     text: opts.text, color: opts.color,
-    pos: { x: opts.x, y: opts.y },
+    pos: { x: opts.x, y: opts.y + yOff },
     vy: -40 - Math.random() * 30,
     ttl, maxTtl: ttl,
     scale: opts.scale ?? 1,
     bold: opts.bold,
+    trackPlayer: opts.trackPlayer,
   });
   if (state.floaters.length > 60) state.floaters.shift();
 }
@@ -711,7 +717,7 @@ export function refreshOthers(zone: ZoneId): void {
   bump();
 }
 
-export function travelToZone(zoneId: ZoneId): void {
+export function travelToZone(zoneId: ZoneId, spawnX?: number, spawnY?: number): void {
   if (state.player.zone !== zoneId) {
     state.player.milestones.totalWarps++;
     bumpMission("warp-zones", 1);
@@ -719,7 +725,7 @@ export function travelToZone(zoneId: ZoneId): void {
     bumpMission("visit-zones", 1);
   }
   state.player.zone = zoneId;
-  state.player.pos = { x: 0, y: 80 };
+  state.player.pos = { x: spawnX ?? 0, y: spawnY ?? 80 };
   state.player.vel = { x: 0, y: 0 };
   state.cameraTarget = { ...state.player.pos };
   state.enemies = [];
@@ -728,7 +734,7 @@ export function travelToZone(zoneId: ZoneId): void {
   state.cargoBoxes = [];
   state.npcShips = [];
   refreshOthers(zoneId);
-  sendWarp(zoneId, 0, 80);
+  sendWarp(zoneId, spawnX ?? 0, spawnY ?? 80);
   pushNotification(`Warped to ${ZONES[zoneId].name}`, "good");
   pushChat("system", "SYSTEM", `You entered ${ZONES[zoneId].name}.`);
   sfx.warp();
@@ -826,13 +832,13 @@ export function tryCollectNearbyBoxes(): void {
       if (box.ammoQty && box.ammoQty > 0) {
         // Ammo box
         state.player.ammo.x1 = (state.player.ammo.x1 ?? 0) + box.ammoQty;
-        pushFloater({ text: `+${box.ammoQty} Ammo`, color: "#6688ff", x: cb.pos.x, y: cb.pos.y - 12, scale: 1, bold: true });
+        pushFloater({ text: `+${box.ammoQty} Ammo`, color: "#6688ff", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.3, bold: true, ttl: 2.0, trackPlayer: true });
         sfx.pickup();
         state.cargoBoxes.splice(i, 1);
       } else if (cb.qty > 0) {
         const got = addCargo(cb.resourceId, cb.qty);
         if (got > 0) {
-          pushFloater({ text: `+${got} ${RESOURCES[cb.resourceId]?.name ?? cb.resourceId}`, color: "#5cff8a", x: cb.pos.x, y: cb.pos.y - 12, scale: 1, bold: true });
+          pushFloater({ text: `+${got} ${RESOURCES[cb.resourceId]?.name ?? cb.resourceId}`, color: "#5cff8a", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.3, bold: true, ttl: 2.0, trackPlayer: true });
           sfx.pickup();
           state.cargoBoxes.splice(i, 1);
         }
@@ -861,11 +867,11 @@ export function collectCargoBox(boxId: string): void {
   const mbox = cb as any;
   if (mbox.ammoQty && mbox.ammoQty > 0) {
     state.player.ammo.x1 = (state.player.ammo.x1 ?? 0) + mbox.ammoQty;
-    pushFloater({ text: `+${mbox.ammoQty} Ammo`, color: "#6688ff", x: cb.pos.x, y: cb.pos.y - 12, scale: 1, bold: true });
+    pushFloater({ text: `+${mbox.ammoQty} Ammo`, color: "#6688ff", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.3, bold: true, ttl: 2.0, trackPlayer: true });
   } else if (cb.qty > 0) {
     const got = addCargo(cb.resourceId, cb.qty);
     if (got > 0) {
-      pushFloater({ text: `+${got} ${RESOURCES[cb.resourceId]?.name ?? cb.resourceId}`, color: "#5cff8a", x: cb.pos.x, y: cb.pos.y - 12, scale: 1, bold: true });
+      pushFloater({ text: `+${got} ${RESOURCES[cb.resourceId]?.name ?? cb.resourceId}`, color: "#5cff8a", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.3, bold: true, ttl: 2.0, trackPlayer: true });
     } else {
       pushNotification("Cargo bay full", "bad");
       return;
@@ -891,7 +897,7 @@ export function maxDroneSlots(): number {
 }
 
 // ── AMMO ──────────────────────────────────────────────────────────────────
-export const ROCKET_AMMO_BASE = 999999;
+export const ROCKET_AMMO_BASE = 10000;
 export const ROCKET_AMMO_COST_PER = 8; // credits per rocket round when restocking
 
 export function rocketAmmoMax(): number {

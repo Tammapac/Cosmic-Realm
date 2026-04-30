@@ -372,11 +372,12 @@ function spawnEnemy(): void {
 
 // ── DUNGEON ───────────────────────────────────────────────────────────────
 let dungeonSpawnCd = 0;
+let autoSaveTimer = 900;
 
 function spawnDungeonEnemy(type: EnemyType, hpMul: number, dmgMul: number): void {
   const def = ENEMY_DEFS[type];
   const angle = Math.random() * Math.PI * 2;
-  const dist = 480 + Math.random() * 220;
+  const dist = 200 + Math.random() * 250;
   const px = state.player.pos.x + Math.cos(angle) * dist;
   const py = state.player.pos.y + Math.sin(angle) * dist;
   const hullMax = def.hullMax * hpMul;
@@ -399,20 +400,22 @@ function spawnDungeonEnemy(type: EnemyType, hpMul: number, dmgMul: number): void
   });
 }
 
+let _waveSpawned = 0;
+
 function updateDungeon(dt: number): void {
   const run = state.dungeon;
-  if (!run) return;
+  if (!run) { _waveSpawned = 0; return; }
   const def = DUNGEONS[run.id];
   const aliveCount = state.enemies.filter(e => e.hull > 0).length;
   // Spawn the wave's enemies (staggered)
   if (!run.spawnedThisWave) {
     dungeonSpawnCd -= dt;
     if (dungeonSpawnCd <= 0) {
-      const spawned = aliveCount;
       const target = def.enemiesPerWave;
-      if (spawned < target) {
+      if (_waveSpawned < target) {
         const t: EnemyType = def.enemyTypes[Math.floor(Math.random() * def.enemyTypes.length)];
         spawnDungeonEnemy(t, def.enemyHpMul, def.enemyDmgMul);
+        _waveSpawned++;
         dungeonSpawnCd = 0.45;
       } else {
         run.spawnedThisWave = true;
@@ -427,6 +430,7 @@ function updateDungeon(dt: number): void {
     }
     run.wave++;
     run.spawnedThisWave = false;
+    _waveSpawned = 0;
     run.enemiesLeft = def.enemiesPerWave;
     dungeonSpawnCd = 1.2;
     pushEvent({ title: `▼ WAVE ${run.wave} / ${run.totalWaves}`, body: `Hostiles re-engaging.`, ttl: 3.5, kind: "info", color: def.color });
@@ -515,8 +519,8 @@ function emitTrail(x: number, y: number, color: string, alpha?: number, size?: n
   });
 }
 
-function emitDeath(x: number, y: number, color: string, big = false, enemySize = 12): void {
-  const B = big;
+function emitDeath(_x: number, _y: number, _color: string, _big = false, _enemySize = 12): void {
+  return; // PixiJS effect manager handles all explosions now
   const sizeMul = Math.max(1, enemySize / 12);
 
   // Central white flash bloom — scaled by enemy size
@@ -658,7 +662,7 @@ function fireProjectile(
   x: number, y: number, angle: number, damage: number, color: string, size = 3,
   opts?: { crit?: boolean; aoeRadius?: number; speedMul?: number; homing?: boolean; empStun?: number; armorPiercing?: boolean; weaponKind?: WeaponKind; renderOnly?: boolean },
 ): void {
-  const speedBase = from === "player" ? 280 : from === "drone" ? 260 : 220;
+  const speedBase = from === "player" ? 230 : from === "drone" ? 340 : 200;
   const speed = speedBase * (opts?.speedMul ?? 1);
   state.projectiles.push({
     id: `pr-${Math.random().toString(36).slice(2, 8)}`,
@@ -768,9 +772,9 @@ function applyKill(e: Enemy, killerCrit: boolean): void {
     p2.skillPoints += 1;
     state.levelUpFlash = 1.6;
   }
-  pushFloater({ text: `+${expGain} XP`, color: "#ff5cf0", x: e.pos.x, y: e.pos.y - 20, scale: 0.9, bold: false });
-  pushFloater({ text: `+${credGain} CR`, color: "#ffd24a", x: e.pos.x + 20, y: e.pos.y - 8, scale: 0.9, bold: false });
-  if (honorGain > 0) pushFloater({ text: `+${honorGain} ✪`, color: "#c8a0ff", x: e.pos.x - 20, y: e.pos.y - 8, scale: 0.8, bold: false });
+  pushFloater({ text: `+${expGain} XP`, color: "#ff5cf0", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.3, bold: true, ttl: 2.0 });
+  pushFloater({ text: `+${credGain} CR`, color: "#ffd24a", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.3, bold: true, ttl: 2.0 });
+  if (honorGain > 0) pushFloater({ text: `+${honorGain} ✪`, color: "#c8a0ff", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.3, bold: true, ttl: 2.0 });
 
   // Loot box only contains resources (no exp/credits/honor)
   const hasSalvage = state.player.drones.some((d) => d.kind === "salvage");
@@ -881,6 +885,7 @@ function damagePlayer(amount: number): void {
 }
 
 function damageDrone(d: { id: string; hp: number; hpMax: number }, amount: number): boolean {
+  return false; // Drones no longer die from damage
   d.hp -= amount;
   if (d.hp <= 0) return true;
   return false;
@@ -937,6 +942,7 @@ function tickWorld(dt: number): void {
       p2.shield = stats2.shieldMax;
       const lostCr = Math.floor(p2.credits * 0.1);
       p2.credits = Math.max(0, p2.credits - lostCr);
+      for (const dr of p2.drones) { dr.hp = Math.max(1, Math.round(dr.hp * 0.99)); }
       // Respawn at main station in current zone
       const homeStation = STATIONS.find((st) => st.zone === p2.zone && st.kind === "hub")
         || STATIONS.find((st) => st.zone === p2.zone)
@@ -962,7 +968,7 @@ function tickWorld(dt: number): void {
       pa.ttl -= dt;
     }
     state.particles = state.particles.filter((pa) => pa.ttl > 0);
-    for (const f of state.floaters) { f.pos.y += f.vy * dt; f.vy *= 0.96; f.ttl -= dt; }
+    for (const f of state.floaters) { if (f.trackPlayer) { f.pos.x = state.player.pos.x; f.pos.y = state.player.pos.y - 40 + f.vy * (f.maxTtl - f.ttl); } else { f.pos.y += f.vy * dt; } f.vy *= 0.96; f.ttl -= dt; }
     state.floaters = state.floaters.filter((f) => f.ttl > 0);
     for (const ev of state.events) ev.ttl -= dt;
     state.events = state.events.filter((ev) => ev.ttl > 0);
@@ -1096,6 +1102,13 @@ function tickWorld(dt: number): void {
   // ── Shield regen (only after 5s out of combat)
   if (!serverAuthoritative && outOfCombatFor >= 5 && p.shield < stats.shieldMax) {
     p.shield = Math.min(stats.shieldMax, p.shield + stats.shieldRegen * dt);
+  }
+
+  // ── Auto-save every 15 minutes
+  autoSaveTimer -= dt;
+  if (autoSaveTimer <= 0) {
+    save();
+    autoSaveTimer = 900;
   }
 
   // ── Enemies spawn (server handles spawning when connected, local fallback otherwise)
@@ -1791,25 +1804,7 @@ function tickWorld(dt: number): void {
           mAst.hp -= miningDps * dt;
         }
         sfx.miningLaserStart();
-        if (Math.random() < dt * 4) {
-          const rx = mAst.pos.x + (Math.random() - 0.5) * mAst.size;
-          const ry = mAst.pos.y + (Math.random() - 0.5) * mAst.size;
-          const oreColor = RESOURCES[mAst.yields]?.color ?? "#c69060";
-          emitSpark(rx, ry, oreColor, 2, 40, 1);
-          const da = Math.random() * Math.PI * 2;
-          const dspd = 30 + Math.random() * 60;
-          state.particles.push({
-            id: `rd-${Math.random().toString(36).slice(2, 8)}`,
-            pos: { x: rx, y: ry },
-            vel: { x: Math.cos(da) * dspd, y: Math.sin(da) * dspd },
-            ttl: 0.5 + Math.random() * 0.6, maxTtl: 1.1,
-            color: Math.random() > 0.5 ? (RESOURCES[mAst.yields]?.color ?? "#c0a070") : shadeHex(RESOURCES[mAst.yields]?.color ?? "#8a7050", -0.3),
-            size: 2 + Math.random() * 3,
-            rot: Math.random() * Math.PI * 2,
-            rotVel: (Math.random() - 0.5) * 12,
-            kind: "debris",
-          });
-        }
+
         if ((!serverEnemiesReceived || state.dungeon) && mAst.hp <= 0) { state.miningTargetId = null; sfx.miningLaserStop(); destroyAsteroid(mAst.id); }
       } else {
         state.miningTargetId = null;
@@ -1840,12 +1835,16 @@ function tickWorld(dt: number): void {
     const cols = Math.min(4, droneCount);
     const row = Math.floor(i / cols);
     const col = i % cols;
-    const spacing = 38;
+    const spacing = 55;
     const rowOffset = (row + 1) * spacing;
     const colOffset = (col - (Math.min(cols, droneCount - row * cols) - 1) / 2) * spacing;
     const perpAngle = behindAngle + Math.PI / 2;
-    const anchorX = p.pos.x + Math.cos(behindAngle) * rowOffset + Math.cos(perpAngle) * colOffset;
-    const anchorY = p.pos.y + Math.sin(behindAngle) * rowOffset + Math.sin(perpAngle) * colOffset;
+    const targetX = p.pos.x + Math.cos(behindAngle) * rowOffset + Math.cos(perpAngle) * colOffset;
+    const targetY = p.pos.y + Math.sin(behindAngle) * rowOffset + Math.sin(perpAngle) * colOffset;
+    const prev = (d as Drone & { anchor?: { x: number; y: number } }).anchor;
+    const lerpFactor = Math.min(1, dt * 5);
+    const anchorX = prev ? prev.x + (targetX - prev.x) * lerpFactor : targetX;
+    const anchorY = prev ? prev.y + (targetY - prev.y) * lerpFactor : targetY;
     (d as Drone & { anchor?: { x: number; y: number } }).anchor = {
       x: anchorX,
       y: anchorY,
@@ -2134,7 +2133,7 @@ function tickWorld(dt: number): void {
           if (pr.aoeRadius && pr.aoeRadius > 0) {
             for (const e2 of state.enemies) {
               if (e2.id === e.id) continue;
-              if (distance(e.pos.x, e.pos.y, e2.pos.x, e2.pos.y) < pr.aoeRadius * 8) {
+              if (distance(e.pos.x, e.pos.y, e2.pos.x, e2.pos.y) < pr.aoeRadius * 3) {
                 if (!serverEnemiesReceived || state.dungeon) e2.hull -= dmg * 0.4;
                 e2.hitFlash = 1;
               }
@@ -2251,7 +2250,12 @@ function tickWorld(dt: number): void {
 
   // ── Floaters update
   for (const f of state.floaters) {
-    f.pos.y += f.vy * dt;
+    if (f.trackPlayer) {
+      f.pos.x = state.player.pos.x;
+      f.pos.y = state.player.pos.y - 40 + f.vy * (f.maxTtl - f.ttl);
+    } else {
+      f.pos.y += f.vy * dt;
+    }
     f.vy *= 0.96;
     f.ttl -= dt;
   }
@@ -2356,49 +2360,13 @@ function tickWorld(dt: number): void {
 function destroyAsteroid(id: string): void {
   const a = state.asteroids.find((x) => x.id === id);
   if (!a) return;
-  emitSpark(a.pos.x, a.pos.y, "#c69060", 16, 120, 3);
-  emitSpark(a.pos.x, a.pos.y, "#7a5028", 8, 80, 2);
-  // Smoke-only explosion (no fire) + rock debris
-  state.particles.push({
-    id: `af-${Math.random().toString(36).slice(2, 8)}`,
-    pos: { x: a.pos.x, y: a.pos.y }, vel: { x: 0, y: 0 },
-    ttl: 0.3, maxTtl: 0.3,
-    color: "#ffffff", size: 80, kind: "flash",
-  });
-  for (let i = 0; i < 14; i++) {
-    const sa = Math.random() * Math.PI * 2;
-    const ss = 20 + Math.random() * 50;
-    state.particles.push({
-      id: `as-${Math.random().toString(36).slice(2, 8)}`,
-      pos: { x: a.pos.x + (Math.random() - 0.5) * 10, y: a.pos.y + (Math.random() - 0.5) * 10 },
-      vel: { x: Math.cos(sa) * ss, y: Math.sin(sa) * ss },
-      ttl: 0.8 + Math.random() * 0.8, maxTtl: 1.6,
-      color: i % 3 === 0 ? "#555" : i % 3 === 1 ? "#888" : "#aaa",
-      size: 8 + Math.random() * 12, kind: "smoke",
-    });
-  }
-  for (let i = 0; i < 10; i++) {
-    const da = Math.random() * Math.PI * 2;
-    const ds = 60 + Math.random() * 140;
-    state.particles.push({
-      id: `ad-${Math.random().toString(36).slice(2, 8)}`,
-      pos: { x: a.pos.x, y: a.pos.y },
-      vel: { x: Math.cos(da) * ds, y: Math.sin(da) * ds },
-      ttl: 0.6 + Math.random() * 0.8, maxTtl: 1.4,
-      color: Math.random() > 0.4 ? "#c0a070" : "#7a5028",
-      size: 3 + Math.random() * 5,
-      rot: Math.random() * Math.PI * 2,
-      rotVel: (Math.random() - 0.5) * 16,
-      kind: "debris",
-    });
-  }
-  emitRing(a.pos.x, a.pos.y, "#c0a070", 30);
+  // PixiJS handles asteroid death VFX
   sfx.explosion();
   const qty = 2 + Math.floor(Math.random() * 3);
   const got = addCargo(a.yields, qty);
   if (got > 0) {
     const res = RESOURCES[a.yields];
-    pushFloater({ text: `+${got} ${res?.name ?? a.yields}`, color: res?.color ?? "#5cff8a", x: a.pos.x, y: a.pos.y - 12, scale: 1, ttl: 0.9 });
+    pushFloater({ text: `+${got} ${res?.name ?? a.yields}`, color: res?.color ?? "#5cff8a", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.3, bold: true, ttl: 2.0 });
     sfx.pickup();
     state.player.milestones.totalMined += got;
     bumpMission("mine", got);
@@ -2437,7 +2405,10 @@ export function checkPortal(): void {
       p.pos.y += Math.sin(ang) * 80;
       return;
     }
-    travelToZone(portal.toZone);
+    const destPortal = PORTALS.find(dp => dp.fromZone === portal.toZone && dp.toZone === portal.fromZone);
+    const spawnX = destPortal ? destPortal.pos.x : 0;
+    const spawnY = destPortal ? destPortal.pos.y + 80 : 80;
+    travelToZone(portal.toZone, spawnX, spawnY);
   }
 }
 
@@ -2457,6 +2428,7 @@ export type _ZoneId = ZoneId;
 let serverEnemiesReceived = false;
 
 export function onServerZoneEnemies(enemies: ServerEnemy[]): void {
+  if (state.dungeon) return; // Dont overwrite client-side dungeon enemies
   serverEnemiesReceived = true;
   state.enemies = enemies.map(serverEnemyToLocal);
   bump();
@@ -2490,11 +2462,13 @@ export function onServerZoneNpcs(npcs: ServerNpc[]): void {
 }
 
 export function onEnemySpawn(data: ServerEnemy): void {
+  if (state.dungeon) return;
   if (state.enemies.find((e) => e.id === data.id)) return;
   state.enemies.push(serverEnemyToLocal(data));
 }
 
 export function onEnemyHit(data: EnemyHitEvent): void {
+  if (state.dungeon) return;
   const e = state.enemies.find((en) => en.id === data.enemyId);
   if (!e) return;
   e.hull = data.hp;
@@ -2547,6 +2521,7 @@ export function onEnemyHit(data: EnemyHitEvent): void {
 }
 
 export function onEnemyDie(data: EnemyDieEvent): void {
+  if (state.dungeon) return;
   const e = state.enemies.find((en) => en.id === data.enemyId);
   const pos = e ? { x: e.pos.x, y: e.pos.y } : data.pos;
   const wasBoss = e?.isBoss;
@@ -2664,6 +2639,7 @@ export function onEnemyDie(data: EnemyDieEvent): void {
 }
 
 export function onEnemyAttack(data: EnemyAttackEvent): void {
+  if (state.dungeon) return;
   const isTargetingMe = data.targetId === serverPlayerId;
   const ang = Math.atan2(data.targetPos.y - data.pos.y, data.targetPos.x - data.pos.x);
   // Look up the enemy to determine projectile style
@@ -2894,7 +2870,7 @@ function serverEnemyToLocal(se: ServerEnemy): Enemy {
     fireCd: Math.random() * 2,
     exp: 0, credits: 0, honor: 0,
     color: se.color, size: se.size,
-    isBoss: se.isBoss, bossPhase: se.bossPhase,
+    isBoss: se.isBoss, bossPhase: se.isBoss ? (se.hull/se.hullMax > 0.66 ? 0 : se.hull/se.hullMax > 0.33 ? 1 : 2) : 0,
     burstCd: 0, burstShots: 0,
     spawnPos: { x: se.x, y: se.y },
     aggro: false,
@@ -3007,23 +2983,29 @@ function applyServerSmoothing(dt: number): void {
   for (const e of state.enemies) {
     const tgt = _entityTargets.get(e.id);
     if (!tgt) continue;
-    // Velocity extrapolation: always move with server velocity for smooth motion
     const evx = tgt.vx || e.vel.x;
     const evy = tgt.vy || e.vel.y;
+    const espd = Math.sqrt(evx * evx + evy * evy);
+    // Velocity extrapolation for smooth motion
     e.pos.x += evx * dt;
     e.pos.y += evy * dt;
-    // Correction: nudge toward server position (stronger for slower entities)
-    const spd = Math.sqrt(evx * evx + evy * evy);
-    const corrStr = spd < 60 ? 0.5 : 0.35;
-    const corrLerp = Math.min(lerp * 2.0, corrStr);
-    e.pos.x += (tgt.x - e.pos.x) * corrLerp;
-    e.pos.y += (tgt.y - e.pos.y) * corrLerp;
-    // Snap if too far off (teleport/respawn)
+    // Correction toward server position - very gentle for slow/big enemies
     const edx = tgt.x - e.pos.x;
     const edy = tgt.y - e.pos.y;
-    if (edx * edx + edy * edy > 150 * 150) {
+    const errDist = Math.sqrt(edx * edx + edy * edy);
+    if (errDist > 200) {
+      // Snap if too far off (teleport/respawn)
       e.pos.x = tgt.x;
       e.pos.y = tgt.y;
+    } else if (espd < 60) {
+      // Slow/big enemies: very gentle correction to avoid stutter
+      const corrLerp = Math.min(lerp * 0.3, 0.05);
+      e.pos.x += edx * corrLerp;
+      e.pos.y += edy * corrLerp;
+    } else {
+      // Fast enemies: normal correction
+      e.pos.x += edx * lerp * 0.6;
+      e.pos.y += edy * lerp * 0.6;
     }
     e.vel.x = tgt.vx;
     e.vel.y = tgt.vy;
@@ -3033,7 +3015,7 @@ function applyServerSmoothing(dt: number): void {
     if (!tgt) continue;
     n.pos.x += tgt.vx * dt;
     n.pos.y += tgt.vy * dt;
-    const nCorrLerp = Math.min(lerp * 1.5, 0.4);
+    const nCorrLerp = Math.min(lerp * 2.0, 0.6);
     n.pos.x += (tgt.x - n.pos.x) * nCorrLerp;
     n.pos.y += (tgt.y - n.pos.y) * nCorrLerp;
     const ndx = tgt.x - n.pos.x;
@@ -3155,7 +3137,7 @@ function applyEntityUpdate(entity: DeltaEntity): void {
         if (entity.hp != null) e.hull = entity.hp;
         if (entity.hpMax != null) e.hullMax = entity.hpMax;
         if (entity.isBoss != null) e.isBoss = entity.isBoss;
-        if (entity.bossPhase != null) e.bossPhase = entity.bossPhase;
+        if (entity.bossPhase != null && entity.bossPhase > (e.bossPhase ?? 0)) e.bossPhase = entity.bossPhase;
       } else {
         setEntityTarget(entity.id, entity.x, entity.y, entity.vx ?? 0, entity.vy ?? 0);
         state.enemies.push({
@@ -3170,7 +3152,7 @@ function applyEntityUpdate(entity: DeltaEntity): void {
           damage: entity.damage || 10, speed: entity.speed || 80,
           fireCd: Math.random() * 2, exp: 0, credits: 0, honor: 0,
           color: entity.color || "#ff5c6c", size: entity.size || 12,
-          isBoss: entity.isBoss || false, bossPhase: entity.bossPhase || 0,
+          isBoss: entity.isBoss || false, bossPhase: (entity.isBoss && entity.hp && entity.hpMax) ? (entity.hp/entity.hpMax > 0.66 ? 0 : entity.hp/entity.hpMax > 0.33 ? 1 : 2) : 0,
           burstCd: 0, burstShots: 0,
           spawnPos: { x: entity.x, y: entity.y },
           aggro: false,

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { state, bump, useGame, save, pushNotification, pushChat, abandonDungeon, useConsumable, runDockingServices, loadServerPlayer, collectCargoBox, enterDungeon, stationPrice } from "./game/store";
 import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats, hasRocketWeapon } from "./game/loop";
 import { render } from "./game/render";
-import { initPixiRenderer, destroyPixiRenderer, pixiRender } from "./game/pixi-renderer-v2";
+import { initPixiRenderer, destroyPixiRenderer, pixiRender } from "./game/pixi-renderer-v2-integrated";
 import { activeRenderer } from "./game/renderer-config";
 import { TopBar, WorldTargetHud } from "./components/TopBar";
 import { MiniMap } from "./components/MiniMap";

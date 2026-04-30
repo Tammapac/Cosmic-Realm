@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { state, bump, useGame, pushChat, pushNotification, save } from "../game/store";
 import { FAKE_CLANS } from "../game/types";
 
@@ -71,6 +71,7 @@ export function SocialPanel() {
               )}
             </div>
           ))}
+        <div ref={chatEndRef} />
         </div>
       )}
     </div>
@@ -79,10 +80,13 @@ export function SocialPanel() {
 
 export function BattleLog() {
   const [input, setInput] = useState("");
-  const [channel, setChannel] = useState<"local" | "party" | "clan">("local");
+  const [channel, setChannel] = useState<"local" | "party" | "clan" | "log">("local");
+  const chatEndRef = useRef<HTMLDivElement>(null);
   const chat = useGame((s) => s.chat);
   const docked = useGame((s) => s.dockedAt);
   const player = state.player;
+
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [chat.length]);
 
   if (docked) return null;
 
@@ -95,7 +99,8 @@ export function BattleLog() {
   return (
     <div className="panel" style={{ position: "fixed", left: 12, bottom: 72, width: 320, height: 200, zIndex: 40, display: "flex", flexDirection: "column" }}>
       <div className="overflow-y-auto flex-1 p-2 text-[10px] space-y-1">
-        {chat.map((c) => (
+        {(channel === "log" ? chat.filter(c => c.channel === "system") : chat).map((c) => (
+
           <div key={c.id}>
             <span
               style={{
@@ -115,6 +120,7 @@ export function BattleLog() {
             <span className="text-bright">{c.text}</span>
           </div>
         ))}
+        <div ref={chatEndRef} />
       </div>
       <div className="flex gap-1 p-2 border-t" style={{ borderColor: "var(--border-soft)" }}>
         <select
@@ -126,6 +132,7 @@ export function BattleLog() {
           <option value="local">Local</option>
           <option value="party">Party</option>
           <option value="clan">Clan</option>
+          <option value="log">Log</option>
         </select>
         <input
           value={input}
@@ -185,6 +192,7 @@ export function ClanPanel() {
                       <span className="text-mute">Lv {o.level}</span>
                     </div>
                   ))}
+        <div ref={chatEndRef} />
                 {state.others.filter((o) => o.clan === player.clan).length === 0 && (
                   <div className="text-mute italic text-xs">No clanmates in this sector.</div>
                 )}
@@ -227,6 +235,7 @@ export function ClanPanel() {
                     </button>
                   </div>
                 ))}
+        <div ref={chatEndRef} />
               </div>
               <div className="text-mute text-[10px] tracking-widest mb-2">FOUND YOUR OWN</div>
               <div className="flex gap-2">

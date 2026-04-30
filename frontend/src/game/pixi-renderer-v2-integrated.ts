@@ -14,7 +14,7 @@ import { state } from "./store";
 import { effectiveStats } from "./loop";
 import {
   Enemy, Projectile, Particle, Floater, NpcShip, OtherPlayer, Asteroid, RESOURCES,
-  CargoBox, Drone, ZONES, STATIONS, PORTALS, DUNGEONS, SHIP_CLASSES,
+  CargoBox, Drone, DRONE_DEFS, ZONES, STATIONS, PORTALS, DUNGEONS, SHIP_CLASSES,
   MAP_RADIUS, FACTIONS, ShipClassId, EnemyType, rankFor, Station,
   ZoneId,
 } from "./types";
@@ -56,6 +56,11 @@ let effectManager: EffectManager | null = null;
 let lastRenderTime = 0;
 let prevEnemyIds = new Set<string>();
 let prevEnemyData = new Map<string, { x: number; y: number; size: number; type: string }>();
+let prevProjectileData = new Map<string, { x: number; y: number; color: number; weaponKind: string; angle: number; fromPlayer: boolean }>();
+let prevAsteroidIds = new Set<string>();
+let prevAsteroidData = new Map<string, { x: number; y: number; size: number }>();
+let prevPlayerHull = -1;
+let projectileGlowGraphics: PIXI.Graphics | null = null;
 
 // Offscreen canvas for texture baking
 let bakeCanvas: HTMLCanvasElement;
@@ -105,7 +110,7 @@ function getShipTex(shipClass: ShipClassId, scale: number): PIXI.Texture {
   const dk = shadeHex(c, -0.45);
   drawShipPixels(ctx, shipClass, c, a, hi, dk, scale);
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
+  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
   texCache.set(key, tex);
   return tex;
 }
@@ -146,7 +151,7 @@ function getEnemyTex(e: Enemy): PIXI.Texture {
 
   state.selectedWorldTarget = savedTarget;
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
+  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
   texCache.set(key, tex);
   return tex;
 }
@@ -342,6 +347,85 @@ function getFlashTex(radius: number, color: string): PIXI.Texture {
   ctx.beginPath();
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.fill();
+
+  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  texCache.set(key, tex);
+  return tex;
+}
+
+function getLaserBoltTex(length: number): PIXI.Texture {
+  const key = `laser-bolt-${length}`;
+  let tex = texCache.get(key);
+  if (tex) return tex;
+
+  const w = length + 8;
+  const h = Math.max(8, Math.ceil(length * 0.3)) + 4;
+  const c2 = document.createElement("canvas");
+  c2.width = w;
+  c2.height = h;
+  const ctx = c2.getContext("2d")!;
+  const cx = w / 2, cy = h / 2;
+  const hw = length / 2, hh = h / 2 - 2;
+
+  // Outer glow
+  const g1 = ctx.createRadialGradient(cx, cy, 0, cx, cy, Math.max(hw, hh));
+  g1.addColorStop(0, "rgba(255,255,255,0.9)");
+  g1.addColorStop(0.3, "rgba(255,255,255,0.5)");
+  g1.addColorStop(0.7, "rgba(255,255,255,0.15)");
+  g1.addColorStop(1, "transparent");
+  ctx.fillStyle = g1;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, hw, hh, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Core bright center
+  ctx.fillStyle = "#ffffff";
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, hw * 0.5, hh * 0.4, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  texCache.set(key, tex);
+  return tex;
+}
+
+function getRocketTex(): PIXI.Texture {
+  const key = "rocket-body";
+  let tex = texCache.get(key);
+  if (tex) return tex;
+
+  const w = 24, h = 12;
+  const c2 = document.createElement("canvas");
+  c2.width = w;
+  c2.height = h;
+  const ctx = c2.getContext("2d")!;
+
+  // Rocket body
+  ctx.fillStyle = "#cccccc";
+  ctx.beginPath();
+  ctx.moveTo(4, h / 2 - 3);
+  ctx.lineTo(w - 4, h / 2 - 2);
+  ctx.lineTo(w - 2, h / 2);
+  ctx.lineTo(w - 4, h / 2 + 2);
+  ctx.lineTo(4, h / 2 + 3);
+  ctx.closePath();
+  ctx.fill();
+
+  // Nose cone
+  ctx.fillStyle = "#ff6633";
+  ctx.beginPath();
+  ctx.moveTo(w - 4, h / 2 - 2);
+  ctx.lineTo(w, h / 2);
+  ctx.lineTo(w - 4, h / 2 + 2);
+  ctx.closePath();
+  ctx.fill();
+
+  // Exhaust glow
+  const g = ctx.createRadialGradient(4, h / 2, 0, 4, h / 2, 6);
+  g.addColorStop(0, "rgba(255,150,50,0.8)");
+  g.addColorStop(1, "transparent");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 10, h);
 
   tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
   texCache.set(key, tex);
@@ -648,7 +732,8 @@ export function pixiRender(): void {
   worldLayer.pivot.set(cam.x, cam.y);
 
   // ── Trail particles ───────────────────────────────���─────────────────
-  syncTrailParticles(cam, halfW, halfH);
+  // syncTrailParticles disabled — EffectManager handles all trails
+  // syncTrailParticles(cam, halfW, halfH);
 
   // ── Asteroids ───────────────────────────────────────────────────────
   syncAsteroids(cam, halfW, halfH);
@@ -670,7 +755,8 @@ export function pixiRender(): void {
   syncProjectiles(cam, halfW, halfH);
 
   // ── Effect particles ────────────────────────────────────────────────
-  syncEffectParticles(cam, halfW, halfH);
+  // syncEffectParticles disabled — EffectManager handles all VFX
+  // syncEffectParticles(cam, halfW, halfH);
 
   // ── Player ──────────────────────────────────────────────────────────
   syncPlayer();
@@ -703,15 +789,23 @@ export function pixiRender(): void {
   if (effectManager) {
     effectManager.update(dt);
 
-    // Detect enemy deaths (enemy was in prev frame but not this frame) -> spawn explosion
+    // Detect enemy deaths -> spawn scaled explosion with debris + hull fragments
     const currentEnemyIds = new Set<string>();
     for (const e of state.enemies) currentEnemyIds.add(e.id);
     for (const id of prevEnemyIds) {
       if (!currentEnemyIds.has(id)) {
         const prev = prevEnemyData.get(id);
         if (prev) {
-          const explosionType = prev.size > 30 ? "large" : prev.size > 15 ? "medium" : "small";
-          effectManager.spawnExplosion(prev.x, prev.y, prev.size, explosionType);
+          const explosionType = prev.size > 20 ? "large" : prev.size > 10 ? "medium" : "small";
+          effectManager.spawnExplosion(prev.x, prev.y, prev.size * 2.5, explosionType);
+          // Extra debris + smoke for all enemies
+          effectManager.spawnDebrisBurst(prev.x, prev.y, Math.ceil(prev.size / 2), [0x556677, 0x778899, 0x99aabb, 0x445566, 0x667788]);
+          effectManager.spawnSmokePuff(prev.x, prev.y, prev.size * 1.2);
+          // Even more for larger enemies
+          if (prev.size > 15) {
+            effectManager.spawnDebrisBurst(prev.x, prev.y, Math.ceil(prev.size / 2), [0x778899, 0x99aabb, 0x556677]);
+            effectManager.spawnSmokePuff(prev.x, prev.y, prev.size * 0.8);
+          }
         }
       }
     }
@@ -720,6 +814,42 @@ export function pixiRender(): void {
     for (const e of state.enemies) {
       prevEnemyData.set(e.id, { x: e.pos.x, y: e.pos.y, size: e.size, type: e.type });
     }
+
+    // Detect asteroid deaths -> spawn heavy debris + smoke + sparks
+    const currentAsteroidIds = new Set<string>();
+    for (const a of state.asteroids) {
+      if (a.zone === state.player.zone) currentAsteroidIds.add(a.id);
+    }
+    for (const id of prevAsteroidIds) {
+      if (!currentAsteroidIds.has(id)) {
+        const prev = prevAsteroidData.get(id);
+        if (prev) {
+          // Smoke-only asteroid destruction (no sparks, no fire)
+          effectManager.spawnSmokePuff(prev.x, prev.y, prev.size * 4);
+          effectManager.spawnSmokePuff(prev.x, prev.y, prev.size * 3);
+          effectManager.spawnSmokePuff(prev.x + (Math.random()-0.5)*15, prev.y + (Math.random()-0.5)*15, prev.size * 3);
+          effectManager.spawnSmokePuff(prev.x + (Math.random()-0.5)*20, prev.y + (Math.random()-0.5)*20, prev.size * 2.5);
+          effectManager.spawnSmokePuff(prev.x + (Math.random()-0.5)*10, prev.y + (Math.random()-0.5)*10, prev.size * 2);
+        }
+      }
+    }
+    prevAsteroidIds = currentAsteroidIds;
+    prevAsteroidData.clear();
+    for (const a of state.asteroids) {
+      if (a.zone === state.player.zone) {
+        prevAsteroidData.set(a.id, { x: a.pos.x, y: a.pos.y, size: a.size });
+      }
+    }
+
+    // Player hit detection — spawn hit flash + debris when hull drops
+    const currentHull = state.player.hull;
+    if (prevPlayerHull > 0 && currentHull < prevPlayerHull && state.playerRespawnTimer <= 0) {
+      const p = state.player;
+      effectManager.spawnHitEffect(p.pos.x, p.pos.y, p.angle + Math.PI, "laser", 0xff4444, p.shield > 0);
+      // Extra debris flying from player on hit
+      effectManager.spawnDebrisBurst(p.pos.x, p.pos.y, 4, [0x556677, 0x778899, 0x667788, 0x445566]);
+    }
+    prevPlayerHull = currentHull;
   }
 
   // ── Debug ───────────────────────────────────────────────────────────
@@ -848,18 +978,14 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
       container.addChild(healthBar);
 
       const nameText = new PIXI.Text(e.name || "", {
-        fontFamily: "Courier New",
-        fontSize: 14,
+        fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
+        fontSize: 12,
         fill: e.color,
+        fontWeight: "bold",
         stroke: "#000000",
         strokeThickness: 1,
-        fontWeight: "bold",
-        dropShadow: true,
-        dropShadowColor: "#000000",
-        dropShadowDistance: 1,
-        dropShadowBlur: 1,
-        dropShadowAlpha: 0.7,
       });
+      nameText.resolution = 2;
       nameText.anchor.set(0.5, 1);
       container.addChild(nameText);
 
@@ -935,26 +1061,34 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
       data.bossAura.drawCircle(0, 0, e.size + 14 + Math.sin(state.tick * 2.5) * 2);
     }
 
-    // Hit flash effect - dramatic white flash + shake
+    // Hit flash effect - bright white flash + shake
     if (e.hitFlash && e.hitFlash > 0) {
-      const intensity = Math.min(1, e.hitFlash * 2);
-      data.body.alpha = 0.8 + 0.2 * Math.sin(e.hitFlash * 15);
+      const intensity = Math.min(1, e.hitFlash * 3);
+      data.body.alpha = 1;
       data.body.tint = PIXI.utils.rgb2hex([
         1,
-        1 - intensity * 0.5,
-        1 - intensity * 0.7,
+        0.7 + intensity * 0.3,
+        0.7 + intensity * 0.3,
       ]);
       // Micro-shake on hit
       data.container.position.set(
         e.pos.x + (Math.random() - 0.5) * intensity * 3,
         e.pos.y + (Math.random() - 0.5) * intensity * 3
       );
-      // EffectManager hit effect (once per flash)
-      if (effectManager && e.hitFlash > 0.35) {
+      // Cinematic laser hit effect on enemy edge facing the player
+      if (effectManager && e.hitFlash > 0.2) {
         const eventId = `hit-${e.id}-${Math.floor(state.tick * 10)}`;
         if (!effectManager.hasProcessed(eventId)) {
           effectManager.markProcessed(eventId);
-          effectManager.spawnHitEffect(e.pos.x, e.pos.y, e.angle, "laser", PIXI.utils.string2hex(e.color), false);
+          // Direction from player to enemy = where projectiles hit
+          const pp = state.player.pos;
+          const hitAngle = Math.atan2(e.pos.y - pp.y, e.pos.x - pp.x);
+          // Place hit at enemy edge (not center)
+          const edgeDist = e.size * (0.7 + Math.random() * 0.3);
+          const spread = (Math.random() - 0.5) * 0.8;
+          const hx = e.pos.x - Math.cos(hitAngle + spread) * edgeDist;
+          const hy = e.pos.y - Math.sin(hitAngle + spread) * edgeDist;
+          effectManager.spawnCinematicLaserHit(hx, hy, hitAngle, PIXI.utils.string2hex(e.color), 0);
         }
       }
     } else {
@@ -1040,18 +1174,16 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
     let data = projectileSprites.get(pr.id);
 
     if (!data) {
-      // Bake projectile texture using existing Canvas2D code
-      const canvasSz = Math.max(pr.size * 3, 30) + 20;
-      const c2 = document.createElement("canvas");
-      c2.width = canvasSz;
-      c2.height = canvasSz;
-      const ctx2d = c2.getContext("2d")!;
-      const fakePr = { ...pr, pos: { x: canvasSz / 2, y: canvasSz / 2 }, vel: { x: 1, y: 0 } };
-      drawProjectile(ctx2d, fakePr);
-      const tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+      // Native PixiJS projectile visuals
+      const isRocket = pr.weaponKind === "rocket" || pr.size > 4;
+      const tex = isRocket ? getRocketTex() : getLaserBoltTex(Math.max(16, pr.size * 4));
       const sprite = new PIXI.Sprite(tex);
       sprite.anchor.set(0.5);
-      sprite.blendMode = PIXI.BLEND_MODES.ADD;
+      sprite.blendMode = isRocket ? PIXI.BLEND_MODES.NORMAL : PIXI.BLEND_MODES.ADD;
+      sprite.tint = PIXI.utils.string2hex(pr.color);
+      if (!isRocket) {
+        sprite.scale.set(1 + pr.size * 0.15, 0.8 + pr.size * 0.1);
+      }
       projectileLayer.addChild(sprite);
       data = { sprite };
       projectileSprites.set(pr.id, data);
@@ -1073,14 +1205,76 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
     data.sprite.position.set(pr.pos.x, pr.pos.y);
     data.sprite.rotation = Math.atan2(pr.vel.y, pr.vel.x);
 
-    // Projectile trail particles
-    if (effectManager && Math.random() < 0.5) {
-      const weaponType = (pr.weaponKind === "rocket" || pr.size > 4) ? "rocket" : "laser";
-      effectManager.spawnProjectileTrail(pr.pos.x, pr.pos.y, PIXI.utils.string2hex(pr.color), weaponType);
+    // Projectile trail particles — rockets get heavy smoke+fire, lasers get glow trail
+    if (effectManager) {
+      const isRocket = pr.weaponKind === "rocket" || pr.size > 4;
+      const trailChance = isRocket ? 1.0 : 0.45;
+      if (Math.random() < trailChance) {
+        const weaponType = isRocket ? "rocket" : "laser";
+        effectManager.spawnProjectileTrail(pr.pos.x, pr.pos.y, PIXI.utils.string2hex(pr.color), weaponType);
+      }
+      // Occasional light smoke wisp for rockets
+      if (isRocket && Math.random() < 0.15) {
+        effectManager.spawnSmokePuff(pr.pos.x, pr.pos.y, 3);
+      }
     }
   }
 
-  // Remove dead projectiles
+  // Projectile glow overlay (drawn each frame)
+  if (!projectileGlowGraphics) {
+    projectileGlowGraphics = new PIXI.Graphics();
+    projectileLayer.addChildAt(projectileGlowGraphics, 0);
+  }
+  projectileGlowGraphics.clear();
+  for (const pr of state.projectiles) {
+    if (Math.abs(pr.pos.x - cam.x) > halfW + 30 || Math.abs(pr.pos.y - cam.y) > halfH + 30) continue;
+    const color = PIXI.utils.string2hex(pr.color);
+    const isRocket = pr.weaponKind === "rocket" || pr.size > 4;
+    if (isRocket) continue; // No glow overlay for rockets (uses trail instead)
+    const glowR = 3 + pr.size * 0.5;
+    // Subtle outer glow (much less circular/overpowering)
+    projectileGlowGraphics.beginFill(color, 0.06);
+    projectileGlowGraphics.drawCircle(pr.pos.x, pr.pos.y, glowR * 1.5);
+    projectileGlowGraphics.endFill();
+    // Tiny core highlight
+    projectileGlowGraphics.beginFill(color, 0.15);
+    projectileGlowGraphics.drawCircle(pr.pos.x, pr.pos.y, glowR * 0.6);
+    projectileGlowGraphics.endFill();
+  }
+
+  // Detect projectile deaths — spawn differentiated effects
+  if (effectManager) {
+    const currentProjIds = new Set<string>();
+    for (const pr of state.projectiles) currentProjIds.add(pr.id);
+    for (const [id, prev] of prevProjectileData) {
+      if (!currentProjIds.has(id)) {
+        if (prev.weaponKind === "rocket") {
+          if (prev.fromPlayer) {
+            effectManager.spawnMiniExplosion(prev.x, prev.y);
+          } else {
+            // Enemy rocket hit — smaller impact (just sparks + small flash)
+            effectManager.spawnSparkBurst(prev.x, prev.y, Math.random() * Math.PI * 2, 8, 0xff6622);
+            effectManager.spawnSmokePuff(prev.x, prev.y, 12);
+          }
+        } else {
+          effectManager.spawnCinematicLaserHit(prev.x, prev.y, prev.angle, prev.color);
+        }
+      }
+    }
+    prevProjectileData.clear();
+    for (const pr of state.projectiles) {
+      prevProjectileData.set(pr.id, {
+        x: pr.pos.x,
+        y: pr.pos.y,
+        color: PIXI.utils.string2hex(pr.color),
+        weaponKind: (pr.weaponKind === "rocket" || pr.size > 4) ? "rocket" : "laser",
+        angle: Math.atan2(pr.vel.y, pr.vel.x),
+        fromPlayer: pr.fromPlayer,
+      });
+    }
+  }
+
+  // Remove dead projectile sprites
   for (const [id, data] of projectileSprites) {
     if (!activeIds.has(id)) {
       projectileLayer.removeChild(data.sprite);
@@ -1334,18 +1528,14 @@ function syncPlayer(): void {
 
     const rank = rankFor(p.honor);
     playerNameText = new PIXI.Text(p.name, {
-      fontFamily: "Courier New",
-      fontSize: 13,
+      fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
+      fontSize: 12,
       fill: "#e8f0ff",
+      fontWeight: "bold",
       stroke: "#000000",
       strokeThickness: 1,
-      fontWeight: "bold",
-      dropShadow: true,
-      dropShadowColor: "#000000",
-      dropShadowDistance: 1,
-      dropShadowBlur: 1,
-      dropShadowAlpha: 0.6,
     });
+    playerNameText.resolution = 2;
     playerNameText.anchor.set(0.5, 0);
     playerContainer.addChild(playerNameText);
 
@@ -1412,30 +1602,28 @@ function syncPlayer(): void {
     playerContainer.addChildAt(engineGlow, 0);
   }
   engineGlow.clear();
+  engineGlow.blendMode = PIXI.BLEND_MODES.ADD;
   const speed = Math.sqrt(p.vel.x * p.vel.x + p.vel.y * p.vel.y);
   const thrustIntensity = Math.min(1, speed / 3);
   if (thrustIntensity > 0.05) {
     const flicker = 0.7 + 0.3 * Math.sin(state.tick * 25);
-    const coreAlpha = thrustIntensity * flicker * 0.9;
-    // Engine core glow (behind ship at angle)
+    const coreAlpha = thrustIntensity * flicker * 0.7;
     const ex = Math.cos(p.angle + Math.PI) * 14;
     const ey = Math.sin(p.angle + Math.PI) * 14;
-    // Outer soft glow
-    engineGlow.beginFill(0x4ee2ff, coreAlpha * 0.3);
-    engineGlow.drawCircle(ex, ey, 10 + thrustIntensity * 6);
+    // Soft outer glow (subtle)
+    engineGlow.beginFill(0x4ee2ff, coreAlpha * 0.12);
+    engineGlow.drawCircle(ex, ey, 6 + thrustIntensity * 3);
     engineGlow.endFill();
-    // Mid glow
-    engineGlow.beginFill(0x88ddff, coreAlpha * 0.6);
-    engineGlow.drawCircle(ex, ey, 5 + thrustIntensity * 3);
-    engineGlow.endFill();
-    // Hot white core
-    engineGlow.beginFill(0xffffff, coreAlpha * 0.9);
-    engineGlow.drawCircle(ex, ey, 2 + thrustIntensity * 2);
+    // Hot white core (tiny)
+    engineGlow.beginFill(0xffffff, coreAlpha * 0.5);
+    engineGlow.drawCircle(ex, ey, 1.5 + thrustIntensity * 1);
     engineGlow.endFill();
 
-    // EffectManager thruster trail particles
+    // EffectManager thruster trail particles (scaled by ship class)
     if (effectManager) {
-      effectManager.spawnThrusterTrail(p.pos.x, p.pos.y, p.angle, speed, 0x4ee2ff);
+      const cls = SHIP_CLASSES[p.shipClass];
+      const trailScale = cls ? Math.max(0.5, Math.min(1.2, cls.hullMax / 200)) : 1;
+      effectManager.spawnThrusterTrail(p.pos.x, p.pos.y, p.angle, speed, 0x4ee2ff, 1, trailScale);
     }
   }
 
@@ -1502,20 +1690,28 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
       container.addChild(bars);
 
       const nameText = new PIXI.Text(o.name, {
-        fontFamily: "Courier New",
+        fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
         fontSize: 11,
         fill: "#7a8ad8",
+        fontWeight: "bold",
         stroke: "#000000",
         strokeThickness: 1,
-        fontWeight: "bold",
-        dropShadow: true,
-        dropShadowColor: "#000000",
-        dropShadowDistance: 1,
-        dropShadowBlur: 1,
-        dropShadowAlpha: 0.6,
       });
+      nameText.resolution = 2;
       nameText.anchor.set(0.5, 0);
       container.addChild(nameText);
+
+      const subtitleText = new PIXI.Text("", {
+        fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
+        fontSize: 9,
+        fill: "#888",
+        stroke: "#000000",
+        strokeThickness: 1,
+      });
+      subtitleText.resolution = 2;
+      subtitleText.anchor.set(0.5, 0);
+      subtitleText.name = "subtitle";
+      container.addChild(subtitleText);
 
       playerLayer.addChild(container);
       data = { container, body, nameText, bars };
@@ -1549,6 +1745,16 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
     data.nameText.style.fill = factionColor;
     data.nameText.text = o.name;
     data.nameText.position.set(0, 24);
+
+    // Faction tag + rank subtitle
+    const subtitle = data.container.getChildByName("subtitle") as PIXI.Text;
+    if (subtitle) {
+      const rank = rankFor(o.honor);
+      const fTag = o.faction ? FACTIONS[o.faction as keyof typeof FACTIONS]?.tag ?? "" : "";
+      subtitle.text = `${rank.symbol} ${rank.name}${fTag ? " [" + fTag + "]" : ""}`;
+      subtitle.style.fill = rank.color;
+      subtitle.position.set(0, 36);
+    }
 
     // Animate body glow with faction color
     const otherGlow = data.container.getChildByName("bodyGlow") as PIXI.Sprite;
@@ -1608,17 +1814,14 @@ function syncNpcs(cam: { x: number; y: number }, halfW: number, halfH: number): 
       container.addChild(bars);
 
       const nameText = new PIXI.Text(npc.name, {
-        fontFamily: "Courier New",
+        fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
         fontSize: 10,
         fill: npc.color,
+        fontWeight: "bold",
         stroke: "#000000",
         strokeThickness: 1,
-        dropShadow: true,
-        dropShadowColor: "#000000",
-        dropShadowDistance: 1,
-        dropShadowBlur: 0,
-        dropShadowAlpha: 0.7,
       });
+      nameText.resolution = 2;
       nameText.anchor.set(0.5, 0);
       container.addChild(nameText);
 
@@ -1648,7 +1851,7 @@ function syncNpcs(cam: { x: number; y: number }, halfW: number, halfH: number): 
     if (effectManager && npc.vel) {
       const spd = Math.sqrt(npc.vel.x * npc.vel.x + npc.vel.y * npc.vel.y);
       if (spd > 0.3) {
-        effectManager.spawnThrusterTrail(npc.pos.x, npc.pos.y, npc.angle, spd, PIXI.utils.string2hex(npc.color));
+        effectManager.spawnThrusterTrail(npc.pos.x, npc.pos.y, npc.angle, spd, PIXI.utils.string2hex(npc.color), 0.65);
       }
     }
   }
@@ -1666,7 +1869,7 @@ function syncNpcs(cam: { x: number; y: number }, halfW: number, halfH: number): 
 // ASTEROIDS
 // ══════════════════════════════════════════════════════════════════════════
 
-const asteroidSprites = new Map<string, PIXI.Sprite>();
+const asteroidSprites = new Map<string, PIXI.Container>();
 
 function syncAsteroids(cam: { x: number; y: number }, halfW: number, halfH: number): void {
   const activeIds = new Set<string>();
@@ -1680,21 +1883,37 @@ function syncAsteroids(cam: { x: number; y: number }, halfW: number, halfH: numb
 
     if (!sprite) {
       const tex = getAsteroidTex(a);
-      sprite = new PIXI.Sprite(tex);
-      sprite.anchor.set(0.5);
-      asteroidLayer.addChild(sprite);
+      // Container for glow + asteroid
+      const container = new PIXI.Container() as PIXI.Container & { glowSprite?: PIXI.Sprite };
+      // Subtle glow behind
+      const glowR = a.size * 1.3;
+      const glow = new PIXI.Sprite(getGlowTex(Math.ceil(glowR)));
+      glow.anchor.set(0.5);
+      glow.alpha = 0.15;
+      glow.tint = 0xddccaa;
+      glow.blendMode = PIXI.BLEND_MODES.ADD;
+      container.addChild(glow);
+      container.glowSprite = glow;
+      // Main asteroid
+      const mainSprite = new PIXI.Sprite(tex);
+      mainSprite.anchor.set(0.5);
+      container.addChild(mainSprite);
+      asteroidLayer.addChild(container);
+      sprite = container;
       asteroidSprites.set(a.id, sprite);
     }
 
     sprite.visible = true;
     sprite.position.set(a.pos.x, a.pos.y);
-    sprite.rotation = a.rotation;
+    if (sprite.children.length > 1) {
+      sprite.children[1].rotation = a.rotation;
+    }
   }
 
   for (const [id, sprite] of asteroidSprites) {
     if (!activeIds.has(id)) {
       asteroidLayer.removeChild(sprite);
-      sprite.destroy();
+      sprite.destroy({ children: true });
       asteroidSprites.delete(id);
     }
   }
@@ -1720,10 +1939,7 @@ function syncStations(): void {
     }
 
     const glyph = STATION_GLYPH[st.kind] || "□";
-    const container = createStationVisual(
-      st.name, st.kind, glyph,
-      (ctx, cx, cy) => drawStation(ctx, cx, cy, "", st.kind, 0, st)
-    );
+    const container = createStationVisual(st.name, st.kind, glyph);
     container.position.set(st.pos.x, st.pos.y);
     stationLayer.addChild(container);
     stationSpritesMap.set(st.id, container);
@@ -1789,18 +2005,14 @@ function syncFloaters(cam: { x: number; y: number }, halfW: number, halfH: numbe
     let text = floaterTexts.get(f.id);
     if (!text) {
       text = new PIXI.Text(f.text, {
-        fontFamily: "Courier New",
-        fontSize: f.bold ? 16 : 13,
+        fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
+        fontSize: f.bold ? 15 : 12,
         fill: f.color,
-        stroke: "#000000",
-        strokeThickness: 1,
         fontWeight: f.bold ? "bold" : "normal",
-        dropShadow: true,
-        dropShadowColor: "#000000",
-        dropShadowDistance: 1,
-        dropShadowBlur: f.bold ? 2 : 0,
-        dropShadowAlpha: 0.8,
+        stroke: "#000000",
+        strokeThickness: f.bold ? 1.5 : 1,
       });
+      text.resolution = 2;
       text.anchor.set(0.5);
       floaterLayer.addChild(text);
       floaterTexts.set(f.id, text);
@@ -1918,23 +2130,65 @@ function syncMiningLaser(): void {
   miningLaserGraphics.moveTo(pp.x, pp.y);
   miningLaserGraphics.lineTo(ta.pos.x, ta.pos.y);
 
-  // Impact point
+  // Impact point (brighter, larger)
   miningLaserGraphics.lineStyle(0);
-  miningLaserGraphics.beginFill(0xffffff, 0.95);
-  miningLaserGraphics.drawCircle(ta.pos.x, ta.pos.y, 3 + pulse * 2);
+  miningLaserGraphics.beginFill(0xffffff, 1.0);
+  miningLaserGraphics.drawCircle(ta.pos.x, ta.pos.y, 4 + pulse * 3);
   miningLaserGraphics.endFill();
-  // Outer glow at impact
-  miningLaserGraphics.beginFill(0x44ffcc, 0.3 + pulse * 0.2);
-  miningLaserGraphics.drawCircle(ta.pos.x, ta.pos.y, 8 + pulse * 4);
+  // Outer glow at impact (bigger)
+  miningLaserGraphics.beginFill(0x44ffcc, 0.4 + pulse * 0.3);
+  miningLaserGraphics.drawCircle(ta.pos.x, ta.pos.y, 12 + pulse * 6);
+  miningLaserGraphics.endFill();
+  // Secondary warm glow
+  miningLaserGraphics.beginFill(0xaaffee, 0.15 + pulse * 0.1);
+  miningLaserGraphics.drawCircle(ta.pos.x, ta.pos.y, 18 + pulse * 8);
   miningLaserGraphics.endFill();
 
-  // Impact ring
-  const ringR = 6 + pulse * 4 + Math.sin(t * 20) * 2;
-  miningLaserGraphics.lineStyle(1.5, 0x44ffcc, 0.5 + 0.3 * Math.sin(t * 15));
+  // Impact ring (larger, more visible)
+  const ringR = 8 + pulse * 6 + Math.sin(t * 20) * 3;
+  miningLaserGraphics.lineStyle(2, 0x44ffcc, 0.6 + 0.3 * Math.sin(t * 15));
   miningLaserGraphics.drawCircle(ta.pos.x, ta.pos.y, ringR);
-  // Second ring for extra impact
-  miningLaserGraphics.lineStyle(1, 0xffffff, 0.2 + 0.2 * Math.sin(t * 25));
-  miningLaserGraphics.drawCircle(ta.pos.x, ta.pos.y, ringR + 5);
+  // Second ring
+  miningLaserGraphics.lineStyle(1.5, 0xffffff, 0.3 + 0.2 * Math.sin(t * 25));
+  miningLaserGraphics.drawCircle(ta.pos.x, ta.pos.y, ringR + 6);
+  // Third outer ring
+  miningLaserGraphics.lineStyle(1, 0x44ffcc, 0.15 + 0.15 * Math.sin(t * 18));
+  miningLaserGraphics.drawCircle(ta.pos.x, ta.pos.y, ringR + 12);
+
+  // Energized sparkles flying around impact (large, visible from distance)
+  if (effectManager) {
+    // Big energy sparkles orbiting impact
+    if (Math.random() < 0.6) {
+      const orbitAngle = state.tick * 8 + Math.random() * Math.PI * 2;
+      const orbitR = 8 + Math.random() * 12;
+      const sx = ta.pos.x + Math.cos(orbitAngle) * orbitR;
+      const sy = ta.pos.y + Math.sin(orbitAngle) * orbitR;
+      const outAngle = orbitAngle + Math.PI * 0.5 + (Math.random() - 0.5) * 1.5;
+      const spd = 40 + Math.random() * 60;
+      // Use spawnSparkBurst but with a single large spark
+      for (let i = 0; i < 2; i++) {
+        const sparkAngle = outAngle + (Math.random() - 0.5) * 1.2;
+        effectManager.spawnSparkBurst(
+          sx + (Math.random() - 0.5) * 6,
+          sy + (Math.random() - 0.5) * 6,
+          sparkAngle, 1, 0x44ffcc
+        );
+      }
+    }
+    // Larger energy particles that drift outward (visible from far)
+    if (Math.random() < 0.35) {
+      const a = Math.random() * Math.PI * 2;
+      effectManager.spawnSparkBurst(
+        ta.pos.x + Math.cos(a) * 6,
+        ta.pos.y + Math.sin(a) * 6,
+        a, 3, 0x66ffdd
+      );
+    }
+    // Occasional rock chips from mining (sparks, not debris - avoids fire trail)
+    if (Math.random() < 0.12) {
+      effectManager.spawnSparkBurst(ta.pos.x, ta.pos.y, Math.random() * Math.PI * 2, 3, 0x8a7060);
+    }
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -2075,12 +2329,14 @@ function syncDungeonRifts(): void {
       cont.position.set(d.pos.x, d.pos.y);
 
       const label = new PIXI.Text(d.name, {
-        fontFamily: "Courier New",
+        fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
         fontSize: 10,
         fill: d.color,
+        fontWeight: "bold",
         stroke: "#000000",
-        strokeThickness: 2,
+        strokeThickness: 1,
       });
+      label.resolution = 2;
       label.anchor.set(0.5, 0);
       label.position.set(0, 22);
       cont.addChild(label);
@@ -2145,8 +2401,14 @@ const droneSprites = new Map<number, PIXI.Graphics>();
 
 function syncDrones(): void {
   const activeIds = new Set<number>();
+  if (!state.player.drones) return;
+
   for (let i = 0; i < state.player.drones.length; i++) {
     const d = state.player.drones[i];
+    // Drone position is stored as runtime 'anchor' property, not 'pos'
+    const anchor = (d as any).anchor as { x: number; y: number } | undefined;
+    if (!anchor) continue;
+
     activeIds.add(i);
 
     let g = droneSprites.get(i);
@@ -2157,9 +2419,11 @@ function syncDrones(): void {
     }
 
     g.clear();
-    g.position.set(d.pos.x, d.pos.y);
+    g.visible = true;
+    g.position.set(anchor.x, anchor.y);
 
-    const color = 0x4ee2ff;
+    const def = (DRONE_DEFS as any)[(d as any).kind];
+    const color = def ? PIXI.utils.string2hex(def.color) : 0x4ee2ff;
     const t = state.tick;
     const dPulse = 0.7 + 0.3 * Math.sin(t * 4 + i * 2);
     // Outer orbit ring

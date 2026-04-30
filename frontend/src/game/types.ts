@@ -652,6 +652,7 @@ export type Floater = {
   maxTtl: number;
   scale: number;            // text scale (crits start big)
   bold?: boolean;
+  trackPlayer?: boolean;
 };
 
 export type CargoBox = {

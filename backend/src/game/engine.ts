@@ -12,6 +12,40 @@ import {
 import type { OnlinePlayer } from "../socket/state.js";
 import { MOVEMENT } from "../../../lib/game-constants.js";
 
+
+// ── ASTEROID BELT DEFINITIONS ────────────────────────────────────────────
+const ASTEROID_BELTS: Record<string, { cx: number; cy: number; rx: number; ry: number }[]> = {
+  alpha:    [{ cx: -3000, cy: 1500, rx: 2000, ry: 800 }, { cx: 2500, cy: -2000, rx: 1500, ry: 1000 }],
+  nebula:   [{ cx: 0, cy: 3500, rx: 2500, ry: 600 }, { cx: -3000, cy: -2000, rx: 1800, ry: 900 }],
+  crimson:  [{ cx: 3500, cy: 0, rx: 800, ry: 2500 }, { cx: -2500, cy: 3000, rx: 1500, ry: 700 }],
+  void:     [{ cx: -2000, cy: -3000, rx: 2200, ry: 700 }, { cx: 3000, cy: 2000, rx: 1200, ry: 1500 }],
+  forge:    [{ cx: 0, cy: -3500, rx: 3000, ry: 600 }, { cx: -3500, cy: 1500, rx: 1000, ry: 2000 }],
+  corona:   [{ cx: 3000, cy: -1500, rx: 2000, ry: 900 }, { cx: -2000, cy: 3500, rx: 1800, ry: 600 }],
+  fracture: [{ cx: -3500, cy: -1000, rx: 1500, ry: 2000 }, { cx: 2500, cy: 2500, rx: 2000, ry: 800 }],
+  abyss:    [{ cx: 0, cy: 0, rx: 3000, ry: 1000 }],
+  marsdepth:[{ cx: -2500, cy: 2500, rx: 2000, ry: 900 }, { cx: 3000, cy: -1500, rx: 1500, ry: 1200 }],
+  maelstrom:[{ cx: 2000, cy: 3000, rx: 1800, ry: 700 }, { cx: -3000, cy: -2500, rx: 1200, ry: 1800 }],
+  venus1:   [{ cx: -2500, cy: -1500, rx: 2000, ry: 800 }, { cx: 3000, cy: 2000, rx: 1500, ry: 1000 }],
+  venus2:   [{ cx: 0, cy: -3500, rx: 2500, ry: 700 }, { cx: -3500, cy: 1000, rx: 1200, ry: 1800 }],
+  venus3:   [{ cx: 3500, cy: 1500, rx: 900, ry: 2500 }, { cx: -2000, cy: -3000, rx: 2000, ry: 600 }],
+  venus4:   [{ cx: -3000, cy: 0, rx: 800, ry: 3000 }, { cx: 2500, cy: -2500, rx: 1800, ry: 800 }],
+  venus5:   [{ cx: 0, cy: 3000, rx: 3000, ry: 800 }, { cx: -2500, cy: -2000, rx: 1500, ry: 1500 }],
+  danger1:  [{ cx: 2000, cy: -2000, rx: 1500, ry: 1500 }],
+  danger2:  [{ cx: -2500, cy: 2500, rx: 1800, ry: 800 }],
+  danger3:  [{ cx: 3000, cy: 0, rx: 800, ry: 2000 }],
+  danger4:  [{ cx: 0, cy: -3000, rx: 2000, ry: 700 }],
+  danger5:  [{ cx: -2000, cy: 2000, rx: 1200, ry: 1200 }],
+};
+
+function randomPointInBelt(belt: { cx: number; cy: number; rx: number; ry: number }): Vec2 {
+  const angle = Math.random() * Math.PI * 2;
+  const r = Math.sqrt(Math.random());
+  return {
+    x: belt.cx + Math.cos(angle) * belt.rx * r,
+    y: belt.cy + Math.sin(angle) * belt.ry * r,
+  };
+}
+
 // ── CULLING ──────────────────────────────────────────────────────────────
 
 const CULL_RADIUS = 2000;
@@ -867,6 +901,7 @@ export class GameEngine {
             let dmg = Math.round(proj.damage * comboMul * critMul * execMul * voidMul);
             if (dmg < 1) dmg = 1;
             e.hull -= dmg;
+            if (e.isBoss && e.hullMax > 0) { const hpPct = e.hull / e.hullMax; e.bossPhase = hpPct > 0.66 ? 0 : hpPct > 0.33 ? 1 : 2; }
             if (e.aggroTarget !== proj.fromPlayerId && (!e.retargetCd || e.retargetCd <= 0)) {
               e.aggroTarget = proj.fromPlayerId;
               e.retargetCd = 2.5;
@@ -903,7 +938,7 @@ export class GameEngine {
               });
               // AOE splash
               if (proj.aoeRadius > 0) {
-                const splashRange = proj.aoeRadius * 8;
+                const splashRange = proj.aoeRadius * 3;
                 const splashDmg = Math.round(dmg * 0.4);
                 for (const e2 of zs.enemies.values()) {
                   if (e2.id === e.id) continue;
@@ -1208,7 +1243,7 @@ export class GameEngine {
 
       // AOE splash
       if (stats.aoeRadius > 0) {
-        const splashRange = stats.aoeRadius * 8;
+        const splashRange = stats.aoeRadius * 3;
         const splashDmg = Math.round(dmg * 0.4);
         for (const e2 of zs.enemies.values()) {
           if (e2.id === e.id) continue;
@@ -2029,11 +2064,29 @@ export class GameEngine {
     const zoneDef = ZONES[zoneId as ZoneId];
     if (!zoneDef) return;
 
-    // Asteroid count per zone tier
-    const counts: Record<number, number> = { 1: 80, 2: 70, 3: 60, 4: 50, 5: 40, 6: 30, 7: 20 };
-    const count = counts[zoneDef.enemyTier] ?? 50;
+    const belts = ASTEROID_BELTS[zoneId] ?? [];
+    const beltCount = belts.length > 0 ? 120 : 0;
+    const scatterCount = 30;
 
-    for (let i = 0; i < count; i++) {
+    // Spawn dense asteroid belt clusters
+    for (let i = 0; i < beltCount; i++) {
+      const belt = belts[i % belts.length];
+      const pos = randomPointInBelt(belt);
+      const size = randRange(12, 40);
+      const ast: ServerAsteroid = {
+        id: eid("ast"),
+        pos,
+        hp: size * 4,
+        hpMax: size * 4,
+        size,
+        yields: pickAsteroidYield(zoneId),
+        respawnAt: 0,
+      };
+      zs.asteroids.set(ast.id, ast);
+    }
+
+    // Scatter a few random asteroids outside belts
+    for (let i = 0; i < scatterCount; i++) {
       const size = randRange(14, 36);
       const ast: ServerAsteroid = {
         id: eid("ast"),
@@ -2100,10 +2153,16 @@ export class GameEngine {
         ast.size = size;
         ast.hp = size * 4;
         ast.hpMax = size * 4;
-        ast.pos = {
-          x: randRange(-MAP_RADIUS * 0.85, MAP_RADIUS * 0.85),
-          y: randRange(-MAP_RADIUS * 0.85, MAP_RADIUS * 0.85),
-        };
+        const belts = ASTEROID_BELTS[zoneId] ?? [];
+        if (belts.length > 0 && Math.random() < 0.8) {
+          const belt = belts[Math.floor(Math.random() * belts.length)];
+          ast.pos = randomPointInBelt(belt);
+        } else {
+          ast.pos = {
+            x: randRange(-MAP_RADIUS * 0.85, MAP_RADIUS * 0.85),
+            y: randRange(-MAP_RADIUS * 0.85, MAP_RADIUS * 0.85),
+          };
+        }
         ast.yields = pickAsteroidYield(zoneId);
         events.push({ type: "asteroid:respawn", zone: zoneId, asteroid: asteroidToClient(ast) });
       }

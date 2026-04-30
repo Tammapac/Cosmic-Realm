@@ -9,6 +9,6 @@ export const MOVEMENT = {
 } as const;
 
 export const NETCODE = {
-  INTERPOLATION_FACTOR: 0.25,
+  INTERPOLATION_FACTOR: 0.4,
   SERVER_BUFFER_MS: 100,
 } as const;

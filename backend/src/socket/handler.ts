@@ -390,9 +390,9 @@ export function setupSocket(io: Server) {
                 // Check if entity changed (position moved >1 unit or health changed)
                 const dx = entity.x - prev.x;
                 const dy = entity.y - prev.y;
-                const moved = dx * dx + dy * dy > 4;
+                const moved = dx * dx + dy * dy > 0.5;
                 const healthChanged = entity.hp !== prev.hp || entity.shield !== prev.shield;
-                const angleChanged = Math.abs(entity.angle - prev.angle) > 0.1;
+                const angleChanged = Math.abs(entity.angle - prev.angle) > 0.02;
 
                 if (moved || healthChanged || angleChanged) {
                   addOrUpdate.push(entity);
