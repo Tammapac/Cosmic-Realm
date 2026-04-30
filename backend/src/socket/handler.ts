@@ -94,6 +94,7 @@ export function setupSocket(io: Server) {
       lastHitTick: 0,
       shieldRegen: stats.shieldRegen,
       afterburnUntil: 0,
+      isDocked: false,
     };
 
     socket.join(`zone:${online.zone}`);
@@ -214,6 +215,18 @@ export function setupSocket(io: Server) {
     });
 
     // ── STATS UPDATE (syncs player data for engine computation) ─────
+    socket.on("dock:enter", () => {
+      if (!online) return;
+      online.isDocked = true;
+      online.velX = 0;
+      online.velY = 0;
+    });
+
+    socket.on("dock:leave", () => {
+      if (!online) return;
+      online.isDocked = false;
+    });
+
     socket.on("dock:repair", (data: { hull: number; shield: number }) => {
       const p = getPlayer(user.playerId);
       if (!p) return;
@@ -294,6 +307,7 @@ export function setupSocket(io: Server) {
           const nearbyPlayers: any[] = [];
           for (const other of playersArr) {
             if (other.playerId === p.playerId) continue;
+            if (other.isDocked) continue;
             const dx = p.posX - other.posX;
             const dy = p.posY - other.posY;
             if (dx * dx + dy * dy < CULL_RADIUS_SQ) {

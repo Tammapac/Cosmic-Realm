@@ -52,7 +52,7 @@ import {
   MISSION_BOARD_POOL, MissionCategory,
 } from "./types";
 import { sfx } from "./sound";
-import { sendWarp, sendStatsUpdate, sendDockRepair } from "../net/socket";
+import { sendWarp, sendStatsUpdate, sendDockRepair, sendDockLeave } from "../net/socket";
 
 export type HangarTab =
   | "bounties" | "loadout" | "ships" | "drones" | "market" | "ammo" | "cargo" | "repair" | "skills" | "missions" | "dungeons" | "refinery";

@@ -564,6 +564,7 @@ export class GameEngine {
     const idleSpeedSq = MOVEMENT.IDLE_SPEED * MOVEMENT.IDLE_SPEED;
 
     for (const p of players) {
+      if (p.isDocked) continue;
       if (p.targetX !== null && p.targetY !== null) {
         const dx = p.targetX - p.posX;
         const dy = p.targetY - p.posY;
@@ -662,6 +663,8 @@ export class GameEngine {
 
   private tickPlayerCombat(zoneId: string, zs: ZoneState, players: OnlinePlayer[], dt: number, events: GameEvent[]): void {
     for (const p of players) {
+      if (p.isDocked) continue;
+      if (p.isDocked) continue;
       p.laserFireCd -= dt;
       p.rocketFireCd -= dt;
 
@@ -814,6 +817,7 @@ export class GameEngine {
 
   private tickPlayerMining(zoneId: string, zs: ZoneState, players: OnlinePlayer[], dt: number, events: GameEvent[]): void {
     for (const p of players) {
+      if (p.isDocked) continue;
       if (!p.miningTargetId) continue;
       const ast = zs.asteroids.get(p.miningTargetId);
       if (!ast || ast.respawnAt > 0) { p.miningTargetId = null; continue; }
@@ -987,6 +991,7 @@ export class GameEngine {
       } else if (proj.fromEnemyId !== null) {
         // Enemy projectile -> hit players
         for (const p of players) {
+          if (p.isDocked) continue;
           if (dist(proj.pos, { x: p.posX, y: p.posY }) < 12) {
             this.damagePlayer(p, proj.damage);
             events.push({ type: "player:hit", playerId: p.playerId, damage: proj.damage, zone: zoneId });
@@ -1602,6 +1607,7 @@ export class GameEngine {
         // Look for nearby player to aggro
         let closestDist = e.aggroRange;
         for (const p of players) {
+          if (p.isDocked) continue;
           const d = dist(e.pos, { x: p.posX, y: p.posY });
           if (d < closestDist) {
             closestDist = d;

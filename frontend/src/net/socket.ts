@@ -437,6 +437,14 @@ export function sendStatsUpdate(data: {
   socket?.emit("stats:update", data);
 }
 
+export function sendDockEnter() {
+  socket?.emit("dock:enter");
+}
+
+export function sendDockLeave() {
+  socket?.emit("dock:leave");
+}
+
 export function sendDockRepair(hull: number, shield: number) {
   socket?.emit("dock:repair", { hull, shield });
 }
