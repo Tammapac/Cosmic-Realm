@@ -1,4 +1,6 @@
 import { Server, Socket } from "socket.io";
+import { DUNGEONS } from "../game/data.js";
+import { InstanceManager } from "../game/instance.js";
 import { verifyToken, TokenPayload } from "../middleware/auth.js";
 import { db, schema } from "../db/index.js";
 import { eq } from "drizzle-orm";
@@ -20,6 +22,7 @@ const FIXED_DT = 1 / MOVEMENT.SERVER_TICK_RATE;
 
 export function setupSocket(io: Server) {
   const engine = new GameEngine();
+  const instanceMgr = new InstanceManager();
 
   io.use((socket, next) => {
     const token = socket.handshake.auth?.token;
@@ -227,6 +230,77 @@ export function setupSocket(io: Server) {
       online.isDocked = false;
     });
 
+    socket.on("instance:enter", (data: { dungeonId: string }) => {
+      if (!online) return;
+      const def = DUNGEONS[data.dungeonId as keyof typeof DUNGEONS];
+      if (!def) return;
+      if (instanceMgr.isInInstance(online.playerId)) return;
+      
+      const inst = instanceMgr.createInstance("rift", data.dungeonId, {
+        waves: def.waves,
+        enemiesPerWave: def.enemiesPerWave,
+        enemyTypes: def.enemyTypes,
+        enemyHpMul: def.enemyHpMul,
+        enemyDmgMul: def.enemyDmgMul,
+        color: def.color,
+        name: def.name,
+      });
+      
+      instanceMgr.addPlayer(inst.id, online.playerId, online.zone, online.posX, online.posY);
+      online.posX = 0;
+      online.posY = 0;
+      online.velX = 0;
+      online.velY = 0;
+      online.targetX = null;
+      online.targetY = null;
+      
+      socket.emit("instance:joined", {
+        instanceId: inst.id,
+        dungeonId: data.dungeonId,
+        wave: 1,
+        totalWaves: def.waves,
+        name: def.name,
+        color: def.color,
+      });
+    });
+
+    socket.on("instance:leave", () => {
+      if (!online) return;
+      const ret = instanceMgr.removePlayer(online.playerId);
+      if (ret) {
+        online.posX = ret.x;
+        online.posY = ret.y;
+        online.velX = 0;
+        online.velY = 0;
+        online.targetX = null;
+        online.targetY = null;
+        socket.emit("instance:left", { zone: ret.zone, x: ret.x, y: ret.y });
+      }
+    });
+
+    socket.on("instance:enemy-hit", (data: { enemyId: string; damage: number; crit: boolean }) => {
+      if (!online) return;
+      const inst = instanceMgr.getPlayerInstance(online.playerId);
+      if (!inst) return;
+      const enemy = inst.enemies.get(data.enemyId);
+      if (!enemy || enemy.hull <= 0) return;
+      enemy.hull -= data.damage;
+      const killed = enemy.hull <= 0;
+      socket.emit("instance:enemy-hit-ack", {
+        enemyId: data.enemyId,
+        hp: Math.max(0, enemy.hull),
+        hpMax: enemy.hullMax,
+        damage: data.damage,
+        crit: data.crit,
+        killed,
+        loot: killed ? enemy.loot : null,
+        exp: killed ? enemy.exp : 0,
+        credits: killed ? enemy.credits : 0,
+        honor: killed ? enemy.honor : 0,
+      });
+    });
+
+
     socket.on("dock:repair", (data: { hull: number; shield: number }) => {
       const p = getPlayer(user.playerId);
       if (!p) return;
@@ -293,8 +367,46 @@ export function setupSocket(io: Server) {
 
   const runTick = () => {
     try {
-      const events = engine.tick(FIXED_DT, getPlayersInZone);
+      const events = engine.tick(FIXED_DT, (zone: string) => getPlayersInZone(zone).filter(p => !instanceMgr.isInInstance(p.playerId)));
       broadcastEvents(io, events);
+
+      // Tick all active instances
+      for (const [instId, inst] of instanceMgr.instances) {
+        const instPlayers: OnlinePlayer[] = [];
+        for (const pid of inst.playerIds) {
+          const p = getPlayer(pid);
+          if (p) instPlayers.push(p);
+        }
+        if (instPlayers.length === 0) {
+          instanceMgr.instances.delete(instId);
+          continue;
+        }
+        const result = instanceMgr.tickInstance(inst, instPlayers, FIXED_DT);
+        
+        // Broadcast instance events to players in this instance
+        for (const p of instPlayers) {
+          const sock = io.sockets.sockets.get(p.socketId);
+          if (!sock) continue;
+          for (const ev of result.events) {
+            sock.emit("instance:event", ev);
+          }
+          // Send enemy positions
+          sock.emit("instance:state", {
+            wave: inst.wave,
+            totalWaves: inst.totalWaves,
+            enemies: instanceMgr.serializeEnemies(inst),
+            completed: inst.completed,
+          });
+        }
+        
+        if (result.allCleared) {
+          // Instance complete - notify players
+          for (const p of instPlayers) {
+            const sock = io.sockets.sockets.get(p.socketId);
+            if (sock) sock.emit("instance:complete", { dungeonId: inst.dungeonId });
+          }
+        }
+      }
       tickCounter++;
 
       for (const [, playersMap] of getAllZones()) {
@@ -302,6 +414,7 @@ export function setupSocket(io: Server) {
         const playersArr = Array.from(playersMap.values());
 
         for (const p of playersArr) {
+          if (instanceMgr.isInInstance(p.playerId)) continue;
           const culled = engine.getCulledStateForPlayer(p);
 
           const nearbyPlayers: any[] = [];
