@@ -11,7 +11,7 @@ import {
   MAP_RADIUS, NpcShip, PORTALS, ROCKET_AMMO_TYPE_DEFS, ROCKET_MISSILE_TYPE_DEFS, WeaponKind,
   SHIP_CLASSES, STATIONS, ZONES, ZoneId,
   rankFor,
-RESOURCES, pickAsteroidYield, } from "./types";
+RESOURCES, pickAsteroidYield, SHIP_SIZE_SCALE, } from "./types";
 import { sfx } from "./sound";
 import { type ServerEnemy, type ServerAsteroid, type ServerNpc, type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent, type DeltaPayload, type SnapshotPayload, type WelcomePayload, type DeltaEntity, type LaserFireEvent, type RocketFireEvent, type ProjectileSpawnEvent } from "../net/socket";
 import { sendInstanceEnemyHit } from "../net/socket";
@@ -727,15 +727,15 @@ export function applyKill(e: Enemy, killerCrit: boolean): void {
     state.cameraShake = Math.max(state.cameraShake, baseShake * proximity);
   }
 
-  const expGain = e.exp;
-  const credGain = e.credits + (state.player.skills["ut-salvage"] ?? 0) * Math.max(1, Math.floor(e.honor));
-  const honorGain = e.honor;
+  const expGain = e.exp || 0;
+  const credGain = (e.credits || 0) + (state.player.skills["ut-salvage"] ?? 0) * Math.max(1, Math.floor(e.honor || 0));
+  const honorGain = e.honor || 0;
 
   // Grant exp, credits, honor directly on kill
   const p2 = state.player;
-  p2.exp += expGain;
-  p2.credits += credGain;
-  p2.honor += honorGain;
+  p2.exp = (p2.exp || 0) + expGain;
+  p2.credits = (p2.credits || 0) + credGain;
+  p2.honor = (p2.honor || 0) + honorGain;
   while (p2.exp >= EXP_FOR_LEVEL(p2.level)) {
     p2.exp -= EXP_FOR_LEVEL(p2.level);
     p2.level++;
@@ -747,6 +747,8 @@ export function applyKill(e: Enemy, killerCrit: boolean): void {
   if (honorGain > 0) pushFloater({ text: `+${honorGain} ✪`, color: "#c8a0ff", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.3, bold: true, ttl: 2.0 });
 
   // Loot box only contains resources (no exp/credits/honor)
+  // Skip loot drops in dungeon - rewards come from completeDungeon
+  if (state.dungeon) { save(); bump(); return; }
   const hasSalvage = state.player.drones.some((d) => d.kind === "salvage");
   const lootQty = e.loot ? e.loot.qty + (hasSalvage ? 1 : 0) + stats.lootBonus : 0;
 
@@ -875,7 +877,9 @@ export function startLoop(): void {
   const step = (now: number) => {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
-    if (!state.paused && !state.dockedAt) tickWorld(dt);
+    try {
+      if (!state.paused && !state.dockedAt) tickWorld(dt);
+    } catch (err) { console.error("[LOOP] tickWorld error:", err); }
     raf = requestAnimationFrame(step);
   };
   raf = requestAnimationFrame(step);
@@ -1159,7 +1163,7 @@ function tickWorld(dt: number): void {
       e.combo.ttl -= dt;
       if (e.combo.ttl <= 0) e.combo = undefined;
     }
-    if (serverAuthoritative && !state.dungeon) {
+    if (serverAuthoritative || state.dungeon) {
       // Server owns enemy positions; applyServerSmoothing handles interpolation
       if (Math.abs(e.vel.x) > 1 || Math.abs(e.vel.y) > 1) {
         e.angle = Math.atan2(e.vel.y, e.vel.x);
@@ -1608,6 +1612,7 @@ function tickWorld(dt: number): void {
         else laserIds.push(wid);
       }
       const perpAng = ang + Math.PI / 2;
+      const shipScale = SHIP_SIZE_SCALE[p.shipClass] ?? 1;
 
       // Fire lasers on laser cooldown (uses laser ammo) - only when laser firing is active
       const laserAmmo = p.ammo[laserAmmoType] ?? 0;
@@ -1626,8 +1631,8 @@ function tickWorld(dt: number): void {
         if (pattern === "sniper") {
           // Single powerful beam from center
           const dmg = Math.round(laserDmg);
-          const ox = p.pos.x + Math.cos(ang) * 10;
-          const oy = p.pos.y + Math.sin(ang) * 10;
+          const ox = p.pos.x + Math.cos(ang) * 14 * shipScale;
+          const oy = p.pos.y + Math.sin(ang) * 14 * shipScale;
           fireProjectile("player", ox, oy, ang, dmg, laserColor, 6, {
             weaponKind: "laser", speedMul: 3.2,
           });
@@ -1643,14 +1648,14 @@ function tickWorld(dt: number): void {
           for (let si = 0; si < pellets; si++) {
             const spreadAng = ang + (si - 1) * spread;
             const side = si === 0 ? -1 : si === 2 ? 1 : 0;
-            const ox = p.pos.x + Math.cos(perpAng) * 10 * side;
-            const oy = p.pos.y + Math.sin(perpAng) * 10 * side;
+            const ox = p.pos.x + Math.cos(perpAng) * 14 * shipScale * side;
+            const oy = p.pos.y + Math.sin(perpAng) * 14 * shipScale * side;
             fireProjectile("player", ox, oy, spreadAng, perPellet, laserColor, 4, {
               weaponKind: "laser", speedMul: 1.8,
             });
           }
-          const cx = p.pos.x + Math.cos(ang) * 8;
-          const cy = p.pos.y + Math.sin(ang) * 8;
+          const cx = p.pos.x + Math.cos(ang) * 12 * shipScale;
+          const cy = p.pos.y + Math.sin(ang) * 12 * shipScale;
           state.particles.push({ id: `mf-${Math.random().toString(36).slice(2, 8)}`, pos: { x: cx, y: cy }, vel: { x: 0, y: 0 }, ttl: 0.15, maxTtl: 0.15, color: laserColor, size: 80, kind: "flash" });
           emitSpark(cx, cy, laserColor, 8, 100, 2);
           emitSpark(cx, cy, "#ffffff", 4, 70, 2);
@@ -1659,8 +1664,8 @@ function tickWorld(dt: number): void {
           const perBurst = Math.round(laserDmg * 1.3 / 3);
           for (let bi = 0; bi < 3; bi++) {
             const side = bi === 0 ? -1 : bi === 1 ? 1 : 0;
-            const ox = p.pos.x + Math.cos(perpAng) * 10 * side;
-            const oy = p.pos.y + Math.sin(perpAng) * 10 * side;
+            const ox = p.pos.x + Math.cos(perpAng) * 14 * shipScale * side;
+            const oy = p.pos.y + Math.sin(perpAng) * 14 * shipScale * side;
             const burstAng = ang + (Math.random() - 0.5) * 0.04;
             fireProjectile("player", ox, oy, burstAng, perBurst, laserColor, 4, {
               weaponKind: "laser", speedMul: 2.5,
@@ -1674,8 +1679,8 @@ function tickWorld(dt: number): void {
           const perShot = Math.round(laserDmg / 2);
           for (let si = 0; si < 2; si++) {
             const side = si === 0 ? -1 : 1;
-            const ox = p.pos.x + Math.cos(perpAng) * 14 * side;
-            const oy = p.pos.y + Math.sin(perpAng) * 14 * side;
+            const ox = p.pos.x + Math.cos(perpAng) * 18 * shipScale * side;
+            const oy = p.pos.y + Math.sin(perpAng) * 18 * shipScale * side;
             fireProjectile("player", ox, oy, ang - side * 0.03, perShot, laserColor, 4, {
               weaponKind: "laser", speedMul: 2.14,
             });
@@ -2180,7 +2185,7 @@ function tickWorld(dt: number): void {
           return false;
         }
       }
-      if (distance(pr.pos.x, pr.pos.y, p.pos.x, p.pos.y) < 12) {
+      if (distance(pr.pos.x, pr.pos.y, p.pos.x, p.pos.y) < 12 * (SHIP_SIZE_SCALE[p.shipClass] ?? 1)) {
         emitSpark(pr.pos.x, pr.pos.y, "#ff5c6c", 6, 90, 2);
         emitRing(pr.pos.x, pr.pos.y, "#ff5c6c", 18);
         state.particles.push({

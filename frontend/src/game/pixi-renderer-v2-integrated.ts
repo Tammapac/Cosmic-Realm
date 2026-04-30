@@ -16,7 +16,7 @@ import {
   Enemy, Projectile, Particle, Floater, NpcShip, OtherPlayer, Asteroid, RESOURCES,
   CargoBox, Drone, DRONE_DEFS, ZONES, STATIONS, PORTALS, DUNGEONS, SHIP_CLASSES,
   MAP_RADIUS, FACTIONS, ShipClassId, EnemyType, rankFor, Station,
-  ZoneId,
+  ZoneId, SHIP_SIZE_SCALE,
 } from "./types";
 import {
   drawShipPixels, drawEnemy, shadeHex, drawProjectile, drawParticle,
@@ -74,34 +74,20 @@ const texCache = new Map<string, PIXI.Texture>();
 
 const SHIP_SPRITES: Partial<Record<ShipClassId, string>> = {
   skimmer: "/ships/skimmer.png",
+  wasp: "/ships/wasp.png",
   vanguard: "/ships/vanguard.png",
+  reaver: "/ships/reaver.png",
   obsidian: "/ships/obsidian.png",
   marauder: "/ships/marauder.png",
   phalanx: "/ships/phalanx.png",
   titan: "/ships/titan.png",
   leviathan: "/ships/leviathan.png",
+  specter: "/ships/specter.png",
   colossus: "/ships/colossus.png",
   harbinger: "/ships/harbinger.png",
   eclipse: "/ships/eclipse.png",
   sovereign: "/ships/sovereign.png",
   apex: "/ships/apex.png",
-};
-const SHIP_SIZE_SCALE: Record<ShipClassId, number> = {
-  skimmer: 0.7,
-  wasp: 0.75,
-  vanguard: 0.85,
-  reaver: 0.9,
-  obsidian: 0.95,
-  marauder: 1.05,
-  phalanx: 1.15,
-  titan: 1.3,
-  leviathan: 1.45,
-  specter: 1.1,
-  colossus: 1.6,
-  harbinger: 1.5,
-  eclipse: 1.7,
-  sovereign: 1.85,
-  apex: 2.0,
 };
 const shipSpriteTextures = new Map<string, PIXI.Texture>();
 const shipSpriteLoading = new Set<string>();
@@ -150,18 +136,56 @@ function getShipTex(shipClass: ShipClassId, scale: number): PIXI.Texture {
 
   const spriteTex = shipSpriteTextures.get(shipClass);
   if (spriteTex) {
-    const sz = Math.ceil(60 * finalScale);
-    const canvasSz = sz * 2 + 30;
+    const img = spriteTex.baseTexture.resource as any;
+    const src = img.source || img;
+    const iw = src.naturalWidth || src.width;
+    const ih = src.naturalHeight || src.height;
+
+    // Auto-trim: find content bounding box
+    const trimC = document.createElement("canvas");
+    trimC.width = iw; trimC.height = ih;
+    const trimCtx = trimC.getContext("2d")!;
+    trimCtx.drawImage(src, 0, 0);
+    const imgData = trimCtx.getImageData(0, 0, iw, ih).data;
+    let minX = iw, minY = ih, maxX = 0, maxY = 0;
+    for (let y = 0; y < ih; y++) {
+      for (let x = 0; x < iw; x++) {
+        if (imgData[(y * iw + x) * 4 + 3] > 10) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+    const cw = maxX - minX + 1;
+    const ch = maxY - minY + 1;
+    const aspect = ch / cw;
+
+    const targetSize = Math.ceil(60 * finalScale);
+    const padding = 16;
+    const drawW = targetSize * 1.6;
+    const drawH = drawW * aspect;
+    const canvasSz = Math.ceil(Math.max(drawW, drawH) + padding * 2);
     const c2 = document.createElement("canvas");
     c2.width = canvasSz;
     c2.height = canvasSz;
     const ctx = c2.getContext("2d")!;
-    const img = spriteTex.baseTexture.resource as any;
-    const src = img.source || img;
-    const aspect = src.naturalHeight / src.naturalWidth;
-    const drawW = canvasSz * 0.85;
-    const drawH = drawW * aspect;
-    ctx.drawImage(src, (canvasSz - drawW) / 2, (canvasSz - drawH) / 2, drawW, drawH);
+    const dx = (canvasSz - drawW) / 2;
+    const dy = (canvasSz - drawH) / 2;
+
+    // Glow outline
+    const cls = SHIP_CLASSES[shipClass];
+    ctx.shadowColor = cls.color;
+    ctx.shadowBlur = 10;
+    ctx.globalAlpha = 0.6;
+    ctx.drawImage(src, minX, minY, cw, ch, dx, dy, drawW, drawH);
+    ctx.drawImage(src, minX, minY, cw, ch, dx, dy, drawW, drawH);
+    ctx.shadowBlur = 0;
+
+    // Sharp ship on top
+    ctx.globalAlpha = 1.0;
+    ctx.drawImage(src, minX, minY, cw, ch, dx, dy, drawW, drawH);
     tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
     texCache.set(key, tex);
     return tex;

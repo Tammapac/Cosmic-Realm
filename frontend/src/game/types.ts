@@ -1027,6 +1027,12 @@ export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
   },
 };
 
+export const SHIP_SIZE_SCALE: Record<ShipClassId, number> = {
+  skimmer: 0.7, wasp: 0.75, vanguard: 0.85, reaver: 0.9, obsidian: 0.95,
+  marauder: 1.05, phalanx: 1.15, titan: 1.3, leviathan: 1.45, specter: 1.1,
+  colossus: 1.6, harbinger: 1.5, eclipse: 1.7, sovereign: 1.85, apex: 2.0,
+};
+
 export const EXP_FOR_LEVEL = (level: number) => 100 * level * level;
 
 export const ENEMY_DEFS: Record<
