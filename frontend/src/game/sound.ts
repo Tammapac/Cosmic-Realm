@@ -123,7 +123,11 @@ function loadAudioFile(url: string): void {
     .finally(() => loadingBuffers.delete(url));
 }
 
+let _activeSources = 0;
+const MAX_CONCURRENT_SOURCES = 48;
+
 function playPooled(url: string, vol = 0.5, rate = 1): void {
+  if (_activeSources >= MAX_CONCURRENT_SOURCES) return;
   const c = ensureCtx();
   if (!c || !masterGain || muted) return;
   const buf = audioBuffers[url];
@@ -135,6 +139,8 @@ function playPooled(url: string, vol = 0.5, rate = 1): void {
   g.gain.value = vol;
   src.connect(g);
   g.connect(masterGain);
+  _activeSources++;
+  src.onended = () => { _activeSources = Math.max(0, _activeSources - 1); };
   src.start();
 }
 
@@ -205,6 +211,8 @@ const ENEMY_HIT_SOUNDS = ["/audio/enemy_hit1.mp3", "/audio/enemy_hit2.mp3"];
 const ENEMY_HIT_PITCHES = [0.7, 0.8, 0.9, 1.0, 1.1, 1.25, 1.4];
 const THRUSTER_SOUND = "/audio/thruster_hum.mp3";
 const MINING_SOUND = "/audio/mininglaser.mp3";
+const EXPLOSION_SOUNDS = ["/audio/explosion1.mp3", "/audio/explosion2.mp3", "/audio/explosion3.mp3", "/audio/explosion4.mp3"];
+const EXPLOSION_PITCHES = [0.8, 0.9, 1.0, 1.1, 1.2];
 
 function preloadAll(): void {
   for (const url of LASER_SOUNDS) loadAudioFile(url);
@@ -212,6 +220,7 @@ function preloadAll(): void {
   for (const url of ENEMY_HIT_SOUNDS) loadAudioFile(url);
   loadAudioFile(THRUSTER_SOUND);
   loadAudioFile(MINING_SOUND);
+  for (const url of EXPLOSION_SOUNDS) loadAudioFile(url);
 }
 
 // ── PUBLIC SFX ──────────────────────────────────────────────────────────
@@ -264,8 +273,9 @@ export const sfx = {
   },
   explosion(big = false): void {
     if (!throttled(big ? "ex-big" : "ex", big ? 200 : 100)) return;
-    blip({ freq: big ? 600 : 400, freqEnd: 60, dur: big ? 0.35 : 0.18, gain: 0.35, noise: true, release: 0.15 });
-    blip({ freq: big ? 110 : 180, freqEnd: 40, dur: big ? 0.25 : 0.12, type: "sawtooth", gain: 0.20 });
+    const pick = EXPLOSION_SOUNDS[Math.floor(Math.random() * EXPLOSION_SOUNDS.length)];
+    const pitch = EXPLOSION_PITCHES[Math.floor(Math.random() * EXPLOSION_PITCHES.length)];
+    playPooled(pick, big ? 0.5 : 0.35, pitch);
   },
   shieldHit(): void {
     if (!throttled("shield", 60)) return;
