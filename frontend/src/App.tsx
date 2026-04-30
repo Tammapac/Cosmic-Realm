@@ -32,6 +32,9 @@ import {
   onLaserFireFromServer, onRocketFireFromServer, onProjectileSpawnFromServer,
 } from "./game/loop";
 
+let _riftConfirmDungeonId: string | null = null;
+let _riftConfirmSetState: ((id: string | null) => void) | null = null;
+
 function GameCanvas() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const pixiContainerRef = useRef<HTMLDivElement | null>(null);
@@ -143,7 +146,8 @@ function GameCanvas() {
       if (Math.hypot(d.pos.x - wx, d.pos.y - wy) < 50) {
         const playerDist = Math.hypot(d.pos.x - state.player.pos.x, d.pos.y - state.player.pos.y);
         if (playerDist < 120) {
-          enterDungeon(d.id);
+          _riftConfirmDungeonId = d.id;
+          _riftConfirmSetState?.(d.id);
         } else {
           state.cameraTarget = { x: d.pos.x, y: d.pos.y };
           pushNotification(`Fly closer to enter ${d.name}`, "info");
@@ -251,6 +255,32 @@ function Notifications() {
           {n.text}
         </div>
       ))}
+    </div>
+  );
+}
+
+
+function RiftConfirmDialog() {
+  const [dungeonId, setDungeonId] = useState<string | null>(null);
+  useEffect(() => {
+    _riftConfirmSetState = setDungeonId;
+    return () => { _riftConfirmSetState = null; };
+  }, []);
+  if (!dungeonId) return null;
+  const def = DUNGEONS[dungeonId as DungeonId];
+  if (!def) return null;
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+      <div style={{ background: "#111827", border: "2px solid #555", borderRadius: 10, padding: 28, maxWidth: 360, textAlign: "center", boxShadow: "0 0 60px rgba(0,0,0,0.9)" }}>
+        <div style={{ fontSize: 20, fontWeight: "bold", marginBottom: 12, color: def.color }}>{def.name}</div>
+        <div style={{ fontSize: 14, color: "#aaa", marginBottom: 8 }}>SOLO MODE</div>
+        <div style={{ fontSize: 13, color: "#888", marginBottom: 6 }}>{def.waves} waves / {def.enemiesPerWave} enemies per wave</div>
+        <div style={{ fontSize: 13, color: "#ccc", marginBottom: 22 }}>Enter this rift?</div>
+        <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+          <button style={{ padding: "10px 28px", background: "#333", color: "#ccc", border: "1px solid #555", borderRadius: 6, cursor: "pointer", fontSize: 14 }} onClick={() => { setDungeonId(null); _riftConfirmDungeonId = null; }}>Cancel</button>
+          <button style={{ padding: "10px 28px", background: def.color, color: "#000", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 14, fontWeight: "bold" }} onClick={() => { setDungeonId(null); _riftConfirmDungeonId = null; enterDungeon(dungeonId as DungeonId); }}>Enter Rift</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -712,6 +742,7 @@ function GameApp() {
       <WorldTargetHud />
       <MiniMap />
       <Notifications />
+      <RiftConfirmDialog />
       <DungeonHud />
       <QuestTracker />
       <BattleLog />
