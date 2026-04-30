@@ -19,7 +19,7 @@ import { travelToZone, state as gameState } from "./game/store";
 import AuthScreen from "./components/AuthScreen";
 import { hasToken, getPlayer, clearToken } from "./net/api";
 import {
-  connectSocket, disconnectSocket, setSocketListeners, sendInput,
+  connectSocket, disconnectSocket, setSocketListeners, sendInput, sendDockEnter,
   setInstanceCallbacks,
   type ServerEnemy, type ServerAsteroid, type ServerNpc, type ProjectileSpawnEvent,
   type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent,

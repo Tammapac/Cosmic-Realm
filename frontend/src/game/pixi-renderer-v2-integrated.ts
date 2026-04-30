@@ -502,7 +502,7 @@ let playerBody: PIXI.Sprite | null = null;
 let playerNameText: PIXI.Text | null = null;
 let playerBars: PIXI.Graphics | null = null;
 let playerDockedText: PIXI.Text | null = null;
-let playerSubtitleText: PIXI.Text | null = null;
+let playerFactionBadge: PIXI.Container | null = null;
 let lastPlayerShipClass: ShipClassId | null = null;
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -661,7 +661,7 @@ export function destroyPixiRenderer(): void {
   playerNameText = null;
   playerBars = null;
   playerDockedText = null;
-  playerSubtitleText = null;
+  playerFactionBadge = null;
   lastPlayerShipClass = null;
 
   // Destroy effect manager
@@ -1543,6 +1543,23 @@ function syncPlayer(): void {
     playerNameText.anchor.set(0.5, 0);
     playerContainer.addChild(playerNameText);
 
+    playerFactionBadge = new PIXI.Container();
+    const pbCircle = new PIXI.Graphics();
+    pbCircle.name = "circle";
+    playerFactionBadge.addChild(pbCircle);
+    const pbLetter = new PIXI.Text("", {
+      fontFamily: "Arial, sans-serif",
+      fontSize: 8,
+      fill: "#ffffff",
+      fontWeight: "bold",
+    });
+    pbLetter.resolution = 2;
+    pbLetter.anchor.set(0.5);
+    pbLetter.name = "letter";
+    playerFactionBadge.addChild(pbLetter);
+    playerFactionBadge.position.set(0, 30);
+    playerContainer.addChild(playerFactionBadge);
+
     playerDockedText = new PIXI.Text("DOCKED", {
       fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
       fontSize: 11,
@@ -1666,15 +1683,30 @@ function syncPlayer(): void {
   playerBars!.drawRect(0, 4, 28 * shieldPct, 3);
   playerBars!.endFill();
 
-  // Name with faction tag + rank symbol inline
-  const pFaction = p.faction ? FACTIONS[p.faction as keyof typeof FACTIONS] : null;
-  const pFTag = pFaction?.tag ?? "";
+  // Name with rank symbol on right
   const pRank = rankFor(p.honor);
-  const prefix = pFTag ? pFTag + " " : "";
-  const suffix = " " + pRank.symbol;
-  playerNameText!.position.set(0, 30);
-  playerNameText!.text = prefix + p.name + suffix;
+  playerNameText!.text = p.name + " " + pRank.symbol;
   playerNameText!.style.fill = "#e8f0ff";
+  playerNameText!.position.set(0, 30);
+
+  // Faction badge (colored circle with letter) left of name
+  if (playerFactionBadge) {
+    const pFaction = p.faction ? FACTIONS[p.faction as keyof typeof FACTIONS] : null;
+    if (pFaction) {
+      playerFactionBadge.visible = true;
+      const nameW = playerNameText!.width;
+      playerFactionBadge.position.set(-nameW / 2 - 10, 36);
+      const circ = playerFactionBadge.getChildByName("circle") as PIXI.Graphics;
+      circ.clear();
+      circ.beginFill(PIXI.utils.string2hex(pFaction.color));
+      circ.drawCircle(0, 0, 6);
+      circ.endFill();
+      const letter = playerFactionBadge.getChildByName("letter") as PIXI.Text;
+      letter.text = pFaction.tag.charAt(0);
+    } else {
+      playerFactionBadge.visible = false;
+    }
+  }
 
   // DOCKED label
   if (playerDockedText) {
@@ -1730,17 +1762,22 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
       nameText.anchor.set(0.5, 0);
       container.addChild(nameText);
 
-      const subtitleText = new PIXI.Text("", {
-        fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
-        fontSize: 9,
-        fill: "#888",
-        stroke: "#000000",
-        strokeThickness: 1,
+      const badgeContainer = new PIXI.Container();
+      badgeContainer.name = "factionBadge";
+      const badgeCircle = new PIXI.Graphics();
+      badgeCircle.name = "circle";
+      badgeContainer.addChild(badgeCircle);
+      const badgeLetter = new PIXI.Text("", {
+        fontFamily: "Arial, sans-serif",
+        fontSize: 8,
+        fill: "#ffffff",
+        fontWeight: "bold",
       });
-      subtitleText.resolution = 2;
-      subtitleText.anchor.set(0.5, 0);
-      subtitleText.name = "subtitle";
-      container.addChild(subtitleText);
+      badgeLetter.resolution = 2;
+      badgeLetter.anchor.set(0.5);
+      badgeLetter.name = "letter";
+      badgeContainer.addChild(badgeLetter);
+      container.addChild(badgeContainer);
 
       playerLayer.addChild(container);
       data = { container, body, nameText, bars };
@@ -1769,19 +1806,30 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
     data.bars.drawRect(0, 0, 28 * hullPct, 3);
     data.bars.endFill();
 
-    // Name with faction tag + rank symbol inline
-    const oFTag = o.faction ? FACTIONS[o.faction as keyof typeof FACTIONS]?.tag ?? "" : "";
+    // Name with rank symbol on right, white
     const oRank = rankFor(o.honor);
-    const oPrefix = oFTag ? oFTag + " " : "";
-    const oSuffix = " " + oRank.symbol;
     data.nameText.style.fill = "#e8f0ff";
-    data.nameText.text = oPrefix + o.name + oSuffix;
+    data.nameText.text = o.name + " " + oRank.symbol;
     data.nameText.position.set(0, 24);
 
-    // Hide subtitle (now inline)
-    const subtitle = data.container.getChildByName("subtitle") as PIXI.Text;
-    if (subtitle) {
-      subtitle.text = "";
+    // Faction badge (colored circle with letter) left of name
+    const badge = data.container.getChildByName("factionBadge") as PIXI.Container;
+    if (badge) {
+      const oFaction = o.faction ? FACTIONS[o.faction as keyof typeof FACTIONS] : null;
+      if (oFaction) {
+        badge.visible = true;
+        const nw = data.nameText.width;
+        badge.position.set(-nw / 2 - 10, 30);
+        const bCirc = badge.getChildByName("circle") as PIXI.Graphics;
+        bCirc.clear();
+        bCirc.beginFill(PIXI.utils.string2hex(oFaction.color));
+        bCirc.drawCircle(0, 0, 6);
+        bCirc.endFill();
+        const bLetter = badge.getChildByName("letter") as PIXI.Text;
+        bLetter.text = oFaction.tag.charAt(0);
+      } else {
+        badge.visible = false;
+      }
     }
 
     // Animate body glow with faction color
