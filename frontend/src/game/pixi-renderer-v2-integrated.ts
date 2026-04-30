@@ -27,6 +27,11 @@ import {
 import { DEBUG_OVERLAY } from "./renderer-config";
 import { EffectManager } from "./pixi-effect-manager";
 import {
+  ShipVisualState, createShipVisual, updateShipVisual,
+  triggerDamageFlash, triggerMuzzleFlash, updateMuzzleDecay, updateShipTexture,
+} from "./ship-visual-renderer";
+import { getShipVisualConfig as getShipVisualConfigFn } from "./ship-visual-config";
+import {
   createPortalVisual, updatePortalAnimation,
   createStationVisual, updateStationAnimation,
   createAsteroidTexture,
@@ -644,6 +649,7 @@ let playerBars: PIXI.Graphics | null = null;
 let playerDockedText: PIXI.Text | null = null;
 let playerFactionBadge: PIXI.Container | null = null;
 let lastPlayerShipClass: ShipClassId | null = null;
+let playerVisual: ShipVisualState | null = null;
 
 // ══════════════════════════════════════════════════════════════════════════
 // BACKGROUND
@@ -799,6 +805,7 @@ export function destroyPixiRenderer(): void {
   npcSprites.clear();
   playerContainer = null;
   playerBody = null;
+  playerVisual = null;
   playerNameText = null;
   playerBars = null;
   playerDockedText = null;
@@ -828,6 +835,13 @@ export function destroyPixiRenderer(): void {
 
   app.destroy(true, { children: true });
   app = null;
+}
+
+export function triggerPlayerDamageFlash(isShield: boolean): void {
+  if (playerVisual) triggerDamageFlash(playerVisual, isShield);
+}
+export function triggerPlayerMuzzleFlash(): void {
+  if (playerVisual) triggerMuzzleFlash(playerVisual);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1655,18 +1669,15 @@ function syncPlayer(): void {
   if (!playerContainer) {
     playerContainer = new PIXI.Container();
 
-    // Ship body glow underlay
-    const bodyGlow = new PIXI.Sprite(getGlowTex(18));
-    bodyGlow.anchor.set(0.5);
-    bodyGlow.blendMode = PIXI.BLEND_MODES.ADD;
-    bodyGlow.tint = 0x4ee2ff;
-    bodyGlow.alpha = 0.1;
-    bodyGlow.name = "bodyGlow";
-    playerContainer.addChild(bodyGlow);
+    const shipTex = getShipTex(p.shipClass, 1);
+    playerVisual = createShipVisual(shipTex, p.shipClass);
+    playerContainer.addChild(playerVisual.container);
+    playerBody = playerVisual.baseSprite;
 
-    playerBody = new PIXI.Sprite(getShipTex(p.shipClass, 1));
-    playerBody.anchor.set(0.5);
-    playerContainer.addChild(playerBody);
+    // Hitbox silhouette
+    const hitboxRing = new PIXI.Graphics();
+    hitboxRing.name = "hitboxRing";
+    playerContainer.addChildAt(hitboxRing, 0);
 
     playerBars = new PIXI.Graphics();
     playerContainer.addChild(playerBars);
@@ -1721,102 +1732,51 @@ function syncPlayer(): void {
 
   // Update ship texture if class changed
   if (lastPlayerShipClass !== p.shipClass) {
-    playerBody!.texture = getShipTex(p.shipClass, 1);
+    const newTex = getShipTex(p.shipClass, 1);
+    if (playerVisual) {
+      updateShipTexture(playerVisual, newTex);
+      playerVisual.shipClass = p.shipClass;
+      playerVisual.config = getShipVisualConfigFn(p.shipClass);
+    }
     lastPlayerShipClass = p.shipClass;
   }
 
   playerContainer.visible = true;
 
-  // Animate body glow
-  const bodyGlow = playerContainer.getChildByName("bodyGlow") as PIXI.Sprite;
-  if (bodyGlow) {
-    bodyGlow.alpha = 0.08 + 0.04 * Math.sin(state.tick * 2);
+  // Update visual layers
+  const speed = Math.sqrt(p.vel.x * p.vel.x + p.vel.y * p.vel.y);
+  const es = effectiveStats();
+  if (playerVisual) {
+    updateShipVisual(
+      playerVisual,
+      getShipTex(p.shipClass, 1),
+      p.angle + Math.PI / 2,
+      p.vel.x, p.vel.y, speed,
+      state.tick, 1 / 60,
+      p.shield, es.shieldMax,
+    );
+    updateMuzzleDecay(playerVisual, 1 / 60);
   }
-
-  // Shield ring
-  if (p.shield > 0) {
-    if (!playerContainer.getChildByName("shieldRing")) {
-      const ring = new PIXI.Graphics();
-      ring.name = "shieldRing";
-      playerContainer.addChildAt(ring, 0);
-    }
-    const ring = playerContainer.getChildByName("shieldRing") as PIXI.Graphics;
-    ring.clear();
-    const shieldAlpha = 0.3 + 0.3 * Math.sin(state.tick * 4);
-    // Outer shimmer
-    ring.lineStyle(1, 0x4ee2ff, shieldAlpha * 0.3);
-    ring.drawCircle(0, 0, 26 + Math.sin(state.tick * 3) * 1);
-    // Main shield ring
-    ring.lineStyle(2, 0x4ee2ff, shieldAlpha);
-    ring.drawCircle(0, 0, 22);
-    // Inner energy fill
-    ring.beginFill(0x4ee2ff, shieldAlpha * 0.05);
-    ring.drawCircle(0, 0, 22);
-    ring.endFill();
-    // Energy nodes (4 points on the ring)
-    for (let i = 0; i < 4; i++) {
-      const na = state.tick * 1.5 + (i / 4) * Math.PI * 2;
-      const nx = Math.cos(na) * 22;
-      const ny = Math.sin(na) * 22;
-      ring.beginFill(0xffffff, shieldAlpha * 0.6);
-      ring.drawCircle(nx, ny, 1.5);
-      ring.endFill();
-    }
-    ring.visible = true;
-  } else {
-    const ring = playerContainer.getChildByName("shieldRing") as PIXI.Graphics;
-    if (ring) ring.visible = false;
-  }
-  playerContainer.position.set(p.pos.x, p.pos.y);
-  playerBody!.rotation = p.angle + Math.PI / 2;
 
   // Hitbox silhouette
-  let hitboxRing = playerContainer.getChildByName("hitboxRing") as PIXI.Graphics;
-  if (!hitboxRing) {
-    hitboxRing = new PIXI.Graphics();
-    hitboxRing.name = "hitboxRing";
-    playerContainer.addChildAt(hitboxRing, 0);
+  const hitboxRing = playerContainer.getChildByName("hitboxRing") as PIXI.Graphics;
+  if (hitboxRing) {
+    const hitR = 12 * (SHIP_SIZE_SCALE[p.shipClass] ?? 1);
+    hitboxRing.clear();
+    hitboxRing.lineStyle(1, 0x4ee2ff, 0.15);
+    hitboxRing.drawCircle(0, 0, hitR);
   }
-  const hitR = 12 * (SHIP_SIZE_SCALE[p.shipClass] ?? 1);
-  hitboxRing.clear();
-  hitboxRing.lineStyle(1, 0x4ee2ff, 0.15);
-  hitboxRing.drawCircle(0, 0, hitR);
 
-  // Engine glow behind ship (animated thruster core)
-  let engineGlow = playerContainer.getChildByName("engineGlow") as PIXI.Graphics;
-  if (!engineGlow) {
-    engineGlow = new PIXI.Graphics();
-    engineGlow.name = "engineGlow";
-    playerContainer.addChildAt(engineGlow, 0);
-  }
-  engineGlow.clear();
-  engineGlow.blendMode = PIXI.BLEND_MODES.ADD;
-  const speed = Math.sqrt(p.vel.x * p.vel.x + p.vel.y * p.vel.y);
-  const thrustIntensity = Math.min(1, speed / 3);
-  if (thrustIntensity > 0.05) {
-    const flicker = 0.7 + 0.3 * Math.sin(state.tick * 25);
-    const coreAlpha = thrustIntensity * flicker * 0.7;
-    const ex = Math.cos(p.angle + Math.PI) * 14;
-    const ey = Math.sin(p.angle + Math.PI) * 14;
-    // Soft outer glow (subtle)
-    engineGlow.beginFill(0x4ee2ff, coreAlpha * 0.12);
-    engineGlow.drawCircle(ex, ey, 6 + thrustIntensity * 3);
-    engineGlow.endFill();
-    // Hot white core (tiny)
-    engineGlow.beginFill(0xffffff, coreAlpha * 0.5);
-    engineGlow.drawCircle(ex, ey, 1.5 + thrustIntensity * 1);
-    engineGlow.endFill();
+  playerContainer.position.set(p.pos.x, p.pos.y);
 
-    // EffectManager thruster trail particles (scaled by ship class)
-    if (effectManager) {
-      const cls = SHIP_CLASSES[p.shipClass];
-      const trailScale = cls ? Math.max(0.5, Math.min(1.2, cls.hullMax / 200)) : 1;
-      effectManager.spawnThrusterTrail(p.pos.x, p.pos.y, p.angle, speed, 0x4ee2ff, 1, trailScale);
-    }
+  // EffectManager thruster trail particles
+  if (speed > 0.5 && effectManager) {
+    const cls = SHIP_CLASSES[p.shipClass];
+    const trailScale = cls ? Math.max(0.5, Math.min(1.2, cls.hullMax / 200)) : 1;
+    effectManager.spawnThrusterTrail(p.pos.x, p.pos.y, p.angle, speed, 0x4ee2ff, 1, trailScale);
   }
 
   // Hull/Shield bars
-  const es = effectiveStats();
   const hullPct = Math.max(0, p.hull / es.hullMax);
   const shieldPct = Math.max(0, p.shield / es.shieldMax);
   playerBars!.clear();
