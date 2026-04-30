@@ -35,11 +35,6 @@ const FACTORY_TABS: { id: HangarTab; label: string; glyph: string }[] = [
 export function Hangar({ stationId }: { stationId: string }) {
   const tab = useGame((s) => s.hangarTab);
   const station = STATIONS.find((s) => s.id === stationId);
-  const [riftConfirm, setRiftConfirm] = useState<string | null>(null);
-  useEffect(() => {
-    _riftConfirmBump = () => { setRiftConfirm(_pendingRiftConfirm); };
-    return () => { _riftConfirmBump = null; };
-  }, []);
   if (!station) return null;
 
   return (
@@ -100,22 +95,7 @@ export function Hangar({ stationId }: { stationId: string }) {
           {tab === "repair" && <RepairTab stationId={stationId} />}
         </div>
       </div>
-      {riftConfirm && (() => {
-        const cd = DUNGEONS[riftConfirm as DungeonId];
-        return (
-          <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, borderRadius: 8 }}>
-            <div style={{ background: "#1a1a2e", border: "2px solid #666", borderRadius: 10, padding: 24, maxWidth: 340, textAlign: "center", boxShadow: "0 0 40px rgba(0,0,0,0.8)" }}>
-              <div style={{ fontSize: 18, fontWeight: "bold", marginBottom: 10, color: cd?.color || "#fff" }}>Enter {cd?.name}?</div>
-              <div style={{ fontSize: 14, color: "#aaa", marginBottom: 14 }}>SOLO MODE</div>
-              <div style={{ fontSize: 13, color: "#ccc", marginBottom: 20 }}>Teleport to the rift instance?</div>
-              <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-                <button style={{ padding: "8px 24px", background: "#333", color: "#fff", border: "1px solid #555", borderRadius: 6, cursor: "pointer", fontSize: 14 }} onClick={() => { setRiftConfirm(null); _pendingRiftConfirm = null; }}>Cancel</button>
-                <button style={{ padding: "8px 24px", background: "#4a6cf7", color: "#fff", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 14, fontWeight: "bold" }} onClick={() => { setRiftConfirm(null); _pendingRiftConfirm = null; state.dockedAt = null; enterDungeon(riftConfirm as DungeonId); }}>Enter Rift</button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+
     </div>
   );
 }
@@ -734,6 +714,7 @@ function fmtClearTime(ms: number): string {
 function DungeonsTab() {
   const player = useGame((s) => s.player);
   const dungeon = useGame((s) => s.dungeon);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
 
   const featuredId = getDailyFeaturedDungeon();
   // Featured dungeon first, rest in original order
@@ -824,16 +805,21 @@ function DungeonsTab() {
                   <div className="text-[12px] text-amber">⏱ {fmtClearTime(bestMs)}</div>
                 )}
               </div>
-              <button
-                className="btn btn-primary w-full mt-2"
-                style={{ padding: "3px 6px", fontSize: 13, ...(isFeatured && !locked && !dungeon ? { background: "#ffd24a", color: "#000" } : {}) }}
-                disabled={locked || !!dungeon}
-                onClick={() => {
-                  _pendingRiftConfirm = d.id; _riftConfirmBump?.();
-                }}
-              >
-                {locked ? `Locked · Lv ${d.unlockLevel}` : dungeon ? "In a dungeon" : isFeatured ? "⭐ Launch Featured Run" : "Launch run"}
-              </button>
+              {confirmId === d.id ? (
+                <div className="mt-2" style={{ display: "flex", gap: 6 }}>
+                  <button className="btn w-full" style={{ padding: "4px 8px", fontSize: 12, background: "#333", color: "#ccc", border: "1px solid #555" }} onClick={() => setConfirmId(null)}>Cancel</button>
+                  <button className="btn btn-primary w-full" style={{ padding: "4px 8px", fontSize: 12, background: "#4a6cf7" }} onClick={() => { setConfirmId(null); state.dockedAt = null; enterDungeon(d.id as DungeonId); }}>Confirm Entry</button>
+                </div>
+              ) : (
+                <button
+                  className="btn btn-primary w-full mt-2"
+                  style={{ padding: "3px 6px", fontSize: 13, ...(isFeatured && !locked && !dungeon ? { background: "#ffd24a", color: "#000" } : {}) }}
+                  disabled={locked || !!dungeon}
+                  onClick={() => setConfirmId(d.id)}
+                >
+                  {locked ? `Locked \u00b7 Lv ${d.unlockLevel}` : dungeon ? "In a dungeon" : isFeatured ? "\u2b50 Launch Featured Run" : "Launch run"}
+                </button>
+              )}
             </div>
           );
         })}
