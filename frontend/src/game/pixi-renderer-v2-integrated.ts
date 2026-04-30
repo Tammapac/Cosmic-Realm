@@ -195,28 +195,38 @@ function getShipTex(shipClass: ShipClassId, scale: number): PIXI.Texture {
     ctx.save();
     ctx.globalCompositeOperation = "source-atop";
 
-    // Top highlight (screen blend via lighter)
+    // Top-left highlight - strong directional light
     const hlGrad = ctx.createLinearGradient(dx, dy, dx + drawW, dy + drawH);
-    hlGrad.addColorStop(0, "rgba(200,220,255,0.18)");
-    hlGrad.addColorStop(0.4, "rgba(200,220,255,0.04)");
+    hlGrad.addColorStop(0, "rgba(220,235,255,0.45)");
+    hlGrad.addColorStop(0.25, "rgba(180,210,255,0.2)");
+    hlGrad.addColorStop(0.5, "rgba(100,140,200,0.0)");
     hlGrad.addColorStop(1, "rgba(0,0,0,0)");
     ctx.fillStyle = hlGrad;
     ctx.fillRect(dx, dy, drawW, drawH);
 
-    // Bottom-right shadow
+    // Bottom-right shadow - deep space shadow
     const shGrad = ctx.createLinearGradient(dx, dy, dx + drawW, dy + drawH);
     shGrad.addColorStop(0, "rgba(0,0,0,0)");
-    shGrad.addColorStop(0.6, "rgba(0,0,0,0.05)");
-    shGrad.addColorStop(1, "rgba(0,0,20,0.22)");
+    shGrad.addColorStop(0.45, "rgba(0,0,10,0.08)");
+    shGrad.addColorStop(0.7, "rgba(0,0,20,0.25)");
+    shGrad.addColorStop(1, "rgba(0,0,30,0.45)");
     ctx.fillStyle = shGrad;
     ctx.fillRect(dx, dy, drawW, drawH);
 
-    // Rim light (top edge highlight)
-    const rimGrad = ctx.createLinearGradient(dx, dy, dx, dy + drawH * 0.15);
-    rimGrad.addColorStop(0, "rgba(180,210,255,0.15)");
+    // Rim light (top edge specular highlight)
+    const rimGrad = ctx.createLinearGradient(dx, dy, dx, dy + drawH * 0.2);
+    rimGrad.addColorStop(0, "rgba(200,230,255,0.35)");
+    rimGrad.addColorStop(0.5, "rgba(150,190,255,0.1)");
     rimGrad.addColorStop(1, "rgba(0,0,0,0)");
     ctx.fillStyle = rimGrad;
-    ctx.fillRect(dx, dy, drawW, drawH * 0.15);
+    ctx.fillRect(dx, dy, drawW, drawH * 0.2);
+
+    // Left edge specular
+    const leftGrad = ctx.createLinearGradient(dx, dy, dx + drawW * 0.15, dy);
+    leftGrad.addColorStop(0, "rgba(180,210,255,0.2)");
+    leftGrad.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = leftGrad;
+    ctx.fillRect(dx, dy, drawW * 0.15, drawH);
 
     ctx.restore();
 
@@ -1759,6 +1769,18 @@ function syncPlayer(): void {
   }
   playerContainer.position.set(p.pos.x, p.pos.y);
   playerBody!.rotation = p.angle + Math.PI / 2;
+
+  // Hitbox silhouette
+  let hitboxRing = playerContainer.getChildByName("hitboxRing") as PIXI.Graphics;
+  if (!hitboxRing) {
+    hitboxRing = new PIXI.Graphics();
+    hitboxRing.name = "hitboxRing";
+    playerContainer.addChildAt(hitboxRing, 0);
+  }
+  const hitR = 12 * (SHIP_SIZE_SCALE[p.shipClass] ?? 1);
+  hitboxRing.clear();
+  hitboxRing.lineStyle(1, 0x4ee2ff, 0.15);
+  hitboxRing.drawCircle(0, 0, hitR);
 
   // Engine glow behind ship (animated thruster core)
   let engineGlow = playerContainer.getChildByName("engineGlow") as PIXI.Graphics;

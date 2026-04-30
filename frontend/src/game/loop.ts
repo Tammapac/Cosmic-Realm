@@ -11,7 +11,7 @@ import {
   MAP_RADIUS, NpcShip, PORTALS, ROCKET_AMMO_TYPE_DEFS, ROCKET_MISSILE_TYPE_DEFS, WeaponKind,
   SHIP_CLASSES, STATIONS, ZONES, ZoneId,
   rankFor,
-RESOURCES, pickAsteroidYield, SHIP_SIZE_SCALE, } from "./types";
+RESOURCES, pickAsteroidYield, SHIP_SIZE_SCALE, SHIP_WEAPON_MOUNTS, } from "./types";
 import { sfx } from "./sound";
 import { type ServerEnemy, type ServerAsteroid, type ServerNpc, type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent, type DeltaPayload, type SnapshotPayload, type WelcomePayload, type DeltaEntity, type LaserFireEvent, type RocketFireEvent, type ProjectileSpawnEvent } from "../net/socket";
 import { sendInstanceEnemyHit } from "../net/socket";
@@ -1613,6 +1613,9 @@ function tickWorld(dt: number): void {
       }
       const perpAng = ang + Math.PI / 2;
       const shipScale = SHIP_SIZE_SCALE[p.shipClass] ?? 1;
+      const gunMount = SHIP_WEAPON_MOUNTS[p.shipClass] ?? { spread: 14, forward: 8 };
+      const gunSpread = gunMount.spread;
+      const gunFwd = gunMount.forward;
 
       // Fire lasers on laser cooldown (uses laser ammo) - only when laser firing is active
       const laserAmmo = p.ammo[laserAmmoType] ?? 0;
@@ -1631,8 +1634,8 @@ function tickWorld(dt: number): void {
         if (pattern === "sniper") {
           // Single powerful beam from center
           const dmg = Math.round(laserDmg);
-          const ox = p.pos.x + Math.cos(ang) * 14 * shipScale;
-          const oy = p.pos.y + Math.sin(ang) * 14 * shipScale;
+          const ox = p.pos.x + Math.cos(ang) * gunFwd;
+          const oy = p.pos.y + Math.sin(ang) * gunFwd;
           fireProjectile("player", ox, oy, ang, dmg, laserColor, 6, {
             weaponKind: "laser", speedMul: 3.2,
           });
@@ -1648,14 +1651,14 @@ function tickWorld(dt: number): void {
           for (let si = 0; si < pellets; si++) {
             const spreadAng = ang + (si - 1) * spread;
             const side = si === 0 ? -1 : si === 2 ? 1 : 0;
-            const ox = p.pos.x + Math.cos(perpAng) * 14 * shipScale * side;
-            const oy = p.pos.y + Math.sin(perpAng) * 14 * shipScale * side;
+            const ox = p.pos.x + Math.cos(ang) * gunFwd + Math.cos(perpAng) * gunSpread * side;
+            const oy = p.pos.y + Math.sin(ang) * gunFwd + Math.sin(perpAng) * gunSpread * side;
             fireProjectile("player", ox, oy, spreadAng, perPellet, laserColor, 4, {
               weaponKind: "laser", speedMul: 1.8,
             });
           }
-          const cx = p.pos.x + Math.cos(ang) * 12 * shipScale;
-          const cy = p.pos.y + Math.sin(ang) * 12 * shipScale;
+          const cx = p.pos.x + Math.cos(ang) * gunFwd;
+          const cy = p.pos.y + Math.sin(ang) * gunFwd;
           state.particles.push({ id: `mf-${Math.random().toString(36).slice(2, 8)}`, pos: { x: cx, y: cy }, vel: { x: 0, y: 0 }, ttl: 0.15, maxTtl: 0.15, color: laserColor, size: 80, kind: "flash" });
           emitSpark(cx, cy, laserColor, 8, 100, 2);
           emitSpark(cx, cy, "#ffffff", 4, 70, 2);
@@ -1664,8 +1667,8 @@ function tickWorld(dt: number): void {
           const perBurst = Math.round(laserDmg * 1.3 / 3);
           for (let bi = 0; bi < 3; bi++) {
             const side = bi === 0 ? -1 : bi === 1 ? 1 : 0;
-            const ox = p.pos.x + Math.cos(perpAng) * 14 * shipScale * side;
-            const oy = p.pos.y + Math.sin(perpAng) * 14 * shipScale * side;
+            const ox = p.pos.x + Math.cos(ang) * gunFwd + Math.cos(perpAng) * gunSpread * side;
+            const oy = p.pos.y + Math.sin(ang) * gunFwd + Math.sin(perpAng) * gunSpread * side;
             const burstAng = ang + (Math.random() - 0.5) * 0.04;
             fireProjectile("player", ox, oy, burstAng, perBurst, laserColor, 4, {
               weaponKind: "laser", speedMul: 2.5,
@@ -1679,8 +1682,8 @@ function tickWorld(dt: number): void {
           const perShot = Math.round(laserDmg / 2);
           for (let si = 0; si < 2; si++) {
             const side = si === 0 ? -1 : 1;
-            const ox = p.pos.x + Math.cos(perpAng) * 18 * shipScale * side;
-            const oy = p.pos.y + Math.sin(perpAng) * 18 * shipScale * side;
+            const ox = p.pos.x + Math.cos(ang) * gunFwd + Math.cos(perpAng) * gunSpread * side;
+            const oy = p.pos.y + Math.sin(ang) * gunFwd + Math.sin(perpAng) * gunSpread * side;
             fireProjectile("player", ox, oy, ang - side * 0.03, perShot, laserColor, 4, {
               weaponKind: "laser", speedMul: 2.14,
             });

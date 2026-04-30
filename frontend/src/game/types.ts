@@ -1033,6 +1033,24 @@ export const SHIP_SIZE_SCALE: Record<ShipClassId, number> = {
   colossus: 1.6, harbinger: 1.5, eclipse: 1.7, sovereign: 1.85, apex: 2.0,
 };
 
+export const SHIP_WEAPON_MOUNTS: Record<ShipClassId, { spread: number; forward: number }> = {
+  skimmer: { spread: 12, forward: 8 },
+  wasp: { spread: 10, forward: 10 },
+  vanguard: { spread: 14, forward: 12 },
+  reaver: { spread: 16, forward: 6 },
+  obsidian: { spread: 14, forward: 8 },
+  marauder: { spread: 18, forward: 8 },
+  phalanx: { spread: 20, forward: 10 },
+  titan: { spread: 22, forward: 6 },
+  leviathan: { spread: 24, forward: 8 },
+  specter: { spread: 20, forward: 12 },
+  colossus: { spread: 26, forward: 10 },
+  harbinger: { spread: 24, forward: 14 },
+  eclipse: { spread: 28, forward: 8 },
+  sovereign: { spread: 30, forward: 10 },
+  apex: { spread: 34, forward: 12 },
+};
+
 export const EXP_FOR_LEVEL = (level: number) => 100 * level * level;
 
 export const ENEMY_DEFS: Record<
