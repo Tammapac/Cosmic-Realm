@@ -14,6 +14,7 @@ import {
 RESOURCES, pickAsteroidYield, } from "./types";
 import { sfx } from "./sound";
 import { type ServerEnemy, type ServerAsteroid, type ServerNpc, type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent, type DeltaPayload, type SnapshotPayload, type WelcomePayload, type DeltaEntity, type LaserFireEvent, type RocketFireEvent, type ProjectileSpawnEvent } from "../net/socket";
+import { sendInstanceEnemyHit } from "../net/socket";
 import { MOVEMENT, NETCODE } from "../../../lib/game-constants";
 
 // Returns the equipped weapon's color (used for laser projectiles)
@@ -742,7 +743,7 @@ function checkMilestoneTier(kind: typeof MILESTONE_KEYS[number], previous: numbe
   }
 }
 
-function applyKill(e: Enemy, killerCrit: boolean): void {
+export function applyKill(e: Enemy, killerCrit: boolean): void {
   const stats = effectiveStats();
   emitDeath(e.pos.x, e.pos.y, e.color, !!e.isBoss);
   if (e.isBoss) {
@@ -2019,8 +2020,10 @@ function tickWorld(dt: number): void {
           e.combo = { stacks, ttl: 3 };
           const comboMul = 1 + (stacks - 1) * 0.10;
           const dmg = pr.damage * comboMul;
-          if (!serverEnemiesReceived || state.dungeon) {
+          if (!serverEnemiesReceived) {
             e.hull -= dmg;
+          } else if (state.dungeon) {
+            sendInstanceEnemyHit(e.id, dmg, !!pr.crit);
           }
           e.hitFlash = 1;
           e.aggro = true;
@@ -2134,13 +2137,17 @@ function tickWorld(dt: number): void {
             for (const e2 of state.enemies) {
               if (e2.id === e.id) continue;
               if (distance(e.pos.x, e.pos.y, e2.pos.x, e2.pos.y) < pr.aoeRadius * 3) {
-                if (!serverEnemiesReceived || state.dungeon) e2.hull -= dmg * 0.4;
+                if (!serverEnemiesReceived) {
+                  e2.hull -= dmg * 0.4;
+                } else if (state.dungeon) {
+                  sendInstanceEnemyHit(e2.id, dmg * 0.4, false);
+                }
                 e2.hitFlash = 1;
               }
             }
             emitRing(pr.pos.x, pr.pos.y, "#ffaa44");
           }
-          if ((!serverEnemiesReceived || state.dungeon) && e.hull <= 0) applyKill(e, !!pr.crit);
+          if (!serverEnemiesReceived && e.hull <= 0) applyKill(e, !!pr.crit);
           return false;
         }
       }
@@ -2903,7 +2910,7 @@ function setSelfTarget(x: number, y: number, vx: number, vy: number): void {
   _selfTarget.vy = vy;
 }
 
-function setEntityTarget(id: string, x: number, y: number, vx: number, vy: number): void {
+export function setEntityTarget(id: string, x: number, y: number, vx: number, vy: number): void {
   const cur = _entityTargets.get(id);
   if (cur) { cur.x = x; cur.y = y; cur.vx = vx; cur.vy = vy; }
   else _entityTargets.set(id, { x, y, vx, vy });

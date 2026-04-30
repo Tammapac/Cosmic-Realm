@@ -52,7 +52,7 @@ import {
   MISSION_BOARD_POOL, MissionCategory,
 } from "./types";
 import { sfx } from "./sound";
-import { sendWarp, sendStatsUpdate, sendDockRepair, sendDockLeave } from "../net/socket";
+import { sendWarp, sendStatsUpdate, sendDockRepair, sendDockLeave, sendInstanceEnter, sendInstanceLeave } from "../net/socket";
 
 export type HangarTab =
   | "bounties" | "loadout" | "ships" | "drones" | "market" | "ammo" | "cargo" | "repair" | "skills" | "missions" | "dungeons" | "refinery";
@@ -489,6 +489,7 @@ export const state: GameState = {
   bossSpawnTimer: 240, // first boss event ~4 minutes in
   pendingIdleReward,
   dungeon: null,
+  instanceReturnPos: null,
   lastHitTick: 0,
   repairBotUntil: 0,
   afterburnUntil: 0,
@@ -1357,17 +1358,21 @@ export function enterDungeon(id: DungeonId): void {
   if (state.player.level < def.unlockLevel) {
     pushNotification(`Requires Lv ${def.unlockLevel}`, "bad"); return;
   }
-  // Travel to dungeon zone if needed
-  if (state.player.zone !== def.zone) travelToZone(def.zone);
+  // Save return position
+  state.instanceReturnPos = { zone: state.player.zone, x: state.player.pos.x, y: state.player.pos.y };
+  // Send to server
+  sendInstanceEnter(id);
   state.dungeon = {
     id, wave: 1, totalWaves: def.waves,
     enemiesLeft: def.enemiesPerWave, spawnedThisWave: false,
     startedAt: Date.now(),
     isFeatured: id === getDailyFeaturedDungeon(),
   };
-  // Clear ambient enemies for a clean instance feel
+  // Clear ambient enemies and move to instance center
   state.enemies = [];
   state.projectiles = [];
+  state.player.pos.x = 0;
+  state.player.pos.y = 0;
   pushEvent({ title: `▼ ${def.name.toUpperCase()}`, body: `Wave 1 / ${def.waves} incoming.`, ttl: 5, kind: "info", color: def.color });
   pushNotification(`Entered ${def.name}`, "good");
   state.dockedAt = null;
@@ -1436,6 +1441,14 @@ export function abandonDungeon(): void {
   if (!state.dungeon) return;
   state.dungeon = null;
   state.enemies = [];
+  state.projectiles = [];
+  sendInstanceLeave();
+  // Return to saved position
+  if (state.instanceReturnPos) {
+    state.player.pos.x = state.instanceReturnPos.x;
+    state.player.pos.y = state.instanceReturnPos.y;
+    state.instanceReturnPos = null;
+  }
   pushNotification("Abandoned dungeon", "bad");
   bump();
 }

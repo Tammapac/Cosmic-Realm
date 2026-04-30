@@ -2,6 +2,13 @@ import { io, Socket } from "socket.io-client";
 
 let socket: Socket | null = null;
 
+let onInstanceJoined: ((data: any) => void) | null = null;
+let onInstanceLeft: ((data: any) => void) | null = null;
+let onInstanceState: ((data: any) => void) | null = null;
+let onInstanceEvent: ((data: any) => void) | null = null;
+let onInstanceComplete: ((data: any) => void) | null = null;
+let onInstanceEnemyHitAck: ((data: any) => void) | null = null;
+
 // ── TYPES ────────────────────────────────────────────────────────────────
 
 export type RemotePlayer = {
@@ -344,6 +351,31 @@ export function connectSocket(token: string) {
     listeners.onBossWarn?.();
   });
 
+
+  socket.on("instance:joined", (data: any) => {
+    onInstanceJoined?.(data);
+  });
+
+  socket.on("instance:left", (data: any) => {
+    onInstanceLeft?.(data);
+  });
+
+  socket.on("instance:state", (data: any) => {
+    onInstanceState?.(data);
+  });
+
+  socket.on("instance:event", (data: any) => {
+    onInstanceEvent?.(data);
+  });
+
+  socket.on("instance:complete", (data: any) => {
+    onInstanceComplete?.(data);
+  });
+
+  socket.on("instance:enemy-hit-ack", (data: any) => {
+    onInstanceEnemyHitAck?.(data);
+  });
+
   socket.on("npc:spawn", (npc: ServerNpc) => {
     listeners.onNpcSpawn?.(npc);
   });
@@ -447,6 +479,34 @@ export function sendDockLeave() {
 
 export function sendDockRepair(hull: number, shield: number) {
   socket?.emit("dock:repair", { hull, shield });
+}
+
+export function sendInstanceEnter(dungeonId: string) {
+  socket?.emit("instance:enter", { dungeonId });
+}
+
+export function sendInstanceLeave() {
+  socket?.emit("instance:leave");
+}
+
+export function sendInstanceEnemyHit(enemyId: string, damage: number, crit: boolean) {
+  socket?.emit("instance:enemy-hit", { enemyId, damage, crit });
+}
+
+export function setInstanceCallbacks(cbs: {
+  onJoined?: (data: any) => void;
+  onLeft?: (data: any) => void;
+  onState?: (data: any) => void;
+  onEvent?: (data: any) => void;
+  onComplete?: (data: any) => void;
+  onEnemyHitAck?: (data: any) => void;
+}) {
+  onInstanceJoined = cbs.onJoined ?? null;
+  onInstanceLeft = cbs.onLeft ?? null;
+  onInstanceState = cbs.onState ?? null;
+  onInstanceEvent = cbs.onEvent ?? null;
+  onInstanceComplete = cbs.onComplete ?? null;
+  onInstanceEnemyHitAck = cbs.onEnemyHitAck ?? null;
 }
 
 export function isConnected(): boolean {

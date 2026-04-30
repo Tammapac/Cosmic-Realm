@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { state, bump, useGame, save, pushNotification, pushChat, abandonDungeon, useConsumable, runDockingServices, loadServerPlayer, collectCargoBox, enterDungeon, stationPrice } from "./game/store";
-import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats, hasRocketWeapon } from "./game/loop";
+import { state, bump, useGame, save, pushNotification, pushChat, abandonDungeon, useConsumable, runDockingServices, loadServerPlayer, collectCargoBox, enterDungeon, stationPrice, completeDungeon } from "./game/store";
+import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats, hasRocketWeapon, setEntityTarget, applyKill } from "./game/loop";
 import { render } from "./game/render";
 import { initPixiRenderer, destroyPixiRenderer, pixiRender } from "./game/pixi-renderer-v2-integrated";
 import { activeRenderer } from "./game/renderer-config";
@@ -20,6 +20,7 @@ import AuthScreen from "./components/AuthScreen";
 import { hasToken, getPlayer, clearToken } from "./net/api";
 import {
   connectSocket, disconnectSocket, setSocketListeners, sendInput,
+  setInstanceCallbacks,
   type ServerEnemy, type ServerAsteroid, type ServerNpc, type ProjectileSpawnEvent,
   type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent,
 } from "./net/socket";
@@ -552,6 +553,58 @@ function GameApp() {
       onRocketFire: (event) => onRocketFireFromServer(event),
     });
     return () => setSocketListeners({});
+  }, []);
+
+  useEffect(() => {
+    setInstanceCallbacks({
+      onState: (data: any) => {
+        if (!state.dungeon) return;
+        const { enemies: serverEnemies } = data;
+        if (!serverEnemies) return;
+        for (const se of serverEnemies) {
+          const existing = state.enemies.find(e => e.id === se.id);
+          if (existing) {
+            setEntityTarget(existing, se.x, se.y);
+            existing.hull = se.hp;
+            existing.hullMax = se.hpMax;
+          } else {
+            state.enemies.push({
+              id: se.id, type: se.type, pos: { x: se.x, y: se.y },
+              hull: se.hp, hullMax: se.hpMax, size: 20,
+              angle: 0, color: "#ff4444",
+              vel: { x: 0, y: 0 }, aggro: false, hitFlash: 0,
+              combo: null, stunUntil: 0,
+              isBoss: false, bossPhase: 0,
+              serverPos: { x: se.x, y: se.y },
+            });
+          }
+        }
+        const serverIds = new Set(serverEnemies.map((se: any) => se.id));
+        state.enemies = state.enemies.filter(e => serverIds.has(e.id));
+        bump();
+      },
+      onEvent: (data: any) => {
+        if (data.type === "wave-clear") {
+          pushNotification("Wave cleared!", "success");
+        } else if (data.type === "wave-start") {
+          pushNotification("Wave " + data.wave + " incoming!", "warning");
+        }
+      },
+      onComplete: (_data: any) => {
+        completeDungeon();
+        pushNotification("Instance complete! Returning to world.", "success");
+      },
+      onEnemyHitAck: (data: any) => {
+        const e = state.enemies.find(en => en.id === data.enemyId);
+        if (!e) return;
+        e.hull = data.hp;
+        e.hullMax = data.hpMax;
+        if (data.killed) {
+          applyKill(e, data.crit);
+        }
+      },
+    });
+    return () => setInstanceCallbacks({});
   }, []);
 
   useEffect(() => {
