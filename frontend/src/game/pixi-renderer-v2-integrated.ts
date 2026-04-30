@@ -86,6 +86,23 @@ const SHIP_SPRITES: Partial<Record<ShipClassId, string>> = {
   sovereign: "/ships/sovereign.png",
   apex: "/ships/apex.png",
 };
+const SHIP_SIZE_SCALE: Record<ShipClassId, number> = {
+  skimmer: 0.7,
+  wasp: 0.75,
+  vanguard: 0.85,
+  reaver: 0.9,
+  obsidian: 0.95,
+  marauder: 1.05,
+  phalanx: 1.15,
+  titan: 1.3,
+  leviathan: 1.45,
+  specter: 1.1,
+  colossus: 1.6,
+  harbinger: 1.5,
+  eclipse: 1.7,
+  sovereign: 1.85,
+  apex: 2.0,
+};
 const shipSpriteTextures = new Map<string, PIXI.Texture>();
 const shipSpriteLoading = new Set<string>();
 
@@ -125,13 +142,15 @@ function bakeTexture(
 }
 
 function getShipTex(shipClass: ShipClassId, scale: number): PIXI.Texture {
-  const key = `ship-${shipClass}-${scale.toFixed(1)}`;
+  const sizeScale = SHIP_SIZE_SCALE[shipClass] ?? 1;
+  const finalScale = scale * sizeScale;
+  const key = `ship-${shipClass}-${finalScale.toFixed(2)}`;
   let tex = texCache.get(key);
   if (tex) return tex;
 
   const spriteTex = shipSpriteTextures.get(shipClass);
   if (spriteTex) {
-    const sz = Math.ceil(60 * scale);
+    const sz = Math.ceil(60 * finalScale);
     const canvasSz = sz * 2 + 30;
     const c2 = document.createElement("canvas");
     c2.width = canvasSz;
@@ -149,7 +168,7 @@ function getShipTex(shipClass: ShipClassId, scale: number): PIXI.Texture {
   }
 
   const cls = SHIP_CLASSES[shipClass];
-  const sz = Math.ceil(60 * scale);
+  const sz = Math.ceil(60 * finalScale);
   const canvasSz = sz * 2 + 30;
 
   const c2 = document.createElement("canvas");
@@ -161,7 +180,7 @@ function getShipTex(shipClass: ShipClassId, scale: number): PIXI.Texture {
   const a = cls.accent;
   const hi = "#ffffff";
   const dk = shadeHex(c, -0.45);
-  drawShipPixels(ctx, shipClass, c, a, hi, dk, scale);
+  drawShipPixels(ctx, shipClass, c, a, hi, dk, finalScale);
 
   tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
   texCache.set(key, tex);
