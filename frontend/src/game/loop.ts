@@ -403,40 +403,9 @@ function spawnDungeonEnemy(type: EnemyType, hpMul: number, dmgMul: number): void
 
 let _waveSpawned = 0;
 
-function updateDungeon(dt: number): void {
-  const run = state.dungeon;
-  if (!run) { _waveSpawned = 0; return; }
-  const def = DUNGEONS[run.id];
-  const aliveCount = state.enemies.filter(e => e.hull > 0).length;
-  // Spawn the wave's enemies (staggered)
-  if (!run.spawnedThisWave) {
-    dungeonSpawnCd -= dt;
-    if (dungeonSpawnCd <= 0) {
-      const target = def.enemiesPerWave;
-      if (_waveSpawned < target) {
-        const t: EnemyType = def.enemyTypes[Math.floor(Math.random() * def.enemyTypes.length)];
-        spawnDungeonEnemy(t, def.enemyHpMul, def.enemyDmgMul);
-        _waveSpawned++;
-        dungeonSpawnCd = 0.45;
-      } else {
-        run.spawnedThisWave = true;
-      }
-    }
-  } else if (aliveCount === 0) {
-    // Wave clear
-    if (run.wave >= run.totalWaves) {
-      pushEvent({ title: "✦ ALL WAVES CLEAR", body: `${def.name} subdued.`, ttl: 4, kind: "global", color: def.color });
-      completeDungeon();
-      return;
-    }
-    run.wave++;
-    run.spawnedThisWave = false;
-    _waveSpawned = 0;
-    run.enemiesLeft = def.enemiesPerWave;
-    dungeonSpawnCd = 1.2;
-    pushEvent({ title: `▼ WAVE ${run.wave} / ${run.totalWaves}`, body: `Hostiles re-engaging.`, ttl: 3.5, kind: "info", color: def.color });
-    sfx.bossWarn();
-  }
+function updateDungeon(_dt: number): void {
+  // Server-side instances handle all dungeon spawning and wave progression.
+  if (!state.dungeon) { _waveSpawned = 0; return; }
 }
 
 function spawnBoss(): void {

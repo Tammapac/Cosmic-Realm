@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { state, bump, useGame, save, pushNotification, pushChat, abandonDungeon, useConsumable, runDockingServices, loadServerPlayer, collectCargoBox, enterDungeon, stationPrice, completeDungeon } from "./game/store";
+import { state, bump, useGame, save, pushNotification, pushChat, abandonDungeon, useConsumable, runDockingServices, loadServerPlayer, collectCargoBox, enterDungeon, stationPrice, completeDungeon, pushEvent } from "./game/store";
 import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats, hasRocketWeapon, setEntityTarget, applyKill } from "./game/loop";
 import { render } from "./game/render";
 import { initPixiRenderer, destroyPixiRenderer, pixiRender } from "./game/pixi-renderer-v2-integrated";
@@ -14,7 +14,7 @@ import { EventBanners } from "./components/EventBanners";
 import { Hotbar } from "./components/Hotbar";
 import { QuestTracker } from "./components/QuestTracker";
 import SettingsMenu from "./components/SettingsMenu";
-import { DUNGEONS, STATIONS, PORTALS, ZONES, MODULE_DEFS, RESOURCES, SHIP_CLASSES } from "./game/types";
+import { DUNGEONS, STATIONS, PORTALS, ZONES, MODULE_DEFS, RESOURCES, SHIP_CLASSES, ENEMY_DEFS, type EnemyType, type DungeonId } from "./game/types";
 import { travelToZone, state as gameState } from "./game/store";
 import AuthScreen from "./components/AuthScreen";
 import { hasToken, getPlayer, clearToken } from "./net/api";
@@ -559,22 +559,38 @@ function GameApp() {
     setInstanceCallbacks({
       onState: (data: any) => {
         if (!state.dungeon) return;
-        const { enemies: serverEnemies } = data;
+        const { enemies: serverEnemies, wave, totalWaves } = data;
         if (!serverEnemies) return;
+        if (wave != null) state.dungeon.wave = wave;
+        if (totalWaves != null) state.dungeon.totalWaves = totalWaves;
         for (const se of serverEnemies) {
           const existing = state.enemies.find(e => e.id === se.id);
           if (existing) {
             setEntityTarget(existing, se.x, se.y);
             existing.hull = se.hp;
             existing.hullMax = se.hpMax;
+            existing.angle = se.angle ?? existing.angle;
           } else {
+            const def = ENEMY_DEFS[se.type as EnemyType];
             state.enemies.push({
-              id: se.id, type: se.type, pos: { x: se.x, y: se.y },
-              hull: se.hp, hullMax: se.hpMax, size: 20,
-              angle: 0, color: "#ff4444",
-              vel: { x: 0, y: 0 }, aggro: false, hitFlash: 0,
-              combo: null, stunUntil: 0,
+              id: se.id, type: se.type as EnemyType,
+              behavior: se.behavior ?? def?.behavior ?? "chase",
+              pos: { x: se.x, y: se.y },
+              vel: { x: se.vx ?? 0, y: se.vy ?? 0 },
+              angle: se.angle ?? 0,
+              hull: se.hp, hullMax: se.hpMax,
+              damage: se.damage ?? def?.damage ?? 10,
+              speed: se.speed ?? def?.speed ?? 60,
+              fireCd: 1,
+              exp: se.exp ?? def?.exp ?? 0,
+              credits: se.credits ?? def?.credits ?? 0,
+              honor: se.honor ?? def?.honor ?? 0,
+              color: se.color ?? def?.color ?? "#ff4444",
+              size: se.size ?? def?.size ?? 20,
+              loot: se.loot ?? def?.loot ?? null,
               isBoss: false, bossPhase: 0,
+              aggro: true, hitFlash: 0,
+              combo: null, stunUntil: 0,
               serverPos: { x: se.x, y: se.y },
             });
           }
@@ -584,10 +600,29 @@ function GameApp() {
         bump();
       },
       onEvent: (data: any) => {
-        if (data.type === "wave-clear") {
+        if (data.type === "wave:clear") {
           pushNotification("Wave cleared!", "success");
-        } else if (data.type === "wave-start") {
-          pushNotification("Wave " + data.wave + " incoming!", "warning");
+          if (data.data?.final) {
+            pushEvent({ title: "ALL WAVES CLEAR", body: "Rift subdued.", ttl: 4, kind: "global", color: "#4ee2ff" });
+          }
+        } else if (data.type === "wave:start") {
+          const w = data.data?.wave ?? "?";
+          const tw = data.data?.totalWaves ?? "?";
+          pushNotification("Wave " + w + " / " + tw + " incoming!", "warning");
+          pushEvent({ title: "WAVE " + w + " / " + tw, body: "Hostiles re-engaging.", ttl: 3.5, kind: "info", color: "#ff5c6c" });
+        } else if (data.type === "enemy:fire") {
+          const d = data.data;
+          if (d) {
+            state.projectiles.push({
+              id: "ip-" + Math.random().toString(36).slice(2, 8),
+              pos: { x: d.x, y: d.y },
+              vel: { x: Math.cos(d.angle) * 200, y: Math.sin(d.angle) * 200 },
+              damage: d.damage,
+              color: d.color ?? "#ff4444",
+              fromPlayer: false,
+              size: 3, ttl: 1.6,
+            });
+          }
         }
       },
       onComplete: (_data: any) => {

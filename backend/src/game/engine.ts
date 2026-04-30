@@ -1598,7 +1598,7 @@ export class GameEngine {
       let target: OnlinePlayer | null = null;
       if (e.aggroTarget !== null) {
         target = players.find(p => p.playerId === e.aggroTarget) ?? null;
-        if (!target || dist(e.pos, { x: target.posX, y: target.posY }) > e.aggroRange * 3) {
+        if (!target || target.isDocked || dist(e.pos, { x: target.posX, y: target.posY }) > e.aggroRange * 3) {
           e.aggroTarget = null;
           target = null;
         }
