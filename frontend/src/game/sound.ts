@@ -205,7 +205,7 @@ function stopThrusterLoop(): void {
   }
 }
 
-const LASER_SOUNDS = ["/audio/LaserSchuss1.ogg", "/audio/LaserSchuss2.ogg", "/audio/LaserSchuss3.ogg"];
+const LASER_SOUNDS = ["/audio/LaserSchuss1.ogg", "/audio/LaserSchuss2.ogg", "/audio/LaserSchuss3.ogg", "/audio/laser_shot_new.mp3"];
 const ROCKET_SOUND = "/audio/rocket_shot.mp3";
 const ENEMY_HIT_SOUNDS = ["/audio/enemy_hit1.mp3", "/audio/enemy_hit2.mp3"];
 const ENEMY_HIT_PITCHES = [0.7, 0.8, 0.9, 1.0, 1.1, 1.25, 1.4];
