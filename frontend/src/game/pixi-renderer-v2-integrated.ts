@@ -72,6 +72,40 @@ let bakeCtx: CanvasRenderingContext2D;
 
 const texCache = new Map<string, PIXI.Texture>();
 
+const SHIP_SPRITES: Partial<Record<ShipClassId, string>> = {
+  skimmer: "/ships/skimmer.png",
+  vanguard: "/ships/vanguard.png",
+  obsidian: "/ships/obsidian.png",
+  marauder: "/ships/marauder.png",
+  phalanx: "/ships/phalanx.png",
+  titan: "/ships/titan.png",
+  leviathan: "/ships/leviathan.png",
+  colossus: "/ships/colossus.png",
+  harbinger: "/ships/harbinger.png",
+  eclipse: "/ships/eclipse.png",
+  sovereign: "/ships/sovereign.png",
+  apex: "/ships/apex.png",
+};
+const shipSpriteTextures = new Map<string, PIXI.Texture>();
+const shipSpriteLoading = new Set<string>();
+
+function preloadShipSprites(): void {
+  for (const [id, url] of Object.entries(SHIP_SPRITES)) {
+    if (shipSpriteTextures.has(id) || shipSpriteLoading.has(id)) continue;
+    shipSpriteLoading.add(id);
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const tex = PIXI.Texture.from(img, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+      shipSpriteTextures.set(id, tex);
+      shipSpriteLoading.delete(id);
+      texCache.forEach((_, k) => { if (k.startsWith(`ship-${id}-`)) texCache.delete(k); });
+    };
+    img.onerror = () => { shipSpriteLoading.delete(id); };
+    img.src = url;
+  }
+}
+
 function bakeTexture(
   width: number, height: number,
   drawFn: (ctx: CanvasRenderingContext2D, w: number, h: number) => void
@@ -94,6 +128,25 @@ function getShipTex(shipClass: ShipClassId, scale: number): PIXI.Texture {
   const key = `ship-${shipClass}-${scale.toFixed(1)}`;
   let tex = texCache.get(key);
   if (tex) return tex;
+
+  const spriteTex = shipSpriteTextures.get(shipClass);
+  if (spriteTex) {
+    const sz = Math.ceil(60 * scale);
+    const canvasSz = sz * 2 + 30;
+    const c2 = document.createElement("canvas");
+    c2.width = canvasSz;
+    c2.height = canvasSz;
+    const ctx = c2.getContext("2d")!;
+    const img = spriteTex.baseTexture.resource as any;
+    const src = img.source || img;
+    const aspect = src.naturalHeight / src.naturalWidth;
+    const drawW = canvasSz * 0.85;
+    const drawH = drawW * aspect;
+    ctx.drawImage(src, (canvasSz - drawW) / 2, (canvasSz - drawH) / 2, drawW, drawH);
+    tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+    texCache.set(key, tex);
+    return tex;
+  }
 
   const cls = SHIP_CLASSES[shipClass];
   const sz = Math.ceil(60 * scale);
@@ -576,6 +629,7 @@ let fps = 0;
 // ══════════════════════════════════════════════════════════════════════════
 
 export function initPixiRenderer(container: HTMLDivElement): void {
+  preloadShipSprites();
   // Round pixels for sharp rendering (no global NEAREST - text needs LINEAR)
   PIXI.settings.ROUND_PIXELS = true;
 
@@ -1832,6 +1886,7 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
       }
     }
 
+    const factionColor = o.faction ? FACTIONS[o.faction as keyof typeof FACTIONS]?.color ?? "#7a8ad8" : "#7a8ad8";
     // Animate body glow with faction color
     const otherGlow = data.container.getChildByName("bodyGlow") as PIXI.Sprite;
     if (otherGlow) {
