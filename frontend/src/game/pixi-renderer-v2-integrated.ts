@@ -195,42 +195,46 @@ function getShipTex(shipClass: ShipClassId, scale: number): PIXI.Texture {
     ctx.globalAlpha = 1.0;
     ctx.drawImage(src, minX, minY, cw, ch, dx, dy, drawW, drawH);
 
-    // 3D lighting: directional light from top-left
+    // 3D lighting: strong directional light from top-left
     ctx.save();
     ctx.globalCompositeOperation = "source-atop";
 
-    // Top-left highlight - strong directional light
+    // Top-left highlight - key light (very strong)
     const hlGrad = ctx.createLinearGradient(dx, dy, dx + drawW, dy + drawH);
-    hlGrad.addColorStop(0, "rgba(220,235,255,0.45)");
-    hlGrad.addColorStop(0.25, "rgba(180,210,255,0.2)");
-    hlGrad.addColorStop(0.5, "rgba(100,140,200,0.0)");
+    hlGrad.addColorStop(0, "rgba(230,240,255,0.70)");
+    hlGrad.addColorStop(0.15, "rgba(200,225,255,0.50)");
+    hlGrad.addColorStop(0.35, "rgba(160,195,240,0.22)");
+    hlGrad.addColorStop(0.55, "rgba(100,140,200,0.0)");
     hlGrad.addColorStop(1, "rgba(0,0,0,0)");
     ctx.fillStyle = hlGrad;
     ctx.fillRect(dx, dy, drawW, drawH);
 
-    // Bottom-right shadow - deep space shadow
+    // Bottom-right shadow - deep space shadow (very strong)
     const shGrad = ctx.createLinearGradient(dx, dy, dx + drawW, dy + drawH);
     shGrad.addColorStop(0, "rgba(0,0,0,0)");
-    shGrad.addColorStop(0.45, "rgba(0,0,10,0.08)");
-    shGrad.addColorStop(0.7, "rgba(0,0,20,0.25)");
-    shGrad.addColorStop(1, "rgba(0,0,30,0.45)");
+    shGrad.addColorStop(0.35, "rgba(0,0,10,0.05)");
+    shGrad.addColorStop(0.55, "rgba(0,0,20,0.30)");
+    shGrad.addColorStop(0.75, "rgba(0,0,30,0.55)");
+    shGrad.addColorStop(1, "rgba(0,0,40,0.70)");
     ctx.fillStyle = shGrad;
     ctx.fillRect(dx, dy, drawW, drawH);
 
-    // Rim light (top edge specular highlight)
-    const rimGrad = ctx.createLinearGradient(dx, dy, dx, dy + drawH * 0.2);
-    rimGrad.addColorStop(0, "rgba(200,230,255,0.35)");
-    rimGrad.addColorStop(0.5, "rgba(150,190,255,0.1)");
+    // Rim light (top edge specular highlight - wide)
+    const rimGrad = ctx.createLinearGradient(dx, dy, dx, dy + drawH * 0.3);
+    rimGrad.addColorStop(0, "rgba(220,240,255,0.55)");
+    rimGrad.addColorStop(0.3, "rgba(180,210,255,0.25)");
+    rimGrad.addColorStop(0.7, "rgba(150,190,255,0.08)");
     rimGrad.addColorStop(1, "rgba(0,0,0,0)");
     ctx.fillStyle = rimGrad;
-    ctx.fillRect(dx, dy, drawW, drawH * 0.2);
+    ctx.fillRect(dx, dy, drawW, drawH * 0.3);
 
-    // Left edge specular
-    const leftGrad = ctx.createLinearGradient(dx, dy, dx + drawW * 0.15, dy);
-    leftGrad.addColorStop(0, "rgba(180,210,255,0.2)");
+    // Left edge specular (wider)
+    const leftGrad = ctx.createLinearGradient(dx, dy, dx + drawW * 0.2, dy);
+    leftGrad.addColorStop(0, "rgba(200,225,255,0.40)");
+    leftGrad.addColorStop(0.4, "rgba(180,210,255,0.15)");
     leftGrad.addColorStop(1, "rgba(0,0,0,0)");
     ctx.fillStyle = leftGrad;
-    ctx.fillRect(dx, dy, drawW * 0.15, drawH);
+    ctx.fillRect(dx, dy, drawW * 0.2, drawH);
 
     ctx.restore();
 
