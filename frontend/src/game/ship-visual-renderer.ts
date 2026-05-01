@@ -119,11 +119,11 @@ export function createShipVisual(
   const quality = getQuality();
   const container = new PIXI.Container();
 
-  // 1. Shadow
+  // 1. Shadow — subtle drop shadow, not a full duplicate
   const shadow = new PIXI.Sprite(baseTex);
   shadow.anchor.set(0.5);
-  shadow.tint = 0x080818;
-  shadow.alpha = config.shadow.alpha;
+  shadow.tint = 0x000008;
+  shadow.alpha = config.shadow.alpha * 0.45;
   shadow.scale.set(config.shadow.scaleX, config.shadow.scaleY);
   shadow.position.set(config.shadow.offsetX * sizeScale, config.shadow.offsetY * sizeScale);
   container.addChild(shadow);
@@ -155,12 +155,12 @@ export function createShipVisual(
   }
   container.addChild(engineContainer);
 
-  // 3. Rim light (scaled-up tinted duplicate) — boosted for 3D depth
+  // 3. Rim light — thin edge glow only, no heavy duplicate
   const rimLight = new PIXI.Sprite(baseTex);
   rimLight.anchor.set(0.5);
   rimLight.tint = config.rimLight.color;
-  rimLight.alpha = quality === "LOW" ? config.rimLight.alpha : config.rimLight.alpha * 1.8;
-  rimLight.scale.set(config.rimLight.scale + 0.01);
+  rimLight.alpha = quality === "LOW" ? config.rimLight.alpha * 0.5 : config.rimLight.alpha * 0.7;
+  rimLight.scale.set(config.rimLight.scale);
   rimLight.blendMode = PIXI.BLEND_MODES.ADD;
   container.addChild(rimLight);
 
@@ -169,39 +169,39 @@ export function createShipVisual(
   baseSprite.anchor.set(0.5);
   container.addChild(baseSprite);
 
-  // 5a. Highlight overlay — fake top-left directional light (key light)
+  // 5a. Highlight overlay — very subtle top-left light hint
   const highlightOverlay = new PIXI.Sprite(baseTex);
   highlightOverlay.anchor.set(0.5);
   highlightOverlay.tint = 0xaaccff;
-  highlightOverlay.alpha = quality === "LOW" ? 0 : 0.22;
-  highlightOverlay.position.set(-1.5, -2);
+  highlightOverlay.alpha = quality === "LOW" ? 0 : 0.06;
+  highlightOverlay.position.set(-0.5, -0.5);
   highlightOverlay.blendMode = PIXI.BLEND_MODES.ADD;
   container.addChild(highlightOverlay);
 
-  // 5b. Dark-side overlay (bottom-right shadow) — stronger for 3D depth
+  // 5b. Dark-side overlay — very subtle bottom-right shading
   const darkOverlay = new PIXI.Sprite(baseTex);
   darkOverlay.anchor.set(0.5);
   darkOverlay.tint = 0x000018;
-  darkOverlay.alpha = quality === "LOW" ? 0 : 0.30;
-  darkOverlay.position.set(2, 2.5);
+  darkOverlay.alpha = quality === "LOW" ? 0 : 0.08;
+  darkOverlay.position.set(0.5, 0.5);
   container.addChild(darkOverlay);
 
-  // 5c. Specular glow — bright "star reflection" spot on the ship hull
-  const specSize = Math.ceil(8 * sizeScale);
+  // 5c. Specular glow — subtle star reflection spot
+  const specSize = Math.ceil(6 * sizeScale);
   const specularGlow = new PIXI.Sprite(getSoftGlow(specSize, "#aaddff"));
   specularGlow.anchor.set(0.5);
   specularGlow.blendMode = PIXI.BLEND_MODES.ADD;
-  specularGlow.alpha = quality === "LOW" ? 0 : 0.30;
+  specularGlow.alpha = quality === "LOW" ? 0 : 0.18;
   specularGlow.position.set(-3 * sizeScale, -5 * sizeScale);
   container.addChild(specularGlow);
 
-  // 6. Cockpit glow — brighter for 3D pop
-  const cpSize = Math.ceil(7 * config.cockpit.size * sizeScale);
+  // 6. Cockpit glow
+  const cpSize = Math.ceil(5 * config.cockpit.size * sizeScale);
   const cockpitGlow = new PIXI.Sprite(getSoftGlow(cpSize));
   cockpitGlow.anchor.set(0.5);
   cockpitGlow.blendMode = PIXI.BLEND_MODES.ADD;
   cockpitGlow.tint = config.cockpit.color;
-  cockpitGlow.alpha = quality === "LOW" ? 0 : 0.40;
+  cockpitGlow.alpha = quality === "LOW" ? 0 : 0.25;
   cockpitGlow.position.set(config.cockpit.x * sizeScale, config.cockpit.y * sizeScale);
   container.addChild(cockpitGlow);
 
@@ -357,16 +357,16 @@ export function updateShipVisual(
     const ef = vs.engineFlames[i];
     const port = cfg.engines[i];
     if (thrustIntensity > 0.02) {
-      const a = thrustIntensity * flicker * 0.7;
+      const a = thrustIntensity * flicker * 0.4;
       eg.alpha = a;
-      eg.scale.set(1.0 + thrustIntensity * 0.7);
-      eg.tint = 0x6699ff;
-      ef.alpha = thrustIntensity * 0.75 * flicker;
-      ef.scale.set(0.7 + thrustIntensity * 0.6, 1.0 + thrustIntensity * 1.0 + Math.sin(tick * 30 + i) * 0.2);
+      eg.scale.set(0.8 + thrustIntensity * 0.4);
+      eg.tint = 0x4488ff;
+      ef.alpha = thrustIntensity * 0.5 * flicker;
+      ef.scale.set(0.5 + thrustIntensity * 0.4, 0.7 + thrustIntensity * 0.6 + Math.sin(tick * 30 + i) * 0.12);
     } else {
-      eg.alpha = 0.06;
-      eg.scale.set(0.6);
-      eg.tint = 0x334499;
+      eg.alpha = 0.03;
+      eg.scale.set(0.4);
+      eg.tint = 0x224488;
       ef.alpha = 0;
     }
     eg.rotation = rotation;
@@ -376,27 +376,27 @@ export function updateShipVisual(
   // ── Engine container rotation ─────────────────────────────────────
   vs.engineContainer.rotation = 0;
 
-  // ── Cockpit glow pulse — stronger ────────────────────────────────
+  // ── Cockpit glow pulse ─────────────────────────────────────────────
   if (quality !== "LOW") {
-    vs.cockpitGlow.alpha = 0.30 + 0.12 * Math.sin(tick * 2.5 + vs.hoverSeed);
+    vs.cockpitGlow.alpha = 0.20 + 0.08 * Math.sin(tick * 2.5 + vs.hoverSeed);
     vs.cockpitGlow.rotation = rotation;
   }
 
   // ── Specular glow pulse ───────────────────────────────────────────
   if (quality !== "LOW") {
-    vs.specularGlow.alpha = 0.22 + 0.10 * Math.sin(tick * 1.8 + vs.hoverSeed * 0.7);
+    vs.specularGlow.alpha = 0.14 + 0.06 * Math.sin(tick * 1.8 + vs.hoverSeed * 0.7);
     vs.specularGlow.rotation = rotation;
   }
 
   // ── Weapon glow idle pulse ────────────────────────────────────────
   for (let i = 0; i < vs.weaponGlows.length; i++) {
-    vs.weaponGlows[i].alpha = 0.08 + 0.06 * Math.sin(tick * 3 + i * 1.5);
+    vs.weaponGlows[i].alpha = 0.06 + 0.04 * Math.sin(tick * 3 + i * 1.5);
     vs.weaponGlows[i].rotation = rotation;
   }
 
-  // ── Rim light pulse — boosted ─────────────────────────────────────
-  const rimBase = quality === "LOW" ? cfg.rimLight.alpha : cfg.rimLight.alpha * 1.8;
-  vs.rimLight.alpha = rimBase + 0.06 * Math.sin(tick * 1.5);
+  // ── Rim light subtle pulse ────────────────────────────────────────
+  const rimBase = cfg.rimLight.alpha * 0.7;
+  vs.rimLight.alpha = rimBase + 0.03 * Math.sin(tick * 1.5);
 
   // ── Shield overlay ────────────────────────────────────────────────
   if (vs.shieldSprite) {

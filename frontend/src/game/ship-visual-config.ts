@@ -18,8 +18,8 @@ export interface ShipVisualConfig {
 }
 
 const defaults: ShipVisualConfig = {
-  shadow: { offsetX: 4, offsetY: 5, alpha: 0.38, scaleX: 1.05, scaleY: 0.95 },
-  rimLight: { color: 0x4ee2ff, alpha: 0.22, scale: 1.04 },
+  shadow: { offsetX: 3, offsetY: 4, alpha: 0.25, scaleX: 1.04, scaleY: 0.96 },
+  rimLight: { color: 0x4ee2ff, alpha: 0.18, scale: 1.035 },
   engines: [{ x: 0, y: 18, size: 1 }],
   cockpit: { x: 0, y: -8, size: 0.7, color: 0x88ccff },
   weaponPoints: [{ x: -12, y: -4 }, { x: 12, y: -4 }],
@@ -73,11 +73,11 @@ const CONFIGS: Record<ShipClassId, Partial<ShipVisualConfig>> = {
     weaponPoints: [{ x: -16, y: -5 }, { x: 16, y: -5 }, { x: -8, y: -8 }, { x: 8, y: -8 }],
   },
   titan: {
-    shadow: { offsetX: 4, offsetY: 5, alpha: 0.30, scaleX: 1.05, scaleY: 0.95 },
-    rimLight: { color: 0x4ee2ff, alpha: 0.20, scale: 1.03 },
-    engines: [{ x: -14, y: 22, size: 1.1 }, { x: 14, y: 22, size: 1.1 }, { x: -6, y: 24, size: 0.8 }, { x: 6, y: 24, size: 0.8 }],
-    cockpit: { x: 0, y: -10, size: 0.8, color: 0x4ee2ff },
-    weaponPoints: [{ x: -18, y: -4 }, { x: 18, y: -4 }, { x: -10, y: -8 }, { x: 10, y: -8 }],
+    shadow: { offsetX: 3, offsetY: 4, alpha: 0.25, scaleX: 1.04, scaleY: 0.96 },
+    rimLight: { color: 0x4ee2ff, alpha: 0.16, scale: 1.025 },
+    engines: [{ x: -28, y: 8, size: 0.9 }, { x: 28, y: 8, size: 0.9 }],
+    cockpit: { x: 0, y: -2, size: 0.6, color: 0x4488cc },
+    weaponPoints: [{ x: -8, y: -18 }, { x: 8, y: -18 }],
     tilt: { skewFactor: 0.001, rotFactor: 0.0006, scaleFactor: 0.00015 },
   },
   leviathan: {
