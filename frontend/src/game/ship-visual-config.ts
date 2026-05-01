@@ -73,11 +73,11 @@ const CONFIGS: Record<ShipClassId, Partial<ShipVisualConfig>> = {
     weaponPoints: [{ x: -16, y: -5 }, { x: 16, y: -5 }, { x: -8, y: -8 }, { x: 8, y: -8 }],
   },
   titan: {
-    shadow: { offsetX: 3, offsetY: 4, alpha: 0.25, scaleX: 1.04, scaleY: 0.96 },
-    rimLight: { color: 0x4ee2ff, alpha: 0.16, scale: 1.025 },
-    engines: [{ x: -28, y: 8, size: 0.9 }, { x: 28, y: 8, size: 0.9 }],
-    cockpit: { x: 0, y: -2, size: 0.6, color: 0x4488cc },
-    weaponPoints: [{ x: -8, y: -18 }, { x: 8, y: -18 }],
+    shadow: { offsetX: 3, offsetY: 4, alpha: 0.22, scaleX: 1.04, scaleY: 0.96 },
+    rimLight: { color: 0x4ee2ff, alpha: 0.14, scale: 1.02 },
+    engines: [{ x: -32, y: 6, size: 0.7 }, { x: 32, y: 6, size: 0.7 }],
+    cockpit: { x: 0, y: -3, size: 0.5, color: 0x4488cc },
+    weaponPoints: [{ x: -5, y: -22 }, { x: 5, y: -22 }],
     tilt: { skewFactor: 0.001, rotFactor: 0.0006, scaleFactor: 0.00015 },
   },
   leviathan: {

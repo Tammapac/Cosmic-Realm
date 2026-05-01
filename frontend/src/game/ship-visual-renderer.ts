@@ -169,21 +169,21 @@ export function createShipVisual(
   baseSprite.anchor.set(0.5);
   container.addChild(baseSprite);
 
-  // 5a. Highlight overlay — very subtle top-left light hint
+  // 5a. Highlight overlay — same position as base, no offset to avoid ghosting
   const highlightOverlay = new PIXI.Sprite(baseTex);
   highlightOverlay.anchor.set(0.5);
   highlightOverlay.tint = 0xaaccff;
-  highlightOverlay.alpha = quality === "LOW" ? 0 : 0.06;
-  highlightOverlay.position.set(-0.5, -0.5);
+  highlightOverlay.alpha = quality === "LOW" ? 0 : 0.10;
+  highlightOverlay.position.set(0, 0);
   highlightOverlay.blendMode = PIXI.BLEND_MODES.ADD;
   container.addChild(highlightOverlay);
 
-  // 5b. Dark-side overlay — very subtle bottom-right shading
+  // 5b. Dark-side overlay — same position, no offset
   const darkOverlay = new PIXI.Sprite(baseTex);
   darkOverlay.anchor.set(0.5);
   darkOverlay.tint = 0x000018;
-  darkOverlay.alpha = quality === "LOW" ? 0 : 0.08;
-  darkOverlay.position.set(0.5, 0.5);
+  darkOverlay.alpha = quality === "LOW" ? 0 : 0.10;
+  darkOverlay.position.set(0, 0);
   container.addChild(darkOverlay);
 
   // 5c. Specular glow — subtle star reflection spot
@@ -323,13 +323,14 @@ export function updateShipVisual(
   if (quality !== "LOW") {
     vs.baseSprite.position.set(0, hoverY);
     vs.rimLight.position.set(0, hoverY);
-    vs.highlightOverlay.position.set(-1.5, -2 + hoverY);
-    vs.darkOverlay.position.set(2, 2.5 + hoverY);
+    vs.highlightOverlay.position.set(0, hoverY);
+    vs.darkOverlay.position.set(0, hoverY);
     vs.damageFlash.position.set(0, hoverY);
     vs.specularGlow.position.set(-3 * sizeScale, -5 * sizeScale + hoverY);
     vs.baseSprite.rotation = rotation + hoverRot + vs.currentRotOffset;
     vs.rimLight.rotation = rotation + hoverRot + vs.currentRotOffset * 0.8;
-    vs.highlightOverlay.rotation = rotation + hoverRot + vs.currentRotOffset * 0.9;
+    vs.highlightOverlay.rotation = rotation + hoverRot + vs.currentRotOffset;
+    vs.darkOverlay.rotation = rotation + hoverRot + vs.currentRotOffset;
     vs.shadow.rotation = rotation + hoverRot + vs.currentRotOffset * 1.2;
   }
 
@@ -341,7 +342,6 @@ export function updateShipVisual(
       cfg.shadow.offsetX * sizeScale + px * 2.5,
       cfg.shadow.offsetY * sizeScale + py * 2.5,
     );
-    vs.highlightOverlay.position.set(-1.5 - px * 0.4, -2 - py * 0.4 + hoverY);
     vs.specularGlow.position.set(-3 * sizeScale - px * 0.3, -5 * sizeScale - py * 0.3 + hoverY);
     vs.cockpitGlow.position.set(
       cfg.cockpit.x * sizeScale - px * 0.5,

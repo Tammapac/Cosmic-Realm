@@ -183,12 +183,11 @@ function getShipTex(shipClass: ShipClassId, scale: number): PIXI.Texture {
     const dx = (canvasSz - drawW) / 2;
     const dy = (canvasSz - drawH) / 2;
 
-    // Glow outline
+    // Glow outline — subtle edge glow
     const cls = SHIP_CLASSES[shipClass];
     ctx.shadowColor = cls.color;
-    ctx.shadowBlur = 10;
-    ctx.globalAlpha = 0.6;
-    ctx.drawImage(src, minX, minY, cw, ch, dx, dy, drawW, drawH);
+    ctx.shadowBlur = 6;
+    ctx.globalAlpha = 0.35;
     ctx.drawImage(src, minX, minY, cw, ch, dx, dy, drawW, drawH);
     ctx.shadowBlur = 0;
 
