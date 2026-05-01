@@ -18,8 +18,8 @@ export interface ShipVisualConfig {
 }
 
 const defaults: ShipVisualConfig = {
-  shadow: { offsetX: 3, offsetY: 4, alpha: 0.25, scaleX: 1.04, scaleY: 0.96 },
-  rimLight: { color: 0x4ee2ff, alpha: 0.18, scale: 1.035 },
+  shadow: { offsetX: 4, offsetY: 5, alpha: 0.38, scaleX: 1.05, scaleY: 0.95 },
+  rimLight: { color: 0x4ee2ff, alpha: 0.22, scale: 1.04 },
   engines: [{ x: 0, y: 18, size: 1 }],
   cockpit: { x: 0, y: -8, size: 0.7, color: 0x88ccff },
   weaponPoints: [{ x: -12, y: -4 }, { x: 12, y: -4 }],

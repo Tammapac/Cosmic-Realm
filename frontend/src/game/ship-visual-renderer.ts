@@ -88,7 +88,9 @@ export interface ShipVisualState {
   shadow: PIXI.Sprite;
   rimLight: PIXI.Sprite;
   baseSprite: PIXI.Sprite;
+  highlightOverlay: PIXI.Sprite;
   darkOverlay: PIXI.Sprite;
+  specularGlow: PIXI.Sprite;
   cockpitGlow: PIXI.Sprite;
   engineContainer: PIXI.Container;
   engineGlows: PIXI.Sprite[];
@@ -153,12 +155,12 @@ export function createShipVisual(
   }
   container.addChild(engineContainer);
 
-  // 3. Rim light (scaled-up tinted duplicate)
+  // 3. Rim light (scaled-up tinted duplicate) — boosted for 3D depth
   const rimLight = new PIXI.Sprite(baseTex);
   rimLight.anchor.set(0.5);
   rimLight.tint = config.rimLight.color;
-  rimLight.alpha = config.rimLight.alpha;
-  rimLight.scale.set(config.rimLight.scale);
+  rimLight.alpha = quality === "LOW" ? config.rimLight.alpha : config.rimLight.alpha * 1.8;
+  rimLight.scale.set(config.rimLight.scale + 0.01);
   rimLight.blendMode = PIXI.BLEND_MODES.ADD;
   container.addChild(rimLight);
 
@@ -167,21 +169,39 @@ export function createShipVisual(
   baseSprite.anchor.set(0.5);
   container.addChild(baseSprite);
 
-  // 5. Dark-side overlay (bottom-right darkening)
+  // 5a. Highlight overlay — fake top-left directional light (key light)
+  const highlightOverlay = new PIXI.Sprite(baseTex);
+  highlightOverlay.anchor.set(0.5);
+  highlightOverlay.tint = 0xaaccff;
+  highlightOverlay.alpha = quality === "LOW" ? 0 : 0.22;
+  highlightOverlay.position.set(-1.5, -2);
+  highlightOverlay.blendMode = PIXI.BLEND_MODES.ADD;
+  container.addChild(highlightOverlay);
+
+  // 5b. Dark-side overlay (bottom-right shadow) — stronger for 3D depth
   const darkOverlay = new PIXI.Sprite(baseTex);
   darkOverlay.anchor.set(0.5);
-  darkOverlay.tint = 0x000010;
-  darkOverlay.alpha = quality === "LOW" ? 0 : 0.12;
-  darkOverlay.position.set(1, 1);
+  darkOverlay.tint = 0x000018;
+  darkOverlay.alpha = quality === "LOW" ? 0 : 0.30;
+  darkOverlay.position.set(2, 2.5);
   container.addChild(darkOverlay);
 
-  // 6. Cockpit glow
-  const cpSize = Math.ceil(5 * config.cockpit.size * sizeScale);
+  // 5c. Specular glow — bright "star reflection" spot on the ship hull
+  const specSize = Math.ceil(8 * sizeScale);
+  const specularGlow = new PIXI.Sprite(getSoftGlow(specSize, "#aaddff"));
+  specularGlow.anchor.set(0.5);
+  specularGlow.blendMode = PIXI.BLEND_MODES.ADD;
+  specularGlow.alpha = quality === "LOW" ? 0 : 0.30;
+  specularGlow.position.set(-3 * sizeScale, -5 * sizeScale);
+  container.addChild(specularGlow);
+
+  // 6. Cockpit glow — brighter for 3D pop
+  const cpSize = Math.ceil(7 * config.cockpit.size * sizeScale);
   const cockpitGlow = new PIXI.Sprite(getSoftGlow(cpSize));
   cockpitGlow.anchor.set(0.5);
   cockpitGlow.blendMode = PIXI.BLEND_MODES.ADD;
   cockpitGlow.tint = config.cockpit.color;
-  cockpitGlow.alpha = quality === "LOW" ? 0 : 0.25;
+  cockpitGlow.alpha = quality === "LOW" ? 0 : 0.40;
   cockpitGlow.position.set(config.cockpit.x * sizeScale, config.cockpit.y * sizeScale);
   container.addChild(cockpitGlow);
 
@@ -224,7 +244,9 @@ export function createShipVisual(
     shadow,
     rimLight,
     baseSprite,
+    highlightOverlay,
     darkOverlay,
+    specularGlow,
     cockpitGlow,
     engineContainer,
     engineGlows,
@@ -259,62 +281,71 @@ export function updateShipVisual(
   const cfg = vs.config;
   const sizeScale = SHIP_SIZE_SCALE[vs.shipClass] ?? 1;
   const quality = getQuality();
-  const lerpSpeed = Math.min(1, dt * 8);
 
   // Update textures if changed
   if (vs.baseSprite.texture !== baseTex) {
     vs.baseSprite.texture = baseTex;
     vs.shadow.texture = baseTex;
     vs.rimLight.texture = baseTex;
+    vs.highlightOverlay.texture = baseTex;
     vs.darkOverlay.texture = baseTex;
     vs.damageFlash.texture = baseTex;
   }
 
-  // ── Rotation ──────────────────────────────────────────────────────
+  // ── Rotation — apply to all ship-texture layers ───────────────────
   vs.baseSprite.rotation = rotation;
   vs.shadow.rotation = rotation;
   vs.rimLight.rotation = rotation;
+  vs.highlightOverlay.rotation = rotation;
   vs.darkOverlay.rotation = rotation;
   vs.damageFlash.rotation = rotation;
 
-  // ── Movement-based tilt ───────────────────────────────────────────
+  // ── Movement-based tilt — asymmetric: fast engage, slow return ────
   if (quality !== "LOW") {
-    const targetSkewX = clamp(velX * cfg.tilt.skewFactor, -0.10, 0.10);
-    const targetRotOff = clamp(velX * cfg.tilt.rotFactor, -0.035, 0.035);
-    const targetScaleY = 1 - clamp(Math.abs(velY) * cfg.tilt.scaleFactor, 0, 0.04);
-    vs.currentSkewX = lerp(vs.currentSkewX, targetSkewX, lerpSpeed);
-    vs.currentRotOffset = lerp(vs.currentRotOffset, targetRotOff, lerpSpeed);
-    vs.currentScaleY = lerp(vs.currentScaleY, targetScaleY, lerpSpeed);
+    const targetSkewX = clamp(velX * cfg.tilt.skewFactor * 1.5, -0.12, 0.12);
+    const targetRotOff = clamp(velX * cfg.tilt.rotFactor * 1.5, -0.04, 0.04);
+    const targetScaleY = 1 - clamp(Math.abs(velY) * cfg.tilt.scaleFactor * 1.5, 0, 0.06);
+    const engaging = Math.abs(targetSkewX) > Math.abs(vs.currentSkewX) + 0.001;
+    const tiltLerp = Math.min(1, dt * (engaging ? 5 : 1.2));
+    vs.currentSkewX = lerp(vs.currentSkewX, targetSkewX, tiltLerp);
+    vs.currentRotOffset = lerp(vs.currentRotOffset, targetRotOff, tiltLerp);
+    vs.currentScaleY = lerp(vs.currentScaleY, targetScaleY, tiltLerp);
     vs.baseSprite.skew.x = vs.currentSkewX;
     vs.baseSprite.scale.y = vs.currentScaleY;
     vs.rimLight.skew.x = vs.currentSkewX * 0.8;
+    vs.highlightOverlay.skew.x = vs.currentSkewX * 0.9;
     vs.shadow.skew.x = vs.currentSkewX * 1.2;
   }
 
   // ── Idle hover ────────────────────────────────────────────────────
+  const hoverY = quality !== "LOW" ? Math.sin(tick * cfg.hover.speed + vs.hoverSeed) * cfg.hover.amplitude : 0;
+  const hoverRot = quality !== "LOW" ? Math.sin(tick * 1.3 + vs.hoverSeed) * 0.008 : 0;
   if (quality !== "LOW") {
-    const hoverY = Math.sin(tick * cfg.hover.speed + vs.hoverSeed) * cfg.hover.amplitude;
-    const hoverRot = Math.sin(tick * 1.3 + vs.hoverSeed) * 0.008;
     vs.baseSprite.position.set(0, hoverY);
     vs.rimLight.position.set(0, hoverY);
-    vs.darkOverlay.position.set(1, 1 + hoverY);
+    vs.highlightOverlay.position.set(-1.5, -2 + hoverY);
+    vs.darkOverlay.position.set(2, 2.5 + hoverY);
     vs.damageFlash.position.set(0, hoverY);
+    vs.specularGlow.position.set(-3 * sizeScale, -5 * sizeScale + hoverY);
     vs.baseSprite.rotation = rotation + hoverRot + vs.currentRotOffset;
     vs.rimLight.rotation = rotation + hoverRot + vs.currentRotOffset * 0.8;
+    vs.highlightOverlay.rotation = rotation + hoverRot + vs.currentRotOffset * 0.9;
     vs.shadow.rotation = rotation + hoverRot + vs.currentRotOffset * 1.2;
   }
 
   // ── Layer parallax ────────────────────────────────────────────────
   if (quality === "HIGH") {
-    const px = velX * 0.012 * cfg.parallax;
-    const py = velY * 0.012 * cfg.parallax;
+    const px = velX * 0.015 * cfg.parallax;
+    const py = velY * 0.015 * cfg.parallax;
     vs.shadow.position.set(
-      cfg.shadow.offsetX * sizeScale + px * 2,
-      cfg.shadow.offsetY * sizeScale + py * 2,
+      cfg.shadow.offsetX * sizeScale + px * 2.5,
+      cfg.shadow.offsetY * sizeScale + py * 2.5,
     );
+    vs.highlightOverlay.position.set(-1.5 - px * 0.4, -2 - py * 0.4 + hoverY);
+    vs.specularGlow.position.set(-3 * sizeScale - px * 0.3, -5 * sizeScale - py * 0.3 + hoverY);
     vs.cockpitGlow.position.set(
       cfg.cockpit.x * sizeScale - px * 0.5,
-      cfg.cockpit.y * sizeScale - py * 0.5 + (quality !== "LOW" ? Math.sin(tick * cfg.hover.speed + vs.hoverSeed) * cfg.hover.amplitude : 0),
+      cfg.cockpit.y * sizeScale - py * 0.5 + hoverY,
     );
   }
 
@@ -326,16 +357,16 @@ export function updateShipVisual(
     const ef = vs.engineFlames[i];
     const port = cfg.engines[i];
     if (thrustIntensity > 0.02) {
-      const a = thrustIntensity * flicker * 0.5;
+      const a = thrustIntensity * flicker * 0.7;
       eg.alpha = a;
-      eg.scale.set(0.8 + thrustIntensity * 0.5);
-      eg.tint = 0x4488ff;
-      ef.alpha = thrustIntensity * 0.6 * flicker;
-      ef.scale.set(0.6 + thrustIntensity * 0.5, 0.8 + thrustIntensity * 0.8 + Math.sin(tick * 30 + i) * 0.15);
+      eg.scale.set(1.0 + thrustIntensity * 0.7);
+      eg.tint = 0x6699ff;
+      ef.alpha = thrustIntensity * 0.75 * flicker;
+      ef.scale.set(0.7 + thrustIntensity * 0.6, 1.0 + thrustIntensity * 1.0 + Math.sin(tick * 30 + i) * 0.2);
     } else {
-      eg.alpha = 0.04;
-      eg.scale.set(0.5);
-      eg.tint = 0x224488;
+      eg.alpha = 0.06;
+      eg.scale.set(0.6);
+      eg.tint = 0x334499;
       ef.alpha = 0;
     }
     eg.rotation = rotation;
@@ -345,20 +376,27 @@ export function updateShipVisual(
   // ── Engine container rotation ─────────────────────────────────────
   vs.engineContainer.rotation = 0;
 
-  // ── Cockpit glow pulse ────────────────────────────────────────────
+  // ── Cockpit glow pulse — stronger ────────────────────────────────
   if (quality !== "LOW") {
-    vs.cockpitGlow.alpha = 0.18 + 0.08 * Math.sin(tick * 2.5 + vs.hoverSeed);
+    vs.cockpitGlow.alpha = 0.30 + 0.12 * Math.sin(tick * 2.5 + vs.hoverSeed);
     vs.cockpitGlow.rotation = rotation;
+  }
+
+  // ── Specular glow pulse ───────────────────────────────────────────
+  if (quality !== "LOW") {
+    vs.specularGlow.alpha = 0.22 + 0.10 * Math.sin(tick * 1.8 + vs.hoverSeed * 0.7);
+    vs.specularGlow.rotation = rotation;
   }
 
   // ── Weapon glow idle pulse ────────────────────────────────────────
   for (let i = 0; i < vs.weaponGlows.length; i++) {
-    vs.weaponGlows[i].alpha = 0.06 + 0.04 * Math.sin(tick * 3 + i * 1.5);
+    vs.weaponGlows[i].alpha = 0.08 + 0.06 * Math.sin(tick * 3 + i * 1.5);
     vs.weaponGlows[i].rotation = rotation;
   }
 
-  // ── Rim light subtle pulse ────────────────────────────────────────
-  vs.rimLight.alpha = cfg.rimLight.alpha + 0.04 * Math.sin(tick * 1.5);
+  // ── Rim light pulse — boosted ─────────────────────────────────────
+  const rimBase = quality === "LOW" ? cfg.rimLight.alpha : cfg.rimLight.alpha * 1.8;
+  vs.rimLight.alpha = rimBase + 0.06 * Math.sin(tick * 1.5);
 
   // ── Shield overlay ────────────────────────────────────────────────
   if (vs.shieldSprite) {
@@ -414,6 +452,7 @@ export function updateShipTexture(vs: ShipVisualState, newTex: PIXI.Texture): vo
   vs.baseSprite.texture = newTex;
   vs.shadow.texture = newTex;
   vs.rimLight.texture = newTex;
+  vs.highlightOverlay.texture = newTex;
   vs.darkOverlay.texture = newTex;
   vs.damageFlash.texture = newTex;
 }
