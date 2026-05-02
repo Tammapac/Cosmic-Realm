@@ -188,39 +188,14 @@ function getDirectionalTex(shipClass: ShipClassId, scale: number, angle: number,
   const iw = src.naturalWidth || src.width;
   const ih = src.naturalHeight || src.height;
 
-  const trimC = document.createElement("canvas");
-  trimC.width = iw; trimC.height = ih;
-  const trimCtx = trimC.getContext("2d")!;
-  trimCtx.drawImage(src, 0, 0);
-  const imgData = trimCtx.getImageData(0, 0, iw, ih).data;
-  let minX = iw, minY = ih, maxX = 0, maxY = 0;
-  for (let y = 0; y < ih; y++) {
-    for (let x = 0; x < iw; x++) {
-      if (imgData[(y * iw + x) * 4 + 3] > 10) {
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-      }
-    }
-  }
-  const cw = maxX - minX + 1;
-  const ch = maxY - minY + 1;
-  const aspect = ch / cw;
-
   const targetSize = Math.ceil(60 * finalScale);
-  const padding = 16;
-  const drawW = targetSize * 1.6;
-  const drawH = drawW * aspect;
-  const canvasSz = Math.ceil(Math.max(drawW, drawH) + padding * 2);
+  const drawSz = Math.ceil(targetSize * 1.6);
   const c2 = document.createElement("canvas");
-  c2.width = canvasSz;
-  c2.height = canvasSz;
+  c2.width = drawSz;
+  c2.height = drawSz;
   const ctx = c2.getContext("2d")!;
-  const dx = (canvasSz - drawW) / 2;
-  const dy = (canvasSz - drawH) / 2;
   ctx.globalAlpha = 1.0;
-  ctx.drawImage(src, minX, minY, cw, ch, dx, dy, drawW, drawH);
+  ctx.drawImage(src, 0, 0, iw, ih, 0, 0, drawSz, drawSz);
 
   tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
   texCache.set(key, tex);
