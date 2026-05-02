@@ -101,18 +101,22 @@ const shipSpriteLoading = new Set<string>();
 // Pre-rendered rotation frames. sprite.rotation = 0 always; only texture swaps.
 // Hysteresis prevents flicker at direction boundaries.
 const ROTATION_SPRITES: Partial<Record<string, { frames: number; path: string; files: string[] }>> = {
-  skimmer: { frames: 16, path: "/ships/skimmer/", files: [
-    "ship_00_N.png","ship_01_NNE.png","ship_02_NE.png","ship_03_ENE.png",
-    "ship_04_E.png","ship_05_ESE.png","ship_06_SE.png","ship_07_SSE.png",
-    "ship_08_S.png","ship_09_SSW.png","ship_10_SW.png","ship_11_WSW.png",
-    "ship_12_W.png","ship_13_WNW.png","ship_14_NW.png","ship_15_NNW.png"
+  skimmer: { frames: 32, path: "/ships/skimmer/", files: [
+    "ship_00_N.png","ship_01_NbE.png","ship_02_NNE.png","ship_03_NEbN.png",
+    "ship_04_NE.png","ship_05_NEbE.png","ship_06_ENE.png","ship_07_EbN.png",
+    "ship_08_E.png","ship_09_EbS.png","ship_10_ESE.png","ship_11_SEbE.png",
+    "ship_12_SE.png","ship_13_SEbS.png","ship_14_SSE.png","ship_15_SbE.png",
+    "ship_16_S.png","ship_17_SbW.png","ship_18_SSW.png","ship_19_SWbS.png",
+    "ship_20_SW.png","ship_21_SWbW.png","ship_22_WSW.png","ship_23_WbS.png",
+    "ship_24_W.png","ship_25_WbN.png","ship_26_WNW.png","ship_27_NWbW.png",
+    "ship_28_NW.png","ship_29_NWbN.png","ship_30_NNW.png","ship_31_NbW.png"
   ]},
 };
 const rotationFrameTextures = new Map<string, PIXI.Texture[]>();
 const rotationFrameLoading = new Set<string>();
 const directionState = new Map<string, number>();
 
-const HYSTERESIS_DEG = 5;
+const HYSTERESIS_DEG = 3;
 const HYSTERESIS_RAD = HYSTERESIS_DEG * Math.PI / 180;
 
 function preloadRotationSprites(): void {
