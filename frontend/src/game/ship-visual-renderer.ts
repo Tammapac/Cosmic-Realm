@@ -1,9 +1,9 @@
 import * as PIXI from "pixi.js";
 import { ShipClassId, SHIP_SIZE_SCALE } from "./types";
-import { getShipVisualConfig, getQuality, ShipVisualConfig, EnginePort } from "./ship-visual-config";
 
-// Fixed world-space light direction (top-left of screen)
-const LIGHT_ANGLE = -Math.PI * 0.75;
+const ROTATION_FRAME_SHIPS: Set<string> = new Set(["skimmer"]);
+import { getShipVisualConfig, getQuality, ShipVisualConfig, EnginePort } from "./ship-visual-config";
+import { ShipLightingSystem, ShipLightingFilter } from "./ship-lighting-filter";
 
 // ── Cached textures ────────────────────────────────────────────────────
 const texCache = new Map<string, PIXI.Texture>();
@@ -50,48 +50,6 @@ function getFlameGlow(w: number, h: number): PIXI.Texture {
   return t;
 }
 
-// Directional light gradient (bright on left, transparent on right)
-function getLightGradient(size: number): PIXI.Texture {
-  const key = `dlg-${size}`;
-  let t = texCache.get(key);
-  if (t) return t;
-  const c = document.createElement("canvas");
-  c.width = size; c.height = size;
-  const ctx = c.getContext("2d")!;
-  const grad = ctx.createLinearGradient(0, size / 2, size, size / 2);
-  grad.addColorStop(0, "rgba(210,230,255,0.65)");
-  grad.addColorStop(0.15, "rgba(180,210,250,0.45)");
-  grad.addColorStop(0.35, "rgba(140,175,230,0.20)");
-  grad.addColorStop(0.55, "rgba(80,120,200,0.0)");
-  grad.addColorStop(1, "rgba(0,0,0,0)");
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, size, size);
-  t = PIXI.Texture.from(c, { scaleMode: PIXI.SCALE_MODES.LINEAR });
-  texCache.set(key, t);
-  return t;
-}
-
-// Directional shadow gradient (dark on right, transparent on left)
-function getShadowGradient(size: number): PIXI.Texture {
-  const key = `dsg-${size}`;
-  let t = texCache.get(key);
-  if (t) return t;
-  const c = document.createElement("canvas");
-  c.width = size; c.height = size;
-  const ctx = c.getContext("2d")!;
-  const grad = ctx.createLinearGradient(0, size / 2, size, size / 2);
-  grad.addColorStop(0, "rgba(0,0,0,0)");
-  grad.addColorStop(0.45, "rgba(0,0,0,0)");
-  grad.addColorStop(0.65, "rgba(0,0,20,0.20)");
-  grad.addColorStop(0.82, "rgba(0,0,35,0.45)");
-  grad.addColorStop(1, "rgba(0,0,50,0.65)");
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, size, size);
-  t = PIXI.Texture.from(c, { scaleMode: PIXI.SCALE_MODES.LINEAR });
-  texCache.set(key, t);
-  return t;
-}
-
 let shieldTexCache: PIXI.Texture | null = null;
 function getShieldTex(radius: number): PIXI.Texture {
   if (shieldTexCache) return shieldTexCache;
@@ -131,12 +89,7 @@ export interface ShipVisualState {
   shadow: PIXI.Sprite;
   rimLight: PIXI.Sprite;
   baseSprite: PIXI.Sprite;
-  // Masked directional lighting
-  lightMask: PIXI.Sprite;
-  lightingLayer: PIXI.Container;
-  lightGrad: PIXI.Sprite;
-  shadowGrad: PIXI.Sprite;
-  specularGlow: PIXI.Sprite;
+  lightingFilter: ShipLightingFilter | null;
   cockpitGlow: PIXI.Sprite;
   engineContainer: PIXI.Container;
   engineGlows: PIXI.Sprite[];
@@ -154,6 +107,9 @@ export interface ShipVisualState {
   lastHitType: "shield" | "hull";
   shieldHitAlpha: number;
 }
+
+// Fixed world-space light direction (top-left of screen)
+const LIGHT_ANGLE = -Math.PI * 0.75;
 
 export function createShipVisual(
   baseTex: PIXI.Texture,
@@ -199,53 +155,40 @@ export function createShipVisual(
   }
   container.addChild(engineContainer);
 
-  // 3. Rim light
+  // 3. Base ship sprite
+  const baseSprite = new PIXI.Sprite(baseTex);
+  baseSprite.anchor.set(0.5);
+
+  // Try WebGL shader filter — if it fails, ship still renders fine without it
+  let lightingFilter: ShipLightingFilter | null = null;
+  try {
+    const f = new ShipLightingFilter(quality);
+    const rimCfg = config.rimLight;
+    f.configure({
+      rimColor: [
+        ((rimCfg.color >> 16) & 0xff) / 255,
+        ((rimCfg.color >> 8) & 0xff) / 255,
+        (rimCfg.color & 0xff) / 255,
+      ],
+      rimIntensity: rimCfg.alpha * 3,
+    });
+    baseSprite.filters = [f];
+    lightingFilter = f;
+  } catch (err) {
+    console.error("[ShipLighting] Filter failed:", err);
+  }
+  container.addChild(baseSprite);
+
+  // 3b. Rim light ON TOP — subtle light reflection, not an outline
   const rimLight = new PIXI.Sprite(baseTex);
   rimLight.anchor.set(0.5);
   rimLight.tint = config.rimLight.color;
-  rimLight.alpha = quality === "LOW" ? config.rimLight.alpha * 0.5 : config.rimLight.alpha * 0.7;
-  rimLight.scale.set(config.rimLight.scale);
+  rimLight.alpha = 0;
+  rimLight.scale.set(1.0 + (config.rimLight.scale - 1.0) * 0.3);
   rimLight.blendMode = PIXI.BLEND_MODES.ADD;
   container.addChild(rimLight);
 
-  // 4. Base ship sprite
-  const baseSprite = new PIXI.Sprite(baseTex);
-  baseSprite.anchor.set(0.5);
-  container.addChild(baseSprite);
-
-  // 5. MASKED DIRECTIONAL LIGHTING — gradient clipped to ship silhouette
-  // The mask rotates with the ship; the gradient stays at world light angle.
-  // Result: edges facing the light get bright, edges facing away get dark.
-  const lightMask = new PIXI.Sprite(baseTex);
-  lightMask.anchor.set(0.5);
-  container.addChild(lightMask);
-
-  const lightingLayer = new PIXI.Container();
-  lightingLayer.mask = lightMask;
-
-  const gradSz = Math.ceil(80 * sizeScale) * 2;
-  const lightGrad = new PIXI.Sprite(getLightGradient(gradSz));
-  lightGrad.anchor.set(0.5);
-  lightGrad.blendMode = PIXI.BLEND_MODES.ADD;
-  lightGrad.alpha = quality === "LOW" ? 0 : 1.0;
-  lightingLayer.addChild(lightGrad);
-
-  const shadowGrad = new PIXI.Sprite(getShadowGradient(gradSz));
-  shadowGrad.anchor.set(0.5);
-  shadowGrad.alpha = quality === "LOW" ? 0 : 1.0;
-  lightingLayer.addChild(shadowGrad);
-
-  container.addChild(lightingLayer);
-
-  // 6. Specular highlight on lit side
-  const specSize = Math.ceil(8 * sizeScale);
-  const specularGlow = new PIXI.Sprite(getSoftGlow(specSize, "#ddeeff"));
-  specularGlow.anchor.set(0.5);
-  specularGlow.blendMode = PIXI.BLEND_MODES.ADD;
-  specularGlow.alpha = quality === "LOW" ? 0 : 0.25;
-  container.addChild(specularGlow);
-
-  // 7. Cockpit glow
+  // 4. Cockpit glow
   const cpSize = Math.ceil(5 * config.cockpit.size * sizeScale);
   const cockpitGlow = new PIXI.Sprite(getSoftGlow(cpSize));
   cockpitGlow.anchor.set(0.5);
@@ -255,7 +198,7 @@ export function createShipVisual(
   cockpitGlow.position.set(config.cockpit.x * sizeScale, config.cockpit.y * sizeScale);
   container.addChild(cockpitGlow);
 
-  // 8. Weapon glow points
+  // 5. Weapon glow points
   const weaponGlows: PIXI.Sprite[] = [];
   if (quality !== "LOW") {
     for (const wp of config.weaponPoints) {
@@ -270,7 +213,7 @@ export function createShipVisual(
     }
   }
 
-  // 9. Damage flash
+  // 6. Damage flash
   const damageFlash = new PIXI.Sprite(baseTex);
   damageFlash.anchor.set(0.5);
   damageFlash.blendMode = PIXI.BLEND_MODES.ADD;
@@ -278,7 +221,7 @@ export function createShipVisual(
   damageFlash.tint = 0xffffff;
   container.addChild(damageFlash);
 
-  // 10. Shield overlay
+  // 7. Shield overlay
   let shieldSprite: PIXI.Sprite | null = null;
   if (quality !== "LOW") {
     const shieldR = Math.ceil(20 * sizeScale);
@@ -290,9 +233,8 @@ export function createShipVisual(
   }
 
   return {
-    container, shadow, rimLight, baseSprite,
-    lightMask, lightingLayer, lightGrad, shadowGrad,
-    specularGlow, cockpitGlow,
+    container, shadow, rimLight, baseSprite, lightingFilter,
+    cockpitGlow,
     engineContainer, engineGlows, engineFlames, weaponGlows,
     shieldSprite, damageFlash,
     config, shipClass,
@@ -318,32 +260,19 @@ export function updateShipVisual(
     vs.baseSprite.texture = baseTex;
     vs.shadow.texture = baseTex;
     vs.rimLight.texture = baseTex;
-    vs.lightMask.texture = baseTex;
     vs.damageFlash.texture = baseTex;
   }
 
-  // ── Rotation — ship texture layers follow ship angle ──────────────
+  // ── Rotation ─────────────────────────────────────────────────────
   vs.baseSprite.rotation = rotation;
   vs.shadow.rotation = rotation;
   vs.rimLight.rotation = rotation;
   vs.damageFlash.rotation = rotation;
 
-  // ── DYNAMIC DIRECTIONAL LIGHTING ─────────────────────────────────
-  // Mask rotates WITH the ship (clips gradient to ship silhouette)
-  // Gradient stays at FIXED world angle (light source doesn't move)
-  // Result: as ship turns, different edges face the light/shadow
-  if (quality !== "LOW") {
-    vs.lightMask.rotation = rotation;
-    vs.lightGrad.rotation = LIGHT_ANGLE;
-    vs.shadowGrad.rotation = LIGHT_ANGLE;
-
-    // Specular highlight orbits to the lit side
-    const relAngle = LIGHT_ANGLE - rotation;
-    const specDist = 6 * sizeScale;
-    vs.specularGlow.position.set(
-      Math.cos(relAngle) * specDist,
-      Math.sin(relAngle) * specDist,
-    );
+  // ── Update shader lighting if active ──
+  if (vs.lightingFilter) {
+    const damage = vs.damageFlash.alpha > 0 ? vs.damageFlash.alpha : 0;
+    vs.lightingFilter.update(rotation, tick, speed, damage);
   }
 
   // ── Shadow drops away from world light ────────────────────────────
@@ -354,7 +283,7 @@ export function updateShipVisual(
   );
 
   // ── Movement tilt — asymmetric ────────────────────────────────────
-  if (quality !== "LOW") {
+  if (quality !== "LOW" && !ROTATION_FRAME_SHIPS.has(vs.shipClass)) {
     const targetSkewX = clamp(velX * cfg.tilt.skewFactor * 1.5, -0.12, 0.12);
     const targetRotOff = clamp(velX * cfg.tilt.rotFactor * 1.5, -0.04, 0.04);
     const targetScaleY = 1 - clamp(Math.abs(velY) * cfg.tilt.scaleFactor * 1.5, 0, 0.06);
@@ -372,25 +301,18 @@ export function updateShipVisual(
   // ── Idle hover ────────────────────────────────────────────────────
   const hoverY = quality !== "LOW" ? Math.sin(tick * cfg.hover.speed + vs.hoverSeed) * cfg.hover.amplitude : 0;
   const hoverRot = quality !== "LOW" ? Math.sin(tick * 1.3 + vs.hoverSeed) * 0.008 : 0;
-  if (quality !== "LOW") {
+  if (quality !== "LOW" && !ROTATION_FRAME_SHIPS.has(vs.shipClass)) {
     vs.baseSprite.position.set(0, hoverY);
     vs.rimLight.position.set(0, hoverY);
     vs.damageFlash.position.set(0, hoverY);
-    vs.lightMask.position.set(0, hoverY);
-    vs.lightGrad.position.set(0, hoverY);
-    vs.shadowGrad.position.set(0, hoverY);
-
-    const relAngle = LIGHT_ANGLE - rotation;
-    const specDist = 6 * sizeScale;
-    vs.specularGlow.position.set(
-      Math.cos(relAngle) * specDist,
-      Math.sin(relAngle) * specDist + hoverY,
-    );
 
     vs.baseSprite.rotation = rotation + hoverRot + vs.currentRotOffset;
     vs.rimLight.rotation = rotation + hoverRot + vs.currentRotOffset * 0.8;
-    vs.lightMask.rotation = rotation + hoverRot + vs.currentRotOffset;
     vs.shadow.rotation = rotation + hoverRot + vs.currentRotOffset * 1.2;
+  } else if (ROTATION_FRAME_SHIPS.has(vs.shipClass)) {
+    vs.baseSprite.rotation = rotation;
+    vs.shadow.rotation = rotation;
+    vs.rimLight.rotation = rotation;
   }
 
   // ── Parallax ──────────────────────────────────────────────────────
@@ -437,11 +359,6 @@ export function updateShipVisual(
     vs.cockpitGlow.rotation = rotation;
   }
 
-  // ── Specular pulse ────────────────────────────────────────────────
-  if (quality !== "LOW") {
-    vs.specularGlow.alpha = 0.20 + 0.08 * Math.sin(tick * 1.8 + vs.hoverSeed * 0.7);
-  }
-
   // ── Weapon glow pulse ─────────────────────────────────────────────
   for (let i = 0; i < vs.weaponGlows.length; i++) {
     vs.weaponGlows[i].alpha = 0.06 + 0.04 * Math.sin(tick * 3 + i * 1.5);
@@ -449,7 +366,7 @@ export function updateShipVisual(
   }
 
   // ── Rim light pulse ───────────────────────────────────────────────
-  vs.rimLight.alpha = cfg.rimLight.alpha * 0.7 + 0.03 * Math.sin(tick * 1.5);
+  vs.rimLight.alpha = 0;
 
   // ── Shield ────────────────────────────────────────────────────────
   if (vs.shieldSprite) {
@@ -502,6 +419,5 @@ export function updateShipTexture(vs: ShipVisualState, newTex: PIXI.Texture): vo
   vs.baseSprite.texture = newTex;
   vs.shadow.texture = newTex;
   vs.rimLight.texture = newTex;
-  vs.lightMask.texture = newTex;
   vs.damageFlash.texture = newTex;
 }

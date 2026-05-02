@@ -14,6 +14,7 @@ import { EventBanners } from "./components/EventBanners";
 import { Hotbar } from "./components/Hotbar";
 import { QuestTracker } from "./components/QuestTracker";
 import SettingsMenu from "./components/SettingsMenu";
+import { AdminPanel } from "./components/AdminPanel";
 import { DUNGEONS, STATIONS, PORTALS, ZONES, MODULE_DEFS, RESOURCES, SHIP_CLASSES, ENEMY_DEFS, type EnemyType, type DungeonId } from "./game/types";
 import { travelToZone, state as gameState } from "./game/store";
 import AuthScreen from "./components/AuthScreen";
@@ -54,7 +55,7 @@ function GameCanvas() {
 
       let raf = 0;
       const draw = () => {
-        pixiRender();
+        try { pixiRender(); } catch (err) { console.error("[PIXI] Render error:", err); }
         raf = requestAnimationFrame(draw);
       };
       raf = requestAnimationFrame(draw);
@@ -592,6 +593,7 @@ function GameApp() {
               aggro: true, hitFlash: 0,
               combo: null, stunUntil: 0,
               serverPos: { x: se.x, y: se.y },
+              spawnPos: { x: se.x, y: se.y },
             });
           }
         }
@@ -625,6 +627,7 @@ function GameApp() {
         }
       },
       onComplete: (_data: any) => {
+        console.warn("[INSTANCE] onComplete fired!", _data, "dungeon:", state.dungeon?.wave, "/", state.dungeon?.totalWaves);
         completeDungeon();
         pushNotification("Instance complete! Returning to world.", "success");
       },
@@ -816,6 +819,7 @@ function GameApp() {
 
   const docked = useGame((s) => s.dockedAt);
   const showSocial = useGame((s) => s.showSocial);
+  const showAdmin = useGame((s) => s.showAdmin);
   const showSettings = useGame((s) => s.showSettings);
 
   const currentUiScale = useGame((s) => s.uiScale ?? 1);
@@ -859,6 +863,7 @@ function GameApp() {
       </div>
       </div>
       {showSettings && <SettingsMenu onClose={() => { state.showSettings = false; bump(); }} />}
+      {showAdmin && <AdminPanel onClose={() => { state.showAdmin = false; bump(); }} />}
       <button
         onClick={() => { clearToken(); disconnectSocket(); window.location.reload(); }}
         style={{

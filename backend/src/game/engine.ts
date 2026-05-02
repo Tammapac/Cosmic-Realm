@@ -252,7 +252,7 @@ export function computeStats(playerData: any): EffectiveStats {
   // Debug: log when skills are non-empty
   const skillEntries = Object.entries(playerData.skills || {}).filter(([_, v]) => (v as number) > 0);
   if (skillEntries.length > 0) {
-    console.log("[SERVER SKILLS]", JSON.stringify(playerData.skills));
+    // console.log("[SERVER SKILLS]", JSON.stringify(playerData.skills));
   }
 
   let damage = (cls.baseDamage + (mod.damage ?? 0)) + sk("off-power") * 3;

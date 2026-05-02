@@ -352,8 +352,91 @@ export function setupSocket(io: Server) {
       p.shieldMax = newStats.shieldMax;
       p.shieldRegen = newStats.shieldRegen;
       if (data.skills && Object.keys(data.skills).length > 0) {
-        console.log(`[STATS] ${user.username} skills updated: SPD ${Math.round(oldSpeed)}->${Math.round(p.speed)}, DMG ${Math.round(newStats.damage)}, RATE ${newStats.fireRate.toFixed(2)}, HUL ${Math.round(p.hullMax)}, SHD ${Math.round(p.shieldMax)}`);
+        // console.log(`[STATS] ${user.username} skills updated: SPD ${Math.round(oldSpeed)}->${Math.round(p.speed)}, DMG ${Math.round(newStats.damage)}, RATE ${newStats.fireRate.toFixed(2)}, HUL ${Math.round(p.hullMax)}, SHD ${Math.round(p.shieldMax)}`);
       }
+    });
+
+
+    // ── ADMIN PANEL ─────────────────────────────────────────────────
+    const ADMIN_PLAYER_ID = 3;
+
+    socket.on('admin:list', async (_data: any, cb: Function) => {
+      if (user.playerId !== ADMIN_PLAYER_ID) { cb?.({ error: 'Unauthorized' }); return; }
+      try {
+        const rows = await db.select({
+          id: schema.players.id,
+          name: schema.players.name,
+          level: schema.players.level,
+          credits: schema.players.credits,
+          shipClass: schema.players.shipClass,
+          honor: schema.players.honor,
+        }).from(schema.players).orderBy(schema.players.id);
+        cb?.({ players: rows });
+      } catch (e) { cb?.({ error: 'DB error' }); }
+    });
+
+    socket.on('admin:get', async (data: { playerId: number }, cb: Function) => {
+      if (user.playerId !== ADMIN_PLAYER_ID) { cb?.({ error: 'Unauthorized' }); return; }
+      try {
+        const [p] = await db.select().from(schema.players)
+          .where(eq(schema.players.id, data.playerId)).limit(1);
+        if (!p) { cb?.({ error: 'Not found' }); return; }
+        cb?.({ player: {
+          id: p.id, name: p.name, shipClass: p.shipClass,
+          level: p.level, exp: Number(p.exp), credits: Number(p.credits),
+          honor: p.honor, hull: p.hull, shield: p.shield,
+          zone: p.zone, faction: p.faction,
+          skillPoints: p.skillPoints, skills: p.skills,
+          ownedShips: p.ownedShips, inventory: p.inventory,
+          equipped: p.equipped, cargo: p.cargo,
+          drones: p.drones, consumables: p.consumables,
+          milestones: p.milestones,
+        }});
+      } catch (e) { cb?.({ error: 'DB error' }); }
+    });
+
+    socket.on('admin:update', async (data: { playerId: number; updates: any }, cb: Function) => {
+      if (user.playerId !== ADMIN_PLAYER_ID) { cb?.({ error: 'Unauthorized' }); return; }
+      try {
+        const u = data.updates;
+        const setObj: any = {};
+        if (u.credits !== undefined) setObj.credits = u.credits;
+        if (u.honor !== undefined) setObj.honor = u.honor;
+        if (u.exp !== undefined) setObj.exp = u.exp;
+        if (u.level !== undefined) setObj.level = u.level;
+        if (u.hull !== undefined) setObj.hull = u.hull;
+        if (u.shield !== undefined) setObj.shield = u.shield;
+        if (u.shipClass !== undefined) setObj.shipClass = u.shipClass;
+        if (u.ownedShips !== undefined) setObj.ownedShips = u.ownedShips;
+        if (u.skillPoints !== undefined) setObj.skillPoints = u.skillPoints;
+        if (u.zone !== undefined) setObj.zone = u.zone;
+        if (u.faction !== undefined) setObj.faction = u.faction;
+        if (u.inventory !== undefined) setObj.inventory = u.inventory;
+        if (u.equipped !== undefined) setObj.equipped = u.equipped;
+        if (u.skills !== undefined) setObj.skills = u.skills;
+        if (u.drones !== undefined) setObj.drones = u.drones;
+        if (Object.keys(setObj).length === 0) { cb?.({ error: 'No fields' }); return; }
+        await db.update(schema.players).set(setObj)
+          .where(eq(schema.players.id, data.playerId));
+        // Also update in-memory if player is online
+        const online = getPlayer(data.playerId);
+        if (online) {
+          if (u.level !== undefined) online.level = u.level;
+          if (u.shipClass !== undefined) online.shipClass = u.shipClass;
+          if (u.honor !== undefined) online.honor = u.honor;
+          if (u.hull !== undefined) online.hull = u.hull;
+          if (u.shield !== undefined) online.shield = u.shield;
+          if (u.zone !== undefined) online.zone = u.zone;
+          if (u.faction !== undefined) online.faction = u.faction;
+        }
+        console.log('[ADMIN] ' + user.username + ' updated player ' + data.playerId + ': ' + JSON.stringify(u));
+        // Force-sync target player's client if they're online
+        const targetSocket = activeSockets.get(data.playerId);
+        if (targetSocket && data.playerId !== user.playerId) {
+          targetSocket.emit('admin:sync', u);
+        }
+        cb?.({ ok: true });
+      } catch (e) { cb?.({ error: 'DB error: ' + (e as Error).message }); }
     });
 
     // ── DISCONNECT ──────────────────────────────────────────────────
@@ -362,6 +445,7 @@ export function setupSocket(io: Server) {
       if (activeSockets.get(user.playerId)?.id === socket.id) {
         activeSockets.delete(user.playerId);
       }
+      instanceMgr.removePlayer(user.playerId);
       engine.removePlayerData(user.playerId);
       const zone = removePlayer(user.playerId);
       if (zone) {
@@ -457,11 +541,22 @@ export function setupSocket(io: Server) {
         }
 
         if (result.allCleared) {
-          // Instance complete - notify players
+          console.log("[INSTANCE] ALL CLEARED inst=" + instId + " wave=" + inst.wave + "/" + inst.totalWaves + " enemies=" + inst.enemies.size);
+          // Instance complete - notify players and clean up mappings
           for (const p of instPlayers) {
+            const ret = instanceMgr.removePlayer(p.playerId);
+            if (ret) {
+              p.posX = ret.x;
+              p.posY = ret.y;
+              p.velX = 0;
+              p.velY = 0;
+              p.targetX = null;
+              p.targetY = null;
+            }
             const sock = io.sockets.sockets.get(p.socketId);
             if (sock) sock.emit("instance:complete", { dungeonId: inst.dungeonId });
           }
+          instanceMgr.instances.delete(instId);
         }
       }
       tickCounter++;

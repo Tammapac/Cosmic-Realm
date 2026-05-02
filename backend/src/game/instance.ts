@@ -87,7 +87,7 @@ export class InstanceManager {
       enemyDmgMul: config.enemyDmgMul,
       waveSpawned: 0,
       spawnedThisWave: false,
-      spawnCd: 1.5,
+      spawnCd: 0.5,
       startedAt: Date.now(),
       completed: false,
       color: config.color,
@@ -172,6 +172,8 @@ export class InstanceManager {
     let waveCleared = false;
     let allCleared = false;
 
+    if (inst.completed) return { events: [], waveCleared: false, allCleared: false };
+
     const aliveCount = Array.from(inst.enemies.values()).filter(e => e.hull > 0).length;
 
     // Wave spawning
@@ -180,7 +182,7 @@ export class InstanceManager {
       if (inst.spawnCd <= 0) {
         if (inst.waveSpawned < inst.enemiesPerWave) {
           this.spawnEnemy(inst);
-          inst.spawnCd = 0.45;
+          inst.spawnCd = 0.3;
           events.push({ type: "enemy:spawn", data: this.serializeLastEnemy(inst) });
         } else {
           inst.spawnedThisWave = true;
@@ -196,8 +198,9 @@ export class InstanceManager {
         inst.wave++;
         inst.spawnedThisWave = false;
         inst.waveSpawned = 0;
-        inst.spawnCd = 1.2;
+        inst.spawnCd = 0.8;
         waveCleared = true;
+        console.log("[INSTANCE] Wave " + (inst.wave - 1) + " cleared, starting wave " + inst.wave + "/" + inst.totalWaves);
         events.push({ type: "wave:clear", data: { wave: inst.wave - 1, final: false } });
         events.push({ type: "wave:start", data: { wave: inst.wave, totalWaves: inst.totalWaves } });
       }

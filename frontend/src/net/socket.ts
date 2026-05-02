@@ -237,6 +237,18 @@ export function connectSocket(token: string) {
 
   socket.on("kicked", (data: { reason: string }) => {
     console.warn("[socket] kicked:", data.reason);
+
+  // Admin force-sync: server updated our player data
+  socket.on("admin:sync", async (updates: any) => {
+    const store = await import("../game/store");
+    const p = store.state.player;
+    for (const [k, v] of Object.entries(updates)) {
+      if (k in p) (p as any)[k] = v;
+    }
+    store.bump();
+    store.save();
+    console.log("[ADMIN] Received force-sync:", updates);
+  });
     alert("Session taken over: " + data.reason + ". This tab will reload.");
     window.location.reload();
   });
@@ -521,4 +533,18 @@ export function isConnected(): boolean {
 
 export function getInputSeq(): number {
   return _inputSeq;
+}
+
+
+// ── ADMIN ───────────────────────────────────────────────────────────
+export function adminListPlayers(cb: (data: any) => void) {
+  socket?.emit("admin:list", {}, cb);
+}
+
+export function adminGetPlayer(playerId: number, cb: (data: any) => void) {
+  socket?.emit("admin:get", { playerId }, cb);
+}
+
+export function adminUpdatePlayer(playerId: number, updates: any, cb: (data: any) => void) {
+  socket?.emit("admin:update", { playerId, updates }, cb);
 }

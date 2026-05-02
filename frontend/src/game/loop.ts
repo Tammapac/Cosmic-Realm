@@ -2866,7 +2866,7 @@ function serverEnemyToLocal(se: ServerEnemy): Enemy {
 
 let serverConfig = { tickRate: 25, friction: 0.96, frictionRefFps: 60 };
 export let serverAuthoritative = false;
-let serverPlayerId = 0;
+export let serverPlayerId = 0;
 let _deltaCount = 0;
 
 const ENTITY_LERP_RATE = NETCODE.INTERPOLATION_FACTOR;

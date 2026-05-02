@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { state, bump, useGame, pushChat, pushNotification, save } from "../game/store";
+import { serverPlayerId } from "../game/loop";
 import { FAKE_CLANS } from "../game/types";
 
 export function SocialPanel() {
@@ -71,7 +72,7 @@ export function SocialPanel() {
               )}
             </div>
           ))}
-        <div ref={chatEndRef} />
+        
         </div>
       )}
     </div>
@@ -92,6 +93,17 @@ export function BattleLog() {
 
   const send = () => {
     if (!input.trim()) return;
+    if (input.trim().toLowerCase() === "/admin") {
+      if (serverPlayerId === 3) {
+        state.showAdmin = !state.showAdmin;
+        bump();
+        pushChat("system", "SYSTEM", state.showAdmin ? "Admin panel opened." : "Admin panel closed.");
+      } else {
+        pushChat("system", "SYSTEM", "Access denied.");
+      }
+      setInput("");
+      return;
+    }
     pushChat(channel, player.name, input.trim());
     setInput("");
   };

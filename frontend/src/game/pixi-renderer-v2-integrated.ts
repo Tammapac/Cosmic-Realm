@@ -97,6 +97,136 @@ const SHIP_SPRITES: Partial<Record<ShipClassId, string>> = {
 const shipSpriteTextures = new Map<string, PIXI.Texture>();
 const shipSpriteLoading = new Set<string>();
 
+// ── 8-DIRECTION SPRITE SYSTEM ──────────────────────────────────────────
+// Pre-rendered rotation frames. sprite.rotation = 0 always; only texture swaps.
+// Hysteresis prevents flicker at direction boundaries.
+const ROTATION_SPRITES: Partial<Record<string, { frames: number; path: string; files: string[] }>> = {
+  skimmer: { frames: 16, path: "/ships/skimmer/", files: [
+    "ship_00_N.png","ship_01_NNE.png","ship_02_NE.png","ship_03_ENE.png",
+    "ship_04_E.png","ship_05_ESE.png","ship_06_SE.png","ship_07_SSE.png",
+    "ship_08_S.png","ship_09_SSW.png","ship_10_SW.png","ship_11_WSW.png",
+    "ship_12_W.png","ship_13_WNW.png","ship_14_NW.png","ship_15_NNW.png"
+  ]},
+};
+const rotationFrameTextures = new Map<string, PIXI.Texture[]>();
+const rotationFrameLoading = new Set<string>();
+const directionState = new Map<string, number>();
+
+const HYSTERESIS_DEG = 5;
+const HYSTERESIS_RAD = HYSTERESIS_DEG * Math.PI / 180;
+
+function preloadRotationSprites(): void {
+  for (const [id, cfg] of Object.entries(ROTATION_SPRITES)) {
+    if (!cfg || rotationFrameTextures.has(id) || rotationFrameLoading.has(id)) continue;
+    rotationFrameLoading.add(id);
+    const frames: (PIXI.Texture | null)[] = new Array(cfg.frames).fill(null);
+    let loaded = 0;
+    for (let i = 0; i < cfg.frames; i++) {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      const idx = i;
+      img.onload = () => {
+        frames[idx] = PIXI.Texture.from(img, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+        loaded++;
+        if (loaded === cfg.frames) {
+          rotationFrameTextures.set(id, frames as PIXI.Texture[]);
+          rotationFrameLoading.delete(id);
+          texCache.forEach((_, k) => { if (k.startsWith("ship-" + id + "-")) texCache.delete(k); });
+          lastPlayerShipClass = "" as ShipClassId;
+          for (const [, data] of otherPlayerSprites) {
+            (data as any)._lastShipClass = "";
+          }
+        }
+      };
+      img.onerror = () => { loaded++; if (loaded === cfg.frames) rotationFrameLoading.delete(id); };
+      img.src = cfg.path + cfg.files[i];
+    }
+  }
+}
+
+function hasRotationFrames(shipClass: string): boolean {
+  return rotationFrameTextures.has(shipClass);
+}
+
+function angleToDirection8(angle: number, totalFrames: number, entityId: string): number {
+  let a = (angle + Math.PI / 2) % (Math.PI * 2);
+  if (a < 0) a += Math.PI * 2;
+  const step = (Math.PI * 2) / totalFrames;
+  const rawIdx = Math.round(a / step) % totalFrames;
+
+  const prevIdx = directionState.get(entityId);
+  if (prevIdx !== undefined && prevIdx !== rawIdx) {
+    const prevCenter = prevIdx * step;
+    let distFromPrev = a - prevCenter;
+    if (distFromPrev > Math.PI) distFromPrev -= Math.PI * 2;
+    if (distFromPrev < -Math.PI) distFromPrev += Math.PI * 2;
+    if (Math.abs(distFromPrev) < step / 2 + HYSTERESIS_RAD) {
+      return prevIdx;
+    }
+  }
+  directionState.set(entityId, rawIdx);
+  return rawIdx;
+}
+
+function getDirectionalTex(shipClass: ShipClassId, scale: number, angle: number, entityId: string): { tex: PIXI.Texture; isDirectional: boolean } {
+  const frames = rotationFrameTextures.get(shipClass);
+  if (!frames) {
+    return { tex: getShipTex(shipClass, scale), isDirectional: false };
+  }
+  const sizeScale = SHIP_SIZE_SCALE[shipClass] ?? 1;
+  const finalScale = scale * sizeScale;
+  const frameIdx = angleToDirection8(angle, frames.length, entityId);
+  const key = "ship-" + shipClass + "-" + finalScale.toFixed(2) + "-f" + frameIdx;
+  let tex = texCache.get(key);
+  if (tex) return { tex, isDirectional: true };
+
+  const spriteTex = frames[frameIdx];
+  if (!spriteTex) return { tex: getShipTex(shipClass, scale), isDirectional: false };
+
+  const img = spriteTex.baseTexture.resource as any;
+  const src = img.source || img;
+  const iw = src.naturalWidth || src.width;
+  const ih = src.naturalHeight || src.height;
+
+  const trimC = document.createElement("canvas");
+  trimC.width = iw; trimC.height = ih;
+  const trimCtx = trimC.getContext("2d")!;
+  trimCtx.drawImage(src, 0, 0);
+  const imgData = trimCtx.getImageData(0, 0, iw, ih).data;
+  let minX = iw, minY = ih, maxX = 0, maxY = 0;
+  for (let y = 0; y < ih; y++) {
+    for (let x = 0; x < iw; x++) {
+      if (imgData[(y * iw + x) * 4 + 3] > 10) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  const cw = maxX - minX + 1;
+  const ch = maxY - minY + 1;
+  const aspect = ch / cw;
+
+  const targetSize = Math.ceil(60 * finalScale);
+  const padding = 16;
+  const drawW = targetSize * 1.6;
+  const drawH = drawW * aspect;
+  const canvasSz = Math.ceil(Math.max(drawW, drawH) + padding * 2);
+  const c2 = document.createElement("canvas");
+  c2.width = canvasSz;
+  c2.height = canvasSz;
+  const ctx = c2.getContext("2d")!;
+  const dx = (canvasSz - drawW) / 2;
+  const dy = (canvasSz - drawH) / 2;
+  ctx.globalAlpha = 1.0;
+  ctx.drawImage(src, minX, minY, cw, ch, dx, dy, drawW, drawH);
+
+  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  texCache.set(key, tex);
+  return { tex, isDirectional: true };
+}
+
 function preloadShipSprites(): void {
   for (const [id, url] of Object.entries(SHIP_SPRITES)) {
     if (shipSpriteTextures.has(id) || shipSpriteLoading.has(id)) continue;
@@ -183,34 +313,9 @@ function getShipTex(shipClass: ShipClassId, scale: number): PIXI.Texture {
     const dx = (canvasSz - drawW) / 2;
     const dy = (canvasSz - drawH) / 2;
 
-    // Glow outline — subtle edge glow
-    const cls = SHIP_CLASSES[shipClass];
-    ctx.shadowColor = cls.color;
-    ctx.shadowBlur = 6;
-    ctx.globalAlpha = 0.35;
-    ctx.drawImage(src, minX, minY, cw, ch, dx, dy, drawW, drawH);
-    ctx.shadowBlur = 0;
-
-    // Sharp ship on top
+    // Clean crisp ship — shader handles all lighting
     ctx.globalAlpha = 1.0;
     ctx.drawImage(src, minX, minY, cw, ch, dx, dy, drawW, drawH);
-
-    // Subtle edge detail (baked) — dynamic directional lighting handled by renderer
-    ctx.save();
-    ctx.globalCompositeOperation = "source-atop";
-
-    // Slight center-to-edge darkening for convexity
-    const edgeGrad = ctx.createRadialGradient(
-      dx + drawW / 2, dy + drawH / 2, Math.min(drawW, drawH) * 0.2,
-      dx + drawW / 2, dy + drawH / 2, Math.max(drawW, drawH) * 0.55,
-    );
-    edgeGrad.addColorStop(0, "rgba(0,0,0,0)");
-    edgeGrad.addColorStop(0.7, "rgba(0,0,15,0.08)");
-    edgeGrad.addColorStop(1, "rgba(0,0,25,0.18)");
-    ctx.fillStyle = edgeGrad;
-    ctx.fillRect(dx, dy, drawW, drawH);
-
-    ctx.restore();
 
     tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
     texCache.set(key, tex);
@@ -700,6 +805,7 @@ let fps = 0;
 
 export function initPixiRenderer(container: HTMLDivElement): void {
   preloadShipSprites();
+  preloadRotationSprites();
   // Round pixels for sharp rendering (no global NEAREST - text needs LINEAR)
   PIXI.settings.ROUND_PIXELS = true;
 
@@ -1724,10 +1830,11 @@ function syncPlayer(): void {
   const speed = Math.sqrt(p.vel.x * p.vel.x + p.vel.y * p.vel.y);
   const es = effectiveStats();
   if (playerVisual) {
+    const _dirTex = getDirectionalTex(p.shipClass, 1, p.angle, "player");
     updateShipVisual(
       playerVisual,
-      getShipTex(p.shipClass, 1),
-      p.angle + Math.PI / 2,
+      _dirTex.tex,
+      _dirTex.isDirectional ? 0 : p.angle + Math.PI / 2,
       p.vel.x, p.vel.y, speed,
       state.tick, 1 / 60,
       p.shield, es.shieldMax,
@@ -1876,13 +1983,13 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
 
     data.container.visible = true;
     data.container.position.set(o.pos.x, o.pos.y);
-    data.body.rotation = o.angle + Math.PI / 2;
 
-    // Update texture if ship class changed
-    const expectedTex = getShipTex(o.shipClass, 1);
-    if (data.body.texture !== expectedTex) {
-      data.body.texture = expectedTex;
+    // Update texture — use rotation frames if available
+    const _oDir = getDirectionalTex(o.shipClass, 1, o.angle, o.id);
+    if (data.body.texture !== _oDir.tex) {
+      data.body.texture = _oDir.tex;
     }
+    data.body.rotation = _oDir.isDirectional ? 0 : o.angle + Math.PI / 2;
 
     // Bars
     const hullPct = Math.max(0, o.hull / o.hullMax);

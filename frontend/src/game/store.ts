@@ -127,6 +127,7 @@ export type GameState = {
   minimapScale: number;
   showFullZoneMap: boolean;
   showSettings: boolean;
+  showAdmin: boolean;
   uiScale: number;
   cameraZoom: number;
 };
@@ -512,6 +513,7 @@ export const state: GameState = {
   minimapScale: 1,
   showFullZoneMap: false,
   showSettings: false,
+  showAdmin: false,
   uiScale: parseFloat(localStorage.getItem("sf-ui-scale") || "1"),
   cameraZoom: 1,
 };
@@ -545,6 +547,9 @@ export function useGame<T>(selector: (s: GameState) => T): T {
 export function save(): void {
   try {
     const p = state.player;
+    if (isNaN(p.credits)) p.credits = 0;
+    if (isNaN(p.exp)) p.exp = 0;
+    if (isNaN(p.honor)) p.honor = 0;
     p.lastSeen = Date.now();
     const toSave: Partial<Player> = {
       name: p.name,
@@ -615,7 +620,7 @@ export function loadServerPlayer(data: any): void {
   if (data.shipClass) p.shipClass = data.shipClass;
   if (data.level != null) p.level = data.level;
   if (data.exp != null) p.exp = data.exp;
-  if (data.credits != null) p.credits = data.credits;
+  if (data.credits != null && !isNaN(data.credits)) p.credits = data.credits;
   if (data.honor != null) p.honor = data.honor;
   if (data.hull != null) p.hull = data.hull;
   if (data.shield != null) p.shield = data.shield;
@@ -1397,7 +1402,7 @@ export function completeDungeon(): void {
   const isFeatured = run.isFeatured;
   const creditReward = isFeatured ? Math.round(def.rewardCredits * DAILY_DUNGEON_BONUS.creditsMul) : def.rewardCredits;
   // Rewards
-  p.credits += creditReward;
+  p.credits = (p.credits || 0) + creditReward;
   p.exp += def.rewardExp;
   p.milestones.totalCreditsEarned += creditReward;
   for (const m of def.rewardMaterials) {
@@ -1434,6 +1439,12 @@ export function completeDungeon(): void {
   }
   state.enemies = [];
   state.projectiles = [];
+  sendInstanceLeave();
+  if (state.instanceReturnPos) {
+    state.player.pos.x = state.instanceReturnPos.x;
+    state.player.pos.y = state.instanceReturnPos.y;
+    state.instanceReturnPos = null;
+  }
   save(); bump();
 }
 
