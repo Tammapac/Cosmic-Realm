@@ -164,13 +164,16 @@ export function createShipVisual(
   try {
     const f = new ShipLightingFilter(quality);
     const rimCfg = config.rimLight;
+    const isRotShip = ROTATION_FRAME_SHIPS.has(shipClass);
     f.configure({
       rimColor: [
         ((rimCfg.color >> 16) & 0xff) / 255,
         ((rimCfg.color >> 8) & 0xff) / 255,
         (rimCfg.color & 0xff) / 255,
       ],
-      rimIntensity: rimCfg.alpha * 3,
+      rimIntensity: isRotShip ? rimCfg.alpha * 0.8 : rimCfg.alpha * 3,
+      shadowStrength: isRotShip ? 0.65 : 0.5,
+      lightIntensity: isRotShip ? 0.6 : 0.8,
     });
     baseSprite.filters = [f];
     lightingFilter = f;
@@ -283,10 +286,15 @@ export function updateShipVisual(
   );
 
   // ── Movement tilt — asymmetric ────────────────────────────────────
-  if (quality !== "LOW" && !ROTATION_FRAME_SHIPS.has(vs.shipClass)) {
-    const targetSkewX = clamp(velX * cfg.tilt.skewFactor * 1.5, -0.12, 0.12);
-    const targetRotOff = clamp(velX * cfg.tilt.rotFactor * 1.5, -0.04, 0.04);
-    const targetScaleY = 1 - clamp(Math.abs(velY) * cfg.tilt.scaleFactor * 1.5, 0, 0.06);
+  if (quality !== "LOW") {
+    const isRotShip = ROTATION_FRAME_SHIPS.has(vs.shipClass);
+    const tiltMul = isRotShip ? 0.25 : 1.5;
+    const maxSkew = isRotShip ? 0.03 : 0.12;
+    const maxRot = isRotShip ? 0.01 : 0.04;
+    const maxScale = isRotShip ? 0.015 : 0.06;
+    const targetSkewX = clamp(velX * cfg.tilt.skewFactor * tiltMul, -maxSkew, maxSkew);
+    const targetRotOff = clamp(velX * cfg.tilt.rotFactor * tiltMul, -maxRot, maxRot);
+    const targetScaleY = 1 - clamp(Math.abs(velY) * cfg.tilt.scaleFactor * tiltMul, 0, maxScale);
     const engaging = Math.abs(targetSkewX) > Math.abs(vs.currentSkewX) + 0.001;
     const tiltLerp = Math.min(1, dt * (engaging ? 5 : 1.2));
     vs.currentSkewX = lerp(vs.currentSkewX, targetSkewX, tiltLerp);
@@ -299,20 +307,24 @@ export function updateShipVisual(
   }
 
   // ── Idle hover ────────────────────────────────────────────────────
-  const hoverY = quality !== "LOW" ? Math.sin(tick * cfg.hover.speed + vs.hoverSeed) * cfg.hover.amplitude : 0;
-  const hoverRot = quality !== "LOW" ? Math.sin(tick * 1.3 + vs.hoverSeed) * 0.008 : 0;
-  if (quality !== "LOW" && !ROTATION_FRAME_SHIPS.has(vs.shipClass)) {
+  const isRotShipHover = ROTATION_FRAME_SHIPS.has(vs.shipClass);
+  const hoverAmp = isRotShipHover ? cfg.hover.amplitude * 0.4 : cfg.hover.amplitude;
+  const hoverY = quality !== "LOW" ? Math.sin(tick * cfg.hover.speed + vs.hoverSeed) * hoverAmp : 0;
+  const hoverRot = quality !== "LOW" && !isRotShipHover ? Math.sin(tick * 1.3 + vs.hoverSeed) * 0.008 : 0;
+  if (quality !== "LOW") {
     vs.baseSprite.position.set(0, hoverY);
     vs.rimLight.position.set(0, hoverY);
     vs.damageFlash.position.set(0, hoverY);
 
-    vs.baseSprite.rotation = rotation + hoverRot + vs.currentRotOffset;
-    vs.rimLight.rotation = rotation + hoverRot + vs.currentRotOffset * 0.8;
-    vs.shadow.rotation = rotation + hoverRot + vs.currentRotOffset * 1.2;
-  } else if (ROTATION_FRAME_SHIPS.has(vs.shipClass)) {
-    vs.baseSprite.rotation = rotation;
-    vs.shadow.rotation = rotation;
-    vs.rimLight.rotation = rotation;
+    if (isRotShipHover) {
+      vs.baseSprite.rotation = rotation;
+      vs.shadow.rotation = rotation;
+      vs.rimLight.rotation = rotation;
+    } else {
+      vs.baseSprite.rotation = rotation + hoverRot + vs.currentRotOffset;
+      vs.rimLight.rotation = rotation + hoverRot + vs.currentRotOffset * 0.8;
+      vs.shadow.rotation = rotation + hoverRot + vs.currentRotOffset * 1.2;
+    }
   }
 
   // ── Parallax ──────────────────────────────────────────────────────
