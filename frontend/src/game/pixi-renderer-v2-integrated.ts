@@ -100,18 +100,42 @@ const shipSpriteLoading = new Set<string>();
 // ── 8-DIRECTION SPRITE SYSTEM ──────────────────────────────────────────
 // Pre-rendered rotation frames. sprite.rotation = 0 always; only texture swaps.
 // Hysteresis prevents flicker at direction boundaries.
-const ROTATION_SPRITES: Partial<Record<string, { frames: number; path: string; files: string[] }>> = {
-  skimmer: { frames: 32, path: "/ships/skimmer/", files: [
-    "ship_01_N.png","ship_02_NbE.png","ship_03_NNE.png","ship_04_NEbN.png",
-    "ship_05_NE.png","ship_06_NEbE.png","ship_07_ENE.png","ship_08_EbN.png",
-    "ship_09_E.png","ship_10_EbS.png","ship_11_ESE.png","ship_12_SEbE.png",
-    "ship_13_SE.png","ship_14_SEbS.png","ship_15_SSE.png","ship_16_SbE.png",
-    "ship_17_S.png","ship_18_SbW.png","ship_19_SSW.png","ship_20_SWbS.png",
-    "ship_21_SW.png","ship_22_SWbW.png","ship_23_WSW.png","ship_24_WbS.png",
-    "ship_25_W.png","ship_26_WbN.png","ship_27_WNW.png","ship_28_NWbW.png",
-    "ship_29_NW.png","ship_30_NWbN.png","ship_31_NNW.png","ship_32_NbW.png"
-  ]},
-};
+// ── Directional Sprite Import System ──
+// To add a new ship: 1) Drop 8/16/32 sprites into /public/ships/{shipClass}/
+//   Named: ship_01_N.png, ship_02_NbE.png, ... (standard compass, 1-based)
+//   2) Add one line to DIRECTIONAL_SHIPS below
+//   3) Rebuild. Done.
+const DIR_32 = ["N","NbE","NNE","NEbN","NE","NEbE","ENE","EbN","E","EbS","ESE","SEbE","SE","SEbS","SSE","SbE","S","SbW","SSW","SWbS","SW","SWbW","WSW","WbS","W","WbN","WNW","NWbW","NW","NWbN","NNW","NbW"];
+const DIR_16 = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+const DIR_8  = ["N","NE","E","SE","S","SW","W","NW"];
+
+function getDirNames(frames: number): string[] {
+  if (frames === 32) return DIR_32;
+  if (frames === 16) return DIR_16;
+  if (frames === 8) return DIR_8;
+  return DIR_32;
+}
+
+function buildSpriteFiles(frames: number): string[] {
+  const dirs = getDirNames(frames);
+  return dirs.map((d, i) => `ship_${String(i + 1).padStart(2, "0")}_${d}.png`);
+}
+
+// ── Ship Registry ── Add new directional ships here ──
+const DIRECTIONAL_SHIPS: { id: string; frames: number }[] = [
+  { id: "skimmer", frames: 32 },
+  // { id: "interceptor", frames: 32 },
+  // { id: "freighter", frames: 16 },
+];
+
+const ROTATION_SPRITES: Partial<Record<string, { frames: number; path: string; files: string[] }>> = {};
+for (const ship of DIRECTIONAL_SHIPS) {
+  ROTATION_SPRITES[ship.id] = {
+    frames: ship.frames,
+    path: `/ships/${ship.id}/`,
+    files: buildSpriteFiles(ship.frames),
+  };
+}
 const rotationFrameTextures = new Map<string, PIXI.Texture[]>();
 const rotationFrameLoading = new Set<string>();
 const directionState = new Map<string, number>();
