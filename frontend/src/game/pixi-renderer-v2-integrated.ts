@@ -102,14 +102,14 @@ const shipSpriteLoading = new Set<string>();
 // Hysteresis prevents flicker at direction boundaries.
 const ROTATION_SPRITES: Partial<Record<string, { frames: number; path: string; files: string[] }>> = {
   skimmer: { frames: 32, path: "/ships/skimmer/", files: [
-    "ship_00_N.png","ship_01_NbE.png","ship_02_NNE.png","ship_03_NEbN.png",
-    "ship_04_NE.png","ship_05_NEbE.png","ship_06_ENE.png","ship_07_EbN.png",
-    "ship_08_E.png","ship_09_EbS.png","ship_10_ESE.png","ship_11_SEbE.png",
-    "ship_12_SE.png","ship_13_SEbS.png","ship_14_SSE.png","ship_15_SbE.png",
-    "ship_16_S.png","ship_17_SbW.png","ship_18_SSW.png","ship_19_SWbS.png",
-    "ship_20_SW.png","ship_21_SWbW.png","ship_22_WSW.png","ship_23_WbS.png",
-    "ship_24_W.png","ship_25_WbN.png","ship_26_WNW.png","ship_27_NWbW.png",
-    "ship_28_NW.png","ship_29_NWbN.png","ship_30_NNW.png","ship_31_NbW.png"
+    "ship_01_N.png","ship_02_NbE.png","ship_03_NNE.png","ship_04_NEbN.png",
+    "ship_05_NE.png","ship_06_NEbE.png","ship_07_ENE.png","ship_08_EbN.png",
+    "ship_09_E.png","ship_10_EbS.png","ship_11_ESE.png","ship_12_SEbE.png",
+    "ship_13_SE.png","ship_14_SEbS.png","ship_15_SSE.png","ship_16_SbE.png",
+    "ship_17_S.png","ship_18_SbW.png","ship_19_SSW.png","ship_20_SWbS.png",
+    "ship_21_SW.png","ship_22_SWbW.png","ship_23_WSW.png","ship_24_WbS.png",
+    "ship_25_W.png","ship_26_WbN.png","ship_27_WNW.png","ship_28_NWbW.png",
+    "ship_29_NW.png","ship_30_NWbN.png","ship_31_NNW.png","ship_32_NbW.png"
   ]},
 };
 const rotationFrameTextures = new Map<string, PIXI.Texture[]>();
