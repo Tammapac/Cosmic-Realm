@@ -124,8 +124,7 @@ function buildSpriteFiles(frames: number): string[] {
 // ── Ship Registry ── Add new directional ships here ──
 const DIRECTIONAL_SHIPS: { id: string; frames: number }[] = [
   { id: "skimmer", frames: 32 },
-  // { id: "interceptor", frames: 32 },
-  // { id: "freighter", frames: 16 },
+  { id: "wasp", frames: 32 },
 ];
 
 const ROTATION_SPRITES: Partial<Record<string, { frames: number; path: string; files: string[] }>> = {};
