@@ -131,6 +131,7 @@ function buildSpriteFiles(frames: number): string[] {
 const DIRECTIONAL_SHIPS: { id: string; frames: number; frame0DirectionDeg: number; clockwise: boolean }[] = [
   { id: "skimmer", frames: 32, frame0DirectionDeg: 0, clockwise: true },
   { id: "wasp", frames: 32, frame0DirectionDeg: 0, clockwise: true },
+  { id: "vanguard", frames: 32, frame0DirectionDeg: 0, clockwise: true },
 ];
 
 const ROTATION_SPRITES: Partial<Record<string, {
