@@ -21,12 +21,16 @@ uniform float uSpecIntensity;
 uniform float uDamage;
 uniform float uBoost;
 uniform float uTime;
+uniform float uBrightness;
 
 void main() {
     vec4 c = texture2D(uSampler, vTextureCoord);
     if (c.a < 0.01) { discard; }
 
     vec2 px = inputSize.zw;
+
+    // Apply overall brightness
+    c.rgb *= uBrightness;
 
     // Directional shading (position-based for interior)
     vec2 p = vTextureCoord - 0.5;
@@ -110,12 +114,15 @@ uniform float uRimIntensity;
 uniform float uRimWidth;
 uniform float uDamage;
 uniform float uBoost;
+uniform float uBrightness;
 
 void main() {
     vec4 c = texture2D(uSampler, vTextureCoord);
     if (c.a < 0.01) { discard; }
 
     vec2 px = inputSize.zw;
+
+    c.rgb *= uBrightness;
 
     // Directional shading
     vec2 p = vTextureCoord - 0.5;
@@ -154,10 +161,12 @@ uniform vec2 uLightDir;
 uniform float uLightIntensity;
 uniform float uShadowStrength;
 uniform float uDamage;
+uniform float uBrightness;
 
 void main() {
     vec4 c = texture2D(uSampler, vTextureCoord);
     if (c.a < 0.01) { discard; }
+    c.rgb *= uBrightness;
     vec2 p = vTextureCoord - 0.5;
     float shade = 1.0 + dot(p, uLightDir) * uLightIntensity;
     shade = clamp(shade, 1.0 - uShadowStrength, 1.0 + uLightIntensity * 0.3);
@@ -185,6 +194,7 @@ export class ShipLightingFilter extends PIXI.Filter {
       uDamage: 0.0,
       uBoost: 0.0,
       uTime: 0.0,
+      uBrightness: 1.0,
     });
     this._quality = quality;
     this.padding = 0;
@@ -211,6 +221,7 @@ export class ShipLightingFilter extends PIXI.Filter {
     rimWidth?: number;
     specPower?: number;
     specIntensity?: number;
+    brightness?: number;
   }): void {
     if (opts.lightIntensity !== undefined) this.uniforms.uLightIntensity = opts.lightIntensity;
     if (opts.shadowStrength !== undefined) this.uniforms.uShadowStrength = opts.shadowStrength;
@@ -219,6 +230,7 @@ export class ShipLightingFilter extends PIXI.Filter {
     if (opts.rimWidth !== undefined) this.uniforms.uRimWidth = opts.rimWidth;
     if (opts.specPower !== undefined) this.uniforms.uSpecPower = opts.specPower;
     if (opts.specIntensity !== undefined) this.uniforms.uSpecIntensity = opts.specIntensity;
+    if (opts.brightness !== undefined) this.uniforms.uBrightness = opts.brightness;
   }
 
   get quality(): QualityLevel { return this._quality; }

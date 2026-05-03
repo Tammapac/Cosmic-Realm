@@ -171,9 +171,10 @@ export function createShipVisual(
         ((rimCfg.color >> 8) & 0xff) / 255,
         (rimCfg.color & 0xff) / 255,
       ],
-      rimIntensity: isRotShip ? rimCfg.alpha * 0.8 : rimCfg.alpha * 3,
-      shadowStrength: isRotShip ? 0.65 : 0.5,
-      lightIntensity: isRotShip ? 0.6 : 0.8,
+      rimIntensity: isRotShip ? rimCfg.alpha * 0.4 : rimCfg.alpha * 3,
+      shadowStrength: isRotShip ? 0.8 : 0.5,
+      lightIntensity: isRotShip ? 1.0 : 0.8,
+      brightness: isRotShip ? 0.7 : 1.0,
     });
     baseSprite.filters = [f];
     lightingFilter = f;
