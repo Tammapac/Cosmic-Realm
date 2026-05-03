@@ -1592,7 +1592,7 @@ export const STATIONS: Station[] = [
 
 export const PORTALS: Portal[] = [
   // Debug zone portal (from alpha)
-  { id: "p-a-dbg", pos: { x: -6500, y: -6500 }, fromZone: "alpha",  toZone: "debug"  },
+  { id: "p-a-dbg", pos: { x: 300, y: -300 }, fromZone: "alpha",  toZone: "debug"  },
   { id: "p-dbg-a", pos: { x:  0, y:  6500 }, fromZone: "debug",  toZone: "alpha"  },
   // Earth chain: alpha ↔ nebula ↔ crimson ↔ void ↔ forge (top-right / bottom-left corners)
   { id: "p-a-n",   pos: { x:  6500, y: -6500 }, fromZone: "alpha",    toZone: "nebula"   },

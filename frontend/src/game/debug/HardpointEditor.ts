@@ -32,12 +32,22 @@ let active = false;
 let showHelp = false;
 let showGrid = true;
 let showLabels = true;
-let shipSprite: PIXI.Sprite | null = null;
-let pulsePhase = 0;
-
 let zoom = 2.0;
 let gameUIHidden = false;
 let domBlocker: HTMLDivElement | null = null;
+let dirty = true;
+let pulseInterval: ReturnType<typeof setInterval> | null = null;
+
+// Retained PIXI objects (created once, updated in render)
+let bgGraphic: PIXI.Graphics | null = null;
+let gridGraphic: PIXI.Graphics | null = null;
+let axisGraphic: PIXI.Graphics | null = null;
+let crossGraphic: PIXI.Graphics | null = null;
+let dotsGraphic: PIXI.Graphics | null = null;
+let shipSprite: PIXI.Sprite | null = null;
+let infoText: PIXI.Text | null = null;
+let helpText: PIXI.Text | null = null;
+let labelsContainer: PIXI.Container | null = null;
 
 /* --- helpers --- */
 function storageKey(): string {
@@ -102,175 +112,233 @@ function switchShip(newIndex: number): void {
 function toggleGameUI(): void {
   gameUIHidden = !gameUIHidden;
   const uiElements = document.querySelectorAll(
-    "[class*=\"topbar\"], [class*=\"TopBar\"], [class*=\"hotbar\"], [class*=\"Hotbar\"], " +
-    "[class*=\"minimap\"], [class*=\"MiniMap\"], [class*=\"quest\"], [class*=\"Quest\"], " +
-    "[class*=\"panel\"], [class*=\"Panel\"], [class*=\"hud\"], [class*=\"HUD\"]"
+    "[class*=topbar], [class*=TopBar], [class*=hotbar], [class*=Hotbar], " +
+    "[class*=minimap], [class*=MiniMap], [class*=quest], [class*=Quest], " +
+    "[class*=panel], [class*=Panel], [class*=hud], [class*=HUD]"
   );
   uiElements.forEach((el) => {
     (el as HTMLElement).style.display = gameUIHidden ? "none" : "";
   });
 }
 
-/* --- rendering --- */
-function render(): void {
+/* --- create retained objects (once) --- */
+function createRetainedObjects(): void {
   if (!container || !app) return;
-  container.removeChildren();
+
+  bgGraphic = new PIXI.Graphics();
+  container.addChild(bgGraphic);
+
+  gridGraphic = new PIXI.Graphics();
+  container.addChild(gridGraphic);
+
+  axisGraphic = new PIXI.Graphics();
+  container.addChild(axisGraphic);
+
+  shipSprite = new PIXI.Sprite();
+  shipSprite.anchor.set(0.5);
+  container.addChild(shipSprite);
+
+  crossGraphic = new PIXI.Graphics();
+  container.addChild(crossGraphic);
+
+  dotsGraphic = new PIXI.Graphics();
+  container.addChild(dotsGraphic);
+
+  labelsContainer = new PIXI.Container();
+  container.addChild(labelsContainer);
+
+  infoText = new PIXI.Text("", {
+    fontFamily: "monospace",
+    fontSize: 14,
+    fill: 0x00ff00,
+    align: "left",
+  });
+  container.addChild(infoText);
+
+  helpText = new PIXI.Text("", {
+    fontFamily: "monospace",
+    fontSize: 15,
+    fill: 0xffffff,
+    align: "left",
+  });
+  helpText.visible = false;
+  container.addChild(helpText);
+}
+
+/* --- rendering (updates existing objects, no creation) --- */
+function render(): void {
+  if (!container || !app || !bgGraphic || !gridGraphic || !axisGraphic || !crossGraphic || !dotsGraphic || !shipSprite || !infoText || !helpText || !labelsContainer) return;
 
   const w = app.screen.width;
   const h = app.screen.height;
   const cx = w / 2;
   const cy = h / 2;
 
-  // Background dim (more opaque so ship underneath doesnt distract)
-  const bg = new PIXI.Graphics();
-  bg.beginFill(0x000000, 0.92);
-  bg.drawRect(0, 0, w, h);
-  bg.endFill();
-  container.addChild(bg);
+  // Background
+  bgGraphic.clear();
+  bgGraphic.beginFill(0x000000, 0.94);
+  bgGraphic.drawRect(0, 0, w, h);
+  bgGraphic.endFill();
 
-  // Grid (scaled with zoom)
+  // Grid
+  gridGraphic.clear();
   if (showGrid) {
-    const grid = new PIXI.Graphics();
-    grid.lineStyle(1, 0x333333, 0.4);
+    gridGraphic.lineStyle(1, 0x222222, 0.5);
     const step = 20 * zoom;
     for (let x = cx % step; x < w; x += step) {
-      grid.moveTo(x, 0); grid.lineTo(x, h);
+      gridGraphic.moveTo(x, 0); gridGraphic.lineTo(x, h);
     }
     for (let y = cy % step; y < h; y += step) {
-      grid.moveTo(0, y); grid.lineTo(w, y);
+      gridGraphic.moveTo(0, y); gridGraphic.lineTo(w, y);
     }
-    container.addChild(grid);
   }
 
-  // Ship sprite (zoomed)
+  // Axis lines (X = red horizontal, Y = green vertical, origin = white dot)
+  axisGraphic.clear();
+  // X axis (red, horizontal through center)
+  axisGraphic.lineStyle(2, 0xff4444, 0.7);
+  axisGraphic.moveTo(0, cy); axisGraphic.lineTo(w, cy);
+  // Y axis (green, vertical through center)
+  axisGraphic.lineStyle(2, 0x44ff44, 0.7);
+  axisGraphic.moveTo(cx, 0); axisGraphic.lineTo(cx, h);
+  // Origin dot (white)
+  axisGraphic.lineStyle(0);
+  axisGraphic.beginFill(0xffffff, 1);
+  axisGraphic.drawCircle(cx, cy, 3);
+  axisGraphic.endFill();
+  // Axis labels
+  axisGraphic.lineStyle(1, 0xff4444, 0.9);
+  // +X label (right)
+  axisGraphic.lineStyle(0);
+  // Z indicator line (blue, diagonal hint)
+  axisGraphic.lineStyle(1, 0x4488ff, 0.5);
+  axisGraphic.moveTo(cx, cy); axisGraphic.lineTo(cx + 30, cy - 30);
+
+  // Ship sprite
   const spritePath = spritePathForDir(dirIndex);
   const tex = PIXI.Texture.from(spritePath);
-  if (!shipSprite) {
-    shipSprite = new PIXI.Sprite(tex);
-    shipSprite.anchor.set(0.5);
-  } else {
-    shipSprite.texture = tex;
-  }
+  shipSprite.texture = tex;
   shipSprite.position.set(cx, cy);
   shipSprite.scale.set(zoom);
-  container.addChild(shipSprite);
 
-  // Crosshair
-  const cross = new PIXI.Graphics();
-  cross.lineStyle(1, 0x00ff00, 0.4);
-  cross.moveTo(cx - 40, cy); cross.lineTo(cx + 40, cy);
-  cross.moveTo(cx, cy - 40); cross.lineTo(cx, cy + 40);
-  container.addChild(cross);
+  // Crosshair (small, at origin)
+  crossGraphic.clear();
+  crossGraphic.lineStyle(1, 0xffffff, 0.3);
+  crossGraphic.moveTo(cx - 15, cy); crossGraphic.lineTo(cx + 15, cy);
+  crossGraphic.moveTo(cx, cy - 15); crossGraphic.lineTo(cx, cy + 15);
 
-  // Hardpoints
+  // Hardpoint dots
+  dotsGraphic.clear();
   const hps = currentHardpoints();
   hps.forEach((hp, i) => {
     const sx = cx + hp.x * zoom;
     const sy = cy + (hp.y - hp.z) * zoom;
     const color = HARDPOINT_COLORS[hp.type] ?? 0xffffff;
     const isSelected = i === selectedIndex;
-    const dot = new PIXI.Graphics();
 
     if (isSelected) {
-      const pulse = 3 + Math.sin(pulsePhase) * 1;
-      dot.lineStyle(2, 0xffffff, 0.9);
-      dot.drawCircle(sx, sy, pulse + 2);
+      dotsGraphic.lineStyle(1, 0xffffff, 0.8);
+      dotsGraphic.drawCircle(sx, sy, 6);
+      dotsGraphic.lineStyle(0);
     }
 
-    dot.beginFill(color);
-    dot.drawCircle(sx, sy, isSelected ? 4 : 2);
-    dot.endFill();
-    container.addChild(dot);
-
-    // Labels
-    if (showLabels) {
-      const label = new PIXI.Text(
-        `${hp.id}\n${hp.type} [${hp.layer}]\nx:${hp.x} y:${hp.y} z:${hp.z}`,
-        {
-          fontFamily: "monospace",
-          fontSize: 10,
-          fill: isSelected ? 0x00ff00 : 0xcccccc,
-          align: "left",
-        }
-      );
-      label.position.set(sx + 12, sy - 14);
-      container.addChild(label);
-    }
+    dotsGraphic.beginFill(color, isSelected ? 1 : 0.8);
+    dotsGraphic.drawCircle(sx, sy, isSelected ? 3 : 2);
+    dotsGraphic.endFill();
   });
 
-  // Info panel (bottom-left, away from game UI)
+  // Labels (destroy old, create minimal new ones)
+  while (labelsContainer.children.length > 0) {
+    labelsContainer.children[0].destroy();
+  }
+  if (showLabels && hps.length > 0) {
+    hps.forEach((hp, i) => {
+      const sx = cx + hp.x * zoom;
+      const sy = cy + (hp.y - hp.z) * zoom;
+      const isSelected = i === selectedIndex;
+      const label = new PIXI.Text(
+        `${hp.id} (${hp.type})`,
+        { fontFamily: "monospace", fontSize: 9, fill: isSelected ? 0x00ff00 : 0x999999 }
+      );
+      label.position.set(sx + 8, sy - 6);
+      labelsContainer.addChild(label);
+    });
+  }
+
+  // Axis labels near origin
+  const axLabelX = new PIXI.Text("+X", { fontFamily: "monospace", fontSize: 11, fill: 0xff4444 });
+  axLabelX.position.set(cx + 60, cy + 4);
+  labelsContainer.addChild(axLabelX);
+  const axLabelNX = new PIXI.Text("-X", { fontFamily: "monospace", fontSize: 11, fill: 0xff4444 });
+  axLabelNX.position.set(cx - 80, cy + 4);
+  labelsContainer.addChild(axLabelNX);
+  const axLabelY = new PIXI.Text("+Y", { fontFamily: "monospace", fontSize: 11, fill: 0x44ff44 });
+  axLabelY.position.set(cx + 4, cy + 60);
+  labelsContainer.addChild(axLabelY);
+  const axLabelNY = new PIXI.Text("-Y", { fontFamily: "monospace", fontSize: 11, fill: 0x44ff44 });
+  axLabelNY.position.set(cx + 4, cy - 70);
+  labelsContainer.addChild(axLabelNY);
+  const axLabelZ = new PIXI.Text("+Z (up)", { fontFamily: "monospace", fontSize: 11, fill: 0x4488ff });
+  axLabelZ.position.set(cx + 32, cy - 38);
+  labelsContainer.addChild(axLabelZ);
+  const originLabel = new PIXI.Text("0,0,0", { fontFamily: "monospace", fontSize: 10, fill: 0xffffff });
+  originLabel.position.set(cx + 6, cy - 16);
+  labelsContainer.addChild(originLabel);
+
+  // Info panel (bottom-left)
   const compass = DIR_32_COMPASS[dirIndex];
   const deg = DIRECTIONS_32[dirIndex];
-  let infoStr = `Ship: ${shipId} [${shipIndex + 1}/${ALL_SHIPS.length}]  (PgUp/PgDn to switch)\n`;
-  infoStr += `Direction: ${deg} (${compass}) [${dirIndex + 1}/32]\n`;
-  infoStr += `Zoom: ${zoom.toFixed(1)}x  (+/- to adjust)\n`;
-  infoStr += `Hardpoints: ${hps.length}\n`;
+  let infoStr = `Ship: ${shipId} [${shipIndex + 1}/${ALL_SHIPS.length}]  (PgUp/PgDn)\n`;
+  infoStr += `Dir: ${deg} (${compass}) [${dirIndex + 1}/32]\n`;
+  infoStr += `Zoom: ${zoom.toFixed(1)}x  (+/-)\n`;
+  infoStr += `Points: ${hps.length}\n`;
   if (hps.length > 0 && hps[selectedIndex]) {
     const sel = hps[selectedIndex];
-    infoStr += `\nSelected [${selectedIndex + 1}/${hps.length}]:\n`;
-    infoStr += `  id: ${sel.id}\n  type: ${sel.type}\n  layer: ${sel.layer}\n`;
+    infoStr += `\nSel [${selectedIndex + 1}/${hps.length}]: ${sel.id}\n`;
+    infoStr += `  type: ${sel.type}  layer: ${sel.layer}\n`;
     infoStr += `  x: ${sel.x}  y: ${sel.y}  z: ${sel.z}`;
-    if (sel.emitAngleOffset !== undefined) infoStr += `\n  emitAngle: ${sel.emitAngleOffset}`;
   }
-  const infoText = new PIXI.Text(infoStr, {
-    fontFamily: "monospace",
-    fontSize: 14,
-    fill: 0x00ff00,
-    align: "left",
-  });
-  infoText.position.set(10, h - 240);
-  container.addChild(infoText);
+  infoText.text = infoStr;
+  infoText.position.set(10, h - 180);
 
-  // Help panel (bottom-right)
+  // Help panel
+  helpText.visible = showHelp;
   if (showHelp) {
-    const helpStr = [
+    helpText.text = [
       "=== HARDPOINT EDITOR ===",
       "",
       "F9          Toggle editor",
       "PgUp/PgDn   Switch ship",
-      "Left/Right  Prev/next direction",
-      "Shift+L/R   Jump 4 directions",
-      "Tab/S-Tab   Select hardpoint",
+      "Left/Right  Direction (Shift=4x)",
+      "Tab/S-Tab   Select point",
       "1-9         Select by index",
       "",
       "W/A/S/D     Move (Shift=5, Alt=0.25)",
-      "Q/E         Z axis",
-      "+/-         Zoom in/out",
-      "T / Shift+T Cycle type",
+      "Q/E         Z axis (height)",
+      "+/-         Zoom",
+      "T/Shift+T   Cycle type",
       "L           Cycle layer",
       "R           Rename",
       "",
-      "Insert/S-A  Add hardpoint",
-      "Del/Bksp    Delete selected",
-      "M / Shift+M Mirror x",
-      "N / P       Copy to next/prev dir",
+      "Insert/S+A  Add point",
+      "Del/Bksp    Delete",
+      "M/Shift+M   Mirror x",
+      "N/P         Copy to next/prev dir",
       "C           Export JSON",
-      "V           Import JSON",
       "U           Toggle game UI",
       "G/O/H       Grid/Labels/Help",
     ].join("\n");
-    const helpText = new PIXI.Text(helpStr, {
-      fontFamily: "monospace",
-      fontSize: 15,
-      fill: 0xffffff,
-      align: "left",
-    });
-    helpText.position.set(w - 380, h - 500);
-    container.addChild(helpText);
+    helpText.position.set(w - 360, h - 420);
   }
 }
 
 /* --- render on demand --- */
-let pulseInterval: ReturnType<typeof setInterval> | null = null;
-let dirty = true;
-
 function scheduleRender(): void {
   dirty = true;
 }
 
 function tick(): void {
   if (!active) return;
-  pulsePhase += 0.3;
   if (dirty) {
     dirty = false;
     render();
@@ -280,7 +348,7 @@ function tick(): void {
 function startRenderLoop(): void {
   stopRenderLoop();
   dirty = true;
-  pulseInterval = setInterval(tick, 100);
+  pulseInterval = setInterval(tick, 150);
 }
 
 function stopRenderLoop(): void {
@@ -439,7 +507,7 @@ function onKeyDown(e: KeyboardEvent): void {
             if (idx >= 0) shipIndex = idx;
             clampSelection();
             save();
-            console.log("Hardpoint data imported successfully");
+            scheduleRender();
           }
         } catch (err) {
           console.error("Failed to parse clipboard JSON:", err);
@@ -453,7 +521,6 @@ function onKeyDown(e: KeyboardEvent): void {
       if (data) {
         data.directions[nextDir] = { hardpoints: JSON.parse(JSON.stringify(hps)) };
         save();
-        console.log(`Copied hardpoints to direction ${nextDir}`);
       }
       break;
     }
@@ -464,7 +531,6 @@ function onKeyDown(e: KeyboardEvent): void {
       if (data) {
         data.directions[prevDir] = { hardpoints: JSON.parse(JSON.stringify(hps)) };
         save();
-        console.log(`Copied hardpoints to direction ${prevDir}`);
       }
       break;
     }
@@ -549,14 +615,13 @@ export function initHardpointEditor(pixiApp: PIXI.Application, initialShipId: st
   app.stage.addChild(container);
   app.stage.sortableChildren = true;
 
-  window.addEventListener("keydown", onKeyDown, true);
+  createRetainedObjects();
 
-  // DOM overlay to block React pointer events when editor is open
   domBlocker = document.createElement("div");
   domBlocker.style.cssText = "position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:99999;display:none;cursor:crosshair;";
   document.body.appendChild(domBlocker);
 
-  console.log(`[HardpointEditor] Initialized for ship: ${shipId}`);
+  window.addEventListener("keydown", onKeyDown, true);
 }
 
 export function destroyHardpointEditor(): void {
@@ -571,7 +636,9 @@ export function destroyHardpointEditor(): void {
   active = false;
   app = null;
   data = null;
-  console.log("[HardpointEditor] Destroyed");
+  bgGraphic = null; gridGraphic = null; axisGraphic = null;
+  crossGraphic = null; dotsGraphic = null; shipSprite = null;
+  infoText = null; helpText = null; labelsContainer = null;
 }
 
 export function toggleHardpointEditor(): void {
@@ -583,14 +650,9 @@ export function toggleHardpointEditor(): void {
     data = load();
     clampSelection();
     startRenderLoop();
-    console.log("[HardpointEditor] Activated");
   } else {
     save();
     stopRenderLoop();
-    // Restore game UI if it was hidden
-    if (gameUIHidden) {
-      toggleGameUI();
-    }
-    console.log("[HardpointEditor] Deactivated");
+    if (gameUIHidden) toggleGameUI();
   }
 }
