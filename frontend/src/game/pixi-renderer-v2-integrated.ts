@@ -303,7 +303,7 @@ function getShipTex(shipClass: ShipClassId, scale: number): PIXI.Texture {
     const ch = maxY - minY + 1;
     const aspect = ch / cw;
 
-    const targetSize = Math.ceil(85 * finalScale);
+    const targetSize = Math.ceil(60 * finalScale);
     const padding = 16;
     const drawW = targetSize * 1.6;
     const drawH = drawW * aspect;
