@@ -282,7 +282,7 @@ function makeAsteroids(zone: ZoneId): Asteroid[] {
   const out: Asteroid[] = [];
   const mapR = MAP_RADIUS * 0.8;
   const belts = ASTEROID_BELTS[zone] ?? [];
-  const beltCount = Math.floor(count * 0.4);
+  const beltCount = belts.length > 0 ? Math.floor(count * 0.4) : 0;
   const scatterCount = count - beltCount;
   for (let i = 0; i < scatterCount; i++) {
     const x = (Math.random() - 0.5) * 2 * mapR;
