@@ -10,6 +10,7 @@
  * - Debug overlay showing FPS and entity counts
  */
 import * as PIXI from "pixi.js";
+import { initHardpointEditor, toggleHardpointEditor } from "./debug/HardpointEditor";
 import { state } from "./store";
 import { effectiveStats } from "./loop";
 import {
@@ -136,6 +137,14 @@ const DIRECTIONAL_SHIPS: { id: string; frames: number; frame0DirectionDeg: numbe
   { id: "obsidian", frames: 32, frame0DirectionDeg: 0, clockwise: true },
   { id: "marauder", frames: 32, frame0DirectionDeg: 0, clockwise: true },
   { id: "phalanx", frames: 32, frame0DirectionDeg: 0, clockwise: true },
+  { id: "titan", frames: 32, frame0DirectionDeg: 0, clockwise: true },
+  { id: "leviathan", frames: 32, frame0DirectionDeg: 0, clockwise: true },
+  { id: "specter", frames: 32, frame0DirectionDeg: 0, clockwise: true },
+  { id: "colossus", frames: 32, frame0DirectionDeg: 0, clockwise: true },
+  { id: "harbinger", frames: 32, frame0DirectionDeg: 0, clockwise: true },
+  { id: "eclipse", frames: 32, frame0DirectionDeg: 0, clockwise: true },
+  { id: "sovereign", frames: 32, frame0DirectionDeg: 0, clockwise: true },
+  { id: "apex", frames: 32, frame0DirectionDeg: 0, clockwise: true },
 ];
 
 const ROTATION_SPRITES: Partial<Record<string, {
@@ -237,6 +246,94 @@ const SHIP_HARDPOINTS: Partial<Record<string, ShipHardpoints>> = {
     weapons: [
       { x: -14, y: -10 }, // left weapon mount
       { x: 14, y: -10 },  // right weapon mount
+    ],
+  },
+  // ── Titan ──
+  titan: {
+    thrusters: [
+      { x: -14, y: 18 },  // left engine
+      { x: 14, y: 18 },   // right engine
+    ],
+    weapons: [
+      { x: -16, y: -12 }, // left weapon mount
+      { x: 16, y: -12 },  // right weapon mount
+    ],
+  },
+  // ── Leviathan ──
+  leviathan: {
+    thrusters: [
+      { x: -16, y: 20 },  // left engine
+      { x: 16, y: 20 },   // right engine
+    ],
+    weapons: [
+      { x: -18, y: -14 }, // left weapon mount
+      { x: 18, y: -14 },  // right weapon mount
+    ],
+  },
+  // ── Specter ──
+  specter: {
+    thrusters: [
+      { x: -10, y: 14 },  // left engine
+      { x: 10, y: 14 },   // right engine
+    ],
+    weapons: [
+      { x: -12, y: -8 },  // left weapon mount
+      { x: 12, y: -8 },   // right weapon mount
+    ],
+  },
+  // ── Colossus ──
+  colossus: {
+    thrusters: [
+      { x: -14, y: 18 },  // left engine
+      { x: 14, y: 18 },   // right engine
+    ],
+    weapons: [
+      { x: -16, y: -12 }, // left weapon mount
+      { x: 16, y: -12 },  // right weapon mount
+    ],
+  },
+  // ── Harbinger ──
+  harbinger: {
+    thrusters: [
+      { x: -10, y: 14 },  // left engine
+      { x: 10, y: 14 },   // right engine
+    ],
+    weapons: [
+      { x: -12, y: -10 }, // left weapon mount
+      { x: 12, y: -10 },  // right weapon mount
+    ],
+  },
+  // ── Eclipse ──
+  eclipse: {
+    thrusters: [
+      { x: -12, y: 16 },  // left engine
+      { x: 12, y: 16 },   // right engine
+    ],
+    weapons: [
+      { x: -14, y: -10 }, // left weapon mount
+      { x: 14, y: -10 },  // right weapon mount
+    ],
+  },
+  // ── Sovereign ──
+  sovereign: {
+    thrusters: [
+      { x: -16, y: 20 },  // left engine
+      { x: 16, y: 20 },   // right engine
+    ],
+    weapons: [
+      { x: -18, y: -14 }, // left weapon mount
+      { x: 18, y: -14 },  // right weapon mount
+    ],
+  },
+  // ── Apex ──
+  apex: {
+    thrusters: [
+      { x: -14, y: 18 },  // left engine
+      { x: 14, y: 18 },   // right engine
+    ],
+    weapons: [
+      { x: -16, y: -12 }, // left weapon mount
+      { x: 16, y: -12 },  // right weapon mount
     ],
   },
 };
@@ -1000,6 +1097,9 @@ export function initPixiRenderer(container: HTMLDivElement): void {
   app.stage.addChild(bgLayer);
   app.stage.addChild(worldLayer);
   app.stage.addChild(uiLayer);
+
+  // Initialize hardpoint editor (F9 to toggle)
+  initHardpointEditor(app, state.player?.shipClass || "skimmer");
 
   // Background graphics
   bgGraphics = new PIXI.Graphics();
@@ -2010,8 +2110,6 @@ function syncPlayer(): void {
     hitboxRing.lineStyle(1, 0x4ee2ff, 0.15);
     hitboxRing.drawCircle(0, 0, hitR);
   }
-
-  playerContainer.position.set(p.pos.x, p.pos.y);
 
   // EffectManager thruster trail particles from hardpoints
   if (speed > 0.5 && effectManager) {

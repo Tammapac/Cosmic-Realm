@@ -1,7 +1,7 @@
 import * as PIXI from "pixi.js";
 import { ShipClassId, SHIP_SIZE_SCALE } from "./types";
 
-const ROTATION_FRAME_SHIPS: Set<string> = new Set(["skimmer", "wasp", "vanguard", "reaver", "obsidian", "marauder", "phalanx"]);
+const ROTATION_FRAME_SHIPS: Set<string> = new Set(["skimmer", "wasp", "vanguard", "reaver", "obsidian", "marauder", "phalanx", "titan", "leviathan", "specter", "colossus", "harbinger", "eclipse", "sovereign", "apex"]);
 import { getShipVisualConfig, getQuality, ShipVisualConfig, EnginePort } from "./ship-visual-config";
 import { ShipLightingSystem, ShipLightingFilter } from "./ship-lighting-filter";
 
