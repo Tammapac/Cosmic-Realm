@@ -123,7 +123,7 @@ function buildSpriteFiles(frames: number): string[] {
 
 // ── Ship Registry ── Add new directional ships here ──
 const DIRECTIONAL_SHIPS: { id: string; frames: number; dirOffset: number }[] = [
-  { id: "skimmer", frames: 32, dirOffset: 16 },
+  { id: "skimmer", frames: 32, dirOffset: 0 },
   { id: "wasp", frames: 32, dirOffset: 0 },
 ];
 
