@@ -14,10 +14,17 @@ import {
 
 const ENABLE_HARDPOINT_EDITOR = true;
 
-/* ─── state ─── */
+const ALL_SHIPS = [
+  "skimmer", "wasp", "vanguard", "reaver", "obsidian",
+  "marauder", "phalanx", "titan", "leviathan", "specter",
+  "colossus", "harbinger", "eclipse", "sovereign", "apex",
+];
+
+/* --- state --- */
 let app: PIXI.Application | null = null;
 let container: PIXI.Container | null = null;
 let shipId = "skimmer";
+let shipIndex = 0;
 let dirIndex = 0;
 let selectedIndex = 0;
 let data: ShipHardpointData | null = null;
@@ -28,8 +35,11 @@ let showLabels = true;
 let shipSprite: PIXI.Sprite | null = null;
 let pulsePhase = 0;
 let animFrame = 0;
+let zoom = 2.0;
+let gameUIHidden = false;
+let domBlocker: HTMLDivElement | null = null;
 
-/* ─── helpers ─── */
+/* --- helpers --- */
 function storageKey(): string {
   return `hardpoint-editor:${shipId}`;
 }
@@ -79,7 +89,29 @@ function spritePathForDir(idx: number): string {
   return `/ships/${shipId}/ship_${num}_${compass}.png`;
 }
 
-/* ─── rendering ─── */
+function switchShip(newIndex: number): void {
+  save();
+  shipIndex = ((newIndex % ALL_SHIPS.length) + ALL_SHIPS.length) % ALL_SHIPS.length;
+  shipId = ALL_SHIPS[shipIndex];
+  data = load();
+  dirIndex = 0;
+  selectedIndex = 0;
+  clampSelection();
+}
+
+function toggleGameUI(): void {
+  gameUIHidden = !gameUIHidden;
+  const uiElements = document.querySelectorAll(
+    "[class*=\"topbar\"], [class*=\"TopBar\"], [class*=\"hotbar\"], [class*=\"Hotbar\"], " +
+    "[class*=\"minimap\"], [class*=\"MiniMap\"], [class*=\"quest\"], [class*=\"Quest\"], " +
+    "[class*=\"panel\"], [class*=\"Panel\"], [class*=\"hud\"], [class*=\"HUD\"]"
+  );
+  uiElements.forEach((el) => {
+    (el as HTMLElement).style.display = gameUIHidden ? "none" : "";
+  });
+}
+
+/* --- rendering --- */
 function render(): void {
   if (!container || !app) return;
   container.removeChildren();
@@ -89,27 +121,18 @@ function render(): void {
   const cx = w / 2;
   const cy = h / 2;
 
-  // Background dim
+  // Background dim (more opaque so ship underneath doesnt distract)
   const bg = new PIXI.Graphics();
-  bg.beginFill(0x000000, 0.7);
+  bg.beginFill(0x000000, 0.92);
   bg.drawRect(0, 0, w, h);
   bg.endFill();
   container.addChild(bg);
 
-  // Ship sprite
-  const spritePath = spritePathForDir(dirIndex);
-  const tex = PIXI.Texture.from(spritePath);
-  if (shipSprite) shipSprite.destroy();
-  shipSprite = new PIXI.Sprite(tex);
-  shipSprite.anchor.set(0.5);
-  shipSprite.position.set(cx, cy);
-  container.addChild(shipSprite);
-
-  // Grid
+  // Grid (scaled with zoom)
   if (showGrid) {
     const grid = new PIXI.Graphics();
-    grid.lineStyle(1, 0x333333, 0.5);
-    const step = 20;
+    grid.lineStyle(1, 0x333333, 0.4);
+    const step = 20 * zoom;
     for (let x = cx % step; x < w; x += step) {
       grid.moveTo(x, 0); grid.lineTo(x, h);
     }
@@ -119,30 +142,40 @@ function render(): void {
     container.addChild(grid);
   }
 
+  // Ship sprite (zoomed)
+  const spritePath = spritePathForDir(dirIndex);
+  const tex = PIXI.Texture.from(spritePath);
+  if (shipSprite) shipSprite.destroy();
+  shipSprite = new PIXI.Sprite(tex);
+  shipSprite.anchor.set(0.5);
+  shipSprite.position.set(cx, cy);
+  shipSprite.scale.set(zoom);
+  container.addChild(shipSprite);
+
   // Crosshair
   const cross = new PIXI.Graphics();
-  cross.lineStyle(1, 0x00ff00, 0.6);
-  cross.moveTo(cx - 30, cy); cross.lineTo(cx + 30, cy);
-  cross.moveTo(cx, cy - 30); cross.lineTo(cx, cy + 30);
+  cross.lineStyle(1, 0x00ff00, 0.4);
+  cross.moveTo(cx - 40, cy); cross.lineTo(cx + 40, cy);
+  cross.moveTo(cx, cy - 40); cross.lineTo(cx, cy + 40);
   container.addChild(cross);
 
   // Hardpoints
   const hps = currentHardpoints();
   hps.forEach((hp, i) => {
-    const sx = cx + hp.x;
-    const sy = cy + hp.y - hp.z;
+    const sx = cx + hp.x * zoom;
+    const sy = cy + (hp.y - hp.z) * zoom;
     const color = HARDPOINT_COLORS[hp.type] ?? 0xffffff;
     const isSelected = i === selectedIndex;
     const dot = new PIXI.Graphics();
 
     if (isSelected) {
-      const pulse = 4 + Math.sin(pulsePhase) * 2;
-      dot.lineStyle(2, 0xffffff, 0.8);
+      const pulse = 5 + Math.sin(pulsePhase) * 2;
+      dot.lineStyle(2, 0xffffff, 0.9);
       dot.drawCircle(sx, sy, pulse + 4);
     }
 
     dot.beginFill(color);
-    dot.drawCircle(sx, sy, isSelected ? 6 : 4);
+    dot.drawCircle(sx, sy, isSelected ? 7 : 5);
     dot.endFill();
     container.addChild(dot);
 
@@ -157,15 +190,17 @@ function render(): void {
           align: "left",
         }
       );
-      label.position.set(sx + 10, sy - 10);
+      label.position.set(sx + 12, sy - 14);
       container.addChild(label);
     }
   });
 
-  // Info panel (top-left)
+  // Info panel (bottom-left, away from game UI)
   const compass = DIR_32_COMPASS[dirIndex];
   const deg = DIRECTIONS_32[dirIndex];
-  let infoStr = `Ship: ${shipId}\nDirection: ${deg} (${compass}) [${dirIndex + 1}/32]\n`;
+  let infoStr = `Ship: ${shipId} [${shipIndex + 1}/${ALL_SHIPS.length}]  (PgUp/PgDn to switch)\n`;
+  infoStr += `Direction: ${deg} (${compass}) [${dirIndex + 1}/32]\n`;
+  infoStr += `Zoom: ${zoom.toFixed(1)}x  (+/- to adjust)\n`;
   infoStr += `Hardpoints: ${hps.length}\n`;
   if (hps.length > 0 && hps[selectedIndex]) {
     const sel = hps[selectedIndex];
@@ -180,37 +215,36 @@ function render(): void {
     fill: 0x00ff00,
     align: "left",
   });
-  infoText.position.set(10, 10);
+  infoText.position.set(10, h - 200);
   container.addChild(infoText);
 
-  // Help panel
+  // Help panel (bottom-right)
   if (showHelp) {
     const helpStr = [
-      "=== HARDPOINT EDITOR CONTROLS ===",
+      "=== HARDPOINT EDITOR ===",
       "",
-      "F9          Toggle editor on/off",
+      "F9          Toggle editor",
+      "PgUp/PgDn   Switch ship",
       "Left/Right  Prev/next direction",
       "Shift+L/R   Jump 4 directions",
-      "Tab/S-Tab   Select next/prev hardpoint",
+      "Tab/S-Tab   Select hardpoint",
       "1-9         Select by index",
       "",
-      "W/A/S/D     Move y-/x-/y+/x+  (Shift=5, Alt=0.25)",
-      "Q/E         Z -/+",
-      "T / Shift+T Cycle type fwd/back",
+      "W/A/S/D     Move (Shift=5, Alt=0.25)",
+      "Q/E         Z axis",
+      "+/-         Zoom in/out",
+      "T / Shift+T Cycle type",
       "L           Cycle layer",
-      "R           Rename (prompt)",
+      "R           Rename",
       "",
       "Insert/S-A  Add hardpoint",
       "Del/Bksp    Delete selected",
-      "M / Shift+M Mirror x sel/all",
+      "M / Shift+M Mirror x",
       "N / P       Copy to next/prev dir",
-      "C           Copy JSON (clipboard+console)",
-      "V           Paste/import JSON",
-      "X / Shift+X Clear dir / clear all",
-      "",
-      "G           Toggle grid",
-      "O           Toggle labels",
-      "H           Toggle this help",
+      "C           Export JSON",
+      "V           Import JSON",
+      "U           Toggle game UI",
+      "G/O/H       Grid/Labels/Help",
     ].join("\n");
     const helpText = new PIXI.Text(helpStr, {
       fontFamily: "monospace",
@@ -218,12 +252,12 @@ function render(): void {
       fill: 0xffffff,
       align: "left",
     });
-    helpText.position.set(w - 340, 10);
+    helpText.position.set(w - 320, h - 400);
     container.addChild(helpText);
   }
 }
 
-/* ─── animation loop ─── */
+/* --- animation loop --- */
 function tick(): void {
   if (!active) return;
   pulsePhase += 0.08;
@@ -231,7 +265,7 @@ function tick(): void {
   animFrame = requestAnimationFrame(tick);
 }
 
-/* ─── keyboard handler ─── */
+/* --- keyboard handler --- */
 function getStep(e: KeyboardEvent): number {
   if (e.shiftKey) return 5;
   if (e.altKey) return 0.25;
@@ -266,6 +300,12 @@ function onKeyDown(e: KeyboardEvent): void {
       else dirIndex = (dirIndex + 1) % 32;
       clampSelection();
       break;
+    case "PageUp":
+      switchShip(shipIndex - 1);
+      break;
+    case "PageDown":
+      switchShip(shipIndex + 1);
+      break;
     case "Tab":
       if (hps.length > 0) {
         if (e.shiftKey) selectedIndex = (selectedIndex - 1 + hps.length) % hps.length;
@@ -278,10 +318,19 @@ function onKeyDown(e: KeyboardEvent): void {
       if (idx < hps.length) selectedIndex = idx;
       break;
     }
+    case "+":
+    case "=":
+      zoom = Math.min(8, zoom + 0.5);
+      break;
+    case "-":
+    case "_":
+      zoom = Math.max(0.5, zoom - 0.5);
+      break;
     case "Insert":
-    case "A":
-      if (e.key === "A" && !e.shiftKey) break; // only Shift+A
       addHardpoint();
+      break;
+    case "A":
+      if (e.shiftKey) addHardpoint();
       break;
     case "Delete":
     case "Backspace":
@@ -343,6 +392,10 @@ function onKeyDown(e: KeyboardEvent): void {
       }
       break;
     }
+    case "u":
+    case "U":
+      toggleGameUI();
+      break;
     case "c":
     case "C":
       if (data) {
@@ -360,6 +413,8 @@ function onKeyDown(e: KeyboardEvent): void {
           if (imported.shipId && imported.directions) {
             data = imported;
             shipId = imported.shipId;
+            const idx = ALL_SHIPS.indexOf(shipId);
+            if (idx >= 0) shipIndex = idx;
             clampSelection();
             save();
             console.log("Hardpoint data imported successfully");
@@ -393,10 +448,8 @@ function onKeyDown(e: KeyboardEvent): void {
     }
     case "m":
       if (e.shiftKey) {
-        // Mirror all
         hps.forEach((hp) => { hp.x = -hp.x; });
       } else {
-        // Mirror selected
         if (hps[selectedIndex]) { hps[selectedIndex].x = -hps[selectedIndex].x; }
       }
       save();
@@ -442,7 +495,7 @@ function addHardpoint(): void {
     id: `hp_${hps.length + 1}`,
     type: "laser",
     x: 0,
-    y: 0,
+    y: -40,
     z: 0,
     layer: "shipLevel",
   };
@@ -451,12 +504,18 @@ function addHardpoint(): void {
   save();
 }
 
-/* ─── public API ─── */
+/* --- public API --- */
+export function isEditorActive(): boolean {
+  return active;
+}
+
 export function initHardpointEditor(pixiApp: PIXI.Application, initialShipId: string): void {
   if (!ENABLE_HARDPOINT_EDITOR) return;
 
   app = pixiApp;
   shipId = initialShipId;
+  const idx = ALL_SHIPS.indexOf(shipId);
+  if (idx >= 0) shipIndex = idx;
   data = load();
   dirIndex = 0;
   selectedIndex = 0;
@@ -469,6 +528,11 @@ export function initHardpointEditor(pixiApp: PIXI.Application, initialShipId: st
 
   window.addEventListener("keydown", onKeyDown, true);
 
+  // DOM overlay to block React pointer events when editor is open
+  domBlocker = document.createElement("div");
+  domBlocker.style.cssText = "position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:99999;display:none;cursor:crosshair;";
+  document.body.appendChild(domBlocker);
+
   console.log(`[HardpointEditor] Initialized for ship: ${shipId}`);
 }
 
@@ -479,6 +543,7 @@ export function destroyHardpointEditor(): void {
     container = null;
   }
   if (animFrame) cancelAnimationFrame(animFrame);
+  if (domBlocker) { domBlocker.remove(); domBlocker = null; }
   window.removeEventListener("keydown", onKeyDown, true);
   active = false;
   app = null;
@@ -490,6 +555,7 @@ export function toggleHardpointEditor(): void {
   if (!container) return;
   active = !active;
   container.visible = active;
+  if (domBlocker) domBlocker.style.display = active ? "block" : "none";
   if (active) {
     data = load();
     clampSelection();
@@ -498,6 +564,10 @@ export function toggleHardpointEditor(): void {
   } else {
     save();
     if (animFrame) cancelAnimationFrame(animFrame);
+    // Restore game UI if it was hidden
+    if (gameUIHidden) {
+      toggleGameUI();
+    }
     console.log("[HardpointEditor] Deactivated");
   }
 }

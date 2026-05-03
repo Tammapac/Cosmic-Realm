@@ -10,7 +10,7 @@
  * - Debug overlay showing FPS and entity counts
  */
 import * as PIXI from "pixi.js";
-import { initHardpointEditor, toggleHardpointEditor } from "./debug/HardpointEditor";
+import { initHardpointEditor, toggleHardpointEditor, isEditorActive } from "./debug/HardpointEditor";
 import { state } from "./store";
 import { effectiveStats } from "./loop";
 import {
