@@ -163,6 +163,21 @@ function createRetainedObjects(): void {
   });
   helpText.visible = false;
   container.addChild(helpText);
+
+  // Static axis labels (never change)
+  const mkLabel = (txt: string, color: number) => {
+    const t = new PIXI.Text(txt, { fontFamily: "monospace", fontSize: 11, fill: color });
+    container!.addChild(t);
+    return t;
+  };
+  const axLabels = [
+    mkLabel("+X", 0xff4444),
+    mkLabel("-X", 0xff4444),
+    mkLabel("+Y", 0x44ff44),
+    mkLabel("-Y", 0x44ff44),
+    mkLabel("0,0", 0xffffff),
+  ];
+  (container as any)._axLabels = axLabels;
 }
 
 /* --- rendering (updates existing objects, no creation) --- */
@@ -211,6 +226,16 @@ function render(): void {
   // +X label (right)
   axisGraphic.lineStyle(0);
 
+
+  // Position static axis labels
+  const axLabels = (container as any)._axLabels;
+  if (axLabels) {
+    axLabels[0].position.set(cx + 60, cy + 4);
+    axLabels[1].position.set(cx - 80, cy + 4);
+    axLabels[2].position.set(cx + 4, cy + 60);
+    axLabels[3].position.set(cx + 4, cy - 70);
+    axLabels[4].position.set(cx + 6, cy - 16);
+  }
 
   // Ship sprite
   const spritePath = spritePathForDir(dirIndex);
@@ -284,15 +309,22 @@ function render(): void {
   // Info panel (bottom-left)
   const compass = DIR_32_COMPASS[dirIndex];
   const deg = DIRECTIONS_32[dirIndex];
-  let infoStr = `Ship: ${shipId} [${shipIndex + 1}/${ALL_SHIPS.length}]  (PgUp/PgDn)\n`;
+  let infoStr = `Ship: ${shipId} [${shipIndex + 1}/${ALL_SHIPS.length}]\n`;
   infoStr += `Dir: ${deg} (${compass}) [${dirIndex + 1}/32]\n`;
-  infoStr += `Zoom: ${zoom.toFixed(1)}x  (+/-)\n`;
-  infoStr += `Points: ${hps.length}\n`;
+  infoStr += `Zoom: ${zoom.toFixed(1)}x | Points: ${hps.length}\n`;
   if (hps.length > 0 && hps[selectedIndex]) {
     const sel = hps[selectedIndex];
-    infoStr += `\nSel [${selectedIndex + 1}/${hps.length}]: ${sel.id}\n`;
+    infoStr += `\n> [${selectedIndex + 1}] ${sel.id}\n`;
     infoStr += `  type: ${sel.type}  layer: ${sel.layer}\n`;
     infoStr += `  x: ${sel.x}  y: ${sel.y}`;
+  }
+  // List all points
+  if (hps.length > 1) {
+    infoStr += "\n\nAll points:";
+    hps.forEach((hp, i) => {
+      const marker = i === selectedIndex ? " >" : "  ";
+      infoStr += `\n${marker}[${i+1}] ${hp.id} x:${hp.x} y:${hp.y}`;
+    });
   }
   infoText.text = infoStr;
   infoText.position.set(10, h - 180);
