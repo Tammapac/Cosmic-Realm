@@ -367,10 +367,11 @@ function scheduleRender(): void {
 }
 
 function tick(): void {
-  if (!active) return;
+  if (!active || !app) return;
   if (dirty) {
     dirty = false;
     render();
+    app.renderer.render(app.stage);
   }
 }
 
@@ -688,17 +689,19 @@ export function destroyHardpointEditor(): void {
 }
 
 export function toggleHardpointEditor(): void {
-  if (!container) return;
+  if (!container || !app) return;
   active = !active;
   container.visible = active;
   if (domBlocker) domBlocker.style.display = active ? "block" : "none";
   if (active) {
+    app.ticker.stop();
     data = load();
     clampSelection();
     startRenderLoop();
   } else {
     save();
     stopRenderLoop();
+    app.ticker.start();
     if (gameUIHidden) toggleGameUI();
   }
 }
