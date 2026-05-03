@@ -210,9 +210,7 @@ function render(): void {
   axisGraphic.lineStyle(1, 0xff4444, 0.9);
   // +X label (right)
   axisGraphic.lineStyle(0);
-  // Z indicator line (blue, diagonal hint)
-  axisGraphic.lineStyle(1, 0x4488ff, 0.5);
-  axisGraphic.moveTo(cx, cy); axisGraphic.lineTo(cx + 30, cy - 30);
+
 
   // Ship sprite
   const spritePath = spritePathForDir(dirIndex);
@@ -278,9 +276,7 @@ function render(): void {
   const axLabelNY = new PIXI.Text("-Y", { fontFamily: "monospace", fontSize: 11, fill: 0x44ff44 });
   axLabelNY.position.set(cx + 4, cy - 70);
   labelsContainer.addChild(axLabelNY);
-  const axLabelZ = new PIXI.Text("+Z (up)", { fontFamily: "monospace", fontSize: 11, fill: 0x4488ff });
-  axLabelZ.position.set(cx + 32, cy - 38);
-  labelsContainer.addChild(axLabelZ);
+
   const originLabel = new PIXI.Text("0,0,0", { fontFamily: "monospace", fontSize: 10, fill: 0xffffff });
   originLabel.position.set(cx + 6, cy - 16);
   labelsContainer.addChild(originLabel);
@@ -296,7 +292,7 @@ function render(): void {
     const sel = hps[selectedIndex];
     infoStr += `\nSel [${selectedIndex + 1}/${hps.length}]: ${sel.id}\n`;
     infoStr += `  type: ${sel.type}  layer: ${sel.layer}\n`;
-    infoStr += `  x: ${sel.x}  y: ${sel.y}  z: ${sel.z}`;
+    infoStr += `  x: ${sel.x}  y: ${sel.y}`;
   }
   infoText.text = infoStr;
   infoText.position.set(10, h - 180);
@@ -314,7 +310,6 @@ function render(): void {
       "1-9         Select by index",
       "",
       "W/A/S/D     Move (Shift=5, Alt=0.25)",
-      "Q/E         Z axis (height)",
       "+/-         Zoom",
       "T/Shift+T   Cycle type",
       "L           Cycle layer",
