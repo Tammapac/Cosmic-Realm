@@ -207,8 +207,8 @@ function GameCanvas() {
   };
 
   // ── Pinch-to-zoom for mobile ──
-  const lastPinchDist = React.useRef<number>(0);
-  const lastTouchPos = React.useRef<{ x: number; y: number } | null>(null);
+  const lastPinchDist = useRef<number>(0);
+  const lastTouchPos = useRef<{ x: number; y: number } | null>(null);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length === 2) {
