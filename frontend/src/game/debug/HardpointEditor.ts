@@ -319,6 +319,8 @@ function render(): void {
       "Del/Bksp    Delete",
       "M/Shift+M   Mirror x",
       "N/P         Copy to next/prev dir",
+      "Shift+N     Copy to next 8 dirs",
+      "F           Fill ALL 32 dirs from current",
       "C           Export JSON",
       "U           Toggle game UI",
       "G/O/H       Grid/Labels/Help",
@@ -511,10 +513,29 @@ function onKeyDown(e: KeyboardEvent): void {
       break;
     case "n":
     case "N": {
-      const nextIdx = (dirIndex + 1) % 32;
-      const nextDir = DIRECTIONS_32[nextIdx];
-      if (data) {
-        data.directions[nextDir] = { hardpoints: JSON.parse(JSON.stringify(hps)) };
+      if (e.shiftKey) {
+        // Shift+N = copy to next 8 directions
+        for (let i = 1; i <= 8; i++) {
+          const idx = (dirIndex + i) % 32;
+          if (data) data.directions[DIRECTIONS_32[idx]] = { hardpoints: JSON.parse(JSON.stringify(hps)) };
+        }
+        save();
+      } else {
+        const nextIdx = (dirIndex + 1) % 32;
+        const nextDir = DIRECTIONS_32[nextIdx];
+        if (data) {
+          data.directions[nextDir] = { hardpoints: JSON.parse(JSON.stringify(hps)) };
+          save();
+        }
+      }
+      break;
+    }
+    case "f":
+    case "F": {
+      if (data && confirm("Fill ALL 32 directions with current hardpoints?")) {
+        for (const d of DIRECTIONS_32) {
+          data.directions[d] = { hardpoints: JSON.parse(JSON.stringify(hps)) };
+        }
         save();
       }
       break;
