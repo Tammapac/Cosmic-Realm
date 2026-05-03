@@ -176,7 +176,7 @@ function hasRotationFrames(shipClass: string): boolean {
 }
 
 function angleToDirection8(angle: number, totalFrames: number, entityId: string): number {
-  let a = (angle - Math.PI / 2) % (Math.PI * 2);
+  let a = (angle + Math.PI / 2) % (Math.PI * 2);
   if (a < 0) a += Math.PI * 2;
   const step = (Math.PI * 2) / totalFrames;
   const rawIdx = Math.round(a / step) % totalFrames;
