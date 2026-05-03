@@ -147,6 +147,69 @@ for (const ship of DIRECTIONAL_SHIPS) {
     clockwise: ship.clockwise,
   };
 }
+// ── Ship Hardpoint Config ──
+// Local coordinates: ship points North (up) in base frame
+//   x negative = left,  x positive = right
+//   y negative = front/nose,  y positive = rear/engines
+// Tune these offsets per ship to match engine and weapon barrel positions.
+interface ShipHardpoints {
+  thrusters: { x: number; y: number }[];
+  weapons: { x: number; y: number }[];
+}
+
+const SHIP_HARDPOINTS: Partial<Record<string, ShipHardpoints>> = {
+  // ── Skimmer ──
+  skimmer: {
+    thrusters: [
+      { x: -8, y: 14 },   // left engine
+      { x: 8, y: 14 },    // right engine
+    ],
+    weapons: [
+      { x: -10, y: -8 },  // left weapon mount
+      { x: 10, y: -8 },   // right weapon mount
+    ],
+  },
+  // ── Wasp ──
+  wasp: {
+    thrusters: [
+      { x: -12, y: 12 },  // left engine
+      { x: 12, y: 12 },   // right engine
+    ],
+    weapons: [
+      { x: -14, y: -6 },  // left weapon mount
+      { x: 14, y: -6 },   // right weapon mount
+    ],
+  },
+  // ── Vanguard ──
+  vanguard: {
+    thrusters: [
+      { x: -10, y: 16 },  // left engine
+      { x: 10, y: 16 },   // right engine
+    ],
+    weapons: [
+      { x: -12, y: -10 }, // left weapon mount
+      { x: 12, y: -10 },  // right weapon mount
+    ],
+  },
+};
+
+// Rotate a local hardpoint offset by the ship's visual angle
+function rotatePoint(lx: number, ly: number, angle: number): { x: number; y: number } {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return { x: lx * cos - ly * sin, y: lx * sin + ly * cos };
+}
+
+// Convert ship-local hardpoint to world position
+function localToWorldHardpoint(shipX: number, shipY: number, localX: number, localY: number, shipAngle: number): { x: number; y: number } {
+  const visualAngle = shipAngle + Math.PI / 2;
+  const rotated = rotatePoint(localX, localY, visualAngle);
+  return { x: shipX + rotated.x, y: shipY + rotated.y };
+}
+
+// Track weapon mount alternation per entity
+const weaponMountIndex = new Map<string, number>();
+
 const rotationFrameTextures = new Map<string, PIXI.Texture[]>();
 const rotationFrameLoading = new Set<string>();
 const directionState = new Map<string, number>();
@@ -1466,15 +1529,28 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
       data = { sprite };
       projectileSprites.set(pr.id, data);
 
-      // EffectManager muzzle flash on new projectile
+      // EffectManager muzzle flash from weapon hardpoints
       if (effectManager) {
         const angle = Math.atan2(pr.vel.y, pr.vel.x);
         const weaponType = (pr.weaponKind === "rocket" || pr.size > 4) ? "rocket" : "laser";
         const color = PIXI.utils.string2hex(pr.color);
+        const shooterId = pr.fromPlayer ? "player" : pr.id;
+        const shooterClass = pr.fromPlayer ? state.player.shipClass : undefined;
+        const hp = shooterClass ? SHIP_HARDPOINTS[shooterClass] : undefined;
+        let mx = pr.pos.x;
+        let my = pr.pos.y;
+        if (hp && hp.weapons.length > 0 && pr.fromPlayer) {
+          const idx = weaponMountIndex.get(shooterId) ?? 0;
+          const w = hp.weapons[idx % hp.weapons.length];
+          const wp = localToWorldHardpoint(state.player.pos.x, state.player.pos.y, w.x, w.y, state.player.angle);
+          mx = wp.x;
+          my = wp.y;
+          weaponMountIndex.set(shooterId, idx + 1);
+        }
         if (weaponType === "rocket") {
-          effectManager.spawnRocketLaunch(pr.pos.x, pr.pos.y, angle);
+          effectManager.spawnRocketLaunch(mx, my, angle);
         } else {
-          effectManager.spawnMuzzleFlash(pr.pos.x, pr.pos.y, angle, weaponType, color);
+          effectManager.spawnMuzzleFlash(mx, my, angle, weaponType, color);
         }
       }
     }
@@ -1889,11 +1965,19 @@ function syncPlayer(): void {
 
   playerContainer.position.set(p.pos.x, p.pos.y);
 
-  // EffectManager thruster trail particles
+  // EffectManager thruster trail particles from hardpoints
   if (speed > 0.5 && effectManager) {
     const cls = SHIP_CLASSES[p.shipClass];
     const trailScale = cls ? Math.max(0.5, Math.min(1.2, cls.hullMax / 200)) : 1;
-    effectManager.spawnThrusterTrail(p.pos.x, p.pos.y, p.angle, speed, 0x4ee2ff, 1, trailScale);
+    const hp = SHIP_HARDPOINTS[p.shipClass];
+    if (hp && hp.thrusters.length > 0) {
+      for (const t of hp.thrusters) {
+        const wp = localToWorldHardpoint(p.pos.x, p.pos.y, t.x, t.y, p.angle);
+        effectManager.spawnThrusterTrail(wp.x, wp.y, p.angle, speed, 0x4ee2ff, 1, trailScale);
+      }
+    } else {
+      effectManager.spawnThrusterTrail(p.pos.x, p.pos.y, p.angle, speed, 0x4ee2ff, 1, trailScale);
+    }
   }
 
   // Hull/Shield bars
@@ -2073,12 +2157,20 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
       otherGlow.alpha = 0.05 + 0.03 * Math.sin(state.tick * 2);
     }
 
-    // Thruster trail for other players
+    // Thruster trail for other players from hardpoints
     if (effectManager) {
       const spd = Math.sqrt(o.vel.x * o.vel.x + o.vel.y * o.vel.y);
       if (spd > 0.5) {
         const thrustColor = PIXI.utils.string2hex(factionColor);
-        effectManager.spawnThrusterTrail(o.pos.x, o.pos.y, o.angle, spd, thrustColor);
+        const hp = SHIP_HARDPOINTS[o.shipClass];
+        if (hp && hp.thrusters.length > 0) {
+          for (const t of hp.thrusters) {
+            const wp = localToWorldHardpoint(o.pos.x, o.pos.y, t.x, t.y, o.angle);
+            effectManager.spawnThrusterTrail(wp.x, wp.y, o.angle, spd, thrustColor);
+          }
+        } else {
+          effectManager.spawnThrusterTrail(o.pos.x, o.pos.y, o.angle, spd, thrustColor);
+        }
       }
     }
   }
