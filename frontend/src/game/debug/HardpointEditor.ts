@@ -211,11 +211,11 @@ function render(): void {
   }
   const infoText = new PIXI.Text(infoStr, {
     fontFamily: "monospace",
-    fontSize: 12,
+    fontSize: 14,
     fill: 0x00ff00,
     align: "left",
   });
-  infoText.position.set(10, h - 200);
+  infoText.position.set(10, h - 240);
   container.addChild(infoText);
 
   // Help panel (bottom-right)
@@ -248,11 +248,11 @@ function render(): void {
     ].join("\n");
     const helpText = new PIXI.Text(helpStr, {
       fontFamily: "monospace",
-      fontSize: 11,
+      fontSize: 15,
       fill: 0xffffff,
       align: "left",
     });
-    helpText.position.set(w - 320, h - 400);
+    helpText.position.set(w - 380, h - 500);
     container.addChild(helpText);
   }
 }
@@ -492,7 +492,7 @@ function addHardpoint(): void {
   if (!data) return;
   const hps = currentHardpoints();
   const newHp: Hardpoint = {
-    id: `hp_${hps.length + 1}`,
+    id: `${shipId}_${hps.length + 1}`,
     type: "laser",
     x: 0,
     y: -40,
