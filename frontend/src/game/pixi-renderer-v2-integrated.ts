@@ -176,7 +176,7 @@ function hasRotationFrames(shipClass: string): boolean {
 }
 
 function angleToDirection8(angle: number, totalFrames: number, entityId: string): number {
-  let a = (angle + Math.PI / 2) % (Math.PI * 2);
+  let a = (angle - Math.PI / 2) % (Math.PI * 2);
   if (a < 0) a += Math.PI * 2;
   const step = (Math.PI * 2) / totalFrames;
   const rawIdx = Math.round(a / step) % totalFrames;
@@ -215,7 +215,7 @@ function getDirectionalTex(shipClass: ShipClassId, scale: number, angle: number,
   const iw = src.naturalWidth || src.width;
   const ih = src.naturalHeight || src.height;
 
-  const targetSize = Math.ceil(60 * finalScale);
+  const targetSize = Math.ceil(85 * finalScale);
   const drawSz = Math.ceil(targetSize * 1.6);
   const c2 = document.createElement("canvas");
   c2.width = drawSz;
@@ -303,7 +303,7 @@ function getShipTex(shipClass: ShipClassId, scale: number): PIXI.Texture {
     const ch = maxY - minY + 1;
     const aspect = ch / cw;
 
-    const targetSize = Math.ceil(60 * finalScale);
+    const targetSize = Math.ceil(85 * finalScale);
     const padding = 16;
     const drawW = targetSize * 1.6;
     const drawH = drawW * aspect;
