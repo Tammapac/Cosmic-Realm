@@ -122,17 +122,18 @@ function buildSpriteFiles(frames: number): string[] {
 }
 
 // ── Ship Registry ── Add new directional ships here ──
-const DIRECTIONAL_SHIPS: { id: string; frames: number }[] = [
-  { id: "skimmer", frames: 32 },
-  { id: "wasp", frames: 32 },
+const DIRECTIONAL_SHIPS: { id: string; frames: number; dirOffset: number }[] = [
+  { id: "skimmer", frames: 32, dirOffset: 16 },
+  { id: "wasp", frames: 32, dirOffset: 0 },
 ];
 
-const ROTATION_SPRITES: Partial<Record<string, { frames: number; path: string; files: string[] }>> = {};
+const ROTATION_SPRITES: Partial<Record<string, { frames: number; path: string; files: string[]; dirOffset: number }>> = {};
 for (const ship of DIRECTIONAL_SHIPS) {
   ROTATION_SPRITES[ship.id] = {
     frames: ship.frames,
     path: `/ships/${ship.id}/`,
     files: buildSpriteFiles(ship.frames),
+    dirOffset: ship.dirOffset,
   };
 }
 const rotationFrameTextures = new Map<string, PIXI.Texture[]>();
@@ -202,7 +203,10 @@ function getDirectionalTex(shipClass: ShipClassId, scale: number, angle: number,
   }
   const sizeScale = SHIP_SIZE_SCALE[shipClass] ?? 1;
   const finalScale = scale * sizeScale;
-  const frameIdx = angleToDirection8(angle, frames.length, entityId);
+  const cfg = ROTATION_SPRITES[shipClass];
+  const dirOff = cfg?.dirOffset ?? 0;
+  const rawFrame = angleToDirection8(angle, frames.length, entityId);
+  const frameIdx = (rawFrame + dirOff) % frames.length;
   const key = "ship-" + shipClass + "-" + finalScale.toFixed(2) + "-f" + frameIdx;
   let tex = texCache.get(key);
   if (tex) return { tex, isDirectional: true };
