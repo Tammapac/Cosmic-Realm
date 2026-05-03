@@ -1280,6 +1280,7 @@ export const ZONE_ASTEROID_YIELDS: Record<ZoneId, { resourceId: ResourceId; weig
   danger3:   [{ resourceId: "iridium", weight: 30 }, { resourceId: "palladium", weight: 25 }, { resourceId: "obsidian", weight: 15 }, { resourceId: "crystal-shard", weight: 15 }, { resourceId: "cobalt", weight: 15 }],
   danger4:   [{ resourceId: "iridium", weight: 35 }, { resourceId: "palladium", weight: 25 }, { resourceId: "obsidian", weight: 20 }, { resourceId: "crystal-shard", weight: 10 }, { resourceId: "helium-3", weight: 10 }],
   danger5:   [{ resourceId: "iridium", weight: 40 }, { resourceId: "palladium", weight: 25 }, { resourceId: "obsidian", weight: 15 }, { resourceId: "crystal-shard", weight: 10 }, { resourceId: "helium-3", weight: 10 }],
+  debug:     [{ resourceId: "iron", weight: 100 }],
 };
 
 export function pickAsteroidYield(zone: ZoneId): ResourceId {
@@ -1346,6 +1347,7 @@ export const ASTEROID_BELTS: Record<ZoneId, { cx: number; cy: number; rx: number
   danger3:  [{ cx: 3000, cy: 0, rx: 800, ry: 2000 }],
   danger4:  [{ cx: 0, cy: -3000, rx: 2000, ry: 700 }],
   danger5:  [{ cx: -2000, cy: 2000, rx: 1200, ry: 1200 }],
+  debug:    [],
 };
 
 export const STATIONS: Station[] = [
