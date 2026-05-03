@@ -122,18 +122,28 @@ function buildSpriteFiles(frames: number): string[] {
 }
 
 // ── Ship Registry ── Add new directional ships here ──
-const DIRECTIONAL_SHIPS: { id: string; frames: number; dirOffset: number }[] = [
-  { id: "skimmer", frames: 32, dirOffset: 0 },
-  { id: "wasp", frames: 32, dirOffset: 0 },
+// ── Per-ship directional sprite config ──
+// frames: number of sprite frames (8, 16, or 32)
+// frame0DirectionDeg: compass direction of frame 0 in degrees (0=N, 90=E, 180=S, 270=W)
+//   -> Change this if the ship points in the wrong direction (rotated)
+// clockwise: true if frames go clockwise (N->E->S->W), false if counter-clockwise
+//   -> Change this if the ship appears mirrored (left/right swapped)
+const DIRECTIONAL_SHIPS: { id: string; frames: number; frame0DirectionDeg: number; clockwise: boolean }[] = [
+  { id: "skimmer", frames: 32, frame0DirectionDeg: 0, clockwise: true },
+  { id: "wasp", frames: 32, frame0DirectionDeg: 0, clockwise: true },
 ];
 
-const ROTATION_SPRITES: Partial<Record<string, { frames: number; path: string; files: string[]; dirOffset: number }>> = {};
+const ROTATION_SPRITES: Partial<Record<string, {
+  frames: number; path: string; files: string[];
+  frame0DirectionDeg: number; clockwise: boolean;
+}>> = {};
 for (const ship of DIRECTIONAL_SHIPS) {
   ROTATION_SPRITES[ship.id] = {
     frames: ship.frames,
     path: `/ships/${ship.id}/`,
     files: buildSpriteFiles(ship.frames),
-    dirOffset: ship.dirOffset,
+    frame0DirectionDeg: ship.frame0DirectionDeg,
+    clockwise: ship.clockwise,
   };
 }
 const rotationFrameTextures = new Map<string, PIXI.Texture[]>();
@@ -141,7 +151,6 @@ const rotationFrameLoading = new Set<string>();
 const directionState = new Map<string, number>();
 
 const HYSTERESIS_DEG = 3;
-const HYSTERESIS_RAD = HYSTERESIS_DEG * Math.PI / 180;
 
 function preloadRotationSprites(): void {
   for (const [id, cfg] of Object.entries(ROTATION_SPRITES)) {
@@ -176,19 +185,40 @@ function hasRotationFrames(shipClass: string): boolean {
   return rotationFrameTextures.has(shipClass);
 }
 
-function angleToDirection8(angle: number, totalFrames: number, entityId: string): number {
-  let a = (angle + Math.PI / 2) % (Math.PI * 2);
-  if (a < 0) a += Math.PI * 2;
-  const step = (Math.PI * 2) / totalFrames;
-  const rawIdx = Math.round(a / step) % totalFrames;
+function angleToDirectionFrame(
+  screenAngleRad: number,
+  totalFrames: number,
+  frame0DirDeg: number,
+  clockwise: boolean,
+  entityId: string
+): number {
+  // Screen angle: 0 = East, PI/2 = South (Y-down coordinates)
+  // Compass angle: 0 = North, 90 = East
+  // Conversion: compassDeg = screenDeg + 90
+  const screenDeg = (screenAngleRad * 180) / Math.PI;
+  let compassDeg = screenDeg + 90;
+  compassDeg = ((compassDeg % 360) + 360) % 360;
 
+  // Offset by frame 0 direction
+  let frameDeg = compassDeg - frame0DirDeg;
+
+  // Reverse if sprites go counter-clockwise
+  if (!clockwise) frameDeg = -frameDeg;
+
+  frameDeg = ((frameDeg % 360) + 360) % 360;
+
+  // Map degrees to frame index
+  const step = 360 / totalFrames;
+  const rawIdx = Math.round(frameDeg / step) % totalFrames;
+
+  // Hysteresis: 3-degree deadzone prevents flickering at frame boundaries
   const prevIdx = directionState.get(entityId);
   if (prevIdx !== undefined && prevIdx !== rawIdx) {
     const prevCenter = prevIdx * step;
-    let distFromPrev = a - prevCenter;
-    if (distFromPrev > Math.PI) distFromPrev -= Math.PI * 2;
-    if (distFromPrev < -Math.PI) distFromPrev += Math.PI * 2;
-    if (Math.abs(distFromPrev) < step / 2 + HYSTERESIS_RAD) {
+    let dist = frameDeg - prevCenter;
+    if (dist > 180) dist -= 360;
+    if (dist < -180) dist += 360;
+    if (Math.abs(dist) < step / 2 + HYSTERESIS_DEG) {
       return prevIdx;
     }
   }
@@ -204,9 +234,8 @@ function getDirectionalTex(shipClass: ShipClassId, scale: number, angle: number,
   const sizeScale = SHIP_SIZE_SCALE[shipClass] ?? 1;
   const finalScale = scale * sizeScale;
   const cfg = ROTATION_SPRITES[shipClass];
-  const dirOff = cfg?.dirOffset ?? 0;
-  const rawFrame = angleToDirection8(angle, frames.length, entityId);
-  const frameIdx = (rawFrame + dirOff) % frames.length;
+  if (!cfg) return { tex: getShipTex(shipClass, scale), isDirectional: false };
+  const frameIdx = angleToDirectionFrame(angle, frames.length, cfg.frame0DirectionDeg, cfg.clockwise, entityId);
   const key = "ship-" + shipClass + "-" + finalScale.toFixed(2) + "-f" + frameIdx;
   let tex = texCache.get(key);
   if (tex) return { tex, isDirectional: true };
