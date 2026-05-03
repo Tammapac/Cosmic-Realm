@@ -133,6 +133,7 @@ const DIRECTIONAL_SHIPS: { id: string; frames: number; frame0DirectionDeg: numbe
   { id: "wasp", frames: 32, frame0DirectionDeg: 0, clockwise: true },
   { id: "vanguard", frames: 32, frame0DirectionDeg: 0, clockwise: true },
   { id: "reaver", frames: 32, frame0DirectionDeg: 0, clockwise: true },
+  { id: "obsidian", frames: 32, frame0DirectionDeg: 0, clockwise: true },
 ];
 
 const ROTATION_SPRITES: Partial<Record<string, {
@@ -201,6 +202,17 @@ const SHIP_HARDPOINTS: Partial<Record<string, ShipHardpoints>> = {
     weapons: [
       { x: -10, y: -10 }, // left weapon mount
       { x: 10, y: -10 },  // right weapon mount
+    ],
+  },
+  // ── Obsidian ──
+  obsidian: {
+    thrusters: [
+      { x: -10, y: 14 },  // left engine
+      { x: 10, y: 14 },   // right engine
+    ],
+    weapons: [
+      { x: -12, y: -8 },  // left weapon mount
+      { x: 12, y: -8 },   // right weapon mount
     ],
   },
 };
