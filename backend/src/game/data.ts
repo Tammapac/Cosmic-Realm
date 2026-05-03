@@ -13,7 +13,8 @@ export type ZoneId =
   | "alpha" | "nebula" | "crimson" | "void" | "forge"
   | "corona" | "fracture" | "abyss" | "marsdepth" | "maelstrom"
   | "venus1" | "venus2" | "venus3" | "venus4" | "venus5"
-  | "danger1" | "danger2" | "danger3" | "danger4" | "danger5";
+  | "danger1" | "danger2" | "danger3" | "danger4" | "danger5"
+  | "debug";
 
 export type EnemyType = "scout" | "raider" | "destroyer" | "voidling" | "dread" | "sentinel" | "wraith" | "titan" | "overlord";
 export type EnemyBehavior = "fast" | "chaser" | "tank" | "ranged";
@@ -434,6 +435,10 @@ export const ZONES: Record<ZoneId, {
   danger5: {
     id: "danger5", name: "The Abyss Gate", label: "4-5", faction: "mars",
         enemyTier: 7, enemyTypes: ["overlord", "titan", "dread"], unlockLevel: 42,
+  },
+  debug: {
+    id: "debug", name: "Debug Arena", label: "DBG", faction: "earth",
+        enemyTier: 0, enemyTypes: [], unlockLevel: 1,
   },
 };
 

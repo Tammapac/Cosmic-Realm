@@ -37,6 +37,8 @@ let gameUIHidden = false;
 let domBlocker: HTMLDivElement | null = null;
 let dirty = true;
 let pulseInterval: ReturnType<typeof setInterval> | null = null;
+let dragging = false;
+let dragIndex = -1;
 
 // Retained PIXI objects (created once, updated in render)
 let bgGraphic: PIXI.Graphics | null = null;
@@ -342,17 +344,19 @@ function render(): void {
       "1-9         Select by index",
       "",
       "W/A/S/D     Move (Shift=5, Alt=0.25)",
+      "Drag        Move dot with mouse",
       "+/-         Zoom",
       "T/Shift+T   Cycle type",
       "L           Cycle layer",
       "R           Rename",
       "",
-      "Insert/S+A  Add point",
+      "Insert/S+A  Add point (or dblclick)",
       "Del/Bksp    Delete",
       "M/Shift+M   Mirror x",
       "N/P         Copy to next/prev dir",
       "Shift+N     Copy to next 8 dirs",
       "F           Fill ALL 32 dirs from current",
+      "I           Interpolate (set 8 dirs: N,NE,E,SE,S,SW,W,NW)",
       "C           Export JSON",
       "U           Toggle game UI",
       "G/O/H       Grid/Labels/Help",
@@ -378,7 +382,7 @@ function tick(): void {
 function startRenderLoop(): void {
   stopRenderLoop();
   dirty = true;
-  pulseInterval = setInterval(tick, 150);
+  pulseInterval = setInterval(tick, 33);
 }
 
 function stopRenderLoop(): void {
@@ -573,6 +577,11 @@ function onKeyDown(e: KeyboardEvent): void {
       }
       break;
     }
+    case "i":
+    case "I": {
+      interpolateAllDirections();
+      break;
+    }
     case "p":
     case "P": {
       const prevIdx = (dirIndex - 1 + 32) % 32;
@@ -626,6 +635,69 @@ function onKeyDown(e: KeyboardEvent): void {
   scheduleRender();
 }
 
+
+function interpolateAllDirections(): void {
+  if (!data) return;
+  // 8 keyframes: N, NE, E, SE, S, SW, W, NW (every 4th frame)
+  const keyFrames = [0, 4, 8, 12, 16, 20, 24, 28];
+  const keyDirs = keyFrames.map(i => DIRECTIONS_32[i]);
+  
+  // Find which keyframes have data
+  const filledKeys: number[] = [];
+  for (let k = 0; k < keyFrames.length; k++) {
+    const d = data.directions[keyDirs[k]];
+    if (d && d.hardpoints.length > 0) filledKeys.push(k);
+  }
+  
+  if (filledKeys.length < 2) {
+    alert("Place hardpoints in at least 2 of the 8 key directions:\nN(1), NE(5), E(9), SE(13), S(17), SW(21), W(25), NW(29)");
+    return;
+  }
+  
+  const hpCount = data.directions[keyDirs[filledKeys[0]]].hardpoints.length;
+  for (const k of filledKeys) {
+    if (data.directions[keyDirs[k]].hardpoints.length !== hpCount) {
+      alert("All key directions must have the same number of hardpoints!");
+      return;
+    }
+  }
+  
+  // Linear interpolation between consecutive filled keyframes (wrapping around)
+  for (let ki = 0; ki < filledKeys.length; ki++) {
+    const startKey = filledKeys[ki];
+    const endKey = filledKeys[(ki + 1) % filledKeys.length];
+    const startFrame = keyFrames[startKey];
+    const endFrame = keyFrames[endKey];
+    const startHps = data.directions[keyDirs[startKey]].hardpoints;
+    const endHps = data.directions[keyDirs[endKey]].hardpoints;
+    
+    // How many frames between these two keyframes (wrapping)
+    const gap = endFrame > startFrame ? endFrame - startFrame : (32 - startFrame + endFrame);
+    
+    for (let i = 1; i < gap; i++) {
+      const frameIdx = (startFrame + i) % 32;
+      const dir = DIRECTIONS_32[frameIdx];
+      const t = i / gap;
+      
+      const interpolated: Hardpoint[] = [];
+      for (let h = 0; h < hpCount; h++) {
+        interpolated.push({
+          id: startHps[h].id,
+          type: startHps[h].type,
+          layer: startHps[h].layer,
+          x: Math.round(startHps[h].x + (endHps[h].x - startHps[h].x) * t),
+          y: Math.round(startHps[h].y + (endHps[h].y - startHps[h].y) * t),
+          z: Math.round(startHps[h].z + (endHps[h].z - startHps[h].z) * t),
+        });
+      }
+      data.directions[dir] = { hardpoints: interpolated };
+    }
+  }
+  
+  save();
+}
+
+
 function addHardpoint(): void {
   if (!data) return;
   const hps = currentHardpoints();
@@ -640,6 +712,90 @@ function addHardpoint(): void {
   hps.push(newHp);
   selectedIndex = hps.length - 1;
   save();
+}
+
+
+/* --- mouse/pointer drag handlers --- */
+function screenToHardpoint(mx: number, my: number, hz: number): { x: number; y: number } {
+  if (!app) return { x: 0, y: 0 };
+  const cx = app.screen.width / 2;
+  const cy = app.screen.height / 2;
+  const x = Math.round((mx - cx) / zoom);
+  const y = Math.round((my - cy) / zoom + hz);
+  return { x, y };
+}
+
+function findDotAt(mx: number, my: number): number {
+  if (!app) return -1;
+  const cx = app.screen.width / 2;
+  const cy = app.screen.height / 2;
+  const hps = currentHardpoints();
+  let closest = -1;
+  let closestDist = 12; // max pick radius in pixels
+  for (let i = 0; i < hps.length; i++) {
+    const hp = hps[i];
+    const sx = cx + hp.x * zoom;
+    const sy = cy + (hp.y - hp.z) * zoom;
+    const dist = Math.sqrt((mx - sx) ** 2 + (my - sy) ** 2);
+    if (dist < closestDist) {
+      closestDist = dist;
+      closest = i;
+    }
+  }
+  return closest;
+}
+
+function onPointerDown(e: PointerEvent): void {
+  if (!active) return;
+  const idx = findDotAt(e.clientX, e.clientY);
+  if (idx >= 0) {
+    selectedIndex = idx;
+    dragging = true;
+    dragIndex = idx;
+    scheduleRender();
+  }
+}
+
+function onPointerMove(e: PointerEvent): void {
+  if (!active || !dragging || dragIndex < 0) return;
+  const hps = currentHardpoints();
+  if (!hps[dragIndex]) return;
+  const hp = hps[dragIndex];
+  const pos = screenToHardpoint(e.clientX, e.clientY, hp.z);
+  hp.x = pos.x;
+  hp.y = pos.y;
+  scheduleRender();
+}
+
+function onPointerUp(_e: PointerEvent): void {
+  if (dragging) {
+    dragging = false;
+    dragIndex = -1;
+    save();
+  }
+}
+
+function onDblClick(e: MouseEvent): void {
+  if (!active || !app) return;
+  // Double-click adds a new hardpoint at that position
+  if (!data) return;
+  const hps = currentHardpoints();
+  const cx = app.screen.width / 2;
+  const cy = app.screen.height / 2;
+  const x = Math.round((e.clientX - cx) / zoom);
+  const y = Math.round((e.clientY - cy) / zoom);
+  const newHp: Hardpoint = {
+    id: `${shipId}_${hps.length + 1}`,
+    type: "laser",
+    x,
+    y,
+    z: 0,
+    layer: "shipLevel",
+  };
+  hps.push(newHp);
+  selectedIndex = hps.length - 1;
+  save();
+  scheduleRender();
 }
 
 /* --- public API --- */
@@ -669,6 +825,11 @@ export function initHardpointEditor(pixiApp: PIXI.Application, initialShipId: st
   document.body.appendChild(domBlocker);
 
   window.addEventListener("keydown", onKeyDown, true);
+
+  domBlocker.addEventListener("pointerdown", onPointerDown);
+  domBlocker.addEventListener("pointermove", onPointerMove);
+  domBlocker.addEventListener("pointerup", onPointerUp);
+  domBlocker.addEventListener("dblclick", onDblClick);
 }
 
 export function destroyHardpointEditor(): void {
@@ -678,7 +839,14 @@ export function destroyHardpointEditor(): void {
     container = null;
   }
   stopRenderLoop();
-  if (domBlocker) { domBlocker.remove(); domBlocker = null; }
+  if (domBlocker) {
+    domBlocker.removeEventListener("pointerdown", onPointerDown);
+    domBlocker.removeEventListener("pointermove", onPointerMove);
+    domBlocker.removeEventListener("pointerup", onPointerUp);
+    domBlocker.removeEventListener("dblclick", onDblClick);
+    domBlocker.remove();
+    domBlocker = null;
+  }
   window.removeEventListener("keydown", onKeyDown, true);
   active = false;
   app = null;

@@ -11,6 +11,7 @@
  */
 import * as PIXI from "pixi.js";
 import { initHardpointEditor, toggleHardpointEditor, isEditorActive } from "./debug/HardpointEditor";
+import { DIRECTIONS_32 } from "./debug/hardpointTypes";
 import { state } from "./store";
 import { effectiveStats } from "./loop";
 import {
@@ -130,7 +131,7 @@ function buildSpriteFiles(frames: number): string[] {
 // clockwise: true if frames go clockwise (N->E->S->W), false if counter-clockwise
 //   -> Change this if the ship appears mirrored (left/right swapped)
 const DIRECTIONAL_SHIPS: { id: string; frames: number; frame0DirectionDeg: number; clockwise: boolean }[] = [
-  { id: "skimmer", frames: 32, frame0DirectionDeg: 0, clockwise: true },
+  { id: "skimmer", frames: 32, frame0DirectionDeg: 180, clockwise: false },
   { id: "wasp", frames: 32, frame0DirectionDeg: 0, clockwise: true },
   { id: "vanguard", frames: 32, frame0DirectionDeg: 0, clockwise: true },
   { id: "reaver", frames: 32, frame0DirectionDeg: 0, clockwise: true },
@@ -352,6 +353,89 @@ function localToWorldHardpoint(shipX: number, shipY: number, localX: number, loc
   return { x: shipX + rotated.x, y: shipY + rotated.y };
 }
 
+// ── Live hardpoint data from editor (localStorage) ──
+interface EditorHardpoint {
+  id: string;
+  type: string;
+  x: number;
+  y: number;
+  z: number;
+  layer: string;
+}
+interface EditorDirectionData {
+  hardpoints: EditorHardpoint[];
+}
+interface EditorShipData {
+  shipId: string;
+  directions: Record<string, EditorDirectionData>;
+}
+
+const editorHpCache = new Map<string, EditorShipData | null>();
+let editorHpCacheTime = 0;
+
+function loadEditorHardpoints(ship: string): EditorShipData | null {
+  const now = Date.now();
+  if (now - editorHpCacheTime < 5000 && editorHpCache.has(ship)) {
+    return editorHpCache.get(ship) || null;
+  }
+  try {
+    const raw = localStorage.getItem(`hardpoint-editor:${ship}`);
+    if (!raw) { editorHpCache.set(ship, null); return null; }
+    const parsed = JSON.parse(raw) as EditorShipData;
+    editorHpCache.set(ship, parsed);
+    editorHpCacheTime = now;
+    return parsed;
+  } catch { editorHpCache.set(ship, null); return null; }
+}
+
+function getEditorHardpointsByType(ship: string, frameIdx: number, type: string): { x: number; y: number }[] {
+  const data = loadEditorHardpoints(ship);
+  if (!data) return [];
+  const dirKey = DIRECTIONS_32[frameIdx];
+  if (!dirKey) return [];
+  const dir = data.directions[dirKey];
+  if (!dir || !dir.hardpoints) return [];
+  const sizeScale = SHIP_SIZE_SCALE[ship as ShipClassId] ?? 1;
+  const scaleFactor = Math.ceil(85 * sizeScale * 1.6) / 256;
+  return dir.hardpoints
+    .filter(hp => hp.type === type)
+    .map(hp => ({ x: hp.x * scaleFactor, y: hp.y * scaleFactor }));
+}
+
+function getPlayerFrameIndex(shipClass: string, angle: number): number {
+  const cfg = ROTATION_SPRITES[shipClass];
+  if (!cfg) return 0;
+  const frames = rotationFrameTextures.get(shipClass);
+  const totalFrames = frames ? frames.length : 32;
+  return angleToDirectionFrame(angle, totalFrames, cfg.frame0DirectionDeg, cfg.clockwise, "player-hp");
+}
+
+
+function getAutoThrusters(ship: string, frameIdx: number): { x: number; y: number }[] {
+  const data = loadEditorHardpoints(ship);
+  if (!data) return [];
+  // Find the North direction (frame 0) thruster/engineGlow data as reference
+  const northKey = DIRECTIONS_32[0]; // "N"
+  const northDir = data.directions[northKey];
+  if (!northDir || !northDir.hardpoints) return [];
+  const northThrusters = northDir.hardpoints.filter(
+    (hp: EditorHardpoint) => hp.type === "thruster" || hp.type === "engineGlow"
+  );
+  if (northThrusters.length === 0) return [];
+  // Rotate North positions by the frame angle to get current direction
+  const angleStep = (2 * Math.PI) / 32;
+  const rotAngle = frameIdx * angleStep;
+  const sizeScale = SHIP_SIZE_SCALE[ship as ShipClassId] ?? 1;
+  const scaleFactor = Math.ceil(85 * sizeScale * 1.6) / 256;
+  return northThrusters.map((hp: EditorHardpoint) => {
+    const sx = hp.x * scaleFactor;
+    const sy = hp.y * scaleFactor;
+    const cos = Math.cos(rotAngle);
+    const sin = Math.sin(rotAngle);
+    return { x: sx * cos - sy * sin, y: sx * sin + sy * cos };
+  });
+}
+
 // Track weapon mount alternation per entity
 const weaponMountIndex = new Map<string, number>();
 
@@ -362,31 +446,35 @@ const directionState = new Map<string, number>();
 const HYSTERESIS_DEG = 3;
 
 function preloadRotationSprites(): void {
-  for (const [id, cfg] of Object.entries(ROTATION_SPRITES)) {
-    if (!cfg || rotationFrameTextures.has(id) || rotationFrameLoading.has(id)) continue;
-    rotationFrameLoading.add(id);
-    const frames: (PIXI.Texture | null)[] = new Array(cfg.frames).fill(null);
-    let loaded = 0;
-    for (let i = 0; i < cfg.frames; i++) {
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      const idx = i;
-      img.onload = () => {
-        frames[idx] = PIXI.Texture.from(img, { scaleMode: PIXI.SCALE_MODES.LINEAR });
-        loaded++;
-        if (loaded === cfg.frames) {
-          rotationFrameTextures.set(id, frames as PIXI.Texture[]);
-          rotationFrameLoading.delete(id);
-          texCache.forEach((_, k) => { if (k.startsWith("ship-" + id + "-")) texCache.delete(k); });
-          lastPlayerShipClass = "" as ShipClassId;
-          for (const [, data] of otherPlayerSprites) {
-            (data as any)._lastShipClass = "";
-          }
+  const playerShip = state.player?.shipClass || "skimmer";
+  loadShipSprites(playerShip);
+}
+
+function loadShipSprites(id: string): void {
+  const cfg = ROTATION_SPRITES[id];
+  if (!cfg || rotationFrameTextures.has(id) || rotationFrameLoading.has(id)) return;
+  rotationFrameLoading.add(id);
+  const frames: (PIXI.Texture | null)[] = new Array(cfg.frames).fill(null);
+  let loaded = 0;
+  for (let i = 0; i < cfg.frames; i++) {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    const idx = i;
+    img.onload = () => {
+      frames[idx] = PIXI.Texture.from(img, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+      loaded++;
+      if (loaded === cfg.frames) {
+        rotationFrameTextures.set(id, frames as PIXI.Texture[]);
+        rotationFrameLoading.delete(id);
+        texCache.forEach((_, k) => { if (k.startsWith("ship-" + id + "-")) texCache.delete(k); });
+        lastPlayerShipClass = "" as ShipClassId;
+        for (const [, data] of otherPlayerSprites) {
+          (data as any)._lastShipClass = "";
         }
-      };
-      img.onerror = () => { loaded++; if (loaded === cfg.frames) rotationFrameLoading.delete(id); };
-      img.src = cfg.path + cfg.files[i];
-    }
+      }
+    };
+    img.onerror = () => { loaded++; if (loaded === cfg.frames) rotationFrameLoading.delete(id); };
+    img.src = cfg.path + cfg.files[i];
   }
 }
 
@@ -438,6 +526,7 @@ function angleToDirectionFrame(
 function getDirectionalTex(shipClass: ShipClassId, scale: number, angle: number, entityId: string): { tex: PIXI.Texture; isDirectional: boolean } {
   const frames = rotationFrameTextures.get(shipClass);
   if (!frames) {
+    loadShipSprites(shipClass);
     return { tex: getShipTex(shipClass, scale), isDirectional: false };
   }
   const sizeScale = SHIP_SIZE_SCALE[shipClass] ?? 1;
@@ -1689,7 +1778,28 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
         const hp = shooterClass ? SHIP_HARDPOINTS[shooterClass] : undefined;
         let mx = pr.pos.x;
         let my = pr.pos.y;
-        if (hp && hp.weapons.length > 0 && pr.fromPlayer) {
+        if (pr.fromPlayer && shooterClass) {
+          const frameIdx = getPlayerFrameIndex(shooterClass, state.player.angle);
+          const editorWeapons = [
+            ...getEditorHardpointsByType(shooterClass, frameIdx, "laser"),
+            ...getEditorHardpointsByType(shooterClass, frameIdx, "rocket"),
+            ...getEditorHardpointsByType(shooterClass, frameIdx, "muzzle"),
+          ];
+          if (editorWeapons.length > 0) {
+            const idx = weaponMountIndex.get(shooterId) ?? 0;
+            const w = editorWeapons[idx % editorWeapons.length];
+            mx = state.player.pos.x + w.x;
+            my = state.player.pos.y + w.y;
+            weaponMountIndex.set(shooterId, idx + 1);
+          } else if (hp && hp.weapons.length > 0) {
+            const idx = weaponMountIndex.get(shooterId) ?? 0;
+            const w = hp.weapons[idx % hp.weapons.length];
+            const wp = localToWorldHardpoint(state.player.pos.x, state.player.pos.y, w.x, w.y, state.player.angle);
+            mx = wp.x;
+            my = wp.y;
+            weaponMountIndex.set(shooterId, idx + 1);
+          }
+        } else if (hp && hp.weapons.length > 0 && pr.fromPlayer) {
           const idx = weaponMountIndex.get(shooterId) ?? 0;
           const w = hp.weapons[idx % hp.weapons.length];
           const wp = localToWorldHardpoint(state.player.pos.x, state.player.pos.y, w.x, w.y, state.player.angle);
@@ -2087,6 +2197,7 @@ function syncPlayer(): void {
   }
 
   playerContainer.visible = true;
+  playerContainer.position.set(p.pos.x, p.pos.y);
 
   // Update visual layers
   const speed = Math.sqrt(p.vel.x * p.vel.x + p.vel.y * p.vel.y);
@@ -2113,18 +2224,32 @@ function syncPlayer(): void {
     hitboxRing.drawCircle(0, 0, hitR);
   }
 
-  // EffectManager thruster trail particles from hardpoints
+  // EffectManager thruster trail particles from hardpoints (editor data or fallback)
   if (speed > 0.5 && effectManager) {
     const cls = SHIP_CLASSES[p.shipClass];
     const trailScale = cls ? Math.max(0.5, Math.min(1.2, cls.hullMax / 200)) : 1;
-    const hp = SHIP_HARDPOINTS[p.shipClass];
-    if (hp && hp.thrusters.length > 0) {
-      for (const t of hp.thrusters) {
-        const wp = localToWorldHardpoint(p.pos.x, p.pos.y, t.x, t.y, p.angle);
-        effectManager.spawnThrusterTrail(wp.x, wp.y, p.angle, speed, 0x4ee2ff, 1, trailScale);
+    const frameIdx = getPlayerFrameIndex(p.shipClass, p.angle);
+    const editorThrusters = getEditorHardpointsByType(p.shipClass, frameIdx, "thruster");
+    const editorEngines = getEditorHardpointsByType(p.shipClass, frameIdx, "engineGlow");
+    let allThrusters = [...editorThrusters, ...editorEngines];
+    // Auto-generate from North direction if current direction has no editor thrusters
+    if (allThrusters.length === 0) {
+      allThrusters = getAutoThrusters(p.shipClass, frameIdx);
+    }
+    if (allThrusters.length > 0) {
+      for (const t of allThrusters) {
+        effectManager.spawnThrusterTrail(p.pos.x + t.x, p.pos.y + t.y, p.angle, speed, 0x4ee2ff, 1, trailScale);
       }
     } else {
-      effectManager.spawnThrusterTrail(p.pos.x, p.pos.y, p.angle, speed, 0x4ee2ff, 1, trailScale);
+      const hp = SHIP_HARDPOINTS[p.shipClass];
+      if (hp && hp.thrusters.length > 0) {
+        for (const t of hp.thrusters) {
+          const wp = localToWorldHardpoint(p.pos.x, p.pos.y, t.x, t.y, p.angle);
+          effectManager.spawnThrusterTrail(wp.x, wp.y, p.angle, speed, 0x4ee2ff, 1, trailScale);
+        }
+      } else {
+        effectManager.spawnThrusterTrail(p.pos.x, p.pos.y, p.angle, speed, 0x4ee2ff, 1, trailScale);
+      }
     }
   }
 
@@ -2310,14 +2435,28 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
       const spd = Math.sqrt(o.vel.x * o.vel.x + o.vel.y * o.vel.y);
       if (spd > 0.5) {
         const thrustColor = PIXI.utils.string2hex(factionColor);
-        const hp = SHIP_HARDPOINTS[o.shipClass];
-        if (hp && hp.thrusters.length > 0) {
-          for (const t of hp.thrusters) {
-            const wp = localToWorldHardpoint(o.pos.x, o.pos.y, t.x, t.y, o.angle);
-            effectManager.spawnThrusterTrail(wp.x, wp.y, o.angle, spd, thrustColor);
+        const oCfg = ROTATION_SPRITES[o.shipClass];
+        const oFrameIdx = oCfg ? angleToDirectionFrame(o.angle, 32, oCfg.frame0DirectionDeg, oCfg.clockwise, "other-" + o.id) : 0;
+        const oEditorThrusters = getEditorHardpointsByType(o.shipClass, oFrameIdx, "thruster");
+        const oEditorEngines = getEditorHardpointsByType(o.shipClass, oFrameIdx, "engineGlow");
+        let oAllThrusters = [...oEditorThrusters, ...oEditorEngines];
+        if (oAllThrusters.length === 0) {
+          oAllThrusters = getAutoThrusters(o.shipClass, oFrameIdx);
+        }
+        if (oAllThrusters.length > 0) {
+          for (const t of oAllThrusters) {
+            effectManager.spawnThrusterTrail(o.pos.x + t.x, o.pos.y + t.y, o.angle, spd, thrustColor);
           }
         } else {
-          effectManager.spawnThrusterTrail(o.pos.x, o.pos.y, o.angle, spd, thrustColor);
+          const hp = SHIP_HARDPOINTS[o.shipClass];
+          if (hp && hp.thrusters.length > 0) {
+            for (const t of hp.thrusters) {
+              const wp = localToWorldHardpoint(o.pos.x, o.pos.y, t.x, t.y, o.angle);
+              effectManager.spawnThrusterTrail(wp.x, wp.y, o.angle, spd, thrustColor);
+            }
+          } else {
+            effectManager.spawnThrusterTrail(o.pos.x, o.pos.y, o.angle, spd, thrustColor);
+          }
         }
       }
     }

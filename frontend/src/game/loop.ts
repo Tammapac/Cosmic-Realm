@@ -13,9 +13,65 @@ import {
   rankFor,
 RESOURCES, pickAsteroidYield, SHIP_SIZE_SCALE, SHIP_WEAPON_MOUNTS, } from "./types";
 import { sfx } from "./sound";
+import { DIRECTIONS_32 } from "./debug/hardpointTypes";
 import { type ServerEnemy, type ServerAsteroid, type ServerNpc, type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent, type DeltaPayload, type SnapshotPayload, type WelcomePayload, type DeltaEntity, type LaserFireEvent, type RocketFireEvent, type ProjectileSpawnEvent } from "../net/socket";
 import { sendInstanceEnemyHit } from "../net/socket";
 import { MOVEMENT, NETCODE } from "../../../lib/game-constants";
+
+
+// ── Editor hardpoint lookup for projectile positioning ──
+const _hpCache: Map<string, any> = new Map();
+let _hpCacheTime = 0;
+const SHIP_ROTATION_CFG: Record<string, { frame0DirDeg: number; clockwise: boolean }> = {
+  skimmer: { frame0DirDeg: 180, clockwise: false },
+  wasp: { frame0DirDeg: 0, clockwise: true },
+  vanguard: { frame0DirDeg: 0, clockwise: true },
+  reaver: { frame0DirDeg: 0, clockwise: true },
+  obsidian: { frame0DirDeg: 0, clockwise: true },
+  marauder: { frame0DirDeg: 0, clockwise: true },
+  phalanx: { frame0DirDeg: 0, clockwise: true },
+  titan: { frame0DirDeg: 0, clockwise: true },
+  leviathan: { frame0DirDeg: 0, clockwise: true },
+  specter: { frame0DirDeg: 0, clockwise: true },
+  colossus: { frame0DirDeg: 0, clockwise: true },
+  harbinger: { frame0DirDeg: 0, clockwise: true },
+  eclipse: { frame0DirDeg: 0, clockwise: true },
+  sovereign: { frame0DirDeg: 0, clockwise: true },
+  apex: { frame0DirDeg: 0, clockwise: true },
+};
+
+let weaponMountIdx = 0;
+
+function getEditorWeaponPositions(ship: string, angle: number): { x: number; y: number }[] | null {
+  const now = Date.now();
+  if (now - _hpCacheTime > 5000) { _hpCache.clear(); _hpCacheTime = now; }
+  let data = _hpCache.get(ship);
+  if (data === undefined) {
+    try {
+      const raw = localStorage.getItem(`hardpoint-editor:${ship}`);
+      data = raw ? JSON.parse(raw) : null;
+    } catch { data = null; }
+    _hpCache.set(ship, data);
+  }
+  if (!data || !data.directions) return null;
+  // Convert angle to frame index - matches renderer angleToDirectionFrame exactly
+  const screenDeg = (angle * 180) / Math.PI;
+  let compassDeg = ((screenDeg + 90) % 360 + 360) % 360;
+  const rotCfg = SHIP_ROTATION_CFG[ship] || { frame0DirDeg: 0, clockwise: true };
+  let frameDeg = compassDeg - rotCfg.frame0DirDeg;
+  if (!rotCfg.clockwise) frameDeg = -frameDeg;
+  frameDeg = ((frameDeg % 360) + 360) % 360;
+  const step = 360 / 32;
+  const frameIdx = Math.round(frameDeg / step) % 32;
+  const dirKey = DIRECTIONS_32[frameIdx];
+  const dir = data.directions[dirKey];
+  if (!dir || !dir.hardpoints) return null;
+  const weapons = dir.hardpoints.filter((hp: any) => hp.type === "laser" || hp.type === "rocket" || hp.type === "muzzle");
+  if (weapons.length === 0) return null;
+  const sizeScale = SHIP_SIZE_SCALE[ship as keyof typeof SHIP_SIZE_SCALE] ?? 1;
+  const scaleFactor = Math.ceil(85 * sizeScale * 1.6) / 256;
+  return weapons.map((hp: any) => ({ x: hp.x * scaleFactor, y: hp.y * scaleFactor }));
+}
 
 // Returns the equipped weapon's color (used for laser projectiles)
 function equippedWeaponColor(): string {
@@ -321,6 +377,7 @@ export function queueAttackTarget(enemyId: string): void {
 function spawnEnemy(): void {
   const z = ZONES[state.player.zone];
   if (state.enemies.filter((e) => !e.isBoss).length >= 18 + z.enemyTier * 4) return;
+  if (z.enemyTypes.length === 0) return;
   const type: EnemyType = z.enemyTypes[Math.floor(Math.random() * z.enemyTypes.length)];
   const def = ENEMY_DEFS[type];
   const angle = Math.random() * Math.PI * 2;
@@ -1678,13 +1735,28 @@ function tickWorld(dt: number): void {
           }
           emitSpark(p.pos.x, p.pos.y, "#ffffff", 3, 60, 2);
         } else {
-          // Standard dual-fire
+          // Standard dual-fire: cycle through editor hardpoints in pairs
           const perShot = Math.round(laserDmg / 2);
-          for (let si = 0; si < 2; si++) {
+          const editorWpns = getEditorWeaponPositions(p.shipClass, ang);
+          const useEditor = editorWpns && editorWpns.length >= 2;
+          const numGuns = useEditor ? Math.min(editorWpns!.length, 2) : 2;
+          const pairOffset = useEditor && editorWpns!.length > 2
+            ? (weaponMountIdx % Math.ceil(editorWpns!.length / 2)) * 2
+            : 0;
+          if (useEditor && editorWpns!.length > 2) weaponMountIdx++;
+          for (let si = 0; si < numGuns; si++) {
             const side = si === 0 ? -1 : 1;
-            const ox = p.pos.x + Math.cos(ang) * gunFwd + Math.cos(perpAng) * gunSpread * side;
-            const oy = p.pos.y + Math.sin(ang) * gunFwd + Math.sin(perpAng) * gunSpread * side;
-            fireProjectile("player", ox, oy, ang - side * 0.03, perShot, laserColor, 4, {
+            let ox: number, oy: number;
+            if (useEditor) {
+              const hpIdx = (pairOffset + si) % editorWpns!.length;
+              ox = p.pos.x + editorWpns![hpIdx].x;
+              oy = p.pos.y + editorWpns![hpIdx].y;
+            } else {
+              ox = p.pos.x + Math.cos(ang) * gunFwd + Math.cos(perpAng) * gunSpread * side;
+              oy = p.pos.y + Math.sin(ang) * gunFwd + Math.sin(perpAng) * gunSpread * side;
+            }
+            const fireAng = useEditor ? ang : ang - side * 0.03;
+            fireProjectile("player", ox, oy, fireAng, perShot, laserColor, 4, {
               weaponKind: "laser", speedMul: 2.14,
             });
             state.particles.push({ id: `mf-${Math.random().toString(36).slice(2, 8)}`, pos: { x: ox, y: oy }, vel: { x: 0, y: 0 }, ttl: 0.18, maxTtl: 0.18, color: laserColor, size: 70, kind: "flash" });
