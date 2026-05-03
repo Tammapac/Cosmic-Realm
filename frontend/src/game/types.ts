@@ -4,7 +4,8 @@ export type ZoneId =
   | "alpha" | "nebula" | "crimson" | "void" | "forge"
   | "corona" | "fracture" | "abyss" | "marsdepth" | "maelstrom"
   | "venus1" | "venus2" | "venus3" | "venus4" | "venus5"
-  | "danger1" | "danger2" | "danger3" | "danger4" | "danger5";
+  | "danger1" | "danger2" | "danger3" | "danger4" | "danger5"
+  | "debug";
 
 export type Zone = {
   id: ZoneId;
@@ -887,6 +888,13 @@ export const ZONES: Record<ZoneId, Zone> = {
     enemyTypes: ["overlord", "titan", "dread"],
     description: "The deepest point. Legendary enemies and endgame rewards.", unlockLevel: 42,
   },
+  // ── DEBUG ZONE ────────────────────────────────────────────────────────────
+  debug: {
+    id: "debug", name: "Debug Arena", label: "DBG", faction: "earth",
+    bgHueA: "#0a0a0a", bgHueB: "#000000", enemyTier: 0,
+    enemyTypes: [],
+    description: "Empty debug zone for testing.", unlockLevel: 1,
+  },
 };
 
 export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
@@ -1583,6 +1591,9 @@ export const STATIONS: Station[] = [
 ];
 
 export const PORTALS: Portal[] = [
+  // Debug zone portal (from alpha)
+  { id: "p-a-dbg", pos: { x: -6500, y: -6500 }, fromZone: "alpha",  toZone: "debug"  },
+  { id: "p-dbg-a", pos: { x:  0, y:  6500 }, fromZone: "debug",  toZone: "alpha"  },
   // Earth chain: alpha ↔ nebula ↔ crimson ↔ void ↔ forge (top-right / bottom-left corners)
   { id: "p-a-n",   pos: { x:  6500, y: -6500 }, fromZone: "alpha",    toZone: "nebula"   },
   { id: "p-n-a",   pos: { x: -6500, y:  6500 }, fromZone: "nebula",   toZone: "alpha"    },

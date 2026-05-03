@@ -172,13 +172,13 @@ function render(): void {
     const dot = new PIXI.Graphics();
 
     if (isSelected) {
-      const pulse = 5 + Math.sin(pulsePhase) * 2;
+      const pulse = 3 + Math.sin(pulsePhase) * 1;
       dot.lineStyle(2, 0xffffff, 0.9);
-      dot.drawCircle(sx, sy, pulse + 4);
+      dot.drawCircle(sx, sy, pulse + 2);
     }
 
     dot.beginFill(color);
-    dot.drawCircle(sx, sy, isSelected ? 7 : 5);
+    dot.drawCircle(sx, sy, isSelected ? 4 : 2);
     dot.endFill();
     container.addChild(dot);
 
