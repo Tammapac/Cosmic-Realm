@@ -658,10 +658,8 @@ export function initHardpointEditor(pixiApp: PIXI.Application, initialShipId: st
   selectedIndex = 0;
 
   container = new PIXI.Container();
-  container.zIndex = 999999;
   container.visible = false;
   app.stage.addChild(container);
-  app.stage.sortableChildren = true;
 
   createRetainedObjects();
 

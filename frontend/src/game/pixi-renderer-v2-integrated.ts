@@ -1180,8 +1180,8 @@ export function triggerPlayerMuzzleFlash(): void {
 
 export function pixiRender(): void {
   if (!app) return;
-  // Skip full game render when hardpoint editor is active (saves GPU/CPU)
-  if (isEditorActive()) return;
+  // Skip heavy game render when hardpoint editor is active
+  if (isEditorActive()) { lastRenderTime = performance.now(); return; }
 
   const now = performance.now();
   const dt = Math.min(0.1, (now - lastRenderTime) / 1000);
