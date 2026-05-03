@@ -34,7 +34,7 @@ let showGrid = true;
 let showLabels = true;
 let shipSprite: PIXI.Sprite | null = null;
 let pulsePhase = 0;
-let animFrame = 0;
+
 let zoom = 2.0;
 let gameUIHidden = false;
 let domBlocker: HTMLDivElement | null = null;
@@ -145,9 +145,12 @@ function render(): void {
   // Ship sprite (zoomed)
   const spritePath = spritePathForDir(dirIndex);
   const tex = PIXI.Texture.from(spritePath);
-  if (shipSprite) shipSprite.destroy();
-  shipSprite = new PIXI.Sprite(tex);
-  shipSprite.anchor.set(0.5);
+  if (!shipSprite) {
+    shipSprite = new PIXI.Sprite(tex);
+    shipSprite.anchor.set(0.5);
+  } else {
+    shipSprite.texture = tex;
+  }
   shipSprite.position.set(cx, cy);
   shipSprite.scale.set(zoom);
   container.addChild(shipSprite);
@@ -257,12 +260,31 @@ function render(): void {
   }
 }
 
-/* --- animation loop --- */
+/* --- render on demand --- */
+let pulseInterval: ReturnType<typeof setInterval> | null = null;
+let dirty = true;
+
+function scheduleRender(): void {
+  dirty = true;
+}
+
 function tick(): void {
   if (!active) return;
-  pulsePhase += 0.08;
-  render();
-  animFrame = requestAnimationFrame(tick);
+  pulsePhase += 0.3;
+  if (dirty) {
+    dirty = false;
+    render();
+  }
+}
+
+function startRenderLoop(): void {
+  stopRenderLoop();
+  dirty = true;
+  pulseInterval = setInterval(tick, 100);
+}
+
+function stopRenderLoop(): void {
+  if (pulseInterval) { clearInterval(pulseInterval); pulseInterval = null; }
 }
 
 /* --- keyboard handler --- */
@@ -486,6 +508,7 @@ function onKeyDown(e: KeyboardEvent): void {
       showLabels = !showLabels;
       break;
   }
+  scheduleRender();
 }
 
 function addHardpoint(): void {
@@ -542,7 +565,7 @@ export function destroyHardpointEditor(): void {
     container.destroy({ children: true });
     container = null;
   }
-  if (animFrame) cancelAnimationFrame(animFrame);
+  stopRenderLoop();
   if (domBlocker) { domBlocker.remove(); domBlocker = null; }
   window.removeEventListener("keydown", onKeyDown, true);
   active = false;
@@ -559,11 +582,11 @@ export function toggleHardpointEditor(): void {
   if (active) {
     data = load();
     clampSelection();
-    tick();
+    startRenderLoop();
     console.log("[HardpointEditor] Activated");
   } else {
     save();
-    if (animFrame) cancelAnimationFrame(animFrame);
+    stopRenderLoop();
     // Restore game UI if it was hidden
     if (gameUIHidden) {
       toggleGameUI();
