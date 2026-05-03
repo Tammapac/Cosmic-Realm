@@ -515,7 +515,7 @@ export const state: GameState = {
   showSettings: false,
   showAdmin: false,
   uiScale: parseFloat(localStorage.getItem("sf-ui-scale") || "1"),
-  cameraZoom: 1,
+  cameraZoom: Math.min(window.innerWidth, 1200) / 1200,
 };
 
 const listeners = new Set<() => void>();

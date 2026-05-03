@@ -206,10 +206,56 @@ function GameCanvas() {
     };
   };
 
+  // ── Pinch-to-zoom for mobile ──
+  const lastPinchDist = React.useRef<number>(0);
+  const lastTouchPos = React.useRef<{ x: number; y: number } | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      lastPinchDist.current = Math.sqrt(dx * dx + dy * dy);
+    } else if (e.touches.length === 1) {
+      lastTouchPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    e.preventDefault();
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (lastPinchDist.current > 0) {
+        const scale = dist / lastPinchDist.current;
+        const minZoom = Math.min(window.innerWidth, 1200) / 1200;
+        state.cameraZoom = Math.max(minZoom * 0.7, Math.min(2.5, state.cameraZoom * scale));
+        bump();
+      }
+      lastPinchDist.current = dist;
+    } else if (e.touches.length === 1 && lastTouchPos.current) {
+      const rect = (e.target as HTMLElement).getBoundingClientRect();
+      const cx = e.touches[0].clientX - rect.left;
+      const cy = e.touches[0].clientY - rect.top;
+      state.cameraTarget = {
+        x: state.player.pos.x + (cx - rect.width / 2) / state.cameraZoom,
+        y: state.player.pos.y + (cy - rect.height / 2) / state.cameraZoom,
+      };
+      lastTouchPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      bump();
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (e.touches.length < 2) lastPinchDist.current = 0;
+    if (e.touches.length === 0) lastTouchPos.current = null;
+  };
+
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement | HTMLDivElement>) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? -0.1 : 0.1;
-    state.cameraZoom = Math.max(1.0, Math.min(2.5, state.cameraZoom + delta));
+    const minZoom = Math.min(window.innerWidth, 1200) / 1200;
+    state.cameraZoom = Math.max(minZoom * 0.7, Math.min(2.5, state.cameraZoom + delta));
     bump();
   };
 
@@ -221,9 +267,12 @@ function GameCanvas() {
         onDoubleClick={handleDoubleClick}
         onMouseMove={handleMouseMove}
         onWheel={handleWheel}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
         onContextMenu={(e) => e.preventDefault()}
         className="absolute inset-0 w-full h-full"
-        style={{ cursor: "crosshair" }}
+        style={{ cursor: "crosshair", touchAction: "none" }}
       />
     ) : (
       <canvas
