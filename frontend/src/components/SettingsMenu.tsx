@@ -69,7 +69,7 @@ export default function SettingsMenu({ onClose }: { onClose: () => void }) {
       <div style={{
         background: "linear-gradient(180deg, #0a0e14 0%, #131920 100%)",
         border: "1px solid rgba(68,238,204,0.25)", borderRadius: "12px",
-        padding: "28px 32px", width: "440px",
+        padding: "20px 24px", width: "min(440px, 92vw)", maxHeight: "90vh", overflowY: "auto",
         boxShadow: "0 0 60px rgba(68,238,204,0.08), inset 0 1px 0 rgba(255,255,255,0.04)",
         color: "#d0d8e0", fontFamily: "'Segoe UI', system-ui, sans-serif",
       }}>
@@ -124,7 +124,7 @@ export default function SettingsMenu({ onClose }: { onClose: () => void }) {
                 <span style={{ fontSize: "13px" }}>UI Scale</span>
                 <span style={{ fontSize: "13px", color: "#44eecc" }}>{Math.round(uiScale * 100)}%</span>
               </div>
-              <input type="range" min="70" max="140" value={Math.round(uiScale * 100)}
+              <input type="range" min="40" max="140" value={Math.round(uiScale * 100)}
                 onChange={e => onScale(parseInt(e.target.value) / 100)}
                 style={{ width: "100%", accentColor: "#44eecc", cursor: "pointer" }} />
             </div>

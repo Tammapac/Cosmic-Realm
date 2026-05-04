@@ -12,7 +12,7 @@ import * as PIXI from "pixi.js";
 
 export const VFX = {
   THRUSTER_PARTICLE_RATE: 30,
-  THRUSTER_PARTICLE_LIFETIME: 0.65,
+  THRUSTER_PARTICLE_LIFETIME: 0.45,
   AFTERBURN_PARTICLE_MULTIPLIER: 2.5,
 
   LASER_TRAIL_LIFETIME: 0.22,
@@ -498,26 +498,74 @@ export class EffectManager {
     const intensity = Math.min(1, speed / 4);
     if (intensity < 0.05) return;
 
-    const count = intensity > 0.6 ? 2 : 1;
+    const count = intensity > 0.4 ? 2 : 1;
     for (let i = 0; i < count; i++) {
-      const texR = Math.max(3, Math.round(5 * sizeMultiplier));
+      const texR = Math.max(4, Math.round(6 * sizeMultiplier));
       const p = this.acquire("trail", this.behindLayer, getSoftGlowTex(texR), true);
       if (!p) return;
       const back = angle + Math.PI;
       const spread = (Math.random() - 0.5) * 0.4;
-      const offset = (12 + Math.random() * 4) * sizeMultiplier;
+      const offset = (2 + Math.random() * 1) * sizeMultiplier;
       p.x = x + Math.cos(back + spread) * offset;
       p.y = y + Math.sin(back + spread) * offset;
-      p.vx = Math.cos(back) * (40 + Math.random() * 30) * intensity;
-      p.vy = Math.sin(back) * (40 + Math.random() * 30) * intensity;
+      p.vx = Math.cos(back) * (25 + Math.random() * 20) * intensity;
+      p.vy = Math.sin(back) * (25 + Math.random() * 20) * intensity;
       p.life = VFX.THRUSTER_PARTICLE_LIFETIME * (0.7 + Math.random() * 0.6) * sizeMultiplier;
       p.maxLife = p.life;
-      p.startAlpha = 0.6 * intensity * alphaMultiplier;
-      p.scaleStart = (0.15 + intensity * 0.3) * (0.8 + Math.random() * 0.4) * sizeMultiplier;
+      p.startAlpha = 0.7 * intensity * alphaMultiplier;
+      p.scaleStart = (0.18 + intensity * 0.35) * (0.8 + Math.random() * 0.4) * sizeMultiplier;
       p.scaleEnd = 0;
       p.tint = color;
       p.rotation = 0;
       p.angularVel = 0;
+    }
+  }
+
+
+  spawnEngineGlow(x: number, y: number, intensity: number, color: number, inFront: boolean = false): void {
+    const layer = inFront ? this.frontLayer : this.behindLayer;
+    const p = this.acquire(inFront ? "muzzle" : "trail", layer, getSoftGlowTex(12), true);
+    if (!p) return;
+    const jitter = (Math.random() - 0.5) * 2;
+    p.x = x + jitter;
+    p.y = y + jitter;
+    p.vx = (Math.random() - 0.5) * 4;
+    p.vy = (Math.random() - 0.5) * 4;
+    p.life = 0.05 + Math.random() * 0.03;
+    p.maxLife = p.life;
+    p.startAlpha = intensity * (0.45 + Math.random() * 0.25);
+    p.scaleStart = 0.5 + intensity * 0.35 + Math.random() * 0.15;
+    p.scaleEnd = p.scaleStart * 0.7;
+    p.tint = color;
+    p.rotation = Math.random() * Math.PI * 2;
+    p.angularVel = (Math.random() - 0.5) * 3;
+  }
+
+
+  spawnPlasmaWake(x: number, y: number, angle: number, speed: number, shipWidth: number, color: number): void {
+    const intensity = Math.min(1, speed / 4);
+    if (intensity < 0.05) return;
+    const back = angle + Math.PI;
+    const perpX = Math.cos(angle + Math.PI / 2);
+    const perpY = Math.sin(angle + Math.PI / 2);
+    const count = 3 + Math.floor(intensity * 2);
+    for (let i = 0; i < count; i++) {
+      const p = this.acquire("trail", this.behindLayer, getSoftGlowTex(6), true);
+      if (!p) return;
+      const lateralSpread = (Math.random() - 0.5) * shipWidth * 0.45;
+      const backOffset = (3 + Math.random() * 5);
+      p.x = x + Math.cos(back) * backOffset + perpX * lateralSpread;
+      p.y = y + Math.sin(back) * backOffset + perpY * lateralSpread;
+      p.vx = Math.cos(back) * (30 + Math.random() * 20) * intensity + (Math.random() - 0.5) * 6;
+      p.vy = Math.sin(back) * (30 + Math.random() * 20) * intensity + (Math.random() - 0.5) * 6;
+      p.life = 0.7 * (0.7 + Math.random() * 0.5);
+      p.maxLife = p.life;
+      p.startAlpha = (0.3 + Math.random() * 0.15) * intensity;
+      p.scaleStart = (0.3 + Math.random() * 0.2) * (shipWidth / 50);
+      p.scaleEnd = p.scaleStart * 0.2;
+      p.tint = color;
+      p.rotation = Math.random() * Math.PI * 2;
+      p.angularVel = (Math.random() - 0.5) * 2;
     }
   }
 

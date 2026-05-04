@@ -12,6 +12,7 @@
 import * as PIXI from "pixi.js";
 import { initHardpointEditor, toggleHardpointEditor, isEditorActive } from "./debug/HardpointEditor";
 import { DIRECTIONS_32 } from "./debug/hardpointTypes";
+import { init3DLayer, has3DModel, is3DReady, updateShip3D, beginFrame, markActive, endFrame, render3DLayer, destroy3DLayer } from "./three-ship-layer";
 import { state } from "./store";
 import { effectiveStats } from "./loop";
 import {
@@ -53,6 +54,7 @@ let stationLayer: PIXI.Container;
 let enemyLayer: PIXI.Container;
 let playerLayer: PIXI.Container;
 let projectileLayer: PIXI.Container;
+let projectileBehindLayer: PIXI.Container;
 let effectsLayer: PIXI.Container;
 let effectsBehindLayer: PIXI.Container;
 let effectsFrontLayer: PIXI.Container;
@@ -68,6 +70,7 @@ let prevAsteroidIds = new Set<string>();
 let prevAsteroidData = new Map<string, { x: number; y: number; size: number }>();
 let prevPlayerHull = -1;
 let projectileGlowGraphics: PIXI.Graphics | null = null;
+let projectileBehindGlowGraphics: PIXI.Graphics | null = null;
 
 // Offscreen canvas for texture baking
 let bakeCanvas: HTMLCanvasElement;
@@ -399,7 +402,7 @@ function getEditorHardpointsByType(ship: string, frameIdx: number, type: string)
   const scaleFactor = Math.ceil(85 * sizeScale * 1.6) / 256;
   return dir.hardpoints
     .filter(hp => hp.type === type)
-    .map(hp => ({ x: hp.x * scaleFactor, y: hp.y * scaleFactor }));
+    .map(hp => ({ x: hp.x * scaleFactor, y: (hp.y - (hp.z || 0)) * scaleFactor }));
 }
 
 function getPlayerFrameIndex(shipClass: string, angle: number): number {
@@ -429,12 +432,75 @@ function getAutoThrusters(ship: string, frameIdx: number): { x: number; y: numbe
   const scaleFactor = Math.ceil(85 * sizeScale * 1.6) / 256;
   return northThrusters.map((hp: EditorHardpoint) => {
     const sx = hp.x * scaleFactor;
-    const sy = hp.y * scaleFactor;
+    const sy = (hp.y - (hp.z || 0)) * scaleFactor;
     const cos = Math.cos(rotAngle);
     const sin = Math.sin(rotAngle);
     return { x: sx * cos - sy * sin, y: sx * sin + sy * cos };
   });
 }
+
+function getInterpolatedHardpoints(ship: string, angle: number, type: string): { x: number; y: number }[] {
+  const cfg = ROTATION_SPRITES[ship];
+  if (!cfg) return [];
+  const totalFrames = 32;
+  const screenDeg = (angle * 180) / Math.PI;
+  let compassDeg = screenDeg + 90;
+  compassDeg = ((compassDeg % 360) + 360) % 360;
+  let frameDeg = compassDeg - cfg.frame0DirectionDeg;
+  if (!cfg.clockwise) frameDeg = -frameDeg;
+  frameDeg = ((frameDeg % 360) + 360) % 360;
+  const step = 360 / totalFrames;
+  const exactFrame = frameDeg / step;
+  const frameA = Math.floor(exactFrame) % totalFrames;
+  const frameB = (frameA + 1) % totalFrames;
+  const t = exactFrame - Math.floor(exactFrame);
+  const hpsA = getEditorHardpointsByType(ship, frameA, type);
+  const hpsB = getEditorHardpointsByType(ship, frameB, type);
+  if (hpsA.length === 0 && hpsB.length === 0) return [];
+  if (hpsA.length === 0) return hpsB;
+  if (hpsB.length === 0) return hpsA;
+  const count = Math.min(hpsA.length, hpsB.length);
+  const result: { x: number; y: number }[] = [];
+  for (let i = 0; i < count; i++) {
+    result.push({
+      x: hpsA[i].x + (hpsB[i].x - hpsA[i].x) * t,
+      y: hpsA[i].y + (hpsB[i].y - hpsA[i].y) * t,
+    });
+  }
+  return result;
+}
+
+function getInterpolatedAutoThrusters(ship: string, angle: number): { x: number; y: number }[] {
+  const data = loadEditorHardpoints(ship);
+  if (!data) return [];
+  const northKey = DIRECTIONS_32[0];
+  const northDir = data.directions[northKey];
+  if (!northDir || !northDir.hardpoints) return [];
+  const northThrusters = northDir.hardpoints.filter(
+    (hp: EditorHardpoint) => hp.type === "thruster" || hp.type === "engineGlow"
+  );
+  if (northThrusters.length === 0) return [];
+  const cfg = ROTATION_SPRITES[ship];
+  if (!cfg) return [];
+  const screenDeg = (angle * 180) / Math.PI;
+  let compassDeg = screenDeg + 90;
+  compassDeg = ((compassDeg % 360) + 360) % 360;
+  let frameDeg = compassDeg - cfg.frame0DirectionDeg;
+  if (!cfg.clockwise) frameDeg = -frameDeg;
+  frameDeg = ((frameDeg % 360) + 360) % 360;
+  const rotAngle = (frameDeg * Math.PI) / 180;
+  const sizeScale = SHIP_SIZE_SCALE[ship as ShipClassId] ?? 1;
+  const scaleFactor = Math.ceil(85 * sizeScale * 1.6) / 256;
+  return northThrusters.map((hp: EditorHardpoint) => {
+    const sx = hp.x * scaleFactor;
+    const sy = (hp.y - (hp.z || 0)) * scaleFactor;
+    const cos = Math.cos(rotAngle);
+    const sin = Math.sin(rotAngle);
+    return { x: sx * cos - sy * sin, y: sx * sin + sy * cos };
+  });
+}
+
+const PLASMA_WAKE_SHIPS = new Set(["eclipse"]);
 
 // Track weapon mount alternation per entity
 const weaponMountIndex = new Map<string, number>();
@@ -1061,6 +1127,7 @@ let playerContainer: PIXI.Container | null = null;
 let playerBody: PIXI.Sprite | null = null;
 let playerNameText: PIXI.Text | null = null;
 let playerBars: PIXI.Graphics | null = null;
+let engineGlowGraphics: PIXI.Graphics | null = null;
 let playerDockedText: PIXI.Text | null = null;
 let playerFactionBadge: PIXI.Container | null = null;
 let lastPlayerShipClass: ShipClassId | null = null;
@@ -1153,6 +1220,9 @@ export function initPixiRenderer(container: HTMLDivElement): void {
   const view = app.view as HTMLCanvasElement;
   container.appendChild(view);
 
+  // Initialize Three.js 3D ship layer
+  init3DLayer(view);
+
   // Layer hierarchy
   bgLayer = new PIXI.Container();
   worldLayer = new PIXI.Container();
@@ -1162,6 +1232,7 @@ export function initPixiRenderer(container: HTMLDivElement): void {
   enemyLayer = new PIXI.Container();
   playerLayer = new PIXI.Container();
   projectileLayer = new PIXI.Container();
+  projectileBehindLayer = new PIXI.Container();
   effectsLayer = new PIXI.Container();
   effectsBehindLayer = new PIXI.Container();
   effectsFrontLayer = new PIXI.Container();
@@ -1174,6 +1245,7 @@ export function initPixiRenderer(container: HTMLDivElement): void {
   worldLayer.addChild(asteroidLayer);
   worldLayer.addChild(stationLayer);
   worldLayer.addChild(enemyLayer);
+  worldLayer.addChild(projectileBehindLayer);
   worldLayer.addChild(playerLayer);
   worldLayer.addChild(projectileLayer);
   worldLayer.addChild(effectsLayer);
@@ -1252,6 +1324,7 @@ export function destroyPixiRenderer(): void {
   }
   texCache.clear();
 
+  destroy3DLayer();
   app.destroy(true, { children: true });
   app = null;
 }
@@ -1302,6 +1375,9 @@ export function pixiRender(): void {
   const cullMargin = 150;
   const halfW = w / 2 / zoom + cullMargin;
   const halfH = h / 2 / zoom + cullMargin;
+
+  // ── 3D Layer frame start ──
+  beginFrame();
 
   // ── Background ──────────────────────────────────────────────────────
   renderBackground(w, h, cam);
@@ -1364,6 +1440,10 @@ export function pixiRender(): void {
 
   // ── Screen-space overlays ───────────────────────────────────────────
   renderOverlays(w, h);
+
+  // ── 3D Layer cleanup + render ──
+  endFrame();
+  render3DLayer();
 
   // ── Effect Manager Update ──────────────────────────────────────────
   if (effectManager) {
@@ -1764,7 +1844,6 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
       if (!isRocket) {
         sprite.scale.set(1 + pr.size * 0.15, 0.8 + pr.size * 0.1);
       }
-      projectileLayer.addChild(sprite);
       data = { sprite };
       projectileSprites.set(pr.id, data);
 
@@ -1818,6 +1897,12 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
     data.sprite.visible = true;
     data.sprite.position.set(pr.pos.x, pr.pos.y);
     data.sprite.rotation = Math.atan2(pr.vel.y, pr.vel.x);
+    const projGoingNorth = pr.vel.y < 0;
+    const targetLayer = projGoingNorth ? projectileLayer : projectileBehindLayer;
+    if (data.sprite.parent !== targetLayer) {
+      if (data.sprite.parent) data.sprite.parent.removeChild(data.sprite);
+      targetLayer.addChild(data.sprite);
+    }
 
     // Projectile trail particles — rockets get heavy smoke+fire, lasers get glow trail
     if (effectManager) {
@@ -1839,21 +1924,25 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
     projectileGlowGraphics = new PIXI.Graphics();
     projectileLayer.addChildAt(projectileGlowGraphics, 0);
   }
+  if (!projectileBehindGlowGraphics) {
+    projectileBehindGlowGraphics = new PIXI.Graphics();
+    projectileBehindLayer.addChildAt(projectileBehindGlowGraphics, 0);
+  }
   projectileGlowGraphics.clear();
+  projectileBehindGlowGraphics.clear();
   for (const pr of state.projectiles) {
     if (Math.abs(pr.pos.x - cam.x) > halfW + 30 || Math.abs(pr.pos.y - cam.y) > halfH + 30) continue;
     const color = PIXI.utils.string2hex(pr.color);
     const isRocket = pr.weaponKind === "rocket" || pr.size > 4;
-    if (isRocket) continue; // No glow overlay for rockets (uses trail instead)
+    if (isRocket) continue;
     const glowR = 3 + pr.size * 0.5;
-    // Subtle outer glow (much less circular/overpowering)
-    projectileGlowGraphics.beginFill(color, 0.06);
-    projectileGlowGraphics.drawCircle(pr.pos.x, pr.pos.y, glowR * 1.5);
-    projectileGlowGraphics.endFill();
-    // Tiny core highlight
-    projectileGlowGraphics.beginFill(color, 0.15);
-    projectileGlowGraphics.drawCircle(pr.pos.x, pr.pos.y, glowR * 0.6);
-    projectileGlowGraphics.endFill();
+    const glowTarget = pr.vel.y < 0 ? projectileGlowGraphics : projectileBehindGlowGraphics;
+    glowTarget.beginFill(color, 0.06);
+    glowTarget.drawCircle(pr.pos.x, pr.pos.y, glowR * 1.5);
+    glowTarget.endFill();
+    glowTarget.beginFill(color, 0.15);
+    glowTarget.drawCircle(pr.pos.x, pr.pos.y, glowR * 0.6);
+    glowTarget.endFill();
   }
 
   // Detect projectile deaths — spawn differentiated effects
@@ -1891,7 +1980,7 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
   // Remove dead projectile sprites
   for (const [id, data] of projectileSprites) {
     if (!activeIds.has(id)) {
-      projectileLayer.removeChild(data.sprite);
+      if (data.sprite.parent) data.sprite.parent.removeChild(data.sprite);
       data.sprite.destroy();
       projectileSprites.delete(id);
     }
@@ -2181,6 +2270,7 @@ function syncPlayer(): void {
     playerDockedText.visible = false;
     playerContainer.addChild(playerDockedText);
 
+
     playerLayer.addChild(playerContainer);
     lastPlayerShipClass = p.shipClass;
   }
@@ -2198,11 +2288,21 @@ function syncPlayer(): void {
 
   playerContainer.visible = true;
   playerContainer.position.set(p.pos.x, p.pos.y);
+  const use3D = has3DModel(p.shipClass) && is3DReady(p.shipClass);
+  if (use3D && playerVisual) {
+    playerVisual.container.visible = false;
+    const cam = state.player.pos;
+    const sizeScale = SHIP_SIZE_SCALE[p.shipClass] ?? 1;
+    updateShip3D("player", p.shipClass, p.pos.x, p.pos.y, p.angle, sizeScale, cam.x, cam.y);
+    markActive("player");
+  } else if (playerVisual) {
+    playerVisual.container.visible = true;
+  }
 
   // Update visual layers
   const speed = Math.sqrt(p.vel.x * p.vel.x + p.vel.y * p.vel.y);
   const es = effectiveStats();
-  if (playerVisual) {
+  if (playerVisual && !use3D) {
     const _dirTex = getDirectionalTex(p.shipClass, 1, p.angle, "player");
     updateShipVisual(
       playerVisual,
@@ -2224,36 +2324,59 @@ function syncPlayer(): void {
     hitboxRing.drawCircle(0, 0, hitR);
   }
 
+  // Hide hardcoded engine glow sprites for directional ships (they don't rotate with the sprite)
+  if (playerVisual && playerVisual.engineContainer) {
+    const hasDirectional = hasRotationFrames(p.shipClass);
+    if (hasDirectional) {
+      playerVisual.engineContainer.visible = false;
+      playerVisual.cockpitGlow.visible = false;
+      for (const wg of playerVisual.weaponGlows) wg.visible = false;
+    }
+  }
+
   // EffectManager thruster trail particles from hardpoints (editor data or fallback)
   if (speed > 0.5 && effectManager) {
     const cls = SHIP_CLASSES[p.shipClass];
     const trailScale = cls ? Math.max(0.5, Math.min(1.2, cls.hullMax / 200)) : 1;
-    const frameIdx = getPlayerFrameIndex(p.shipClass, p.angle);
-    const editorThrusters = getEditorHardpointsByType(p.shipClass, frameIdx, "thruster");
-    const editorEngines = getEditorHardpointsByType(p.shipClass, frameIdx, "engineGlow");
-    let allThrusters = [...editorThrusters, ...editorEngines];
-    // Auto-generate from North direction if current direction has no editor thrusters
-    if (allThrusters.length === 0) {
-      allThrusters = getAutoThrusters(p.shipClass, frameIdx);
-    }
-    if (allThrusters.length > 0) {
-      for (const t of allThrusters) {
-        effectManager.spawnThrusterTrail(p.pos.x + t.x, p.pos.y + t.y, p.angle, speed, 0x4ee2ff, 1, trailScale);
-      }
+    if (PLASMA_WAKE_SHIPS.has(p.shipClass)) {
+      const sizeScale = SHIP_SIZE_SCALE[p.shipClass] ?? 1;
+      const shipWidth = 85 * sizeScale * 0.7;
+      effectManager.spawnPlasmaWake(p.pos.x, p.pos.y, p.angle, speed, shipWidth, 0x4ee2ff);
     } else {
-      const hp = SHIP_HARDPOINTS[p.shipClass];
-      if (hp && hp.thrusters.length > 0) {
-        for (const t of hp.thrusters) {
-          const wp = localToWorldHardpoint(p.pos.x, p.pos.y, t.x, t.y, p.angle);
-          effectManager.spawnThrusterTrail(wp.x, wp.y, p.angle, speed, 0x4ee2ff, 1, trailScale);
+      let allThrusters = [
+        ...getInterpolatedHardpoints(p.shipClass, p.angle, "thruster"),
+        ...getInterpolatedHardpoints(p.shipClass, p.angle, "engineGlow"),
+      ];
+      if (allThrusters.length === 0) {
+        allThrusters = getInterpolatedAutoThrusters(p.shipClass, p.angle);
+      }
+      if (allThrusters.length > 0) {
+        for (const t of allThrusters) {
+          effectManager.spawnThrusterTrail(p.pos.x + t.x, p.pos.y + t.y, p.angle, speed, 0x4ee2ff, 1, trailScale);
         }
-      } else {
-        effectManager.spawnThrusterTrail(p.pos.x, p.pos.y, p.angle, speed, 0x4ee2ff, 1, trailScale);
       }
     }
   }
 
-  // Hull/Shield bars
+  // Engine glow at thruster hardpoint positions (behind ship, peeks around edges)
+  if (effectManager) {
+    let glowThrusters2 = [
+      ...getInterpolatedHardpoints(p.shipClass, p.angle, "thruster"),
+      ...getInterpolatedHardpoints(p.shipClass, p.angle, "engineGlow"),
+    ];
+    if (glowThrusters2.length === 0) {
+      glowThrusters2 = getInterpolatedAutoThrusters(p.shipClass, p.angle);
+    }
+    if (glowThrusters2.length > 0) {
+      const thrustI = Math.max(0.15, Math.min(1, speed / 80));
+      const glowInFront = Math.sin(p.angle) < 0;
+      for (const t of glowThrusters2) {
+        effectManager.spawnEngineGlow(p.pos.x + t.x, p.pos.y + t.y, thrustI, 0x4488ff, glowInFront);
+      }
+    }
+  }
+
+    // Hull/Shield bars
   const hullPct = Math.max(0, p.hull / es.hullMax);
   const shieldPct = Math.max(0, p.shield / es.shieldMax);
   playerBars!.clear();
@@ -2435,27 +2558,22 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
       const spd = Math.sqrt(o.vel.x * o.vel.x + o.vel.y * o.vel.y);
       if (spd > 0.5) {
         const thrustColor = PIXI.utils.string2hex(factionColor);
-        const oCfg = ROTATION_SPRITES[o.shipClass];
-        const oFrameIdx = oCfg ? angleToDirectionFrame(o.angle, 32, oCfg.frame0DirectionDeg, oCfg.clockwise, "other-" + o.id) : 0;
-        const oEditorThrusters = getEditorHardpointsByType(o.shipClass, oFrameIdx, "thruster");
-        const oEditorEngines = getEditorHardpointsByType(o.shipClass, oFrameIdx, "engineGlow");
-        let oAllThrusters = [...oEditorThrusters, ...oEditorEngines];
-        if (oAllThrusters.length === 0) {
-          oAllThrusters = getAutoThrusters(o.shipClass, oFrameIdx);
-        }
-        if (oAllThrusters.length > 0) {
-          for (const t of oAllThrusters) {
-            effectManager.spawnThrusterTrail(o.pos.x + t.x, o.pos.y + t.y, o.angle, spd, thrustColor);
-          }
+        if (PLASMA_WAKE_SHIPS.has(o.shipClass)) {
+          const oSizeScale = SHIP_SIZE_SCALE[o.shipClass] ?? 1;
+          const oShipWidth = 85 * oSizeScale * 0.7;
+          effectManager.spawnPlasmaWake(o.pos.x, o.pos.y, o.angle, spd, oShipWidth, thrustColor);
         } else {
-          const hp = SHIP_HARDPOINTS[o.shipClass];
-          if (hp && hp.thrusters.length > 0) {
-            for (const t of hp.thrusters) {
-              const wp = localToWorldHardpoint(o.pos.x, o.pos.y, t.x, t.y, o.angle);
-              effectManager.spawnThrusterTrail(wp.x, wp.y, o.angle, spd, thrustColor);
+          let oAllThrusters = [
+            ...getInterpolatedHardpoints(o.shipClass, o.angle, "thruster"),
+            ...getInterpolatedHardpoints(o.shipClass, o.angle, "engineGlow"),
+          ];
+          if (oAllThrusters.length === 0) {
+            oAllThrusters = getInterpolatedAutoThrusters(o.shipClass, o.angle);
+          }
+          if (oAllThrusters.length > 0) {
+            for (const t of oAllThrusters) {
+              effectManager.spawnThrusterTrail(o.pos.x + t.x, o.pos.y + t.y, o.angle, spd, thrustColor);
             }
-          } else {
-            effectManager.spawnThrusterTrail(o.pos.x, o.pos.y, o.angle, spd, thrustColor);
           }
         }
       }

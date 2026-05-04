@@ -871,7 +871,15 @@ function GameApp() {
   const showAdmin = useGame((s) => s.showAdmin);
   const showSettings = useGame((s) => s.showSettings);
 
-  const currentUiScale = useGame((s) => s.uiScale ?? 1);
+  const currentUiScale = useGame((s) => {
+    if (s.uiScale != null) return s.uiScale;
+    const saved = localStorage.getItem("sf-ui-scale");
+    if (saved) return parseFloat(saved);
+    const w = window.innerWidth;
+    if (w < 600) return 0.55;
+    if (w < 900) return 0.7;
+    return 1;
+  });
 
   return (
     <div className="relative w-full h-full overflow-hidden" style={{ background: "#02040c" }}>
@@ -911,6 +919,17 @@ function GameApp() {
       <FactionPicker />
       </div>
       </div>
+      <button
+        onClick={() => { state.showSettings = !state.showSettings; bump(); }}
+        style={{
+          position: "fixed", top: 8, right: 52, zIndex: 60,
+          background: "rgba(68,238,204,0.08)", border: "1px solid rgba(68,238,204,0.2)",
+          color: "#44eecc", fontSize: "18px", cursor: "pointer",
+          padding: "4px 8px", borderRadius: "6px", fontFamily: "inherit",
+          lineHeight: 1,
+        }}
+        title="Settings"
+      >{"⚙"}</button>
       {showSettings && <SettingsMenu onClose={() => { state.showSettings = false; bump(); }} />}
       {showAdmin && <AdminPanel onClose={() => { state.showAdmin = false; bump(); }} />}
       <button

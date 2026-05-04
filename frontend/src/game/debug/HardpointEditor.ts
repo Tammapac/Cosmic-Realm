@@ -272,6 +272,38 @@ function render(): void {
     dotsGraphic.endFill();
   });
 
+  // Z-axis height indicators (vertical line from ground to elevated position)
+  hps.forEach((hp, i) => {
+    if (Math.abs(hp.z) < 0.5) return;
+    const sx = cx + hp.x * zoom;
+    const groundY = cy + hp.y * zoom;
+    const elevY = cy + (hp.y - hp.z) * zoom;
+    const color = HARDPOINT_COLORS[hp.type] ?? 0xffffff;
+    const isSelected = i === selectedIndex;
+    // Dashed vertical line from ground to elevated position
+    dotsGraphic.lineStyle(1, color, isSelected ? 0.6 : 0.3);
+    const dashLen = 3;
+    const gap = 3;
+    const startY = Math.min(groundY, elevY);
+    const endY = Math.max(groundY, elevY);
+    let dy = startY;
+    while (dy < endY) {
+      const segEnd = Math.min(dy + dashLen, endY);
+      dotsGraphic.moveTo(sx, dy);
+      dotsGraphic.lineTo(sx, segEnd);
+      dy = segEnd + gap;
+    }
+    dotsGraphic.lineStyle(0);
+    // Small diamond at ground position
+    dotsGraphic.beginFill(color, isSelected ? 0.5 : 0.25);
+    dotsGraphic.moveTo(sx, groundY - 2);
+    dotsGraphic.lineTo(sx + 2, groundY);
+    dotsGraphic.lineTo(sx, groundY + 2);
+    dotsGraphic.lineTo(sx - 2, groundY);
+    dotsGraphic.closePath();
+    dotsGraphic.endFill();
+  });
+
   // Labels (destroy old, create minimal new ones)
   while (labelsContainer.children.length > 0) {
     labelsContainer.children[0].destroy();
@@ -281,8 +313,9 @@ function render(): void {
       const sx = cx + hp.x * zoom;
       const sy = cy + (hp.y - hp.z) * zoom;
       const isSelected = i === selectedIndex;
+      const zInfo = Math.abs(hp.z) >= 0.5 ? ` z:${Math.round(hp.z)}` : "";
       const label = new PIXI.Text(
-        `${hp.id} (${hp.type})`,
+        `${hp.id} (${hp.type}) ${Math.round(hp.x)},${Math.round(hp.y)}${zInfo}`,
         { fontFamily: "monospace", fontSize: 9, fill: isSelected ? 0x00ff00 : 0x999999 }
       );
       label.position.set(sx + 8, sy - 6);
@@ -654,33 +687,40 @@ function interpolateAllDirections(): void {
     return;
   }
   
-  const hpCount = data.directions[keyDirs[filledKeys[0]]].hardpoints.length;
+  // Detect which hardpoint types are in the keyframes
+  const interpTypes = new Set<string>();
   for (const k of filledKeys) {
-    if (data.directions[keyDirs[k]].hardpoints.length !== hpCount) {
-      alert("All key directions must have the same number of hardpoints!");
-      return;
+    for (const hp of data.directions[keyDirs[k]].hardpoints) {
+      interpTypes.add(hp.type);
     }
   }
-  
+
   // Linear interpolation between consecutive filled keyframes (wrapping around)
+  // Only interpolates types found in keyframes, preserves all other types
   for (let ki = 0; ki < filledKeys.length; ki++) {
     const startKey = filledKeys[ki];
     const endKey = filledKeys[(ki + 1) % filledKeys.length];
     const startFrame = keyFrames[startKey];
     const endFrame = keyFrames[endKey];
-    const startHps = data.directions[keyDirs[startKey]].hardpoints;
-    const endHps = data.directions[keyDirs[endKey]].hardpoints;
-    
-    // How many frames between these two keyframes (wrapping)
+    const startAll = data.directions[keyDirs[startKey]].hardpoints;
+    const endAll = data.directions[keyDirs[endKey]].hardpoints;
+    const startHps = startAll.filter(hp => interpTypes.has(hp.type));
+    const endHps = endAll.filter(hp => interpTypes.has(hp.type));
+    const pairCount = Math.min(startHps.length, endHps.length);
+
     const gap = endFrame > startFrame ? endFrame - startFrame : (32 - startFrame + endFrame);
-    
+
     for (let i = 1; i < gap; i++) {
       const frameIdx = (startFrame + i) % 32;
       const dir = DIRECTIONS_32[frameIdx];
       const t = i / gap;
-      
-      const interpolated: Hardpoint[] = [];
-      for (let h = 0; h < hpCount; h++) {
+
+      // Preserve existing hardpoints of OTHER types in this direction
+      const existing = data.directions[dir]?.hardpoints ?? [];
+      const preserved = existing.filter(hp => !interpTypes.has(hp.type));
+
+      const interpolated: Hardpoint[] = [...preserved];
+      for (let h = 0; h < pairCount; h++) {
         interpolated.push({
           id: startHps[h].id,
           type: startHps[h].type,
@@ -690,10 +730,14 @@ function interpolateAllDirections(): void {
           z: Math.round(startHps[h].z + (endHps[h].z - startHps[h].z) * t),
         });
       }
+      const nearest = t < 0.5 ? startHps : endHps;
+      for (let h = pairCount; h < nearest.length; h++) {
+        interpolated.push({ ...nearest[h] });
+      }
       data.directions[dir] = { hardpoints: interpolated };
     }
   }
-  
+
   save();
 }
 

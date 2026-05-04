@@ -70,7 +70,7 @@ function getEditorWeaponPositions(ship: string, angle: number): { x: number; y: 
   if (weapons.length === 0) return null;
   const sizeScale = SHIP_SIZE_SCALE[ship as keyof typeof SHIP_SIZE_SCALE] ?? 1;
   const scaleFactor = Math.ceil(85 * sizeScale * 1.6) / 256;
-  return weapons.map((hp: any) => ({ x: hp.x * scaleFactor, y: hp.y * scaleFactor }));
+  return weapons.map((hp: any) => ({ x: hp.x * scaleFactor, y: (hp.y - (hp.z || 0)) * scaleFactor }));
 }
 
 // Returns the equipped weapon's color (used for laser projectiles)
@@ -1735,28 +1735,33 @@ function tickWorld(dt: number): void {
           }
           emitSpark(p.pos.x, p.pos.y, "#ffffff", 3, 60, 2);
         } else {
-          // Standard dual-fire: cycle through editor hardpoints in pairs
+          // Alternating pairs: fire 2 guns at a time, cycle through pairs
           const perShot = Math.round(laserDmg / 2);
           const editorWpns = getEditorWeaponPositions(p.shipClass, ang);
           const useEditor = editorWpns && editorWpns.length >= 2;
-          const numGuns = useEditor ? Math.min(editorWpns!.length, 2) : 2;
-          const pairOffset = useEditor && editorWpns!.length > 2
-            ? (weaponMountIdx % Math.ceil(editorWpns!.length / 2)) * 2
-            : 0;
-          if (useEditor && editorWpns!.length > 2) weaponMountIdx++;
-          for (let si = 0; si < numGuns; si++) {
+          const totalGuns = useEditor ? editorWpns!.length : 2;
+          const numPairs = Math.ceil(totalGuns / 2);
+          const pairIdx = useEditor && totalGuns > 2 ? weaponMountIdx % numPairs : 0;
+          if (useEditor && totalGuns > 2) weaponMountIdx++;
+          for (let si = 0; si < 2; si++) {
+            const hpIdx = pairIdx * 2 + si;
+            if (useEditor && hpIdx >= totalGuns) break;
             const side = si === 0 ? -1 : 1;
             let ox: number, oy: number;
+            let convergeSide: number;
             if (useEditor) {
-              const hpIdx = (pairOffset + si) % editorWpns!.length;
               ox = p.pos.x + editorWpns![hpIdx].x;
               oy = p.pos.y + editorWpns![hpIdx].y;
+              const perpX = Math.cos(ang + Math.PI / 2);
+              const perpY = Math.sin(ang + Math.PI / 2);
+              const dot = editorWpns![hpIdx].x * perpX + editorWpns![hpIdx].y * perpY;
+              convergeSide = dot >= 0 ? 1 : -1;
             } else {
+              convergeSide = side;
               ox = p.pos.x + Math.cos(ang) * gunFwd + Math.cos(perpAng) * gunSpread * side;
               oy = p.pos.y + Math.sin(ang) * gunFwd + Math.sin(perpAng) * gunSpread * side;
             }
-            const fireAng = useEditor ? ang : ang - side * 0.03;
-            fireProjectile("player", ox, oy, fireAng, perShot, laserColor, 4, {
+            fireProjectile("player", ox, oy, ang - convergeSide * 0.03, perShot, laserColor, 4, {
               weaponKind: "laser", speedMul: 2.14,
             });
             state.particles.push({ id: `mf-${Math.random().toString(36).slice(2, 8)}`, pos: { x: ox, y: oy }, vel: { x: 0, y: 0 }, ttl: 0.18, maxTtl: 0.18, color: laserColor, size: 70, kind: "flash" });
