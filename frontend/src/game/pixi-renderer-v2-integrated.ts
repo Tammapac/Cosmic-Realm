@@ -12,7 +12,7 @@
 import * as PIXI from "pixi.js";
 import { initHardpointEditor, toggleHardpointEditor, isEditorActive } from "./debug/HardpointEditor";
 import { DIRECTIONS_32 } from "./debug/hardpointTypes";
-import { init3DLayer, has3DModel, is3DReady, updateShip3D, beginFrame, markActive, endFrame, render3DLayer, destroy3DLayer } from "./three-ship-layer";
+import { has3DModel, is3DReady, updateShip3D, setCameraZoom, beginFrame, markActive, endFrame, render3DLayer } from "./three-ship-layer";
 import { state } from "./store";
 import { effectiveStats } from "./loop";
 import {
@@ -1220,8 +1220,6 @@ export function initPixiRenderer(container: HTMLDivElement): void {
   const view = app.view as HTMLCanvasElement;
   container.appendChild(view);
 
-  // Initialize Three.js 3D ship layer
-  init3DLayer(view);
 
   // Layer hierarchy
   bgLayer = new PIXI.Container();
@@ -1324,7 +1322,6 @@ export function destroyPixiRenderer(): void {
   }
   texCache.clear();
 
-  destroy3DLayer();
   app.destroy(true, { children: true });
   app = null;
 }
@@ -1377,6 +1374,7 @@ export function pixiRender(): void {
   const halfH = h / 2 / zoom + cullMargin;
 
   // ── 3D Layer frame start ──
+  setCameraZoom(zoom);
   beginFrame();
 
   // ── Background ──────────────────────────────────────────────────────
@@ -2288,13 +2286,23 @@ function syncPlayer(): void {
 
   playerContainer.visible = true;
   playerContainer.position.set(p.pos.x, p.pos.y);
-  const use3D = has3DModel(p.shipClass) && is3DReady(p.shipClass);
+  const _has3D = has3DModel(p.shipClass);
+  const _ready3D = _has3D ? is3DReady(p.shipClass) : false;
+  const use3D = _has3D && _ready3D;
+  if (!(window as any).__3dLogCount) (window as any).__3dLogCount = 0;
+  if ((window as any).__3dLogCount < 20 || (window as any).__3dLogCount % 300 === 0) {
+    console.log("[3D Sync] ship:", p.shipClass, "has3D:", _has3D, "ready:", _ready3D, "use3D:", use3D, "pixiVisible:", playerVisual?.container.visible);
+  }
+  (window as any).__3dLogCount++;
   if (use3D && playerVisual) {
     playerVisual.container.visible = false;
     const cam = state.player.pos;
     const sizeScale = SHIP_SIZE_SCALE[p.shipClass] ?? 1;
     updateShip3D("player", p.shipClass, p.pos.x, p.pos.y, p.angle, sizeScale, cam.x, cam.y);
     markActive("player");
+    if ((window as any).__3dLogCount <= 5) {
+      console.log("[3D Sync] Pixi sprite HIDDEN, 3D ship active");
+    }
   } else if (playerVisual) {
     playerVisual.container.visible = true;
   }

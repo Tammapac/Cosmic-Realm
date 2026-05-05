@@ -1,16 +1,9 @@
-/**
- * Three.js Ship Layer — Renders 3D ship models overlaid on the PixiJS game.
- * Orthographic camera looking down, synced with PixiJS camera.
- * Only renders ships — everything else stays in PixiJS.
- */
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 const SHIP_3D_MODELS: Record<string, string> = {
   apex: "/models/Apex_Destroyer.glb",
 };
-
-const ISOMETRIC_TILT = -0.7; // ~40 degrees toward camera
 
 interface Ship3D {
   wrapper: THREE.Group;
@@ -20,7 +13,6 @@ interface Ship3D {
 let renderer: THREE.WebGLRenderer | null = null;
 let scene: THREE.Scene | null = null;
 let camera: THREE.OrthographicCamera | null = null;
-let canvas3d: HTMLCanvasElement | null = null;
 let initialized = false;
 
 const loadedModels = new Map<string, THREE.Group>();
@@ -29,36 +21,18 @@ const failedModels = new Set<string>();
 const activeShips = new Map<string, Ship3D>();
 const activeThisFrame = new Set<string>();
 
-let modelBaseScale = 0.35;
+let cameraZoom = 1;
+let renderFrameCount = 0;
 
-export function init3DLayer(gameCanvas: HTMLCanvasElement): void {
+export function init3DLayer(canvas: HTMLCanvasElement): void {
   if (initialized) return;
   initialized = true;
 
-  canvas3d = document.createElement("canvas");
-  canvas3d.id = "three-ship-canvas";
-  canvas3d.style.position = "absolute";
-  canvas3d.style.top = "0";
-  canvas3d.style.left = "0";
-  canvas3d.style.width = "100%";
-  canvas3d.style.height = "100%";
-  canvas3d.style.pointerEvents = "none";
-  canvas3d.style.zIndex = "5";
-
-  gameCanvas.style.position = "relative";
-  gameCanvas.style.zIndex = "1";
-
-  const parent = gameCanvas.parentElement;
-  if (parent) {
-    parent.style.position = "relative";
-    parent.appendChild(canvas3d);
-  }
-
-  const w = gameCanvas.clientWidth;
-  const h = gameCanvas.clientHeight;
+  const w = canvas.clientWidth || window.innerWidth;
+  const h = canvas.clientHeight || window.innerHeight;
 
   renderer = new THREE.WebGLRenderer({
-    canvas: canvas3d,
+    canvas,
     alpha: true,
     antialias: true,
     premultipliedAlpha: false,
@@ -70,32 +44,36 @@ export function init3DLayer(gameCanvas: HTMLCanvasElement): void {
 
   scene = new THREE.Scene();
 
-  camera = new THREE.OrthographicCamera(-w / 2, w / 2, h / 2, -h / 2, 0.1, 1000);
-  camera.position.set(0, 200, 0);
+  // Orthographic camera looking straight down (top-down view)
+  camera = new THREE.OrthographicCamera(-w / 2, w / 2, h / 2, -h / 2, 0.1, 2000);
+  camera.position.set(0, 500, 0);
   camera.lookAt(0, 0, 0);
   camera.up.set(0, 0, -1);
 
-  const ambient = new THREE.AmbientLight(0x8899bb, 0.9);
+  // Lighting - enhanced dramatic contrast for stronger shading
+  // Ambient: very low intensity for deeper shadows
+  const ambient = new THREE.AmbientLight(0x303050, 0.2);
   scene.add(ambient);
 
-  const sun = new THREE.DirectionalLight(0xffffff, 1.4);
-  sun.position.set(80, 200, -50);
+  // Main sun: brighter warm light from upper-right for strong highlights
+  const sun = new THREE.DirectionalLight(0xfff8f0, 2.6);
+  sun.position.set(100, 300, -80);
   scene.add(sun);
 
-  const rim = new THREE.DirectionalLight(0x4488ff, 0.5);
-  rim.position.set(-60, 100, 60);
-  scene.add(rim);
+  // Rim/fill: cooler blue light from opposite side for edge definition
+  const fill = new THREE.DirectionalLight(0x6699ff, 0.7);
+  fill.position.set(-80, 150, 100);
+  scene.add(fill);
 
   window.addEventListener("resize", onResize);
-  console.log("[Three.js] Ship renderer initialized");
+  console.log("[Three.js] INIT OK canvas:", w, "x", h);
 }
 
 function onResize(): void {
-  if (!renderer || !camera || !canvas3d) return;
-  const parent = canvas3d.parentElement;
-  if (!parent) return;
-  const w = parent.clientWidth;
-  const h = parent.clientHeight;
+  if (!renderer || !camera) return;
+  const canvas = renderer.domElement;
+  const w = canvas.clientWidth || window.innerWidth;
+  const h = canvas.clientHeight || window.innerHeight;
   renderer.setSize(w, h);
   camera.left = -w / 2;
   camera.right = w / 2;
@@ -109,7 +87,7 @@ function loadModel(shipClass: string): void {
   if (!path || loadedModels.has(shipClass) || loadingModels.has(shipClass) || failedModels.has(shipClass)) return;
 
   loadingModels.add(shipClass);
-  console.log(`[Three.js] Loading GLB: ${path}`);
+  console.log("[Three.js] Loading GLB:", path);
 
   const loader = new GLTFLoader();
   loader.load(
@@ -120,23 +98,54 @@ function loadModel(shipClass: string): void {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
           if (mesh.material) {
+            // Convert MeshBasicMaterial (unlit) to MeshStandardMaterial (lit)
+            if (mesh.material.type === 'MeshBasicMaterial') {
+              const oldMat = mesh.material as THREE.MeshBasicMaterial;
+              const newMat = new THREE.MeshStandardMaterial({
+                map: oldMat.map,
+                color: oldMat.color,
+                transparent: oldMat.transparent,
+                opacity: oldMat.opacity,
+                side: oldMat.side,
+                roughness: 0.6,  // Slightly shiny for specular highlights
+                metalness: 0.2,  // Bit of metallic reflection
+              });
+              mesh.material = newMat;
+              oldMat.dispose();
+            }
+
+            // Ensure proper color space and shading properties
             const mat = mesh.material as THREE.MeshStandardMaterial;
             if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace;
+
+            // Set good default shading properties if they exist
+            if (mat.roughness !== undefined) mat.roughness = Math.max(0.5, Math.min(0.7, mat.roughness));
+            if (mat.metalness !== undefined) mat.metalness = Math.max(0.1, Math.min(0.3, mat.metalness));
+
+            // Remove excessive emissive glow that can wash out lighting
+            if (mat.emissive) mat.emissive.set(0x000000);
+            if (mat.emissiveIntensity !== undefined) mat.emissiveIntensity = 0;
+
+            mat.needsUpdate = true;
           }
         }
       });
       const box = new THREE.Box3().setFromObject(model);
       const size = box.getSize(new THREE.Vector3());
       const maxDim = Math.max(size.x, size.y, size.z);
-      model.userData.normalizedScale = 1 / maxDim;
-      model.scale.setScalar(model.userData.normalizedScale);
+      // Store raw size for scaling later
+      model.userData.maxDim = maxDim;
       loadedModels.set(shipClass, model);
       loadingModels.delete(shipClass);
-      console.log(`[Three.js] GLB loaded successfully: ${shipClass} (${(maxDim).toFixed(1)} units)`);
+      console.log("[Three.js] GLB LOADED:", shipClass, "maxDim:", maxDim.toFixed(2), "bbox:", size.x.toFixed(2), size.y.toFixed(2), size.z.toFixed(2));
     },
-    undefined,
+    (progress) => {
+      if (progress.total > 0 && progress.loaded === progress.total) {
+        console.log("[Three.js] GLB download complete:", shipClass);
+      }
+    },
     (error) => {
-      console.warn(`[Three.js] Failed to load model for ${shipClass}:`, error);
+      console.error("[Three.js] GLB LOAD FAILED:", shipClass, error);
       loadingModels.delete(shipClass);
       failedModels.add(shipClass);
     }
@@ -152,6 +161,10 @@ export function is3DReady(shipClass: string): boolean {
   if (loadedModels.has(shipClass)) return true;
   loadModel(shipClass);
   return false;
+}
+
+export function setCameraZoom(zoom: number): void {
+  cameraZoom = zoom;
 }
 
 export function updateShip3D(
@@ -170,24 +183,38 @@ export function updateShip3D(
   if (!ship) {
     const template = loadedModels.get(shipClass)!;
     const model = template.clone();
+    // Tilt the model slightly toward camera for 3D depth feel
     const wrapper = new THREE.Group();
-    wrapper.rotation.x = ISOMETRIC_TILT;
+    wrapper.rotation.x = -0.85;
     wrapper.add(model);
     scene.add(wrapper);
     ship = { wrapper, model };
     activeShips.set(entityId, ship);
-    console.log(`[Three.js] Using Three.js ship renderer for: ${entityId} (${shipClass})`);
+    console.log("[Three.js] SHIP CREATED:", entityId, shipClass);
   }
 
-  const screenX = worldX - camX;
-  const screenY = worldY - camY;
+  // Position: convert world-space offset to screen-space pixels
+  const screenX = (worldX - camX) * cameraZoom;
+  const screenY = (worldY - camY) * cameraZoom;
   ship.wrapper.position.set(screenX, 0, screenY);
 
-  const displaySize = 85 * sizeScale * 1.6;
-  const finalScale = displaySize * modelBaseScale * (ship.model.userData.normalizedScale || 1);
+  // Scale: target pixel size on screen
+  // Apex sizeScale=2.0, so targetPixels = 85 * 2.0 * 1.6 = 272px
+  const targetPixels = 85 * sizeScale * 1.1;
+  const maxDim = ship.model.userData.maxDim || 1;
+  // Scale model so its longest dimension = targetPixels in world units
+  const finalScale = (targetPixels * cameraZoom) / maxDim;
   ship.wrapper.scale.setScalar(finalScale);
 
-  ship.model.rotation.set(0, -angle + Math.PI / 2, 0);
+  // Rotation: game angle 0=east(+X), PI/2=south(+Z), PI=west(-X)
+  // Three.js Y-rotation: 0=facing+Z, PI/2=facing-X, PI=facing-Z
+  // To map game-east to Three.js: Y-rot = -(angle) + offset
+  // Model default facing: test and adjust this offset
+  ship.model.rotation.set(0, -angle + Math.PI, 0);
+
+  if (renderFrameCount % 180 === 1) {
+    console.log("[Three.js] Ship update:", entityId, "pos:", screenX.toFixed(0), screenY.toFixed(0), "scale:", finalScale.toFixed(1), "angle:", (angle * 180 / Math.PI).toFixed(0) + "deg");
+  }
 }
 
 export function removeShip3D(entityId: string): void {
@@ -217,20 +244,24 @@ export function endFrame(): void {
 export function render3DLayer(): void {
   if (!renderer || !scene || !camera) return;
   renderer.render(scene, camera);
+  renderFrameCount++;
+  if (renderFrameCount === 1 || renderFrameCount % 300 === 0) {
+    console.log("[Three.js] Frame:", renderFrameCount, "ships:", activeShips.size, "models:", loadedModels.size, "loading:", loadingModels.size);
+  }
 }
 
 export function destroy3DLayer(): void {
   if (renderer) {
     renderer.dispose();
-    canvas3d?.remove();
     renderer = null;
     scene = null;
     camera = null;
-    canvas3d = null;
     initialized = false;
   }
   activeShips.clear();
   loadedModels.clear();
   loadingModels.clear();
   failedModels.clear();
+  window.removeEventListener("resize", onResize);
+  renderFrameCount = 0;
 }

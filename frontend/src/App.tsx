@@ -3,6 +3,7 @@ import { state, bump, useGame, save, pushNotification, pushChat, abandonDungeon,
 import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats, hasRocketWeapon, setEntityTarget, applyKill } from "./game/loop";
 import { render } from "./game/render";
 import { initPixiRenderer, destroyPixiRenderer, pixiRender } from "./game/pixi-renderer-v2-integrated";
+import { init3DLayer, destroy3DLayer } from "./game/three-ship-layer";
 import { activeRenderer } from "./game/renderer-config";
 import { TopBar, WorldTargetHud } from "./components/TopBar";
 import { MiniMap } from "./components/MiniMap";
@@ -38,6 +39,7 @@ let _riftConfirmDungeonId: string | null = null;
 let _riftConfirmSetState: ((id: string | null) => void) | null = null;
 
 function GameCanvas() {
+  const threeCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const pixiContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -53,6 +55,13 @@ function GameCanvas() {
       if (!container) return;
       initPixiRenderer(container);
 
+      // Initialize Three.js 3D layer on its own canvas
+      const threeCanvas = threeCanvasRef.current;
+      if (threeCanvas) {
+        init3DLayer(threeCanvas);
+        console.log("[App] Three.js canvas initialized");
+      }
+
       let raf = 0;
       const draw = () => {
         try { pixiRender(); } catch (err) { console.error("[PIXI] Render error:", err); }
@@ -61,6 +70,7 @@ function GameCanvas() {
       raf = requestAnimationFrame(draw);
       return () => {
         cancelAnimationFrame(raf);
+        destroy3DLayer();
         destroyPixiRenderer();
       };
     } else {
@@ -261,19 +271,26 @@ function GameCanvas() {
 
   return (
     activeRenderer === "pixi" ? (
-      <div
-        ref={pixiContainerRef}
-        onClick={handleClick}
-        onDoubleClick={handleDoubleClick}
-        onMouseMove={handleMouseMove}
-        onWheel={handleWheel}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onContextMenu={(e) => e.preventDefault()}
-        className="absolute inset-0 w-full h-full"
-        style={{ cursor: "crosshair", touchAction: "none" }}
-      />
+      <>
+        <div
+          ref={pixiContainerRef}
+          onClick={handleClick}
+          onDoubleClick={handleDoubleClick}
+          onMouseMove={handleMouseMove}
+          onWheel={handleWheel}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onContextMenu={(e) => e.preventDefault()}
+          className="absolute inset-0 w-full h-full"
+          style={{ cursor: "crosshair", touchAction: "none", zIndex: 0 }}
+        />
+        <canvas
+          ref={threeCanvasRef}
+          className="absolute inset-0 w-full h-full"
+          style={{ pointerEvents: "none", zIndex: 1 }}
+        />
+      </>
     ) : (
       <canvas
         ref={canvasRef}
