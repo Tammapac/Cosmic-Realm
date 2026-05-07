@@ -1607,9 +1607,26 @@ function _bgBuildSprites(
 ): void {
   const label = _bgZoneIdToLabel[zone] ?? zone;
   const cfg = BG_ZONE_CFG[label] ?? BG_ZONE_CFG["1-1"];
-  const gfxIdx = bgGraphics ? bgLayer.getChildIndex(bgGraphics) : bgLayer.children.length;
 
-  // Solid fill
+  // Insert all bg sprites at index 0, in reverse order so the final order is:
+  // 0: fill, 1: stars, 2: nebula, 3: planet, 4: dust, then bgGraphics/starGraphics on top.
+  // We insert dust first (lowest priority addChildAt call) through fill last (index 0).
+
+  _bgDustTile = new PIXI.TilingSprite(dTex, w, h);
+  bgLayer.addChildAt(_bgDustTile, 0);
+
+  _bgPlanetSprite = new PIXI.Sprite(pTex);
+  _bgPlanetSprite.anchor.set(0.5);
+  bgLayer.addChildAt(_bgPlanetSprite, 0);
+
+  _bgNebulaTile = new PIXI.TilingSprite(nTex, w, h);
+  _bgNebulaTile.alpha = 0.88;
+  bgLayer.addChildAt(_bgNebulaTile, 0);
+
+  _bgStarsTile = new PIXI.TilingSprite(sTex, w, h);
+  bgLayer.addChildAt(_bgStarsTile, 0);
+
+  // Fill goes at index 0 last — pushes everything else up by 1
   const fc = document.createElement("canvas"); fc.width = 1; fc.height = 1;
   const fx = fc.getContext("2d")!;
   fx.fillStyle = cfg.fill; fx.fillRect(0, 0, 1, 1);
@@ -1617,19 +1634,7 @@ function _bgBuildSprites(
   _bgFillSprite.width = w; _bgFillSprite.height = h;
   bgLayer.addChildAt(_bgFillSprite, 0);
 
-  _bgStarsTile = new PIXI.TilingSprite(sTex, w, h);
-  bgLayer.addChildAt(_bgStarsTile, gfxIdx);
-
-  _bgNebulaTile = new PIXI.TilingSprite(nTex, w, h);
-  _bgNebulaTile.alpha = 0.88;
-  bgLayer.addChildAt(_bgNebulaTile, gfxIdx + 1);
-
-  _bgPlanetSprite = new PIXI.Sprite(pTex);
-  _bgPlanetSprite.anchor.set(0.5);
-  bgLayer.addChildAt(_bgPlanetSprite, gfxIdx + 2);
-
-  _bgDustTile = new PIXI.TilingSprite(dTex, w, h);
-  bgLayer.addChildAt(_bgDustTile, gfxIdx + 3);
+  // Final order: 0=fill, 1=stars, 2=nebula, 3=planet, 4=dust, 5+=bgGraphics/starGraphics
 }
 
 function _bgBuildLayers(zone: string, w: number, h: number): void {
@@ -1645,13 +1650,17 @@ function _bgBuildLayers(zone: string, w: number, h: number): void {
     `${base}/layer_05_dust.png`,
   ];
 
-  // Load all 4 textures, then build sprites once everything is ready
-  Promise.all(urls.map(u => PIXI.Assets.load(u).catch(() => PIXI.Texture.EMPTY)))
-    .then(([sTex, nTex, pTex, dTex]) => {
-      // Zone may have changed while we were loading — only apply if still current
-      if (_bgZoneActive !== zone) return;
-      _bgBuildSprites(zone, w, h, sTex, nTex, pTex, dTex);
-    });
+  console.log("[bg] loading zone", zone, "label", label, "urls", urls);
+
+  Promise.all(urls.map(u =>
+    (PIXI.Texture as any).fromURL(u)
+      .then((t: PIXI.Texture) => { console.log("[bg] loaded OK:", u, t.width, "x", t.height); return t; })
+      .catch((e: any) => { console.warn("[bg] FAILED:", u, e?.message ?? e); return PIXI.Texture.EMPTY; })
+  )).then(([sTex, nTex, pTex, dTex]) => {
+    console.log("[bg] all loaded, building sprites for zone", zone);
+    if (_bgZoneActive !== zone) { console.log("[bg] zone changed, skipping"); return; }
+    _bgBuildSprites(zone, w, h, sTex as PIXI.Texture, nTex as PIXI.Texture, pTex as PIXI.Texture, dTex as PIXI.Texture);
+  });
 }
 function renderBackground(w: number, h: number, cam: { x: number; y: number }): void {
   if (!bgGraphics || !starGraphics) return;
@@ -1669,14 +1678,14 @@ function renderBackground(w: number, h: number, cam: { x: number; y: number }): 
 
   if (_bgStarsTile) {
     _bgStarsTile.width = w; _bgStarsTile.height = h;
-    _bgStarsTile.tilePosition.x = -cam.x * 0.05;
-    _bgStarsTile.tilePosition.y = -cam.y * 0.05;
+    _bgStarsTile.tilePosition.x = (-cam.x * 0.05) % _bgStarsTile.texture.width;
+    _bgStarsTile.tilePosition.y = (-cam.y * 0.05) % _bgStarsTile.texture.height;
   }
 
   if (_bgNebulaTile) {
     _bgNebulaTile.width = w; _bgNebulaTile.height = h;
-    _bgNebulaTile.tilePosition.x = -cam.x * 0.12;
-    _bgNebulaTile.tilePosition.y = -cam.y * 0.12;
+    _bgNebulaTile.tilePosition.x = (-cam.x * 0.12) % _bgNebulaTile.texture.width;
+    _bgNebulaTile.tilePosition.y = (-cam.y * 0.12) % _bgNebulaTile.texture.height;
   }
 
   if (_bgPlanetSprite) {
@@ -1697,8 +1706,8 @@ function renderBackground(w: number, h: number, cam: { x: number; y: number }): 
 
   if (_bgDustTile) {
     _bgDustTile.width = w; _bgDustTile.height = h;
-    _bgDustTile.tilePosition.x = -cam.x * 0.35;
-    _bgDustTile.tilePosition.y = -cam.y * 0.35;
+    _bgDustTile.tilePosition.x = (-cam.x * 0.35) % _bgDustTile.texture.width;
+    _bgDustTile.tilePosition.y = (-cam.y * 0.35) % _bgDustTile.texture.height;
     _bgDustTile.alpha = 0.78 + 0.22 * Math.sin(t * 0.85 + 1.2);
   }
 
