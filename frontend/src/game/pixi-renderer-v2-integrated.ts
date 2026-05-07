@@ -1540,17 +1540,44 @@ export function pixiRender(): void {
 // BACKGROUND RENDERING — Pixellab pixel art parallax
 // ══════════════════════════════════════════════════════════════════════════
 
+// Keys are the zone labels (folder names for sprites: /bg/1-1/, /bg/1-2/, etc.)
+// Internal zone IDs (alpha, nebula, ...) are mapped to labels in _bgZoneLabel().
 const BG_ZONE_CFG: Record<string, { fill: string; wx: number; wy: number; pSpeed: number; pSize: number; glow: string }> = {
-  alpha:     { fill: "#060e2e", wx:  1200, wy:  -900, pSpeed: 0.22, pSize: 220, glow: "#3366cc" },
-  nebula:    { fill: "#120832", wx: -1100, wy:  -800, pSpeed: 0.20, pSize: 230, glow: "#7722aa" },
-  crimson:   { fill: "#200610", wx:  1000, wy:   900, pSpeed: 0.22, pSize: 210, glow: "#cc2233" },
-  void:      { fill: "#030e12", wx: -1200, wy:   700, pSpeed: 0.18, pSize: 240, glow: "#006655" },
-  forge:     { fill: "#160c04", wx:  1300, wy: -1100, pSpeed: 0.22, pSize: 220, glow: "#cc6600" },
-  corona:    { fill: "#1a0802", wx: -1000, wy:  -900, pSpeed: 0.22, pSize: 220, glow: "#cc4400" },
-  fracture:  { fill: "#1c0a02", wx:  1100, wy:  1000, pSpeed: 0.20, pSize: 200, glow: "#884422" },
-  abyss:     { fill: "#16040e", wx: -1300, wy: -1000, pSpeed: 0.22, pSize: 215, glow: "#aa0033" },
-  marsdepth: { fill: "#16021a", wx:  1200, wy:   800, pSpeed: 0.20, pSize: 225, glow: "#660066" },
-  maelstrom: { fill: "#0a0220", wx: -1100, wy: -1200, pSpeed: 0.22, pSize: 235, glow: "#5500cc" },
+  // Earth faction (1-x)
+  "1-1": { fill: "#060e2e", wx:  1200, wy:  -900, pSpeed: 0.22, pSize: 220, glow: "#3366cc" },
+  "1-2": { fill: "#120832", wx: -1100, wy:  -800, pSpeed: 0.20, pSize: 230, glow: "#7722aa" },
+  "1-3": { fill: "#200610", wx:  1000, wy:   900, pSpeed: 0.22, pSize: 210, glow: "#cc2233" },
+  "1-4": { fill: "#030e12", wx: -1200, wy:   700, pSpeed: 0.18, pSize: 240, glow: "#006655" },
+  "1-5": { fill: "#160c04", wx:  1300, wy: -1100, pSpeed: 0.22, pSize: 220, glow: "#cc6600" },
+  // Mars faction (2-x)
+  "2-1": { fill: "#1a0802", wx: -1000, wy:  -900, pSpeed: 0.22, pSize: 220, glow: "#cc4400" },
+  "2-2": { fill: "#1c0a02", wx:  1100, wy:  1000, pSpeed: 0.20, pSize: 200, glow: "#884422" },
+  "2-3": { fill: "#16040e", wx: -1300, wy: -1000, pSpeed: 0.22, pSize: 215, glow: "#aa0033" },
+  "2-4": { fill: "#16021a", wx:  1200, wy:   800, pSpeed: 0.20, pSize: 225, glow: "#660066" },
+  "2-5": { fill: "#0a0220", wx: -1100, wy: -1200, pSpeed: 0.22, pSize: 235, glow: "#5500cc" },
+  // Venus faction (3-x)
+  "3-1": { fill: "#0a1606", wx:  1000, wy:  -800, pSpeed: 0.22, pSize: 220, glow: "#44aa22" },
+  "3-2": { fill: "#0e1a04", wx: -1200, wy:   900, pSpeed: 0.20, pSize: 225, glow: "#88cc00" },
+  "3-3": { fill: "#0a1800", wx:  1300, wy:  1100, pSpeed: 0.22, pSize: 210, glow: "#22cc44" },
+  "3-4": { fill: "#041206", wx: -1000, wy:  -700, pSpeed: 0.20, pSize: 230, glow: "#00aa66" },
+  "3-5": { fill: "#081402", wx:  1100, wy: -1000, pSpeed: 0.22, pSize: 240, glow: "#66dd00" },
+  // Danger zones (4-x)
+  "4-1": { fill: "#180408", wx: -1100, wy:  1200, pSpeed: 0.24, pSize: 230, glow: "#ff2244" },
+  "4-2": { fill: "#1a0206", wx:  1200, wy: -1100, pSpeed: 0.24, pSize: 240, glow: "#ff4400" },
+  "4-3": { fill: "#160008", wx: -1300, wy:   900, pSpeed: 0.24, pSize: 235, glow: "#cc0066" },
+  "4-4": { fill: "#120010", wx:  1000, wy:  1300, pSpeed: 0.24, pSize: 245, glow: "#aa00cc" },
+  "4-5": { fill: "#0e0016", wx: -1200, wy: -1300, pSpeed: 0.24, pSize: 250, glow: "#6600ff" },
+  // Debug
+  "DBG": { fill: "#001a00", wx:     0, wy:     0, pSpeed: 0.20, pSize: 200, glow: "#00ff00" },
+};
+
+// Maps internal zone id -> label (folder name)
+const _bgZoneIdToLabel: Record<string, string> = {
+  alpha:"1-1", nebula:"1-2", crimson:"1-3", void:"1-4", forge:"1-5",
+  corona:"2-1", fracture:"2-2", abyss:"2-3", marsdepth:"2-4", maelstrom:"2-5",
+  venus1:"3-1", venus2:"3-2", venus3:"3-3", venus4:"3-4", venus5:"3-5",
+  danger1:"4-1", danger2:"4-2", danger3:"4-3", danger4:"4-4", danger5:"4-5",
+  debug:"DBG",
 };
 
 function _bgHexRgb(hex: string): [number, number, number] {
@@ -1578,7 +1605,8 @@ function _bgBuildSprites(
   sTex: PIXI.Texture, nTex: PIXI.Texture,
   pTex: PIXI.Texture, dTex: PIXI.Texture,
 ): void {
-  const cfg = BG_ZONE_CFG[zone] ?? BG_ZONE_CFG.alpha;
+  const label = _bgZoneIdToLabel[zone] ?? zone;
+  const cfg = BG_ZONE_CFG[label] ?? BG_ZONE_CFG["1-1"];
   const gfxIdx = bgGraphics ? bgLayer.getChildIndex(bgGraphics) : bgLayer.children.length;
 
   // Solid fill
@@ -1607,7 +1635,8 @@ function _bgBuildSprites(
 function _bgBuildLayers(zone: string, w: number, h: number): void {
   _bgDestroyLayers();
   _bgZoneActive = zone;
-  const base = `/bg/${zone}`;
+  const label = _bgZoneIdToLabel[zone] ?? zone;
+  const base = `/bg/${label}`;
 
   const urls = [
     `${base}/layer_02_stars.png`,
@@ -1628,7 +1657,8 @@ function renderBackground(w: number, h: number, cam: { x: number; y: number }): 
   if (!bgGraphics || !starGraphics) return;
 
   const zone = state.player.zone;
-  const cfg = BG_ZONE_CFG[zone] ?? BG_ZONE_CFG.alpha;
+  const label = _bgZoneIdToLabel[zone] ?? zone;
+  const cfg = BG_ZONE_CFG[label] ?? BG_ZONE_CFG["1-1"];
   const t = state.tick / 60;
 
   if (_bgZoneActive !== zone) _bgBuildLayers(zone, w, h);
