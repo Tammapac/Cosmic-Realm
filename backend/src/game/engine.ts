@@ -733,30 +733,38 @@ export class GameEngine {
         } else if (firingPattern === "scatter") {
           const pellets = 3;
           const perPellet = Math.round(laserDmg * 2.5 / pellets);
-          const spread = 0.1;
+          const spread = 0.06;
           for (let si = 0; si < pellets; si++) {
-            const spreadAng = ang + (si - 1) * spread;
             const side = si === 0 ? -1 : si === 2 ? 1 : 0;
-            const ox = p.posX + Math.cos(perpAng) * 10 * side;
-            const oy = p.posY + Math.sin(perpAng) * 10 * side;
+            const ox = p.posX + Math.cos(perpAng) * 5 * side;
+            const oy = p.posY + Math.sin(perpAng) * 5 * side;
+            const baseAng = angleFromTo({ x: ox, y: oy }, target.pos);
+            const spreadAng = baseAng + (si - 1) * spread;
             fireProj(ox, oy, spreadAng, perPellet, 4, 500);
           }
         } else if (firingPattern === "rail") {
           const perBurst = Math.round(laserDmg * 1.3 / 3);
           for (let bi = 0; bi < 3; bi++) {
             const side = bi === 0 ? -1 : bi === 1 ? 1 : 0;
-            const ox = p.posX + Math.cos(perpAng) * 10 * side;
-            const oy = p.posY + Math.sin(perpAng) * 10 * side;
-            const burstAng = ang + (Math.random() - 0.5) * 0.04;
+            const ox = p.posX + Math.cos(perpAng) * 5 * side;
+            const oy = p.posY + Math.sin(perpAng) * 5 * side;
+            const baseAng = angleFromTo({ x: ox, y: oy }, target.pos);
+            const burstAng = baseAng + (Math.random() - 0.5) * 0.04;
             fireProj(ox, oy, burstAng, perBurst, 4, 700);
           }
         } else {
           const perShot = Math.round(laserDmg / 2);
+          const projSpeed = 600;
           for (let si = 0; si < 2; si++) {
             const side = si === 0 ? -1 : 1;
-            const ox = p.posX + Math.cos(perpAng) * 14 * side;
-            const oy = p.posY + Math.sin(perpAng) * 14 * side;
-            fireProj(ox, oy, ang - side * 0.03, perShot, 4, 600);
+            const ox = p.posX + Math.cos(perpAng) * 4 * side;
+            const oy = p.posY + Math.sin(perpAng) * 4 * side;
+            const travelDist = Math.sqrt((target.pos.x - ox) ** 2 + (target.pos.y - oy) ** 2);
+            const travelTime = travelDist / projSpeed;
+            const predictedX = target.pos.x + (target.vel?.x ?? 0) * travelTime;
+            const predictedY = target.pos.y + (target.vel?.y ?? 0) * travelTime;
+            const fireAng = angleFromTo({ x: ox, y: oy }, { x: predictedX, y: predictedY });
+            fireProj(ox, oy, fireAng, perShot, 4, projSpeed);
           }
         }
 

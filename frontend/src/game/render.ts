@@ -4,26 +4,9 @@ import {
 RESOURCES, } from "./types";
 import { state } from "./store";
 import { effectiveStats } from "./loop";
+import { drawParallaxBackground } from "./parallax-bg";
 
-// ── STAR FIELDS ────────────────────────────────────────────────────────────
 const MAX_PARTICLES = 600;
-const STAR_LAYERS = [
-  { count: 220, speed: 0.1, size: 1, color: "#3a4980" },
-  { count: 130, speed: 0.3, size: 1, color: "#7a8ad8" },
-  { count: 65,  speed: 0.55, size: 2, color: "#e8f0ff" },
-];
-type Star = { x: number; y: number; size: number; color: string; speed: number };
-const stars: Star[][] = STAR_LAYERS.map((layer) => {
-  const arr: Star[] = [];
-  for (let i = 0; i < layer.count; i++) {
-    arr.push({
-      x: Math.random() * 4000 - 2000,
-      y: Math.random() * 4000 - 2000,
-      size: layer.size, color: layer.color, speed: layer.speed,
-    });
-  }
-  return arr;
-});
 
 // ── SHIP TEXTURE CACHE (GPU-like optimization for Canvas 2D) ──────────
 const _shipTexCache = new Map<string, HTMLCanvasElement>();
@@ -47,23 +30,23 @@ function getCachedShipTex(
 function invalidateShipCache(): void {
   _shipTexCache.clear();
 }
+// ── ENEMY SPRITE CACHE ────────────────────────────────────────────────────
+const _enemySpriteCache = new Map<string, HTMLImageElement | null>();
 
-
-let nebulaSeed: { x: number; y: number; r: number; c: string }[] = [];
-function regenNebula(zone: keyof typeof ZONES): void {
-  nebulaSeed = [];
-  const z = ZONES[zone];
-  for (let i = 0; i < 18; i++) {
-    nebulaSeed.push({
-      x: (Math.random() - 0.5) * 6000,
-      y: (Math.random() - 0.5) * 6000,
-      r: 300 + Math.random() * 600,
-      c: i % 2 === 0 ? z.bgHueA : z.bgHueB,
-    });
-  }
+function getEnemySprite(name: string): HTMLImageElement | null {
+  if (_enemySpriteCache.has(name)) return _enemySpriteCache.get(name)!;
+  const img = new Image();
+  img.src = `/enemies/${name}.png`;
+  img.onload = () => { _enemySpriteCache.set(name, img); };
+  img.onerror = () => { _enemySpriteCache.set(name, null); };
+  _enemySpriteCache.set(name, img);
+  return img.complete ? img : null;
 }
-regenNebula(state.player.zone);
-let lastZone = state.player.zone;
+
+
+
+
+
 
 // ── PIXEL HELPERS ─────────────────────────────────────────────────────────
 export function px(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string): void {
@@ -585,212 +568,70 @@ export function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy, bodyOnly = fa
   wingGrad.addColorStop(1, md);
 
   if (e.type === "scout") {
-    // ── SCOUT: Sleek dart/fighter shapes ──
-    const variant = (e.id.charCodeAt(0) + e.id.charCodeAt(e.id.length - 1)) % 3;
-    if (variant === 0) {
-      // Dart interceptor — narrow pointed nose, swept-back fins
-      // Main fuselage
-      ctx.fillStyle = bodyGrad;
-      ctx.beginPath();
-      ctx.moveTo(0, -14 * s * pulse);
-      ctx.lineTo(2 * s, -8 * s);
-      ctx.lineTo(3 * s, -2 * s);
-      ctx.lineTo(2.5 * s, 6 * s);
-      ctx.lineTo(0, 8 * s);
-      ctx.lineTo(-2.5 * s, 6 * s);
-      ctx.lineTo(-3 * s, -2 * s);
-      ctx.lineTo(-2 * s, -8 * s);
-      ctx.closePath();
-      ctx.fill();
-      // Swept-back right wing
-      ctx.beginPath();
-      ctx.moveTo(2.5 * s, -1 * s);
-      ctx.lineTo(11 * s, 3 * s);
-      ctx.lineTo(10 * s, 5 * s);
-      ctx.lineTo(2.5 * s, 4 * s);
-      ctx.closePath();
-      ctx.fill();
-      // Swept-back left wing
-      ctx.beginPath();
-      ctx.moveTo(-2.5 * s, -1 * s);
-      ctx.lineTo(-11 * s, 3 * s);
-      ctx.lineTo(-10 * s, 5 * s);
-      ctx.lineTo(-2.5 * s, 4 * s);
-      ctx.closePath();
-      ctx.fill();
-      // Hull plating (darker center panel)
-      ctx.fillStyle = dk;
-      ctx.beginPath();
-      ctx.moveTo(0, -10 * s);
-      ctx.lineTo(1.5 * s, -4 * s);
-      ctx.lineTo(1.5 * s, 4 * s);
-      ctx.lineTo(0, 6 * s);
-      ctx.lineTo(-1.5 * s, 4 * s);
-      ctx.lineTo(-1.5 * s, -4 * s);
-      ctx.closePath();
-      ctx.fill();
-      // Wing tips (darker)
-      ctx.beginPath();
-      ctx.moveTo(9 * s, 3.5 * s);
-      ctx.lineTo(12 * s, 4 * s);
-      ctx.lineTo(11 * s, 6 * s);
-      ctx.lineTo(9 * s, 5 * s);
-      ctx.closePath();
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(-9 * s, 3.5 * s);
-      ctx.lineTo(-12 * s, 4 * s);
-      ctx.lineTo(-11 * s, 6 * s);
-      ctx.lineTo(-9 * s, 5 * s);
-      ctx.closePath();
-      ctx.fill();
-      // Engine exhaust glow
-      ctx.fillStyle = bodyGrad;
-      ctx.globalAlpha = 0.4 + 0.3 * Math.sin(t * 8);
-      ctx.beginPath();
-      ctx.moveTo(-1.5 * s, 7 * s);
-      ctx.lineTo(1.5 * s, 7 * s);
-      ctx.lineTo(0.5 * s, 11 * s);
-      ctx.lineTo(-0.5 * s, 11 * s);
-      ctx.closePath();
-      ctx.fill();
+    const scoutSprite = getEnemySprite("scout");
+    if (scoutSprite && scoutSprite.complete && scoutSprite.naturalWidth > 0) {
+      const drawSize = 32 * s * pulse;
+      ctx.globalAlpha = 0.92 + 0.08 * Math.sin(t * 4);
+      ctx.drawImage(scoutSprite, -drawSize / 2, -drawSize / 2, drawSize, drawSize);
       ctx.globalAlpha = 1;
-      // Reactor core (small)
-      ctx.fillStyle = hi;
-      ctx.globalAlpha = 0.7 + 0.3 * Math.sin(t * 6);
+      // engine glow
+      ctx.fillStyle = c;
+      ctx.globalAlpha = 0.5 + 0.4 * Math.sin(t * 8);
       ctx.beginPath();
-      ctx.arc(0, -3 * s, 0.8 * s, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-    } else if (variant === 1) {
-      // Needle fighter — ultra-slim with angled stabilizers
-      // Main hull
-      ctx.fillStyle = bodyGrad;
-      ctx.beginPath();
-      ctx.moveTo(0, -13 * s * pulse);
-      ctx.lineTo(1.8 * s, -6 * s);
-      ctx.lineTo(2.5 * s, 2 * s);
-      ctx.lineTo(1.5 * s, 8 * s);
-      ctx.lineTo(0, 9 * s);
-      ctx.lineTo(-1.5 * s, 8 * s);
-      ctx.lineTo(-2.5 * s, 2 * s);
-      ctx.lineTo(-1.8 * s, -6 * s);
-      ctx.closePath();
-      ctx.fill();
-      // Angled stabilizer fins (right)
-      ctx.beginPath();
-      ctx.moveTo(2 * s, 1 * s);
-      ctx.lineTo(9 * s, 5 * s);
-      ctx.lineTo(8 * s, 7 * s);
-      ctx.lineTo(2 * s, 5 * s);
-      ctx.closePath();
-      ctx.fill();
-      // Angled stabilizer fins (left)
-      ctx.beginPath();
-      ctx.moveTo(-2 * s, 1 * s);
-      ctx.lineTo(-9 * s, 5 * s);
-      ctx.lineTo(-8 * s, 7 * s);
-      ctx.lineTo(-2 * s, 5 * s);
-      ctx.closePath();
-      ctx.fill();
-      // Dark panel lines on fuselage
-      ctx.fillStyle = dk;
-      ctx.beginPath();
-      ctx.moveTo(0, -9 * s);
-      ctx.lineTo(1 * s, -3 * s);
-      ctx.lineTo(1 * s, 5 * s);
-      ctx.lineTo(0, 7 * s);
-      ctx.lineTo(-1 * s, 5 * s);
-      ctx.lineTo(-1 * s, -3 * s);
-      ctx.closePath();
-      ctx.fill();
-      // Panel line accents on wings
-      ctx.strokeStyle = dk;
-      ctx.lineWidth = 0.8;
-      ctx.beginPath();
-      ctx.moveTo(3 * s, 2 * s); ctx.lineTo(7 * s, 5.5 * s);
-      ctx.moveTo(-3 * s, 2 * s); ctx.lineTo(-7 * s, 5.5 * s);
-      ctx.stroke();
-      // Engine glow
-      ctx.fillStyle = bodyGrad;
-      ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 7);
-      ctx.beginPath();
-      ctx.moveTo(-1 * s, 8 * s);
-      ctx.lineTo(1 * s, 8 * s);
-      ctx.lineTo(0.3 * s, 12 * s);
-      ctx.lineTo(-0.3 * s, 12 * s);
-      ctx.closePath();
-      ctx.fill();
-      ctx.globalAlpha = 1;
-      // Reactor dot
-      ctx.fillStyle = hi;
-      ctx.globalAlpha = 0.7 + 0.3 * Math.sin(t * 5);
-      ctx.beginPath();
-      ctx.arc(0, -2 * s, 0.7 * s, 0, Math.PI * 2);
+      ctx.ellipse(0, 10 * s, 2 * s, 4 * s, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 1;
     } else {
-      // Arrowhead striker — broad arrow shape, aggressive silhouette
-      // Main body
-      ctx.fillStyle = bodyGrad;
-      ctx.beginPath();
-      ctx.moveTo(0, -12 * s * pulse);
-      ctx.lineTo(3 * s, -5 * s);
-      ctx.lineTo(8 * s, 0);
-      ctx.lineTo(7 * s, 5 * s);
-      ctx.lineTo(2 * s, 7 * s);
-      ctx.lineTo(0, 8 * s);
-      ctx.lineTo(-2 * s, 7 * s);
-      ctx.lineTo(-7 * s, 5 * s);
-      ctx.lineTo(-8 * s, 0);
-      ctx.lineTo(-3 * s, -5 * s);
-      ctx.closePath();
-      ctx.fill();
-      // Hull plating — darker chevron
-      ctx.fillStyle = dk;
-      ctx.beginPath();
-      ctx.moveTo(0, -8 * s);
-      ctx.lineTo(2 * s, -3 * s);
-      ctx.lineTo(5 * s, 0);
-      ctx.lineTo(0, 3 * s);
-      ctx.lineTo(-5 * s, 0);
-      ctx.lineTo(-2 * s, -3 * s);
-      ctx.closePath();
-      ctx.fill();
-      // Sharp wingtip extensions
-      ctx.fillStyle = bodyGrad;
-      ctx.beginPath();
-      ctx.moveTo(7 * s, 1 * s);
-      ctx.lineTo(12 * s, -1 * s);
-      ctx.lineTo(11 * s, 3 * s);
-      ctx.lineTo(7 * s, 4 * s);
-      ctx.closePath();
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(-7 * s, 1 * s);
-      ctx.lineTo(-12 * s, -1 * s);
-      ctx.lineTo(-11 * s, 3 * s);
-      ctx.lineTo(-7 * s, 4 * s);
-      ctx.closePath();
-      ctx.fill();
-      // Engine exhaust
-      ctx.fillStyle = bodyGrad;
-      ctx.globalAlpha = 0.4 + 0.35 * Math.sin(t * 9);
-      ctx.beginPath();
-      ctx.moveTo(-1 * s, 7 * s);
-      ctx.lineTo(1 * s, 7 * s);
-      ctx.lineTo(0.4 * s, 10 * s);
-      ctx.lineTo(-0.4 * s, 10 * s);
-      ctx.closePath();
-      ctx.fill();
-      ctx.globalAlpha = 1;
-      // Small reactor core
-      ctx.fillStyle = hi;
-      ctx.globalAlpha = 0.7 + 0.3 * Math.sin(t * 6);
-      ctx.beginPath();
-      ctx.arc(0, -2 * s, 0.9 * s, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
+      // fallback canvas drawing while sprite loads
+      // ── SCOUT: Sleek dart/fighter shapes ──
+      const variant = (e.id.charCodeAt(0) + e.id.charCodeAt(e.id.length - 1)) % 3;
+      if (variant === 0) {
+        ctx.fillStyle = bodyGrad;
+        ctx.beginPath();
+        ctx.moveTo(0, -14 * s * pulse);
+        ctx.lineTo(2 * s, -8 * s);
+        ctx.lineTo(3 * s, -2 * s);
+        ctx.lineTo(2.5 * s, 6 * s);
+        ctx.lineTo(0, 8 * s);
+        ctx.lineTo(-2.5 * s, 6 * s);
+        ctx.lineTo(-3 * s, -2 * s);
+        ctx.lineTo(-2 * s, -8 * s);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = dk;
+        ctx.beginPath();
+        ctx.moveTo(0, -10 * s);
+        ctx.lineTo(1.5 * s, -4 * s);
+        ctx.lineTo(1.5 * s, 4 * s);
+        ctx.lineTo(0, 6 * s);
+        ctx.lineTo(-1.5 * s, 4 * s);
+        ctx.lineTo(-1.5 * s, -4 * s);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = hi;
+        ctx.globalAlpha = 0.7 + 0.3 * Math.sin(t * 6);
+        ctx.beginPath();
+        ctx.arc(0, -2 * s, 0.9 * s, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      } else {
+        ctx.fillStyle = bodyGrad;
+        ctx.beginPath();
+        ctx.moveTo(0, -12 * s * pulse);
+        ctx.lineTo(4 * s, -4 * s);
+        ctx.lineTo(5 * s, 4 * s);
+        ctx.lineTo(0, 7 * s);
+        ctx.lineTo(-5 * s, 4 * s);
+        ctx.lineTo(-4 * s, -4 * s);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = hi;
+        ctx.globalAlpha = 0.6 + 0.3 * Math.sin(t * 7);
+        ctx.beginPath();
+        ctx.arc(0, 0, 2 * s, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
     }
   } else if (e.type === "raider") {
     // ── RAIDER: Wider aggressive wing spread, angular attack craft ──
@@ -1552,6 +1393,293 @@ export function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy, bodyOnly = fa
       ctx.globalAlpha = 1;
     }
 
+  } else if (e.type === "interceptor") {
+    // INTERCEPTOR: Sleek aggressive dart, forward-swept canards
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.moveTo(0, -15 * s * pulse);
+    ctx.lineTo(3 * s, -8 * s);
+    ctx.lineTo(4 * s, 0);
+    ctx.lineTo(3 * s, 8 * s);
+    ctx.lineTo(0, 10 * s);
+    ctx.lineTo(-3 * s, 8 * s);
+    ctx.lineTo(-4 * s, 0);
+    ctx.lineTo(-3 * s, -8 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = wingGrad;
+    ctx.beginPath();
+    ctx.moveTo(3 * s, -10 * s);
+    ctx.lineTo(12 * s, -6 * s);
+    ctx.lineTo(10 * s, -2 * s);
+    ctx.lineTo(4 * s, -2 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-3 * s, -10 * s);
+    ctx.lineTo(-12 * s, -6 * s);
+    ctx.lineTo(-10 * s, -2 * s);
+    ctx.lineTo(-4 * s, -2 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = dk;
+    ctx.beginPath();
+    ctx.moveTo(0, -12 * s);
+    ctx.lineTo(1.5 * s, -4 * s);
+    ctx.lineTo(1.5 * s, 6 * s);
+    ctx.lineTo(0, 8 * s);
+    ctx.lineTo(-1.5 * s, 6 * s);
+    ctx.lineTo(-1.5 * s, -4 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = c;
+    ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 9);
+    ctx.beginPath();
+    ctx.ellipse(0, 9 * s, 2 * s, 3.5 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+  } else if (e.type === "corvette") {
+    // CORVETTE: Broad-shouldered gunship with heavy side mounts
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.moveTo(0, -17 * s * pulse);
+    ctx.lineTo(5 * s, -10 * s);
+    ctx.lineTo(7 * s, 0);
+    ctx.lineTo(6 * s, 10 * s);
+    ctx.lineTo(0, 13 * s);
+    ctx.lineTo(-6 * s, 10 * s);
+    ctx.lineTo(-7 * s, 0);
+    ctx.lineTo(-5 * s, -10 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = wingGrad;
+    ctx.beginPath();
+    ctx.moveTo(7 * s, -4 * s);
+    ctx.lineTo(16 * s, -7 * s);
+    ctx.lineTo(17 * s, 2 * s);
+    ctx.lineTo(14 * s, 8 * s);
+    ctx.lineTo(7 * s, 6 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-7 * s, -4 * s);
+    ctx.lineTo(-16 * s, -7 * s);
+    ctx.lineTo(-17 * s, 2 * s);
+    ctx.lineTo(-14 * s, 8 * s);
+    ctx.lineTo(-7 * s, 6 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = dk;
+    ctx.fillRect(13 * s, -9 * s, 3 * s, 3 * s);
+    ctx.fillRect(-16 * s, -9 * s, 3 * s, 3 * s);
+    ctx.fillStyle = md;
+    ctx.beginPath();
+    ctx.moveTo(-4 * s, -13 * s);
+    ctx.lineTo(4 * s, -13 * s);
+    ctx.lineTo(5 * s, 8 * s);
+    ctx.lineTo(-5 * s, 8 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = c;
+    ctx.globalAlpha = 0.4 + 0.3 * Math.sin(t * 6);
+    ctx.beginPath(); ctx.ellipse(-2.5 * s, 12 * s, 1.8 * s, 2.5 * s, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(2.5 * s, 12 * s, 1.8 * s, 2.5 * s, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+
+  } else if (e.type === "specter") {
+    // SPECTER: Angular stealth craft, flickering low-profile silhouette
+    const flicker = 0.75 + Math.sin(t * 7 + e.size) * 0.25;
+    ctx.globalAlpha = flicker;
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.moveTo(0, -14 * s * pulse);
+    ctx.lineTo(2 * s, -5 * s);
+    ctx.lineTo(9 * s, -9 * s);
+    ctx.lineTo(6 * s, 0);
+    ctx.lineTo(9 * s, 9 * s);
+    ctx.lineTo(2 * s, 6 * s);
+    ctx.lineTo(0, 12 * s);
+    ctx.lineTo(-2 * s, 6 * s);
+    ctx.lineTo(-9 * s, 9 * s);
+    ctx.lineTo(-6 * s, 0);
+    ctx.lineTo(-9 * s, -9 * s);
+    ctx.lineTo(-2 * s, -5 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = dk;
+    ctx.beginPath();
+    ctx.moveTo(0, -10 * s);
+    ctx.lineTo(2 * s, -3 * s);
+    ctx.lineTo(0, 8 * s);
+    ctx.lineTo(-2 * s, -3 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = lt;
+    ctx.globalAlpha = 0.3 + 0.4 * Math.sin(t * 5);
+    ctx.beginPath();
+    ctx.arc(0, -1 * s, 3 * s, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+  } else if (e.type === "phantom") {
+    // PHANTOM: Long-range sniper, narrow elongated hull with sensor arrays
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.moveTo(0, -18 * s * pulse);
+    ctx.lineTo(2.5 * s, -10 * s);
+    ctx.lineTo(3 * s, 4 * s);
+    ctx.lineTo(2 * s, 11 * s);
+    ctx.lineTo(0, 13 * s);
+    ctx.lineTo(-2 * s, 11 * s);
+    ctx.lineTo(-3 * s, 4 * s);
+    ctx.lineTo(-2.5 * s, -10 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = wingGrad;
+    ctx.beginPath();
+    ctx.moveTo(2.5 * s, -6 * s);
+    ctx.lineTo(14 * s, -12 * s);
+    ctx.lineTo(13 * s, -6 * s);
+    ctx.lineTo(3 * s, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-2.5 * s, -6 * s);
+    ctx.lineTo(-14 * s, -12 * s);
+    ctx.lineTo(-13 * s, -6 * s);
+    ctx.lineTo(-3 * s, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = dk;
+    ctx.fillRect(-1 * s, -22 * s, 2 * s, 8 * s);
+    ctx.fillStyle = lt;
+    ctx.globalAlpha = 0.6 + 0.4 * Math.sin(t * 4);
+    ctx.beginPath(); ctx.arc(13 * s, -9 * s, 1.5 * s, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(-13 * s, -9 * s, 1.5 * s, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = c;
+    ctx.globalAlpha = 0.4 + 0.3 * Math.sin(t * 7);
+    ctx.beginPath(); ctx.ellipse(0, 12 * s, 1.5 * s, 3 * s, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+
+  } else if (e.type === "juggernaut") {
+    // JUGGERNAUT: Massive armored bruiser with thick plating and heavy turrets
+    const breathe2 = 1 + Math.sin(t * 1.5 + e.size * 0.2) * 0.03;
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.moveTo(0, -22 * s * breathe2);
+    ctx.lineTo(8 * s, -16 * s);
+    ctx.lineTo(12 * s, -6 * s);
+    ctx.lineTo(13 * s, 8 * s);
+    ctx.lineTo(10 * s, 18 * s);
+    ctx.lineTo(0, 22 * s);
+    ctx.lineTo(-10 * s, 18 * s);
+    ctx.lineTo(-13 * s, 8 * s);
+    ctx.lineTo(-12 * s, -6 * s);
+    ctx.lineTo(-8 * s, -16 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = wingGrad;
+    ctx.beginPath();
+    ctx.moveTo(12 * s, -5 * s);
+    ctx.lineTo(22 * s, -8 * s);
+    ctx.lineTo(24 * s, 4 * s);
+    ctx.lineTo(22 * s, 12 * s);
+    ctx.lineTo(13 * s, 10 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-12 * s, -5 * s);
+    ctx.lineTo(-22 * s, -8 * s);
+    ctx.lineTo(-24 * s, 4 * s);
+    ctx.lineTo(-22 * s, 12 * s);
+    ctx.lineTo(-13 * s, 10 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = dk;
+    ctx.beginPath(); ctx.arc(18 * s, 0, 3.5 * s, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(-18 * s, 0, 3.5 * s, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = md;
+    ctx.lineWidth = 1.5 * s;
+    ctx.beginPath();
+    ctx.moveTo(-9 * s, -14 * s); ctx.lineTo(9 * s, -14 * s);
+    ctx.moveTo(-11 * s, -4 * s); ctx.lineTo(11 * s, -4 * s);
+    ctx.moveTo(-11 * s, 8 * s); ctx.lineTo(11 * s, 8 * s);
+    ctx.stroke();
+    ctx.fillStyle = lt;
+    ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 3);
+    ctx.beginPath(); ctx.arc(0, 2 * s, 3.5 * s, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = c;
+    ctx.globalAlpha = 0.35 + 0.3 * Math.sin(t * 4);
+    for (let ex = -6; ex <= 6; ex += 3) {
+      ctx.beginPath(); ctx.ellipse(ex * s, 20 * s, 1.5 * s, 3 * s, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+  } else if (e.type === "leviathan") {
+    // LEVIATHAN: Colossal world-ender, multi-sectioned capital ship
+    const breathe3 = 1 + Math.sin(t * 1.2 + e.size * 0.1) * 0.02;
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.moveTo(0, -28 * s * breathe3);
+    ctx.lineTo(10 * s, -20 * s);
+    ctx.lineTo(14 * s, -8 * s);
+    ctx.lineTo(16 * s, 10 * s);
+    ctx.lineTo(12 * s, 24 * s);
+    ctx.lineTo(0, 28 * s);
+    ctx.lineTo(-12 * s, 24 * s);
+    ctx.lineTo(-16 * s, 10 * s);
+    ctx.lineTo(-14 * s, -8 * s);
+    ctx.lineTo(-10 * s, -20 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = wingGrad;
+    ctx.beginPath();
+    ctx.moveTo(14 * s, -6 * s);
+    ctx.lineTo(30 * s, -14 * s);
+    ctx.lineTo(34 * s, 0);
+    ctx.lineTo(30 * s, 14 * s);
+    ctx.lineTo(16 * s, 12 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-14 * s, -6 * s);
+    ctx.lineTo(-30 * s, -14 * s);
+    ctx.lineTo(-34 * s, 0);
+    ctx.lineTo(-30 * s, 14 * s);
+    ctx.lineTo(-16 * s, 12 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = dk;
+    ctx.beginPath(); ctx.moveTo(-3 * s, -24 * s); ctx.lineTo(0, -32 * s); ctx.lineTo(3 * s, -24 * s); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(8 * s, -20 * s); ctx.lineTo(10 * s, -27 * s); ctx.lineTo(13 * s, -20 * s); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-8 * s, -20 * s); ctx.lineTo(-10 * s, -27 * s); ctx.lineTo(-13 * s, -20 * s); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = md;
+    for (const wx of [24, 28, -24, -28]) {
+      ctx.beginPath(); ctx.arc(wx * s, 0, 2.5 * s, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.strokeStyle = shadeHex(c, 0.2);
+    ctx.lineWidth = s;
+    ctx.beginPath();
+    ctx.moveTo(-12 * s, -18 * s); ctx.lineTo(12 * s, -18 * s);
+    ctx.moveTo(-14 * s, -6 * s); ctx.lineTo(14 * s, -6 * s);
+    ctx.moveTo(-15 * s, 6 * s); ctx.lineTo(15 * s, 6 * s);
+    ctx.moveTo(-13 * s, 18 * s); ctx.lineTo(13 * s, 18 * s);
+    ctx.stroke();
+    ctx.fillStyle = hi;
+    ctx.globalAlpha = 0.4 + 0.5 * Math.sin(t * 2.5);
+    ctx.beginPath(); ctx.arc(0, 0, 5 * s, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.15 + 0.2 * Math.sin(t * 2.5);
+    ctx.beginPath(); ctx.arc(0, 0, 12 * s, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = c;
+    ctx.globalAlpha = 0.3 + 0.25 * Math.sin(t * 3.5);
+    for (let ex = -9; ex <= 9; ex += 3) {
+      ctx.beginPath(); ctx.ellipse(ex * s, 25 * s, 2 * s, 4 * s, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
   } else {
     // ── DREAD (boss): Massive capital ship with multiple hull sections ──
     const variant = (e.id.charCodeAt(0) + e.id.charCodeAt(e.id.length - 1)) % 3;
@@ -2785,45 +2913,10 @@ export function drawNpcShip(ctx: CanvasRenderingContext2D, npc: NpcShip): void {
 
 // ── MAIN RENDER ───────────────────────────────────────────────────────────
 export function render(ctx: CanvasRenderingContext2D, w: number, h: number): void {
-  if (lastZone !== state.player.zone) {
-    regenNebula(state.player.zone);
-    lastZone = state.player.zone;
-  }
   const z = ZONES[state.player.zone];
   const cam = state.player.pos;
 
-  // Background gradient
-  const grad = ctx.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0, z.bgHueA);
-  grad.addColorStop(1, z.bgHueB);
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, w, h);
-
-  // Distant nebulae
-  for (const n of nebulaSeed) {
-    const sx = w / 2 + (n.x - cam.x * 0.05);
-    const sy = h / 2 + (n.y - cam.y * 0.05);
-    if (sx < -n.r || sx > w + n.r || sy < -n.r || sy > h + n.r) continue;
-    const rg = ctx.createRadialGradient(sx, sy, 0, sx, sy, n.r);
-    rg.addColorStop(0, n.c + "55");
-    rg.addColorStop(1, "transparent");
-    ctx.fillStyle = rg;
-    ctx.beginPath();
-    ctx.arc(sx, sy, n.r, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // Stars (parallax)
-  for (let li = 0; li < stars.length; li++) {
-    const layer = stars[li];
-    const sp = STAR_LAYERS[li].speed;
-    for (const s of layer) {
-      const sx = ((s.x - cam.x * sp) % w + w * 1.5) % w;
-      const sy = ((s.y - cam.y * sp) % h + h * 1.5) % h;
-      ctx.fillStyle = s.color;
-      ctx.fillRect(sx, sy, s.size, s.size);
-    }
-  }
+  drawParallaxBackground(ctx, w, h, cam.x, cam.y, state.player.zone, Date.now() / 1000);
 
   // World transform (with camera shake)
   ctx.save();

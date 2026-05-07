@@ -12,7 +12,7 @@
 import * as PIXI from "pixi.js";
 import { initHardpointEditor, toggleHardpointEditor, isEditorActive } from "./debug/HardpointEditor";
 import { DIRECTIONS_32 } from "./debug/hardpointTypes";
-import { has3DModel, is3DReady, updateShip3D, setCameraZoom, beginFrame, markActive, endFrame, render3DLayer } from "./three-ship-layer";
+import { has3DModel, is3DReady, updateShip3D, setCameraZoom, beginFrame, markActive, endFrame, render3DLayer, getShipHardpointPositions, updateEngineGlow, updateNebulaBackground, removeShip3D, preload3DModels, getLoadingProgress } from "./three-ship-layer";
 import { state } from "./store";
 import { effectiveStats } from "./loop";
 import {
@@ -517,6 +517,7 @@ function preloadRotationSprites(): void {
 }
 
 function loadShipSprites(id: string): void {
+  if (has3DModel(id)) return;
   const cfg = ROTATION_SPRITES[id];
   if (!cfg || rotationFrameTextures.has(id) || rotationFrameLoading.has(id)) return;
   rotationFrameLoading.add(id);
@@ -1125,11 +1126,7 @@ const npcSprites = new Map<string, PlayerSpriteData>();
 
 let playerContainer: PIXI.Container | null = null;
 let playerBody: PIXI.Sprite | null = null;
-let playerNameText: PIXI.Text | null = null;
-let playerBars: PIXI.Graphics | null = null;
 let engineGlowGraphics: PIXI.Graphics | null = null;
-let playerDockedText: PIXI.Text | null = null;
-let playerFactionBadge: PIXI.Container | null = null;
 let lastPlayerShipClass: ShipClassId | null = null;
 let playerVisual: ShipVisualState | null = null;
 
@@ -1203,9 +1200,13 @@ let fps = 0;
 // INIT / DESTROY
 // ══════════════════════════════════════════════════════════════════════════
 
-export function initPixiRenderer(container: HTMLDivElement): void {
+let _labelOverlay: HTMLDivElement | null = null;
+
+export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLDivElement): void {
+  if (labelOverlay) _labelOverlay = labelOverlay;
   preloadShipSprites();
   preloadRotationSprites();
+  preload3DModels(state.player?.shipClass || undefined);
   // Round pixels for sharp rendering (no global NEAREST - text needs LINEAR)
   PIXI.settings.ROUND_PIXELS = true;
 
@@ -1295,11 +1296,8 @@ export function destroyPixiRenderer(): void {
   playerContainer = null;
   playerBody = null;
   playerVisual = null;
-  playerNameText = null;
-  playerBars = null;
-  playerDockedText = null;
-  playerFactionBadge = null;
   lastPlayerShipClass = null;
+  if (_labelOverlay) _labelOverlay.innerHTML = "";
 
   // Destroy effect manager
   if (effectManager) {
@@ -1441,6 +1439,7 @@ export function pixiRender(): void {
 
   // ── 3D Layer cleanup + render ──
   endFrame();
+  updateNebulaBackground(cam.x, cam.y);
   render3DLayer();
 
   // ── Effect Manager Update ──────────────────────────────────────────
@@ -1538,67 +1537,132 @@ export function pixiRender(): void {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// BACKGROUND RENDERING
+// BACKGROUND RENDERING — Pixellab pixel art parallax
 // ══════════════════════════════════════════════════════════════════════════
 
-let bgGradientSprite: PIXI.Sprite | null = null;
-let bgGradientZone: string = "";
+const BG_ZONE_CFG: Record<string, { fill: string; wx: number; wy: number; pSpeed: number; pSize: number; glow: string }> = {
+  alpha:     { fill: "#060e2e", wx:  1200, wy:  -900, pSpeed: 0.22, pSize: 220, glow: "#3366cc" },
+  nebula:    { fill: "#120832", wx: -1100, wy:  -800, pSpeed: 0.20, pSize: 230, glow: "#7722aa" },
+  crimson:   { fill: "#200610", wx:  1000, wy:   900, pSpeed: 0.22, pSize: 210, glow: "#cc2233" },
+  void:      { fill: "#030e12", wx: -1200, wy:   700, pSpeed: 0.18, pSize: 240, glow: "#006655" },
+  forge:     { fill: "#160c04", wx:  1300, wy: -1100, pSpeed: 0.22, pSize: 220, glow: "#cc6600" },
+  corona:    { fill: "#1a0802", wx: -1000, wy:  -900, pSpeed: 0.22, pSize: 220, glow: "#cc4400" },
+  fracture:  { fill: "#1c0a02", wx:  1100, wy:  1000, pSpeed: 0.20, pSize: 200, glow: "#884422" },
+  abyss:     { fill: "#16040e", wx: -1300, wy: -1000, pSpeed: 0.22, pSize: 215, glow: "#aa0033" },
+  marsdepth: { fill: "#16021a", wx:  1200, wy:   800, pSpeed: 0.20, pSize: 225, glow: "#660066" },
+  maelstrom: { fill: "#0a0220", wx: -1100, wy: -1200, pSpeed: 0.22, pSize: 235, glow: "#5500cc" },
+};
+
+function _bgHexRgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.replace("#", ""), 16);
+  return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+}
+
+let _bgZoneActive = "";
+let _bgFillSprite: PIXI.Sprite | null = null;
+let _bgStarsTile: PIXI.TilingSprite | null = null;
+let _bgNebulaTile: PIXI.TilingSprite | null = null;
+let _bgPlanetSprite: PIXI.Sprite | null = null;
+let _bgDustTile: PIXI.TilingSprite | null = null;
+
+function _bgDestroyLayers(): void {
+  for (const s of [_bgFillSprite, _bgStarsTile, _bgNebulaTile, _bgPlanetSprite, _bgDustTile]) {
+    if (s) { s.parent?.removeChild(s); s.destroy({ texture: false, baseTexture: false }); }
+  }
+  _bgFillSprite = null; _bgStarsTile = null; _bgNebulaTile = null;
+  _bgPlanetSprite = null; _bgDustTile = null;
+}
+
+function _bgBuildLayers(zone: string, w: number, h: number): void {
+  _bgDestroyLayers();
+  _bgZoneActive = zone;
+  const cfg = BG_ZONE_CFG[zone] ?? BG_ZONE_CFG.alpha;
+  const base = `/bg/${zone}`;
+
+  // bgGraphics sits at some index in bgLayer; insert Pixellab layers before it
+  // so the glow/star graphics render on top of the sprites.
+  const gfxIdx = bgGraphics ? bgLayer.getChildIndex(bgGraphics) : bgLayer.children.length;
+
+  // Solid fill (index 0)
+  const fc = document.createElement("canvas"); fc.width = 1; fc.height = 1;
+  const fx = fc.getContext("2d")!;
+  fx.fillStyle = cfg.fill; fx.fillRect(0, 0, 1, 1);
+  const fillTex = PIXI.Texture.from(fc, { scaleMode: PIXI.SCALE_MODES.NEAREST });
+  _bgFillSprite = new PIXI.Sprite(fillTex);
+  _bgFillSprite.width = w; _bgFillSprite.height = h;
+  bgLayer.addChildAt(_bgFillSprite, 0);
+
+  // Layer 2: distant stars — inserted just before bgGraphics
+  const sTex = PIXI.Texture.from(`${base}/layer_02_stars.png`, { scaleMode: PIXI.SCALE_MODES.NEAREST });
+  _bgStarsTile = new PIXI.TilingSprite(sTex, w, h);
+  bgLayer.addChildAt(_bgStarsTile, gfxIdx);
+
+  // Layer 3: nebula fog
+  const nTex = PIXI.Texture.from(`${base}/layer_03_nebula.png`, { scaleMode: PIXI.SCALE_MODES.NEAREST });
+  _bgNebulaTile = new PIXI.TilingSprite(nTex, w, h);
+  _bgNebulaTile.alpha = 0.92;
+  bgLayer.addChildAt(_bgNebulaTile, gfxIdx + 1);
+
+  // Layer 4: planet
+  const pTex = PIXI.Texture.from(`${base}/layer_04_planet.png`, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  _bgPlanetSprite = new PIXI.Sprite(pTex);
+  _bgPlanetSprite.anchor.set(0.5);
+  bgLayer.addChildAt(_bgPlanetSprite, gfxIdx + 2);
+
+  // Layer 5: foreground dust — sits just before bgGraphics so glow draws on top
+  const dTex = PIXI.Texture.from(`${base}/layer_05_dust.png`, { scaleMode: PIXI.SCALE_MODES.NEAREST });
+  _bgDustTile = new PIXI.TilingSprite(dTex, w, h);
+  bgLayer.addChildAt(_bgDustTile, gfxIdx + 3);
+}
 
 function renderBackground(w: number, h: number, cam: { x: number; y: number }): void {
   if (!bgGraphics || !starGraphics) return;
 
-  const z = ZONES[state.player.zone];
+  const zone = state.player.zone;
+  const cfg = BG_ZONE_CFG[zone] ?? BG_ZONE_CFG.alpha;
+  const t = state.tick / 60;
 
-  // Proper linear gradient matching Canvas2D: createLinearGradient(0,0,0,h)
-  if (!bgGradientSprite || bgGradientZone !== state.player.zone ||
-      bgGradientSprite.width !== w || bgGradientSprite.height !== h) {
-    if (bgGradientSprite) {
-      bgGradientSprite.parent?.removeChild(bgGradientSprite);
-      bgGradientSprite.destroy(true);
-    }
-    const c2 = document.createElement("canvas");
-    c2.width = 1;
-    c2.height = Math.max(1, Math.round(h));
-    const ctx = c2.getContext("2d")!;
-    const grad = ctx.createLinearGradient(0, 0, 0, c2.height);
-    grad.addColorStop(0, z.bgHueA);
-    grad.addColorStop(1, z.bgHueB);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 1, c2.height);
-    const tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
-    bgGradientSprite = new PIXI.Sprite(tex);
-    bgGradientSprite.width = w;
-    bgGradientSprite.height = h;
-    bgLayer.addChildAt(bgGradientSprite, 0);
-    bgGradientZone = state.player.zone;
-  }
+  if (_bgZoneActive !== zone) _bgBuildLayers(zone, w, h);
 
   bgGraphics.clear();
 
-  // Nebulae as radial gradient sprites (matches Canvas2D createRadialGradient)
-  // Create sprites on first render or after zone change
-  if (nebulaSprites.length === 0 && nebulae.length > 0) {
-    for (const n of nebulae) {
-      const tex = getNebulaTex(Math.round(n.r / 50) * 50);
-      const spr = new PIXI.Sprite(tex);
-      spr.anchor.set(0.5);
-      spr.tint = PIXI.utils.string2hex(n.c);
-      spr.scale.set(n.r / (Math.round(n.r / 50) * 50));
-      bgLayer.addChild(spr);
-      nebulaSprites.push(spr);
-    }
-  }
-  // Update nebula positions (parallax)
-  for (let i = 0; i < nebulaSprites.length && i < nebulae.length; i++) {
-    const n = nebulae[i];
-    const spr = nebulaSprites[i];
-    spr.x = w / 2 + (n.x - cam.x * 0.05);
-    spr.y = h / 2 + (n.y - cam.y * 0.05);
-    // Culling
-    spr.visible = !(spr.x < -n.r || spr.x > w + n.r || spr.y < -n.r || spr.y > h + n.r);
+  if (_bgFillSprite) { _bgFillSprite.width = w; _bgFillSprite.height = h; }
+
+  if (_bgStarsTile) {
+    _bgStarsTile.width = w; _bgStarsTile.height = h;
+    _bgStarsTile.tilePosition.x = -cam.x * 0.05;
+    _bgStarsTile.tilePosition.y = -cam.y * 0.05;
   }
 
-  // Stars (enhanced parallax layers with twinkle + color variation)
+  if (_bgNebulaTile) {
+    _bgNebulaTile.width = w; _bgNebulaTile.height = h;
+    _bgNebulaTile.tilePosition.x = -cam.x * 0.12;
+    _bgNebulaTile.tilePosition.y = -cam.y * 0.12;
+  }
+
+  if (_bgPlanetSprite) {
+    const px = w / 2 + (cfg.wx - cam.x) * cfg.pSpeed;
+    const py = h / 2 + (cfg.wy - cam.y) * cfg.pSpeed;
+    _bgPlanetSprite.x = px; _bgPlanetSprite.y = py;
+    _bgPlanetSprite.width = cfg.pSize; _bgPlanetSprite.height = cfg.pSize;
+    _bgPlanetSprite.alpha = 0.72 + 0.06 * Math.sin(t * 0.3);
+    // Glow halo
+    const [gr, gg, gb] = _bgHexRgb(cfg.glow);
+    bgGraphics.beginFill((gr << 16) | (gg << 8) | gb, 0.22);
+    bgGraphics.drawCircle(px, py, cfg.pSize * 0.9);
+    bgGraphics.endFill();
+    bgGraphics.beginFill((gr << 16) | (gg << 8) | gb, 0.10);
+    bgGraphics.drawCircle(px, py, cfg.pSize * 1.5);
+    bgGraphics.endFill();
+  }
+
+  if (_bgDustTile) {
+    _bgDustTile.width = w; _bgDustTile.height = h;
+    _bgDustTile.tilePosition.x = -cam.x * 0.35;
+    _bgDustTile.tilePosition.y = -cam.y * 0.35;
+    _bgDustTile.alpha = 0.78 + 0.22 * Math.sin(t * 0.85 + 1.2);
+  }
+
   if (enhancedStars.length === 0) initStars(w, h);
   renderEnhancedStars(starGraphics, enhancedStars, cam, w, h, state.tick);
 }
@@ -1833,7 +1897,7 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
 
     if (!data) {
       // Native PixiJS projectile visuals
-      const isRocket = pr.weaponKind === "rocket" || pr.size > 4;
+      const isRocket = pr.weaponKind === "rocket";
       const tex = isRocket ? getRocketTex() : getLaserBoltTex(Math.max(16, pr.size * 4));
       const sprite = new PIXI.Sprite(tex);
       sprite.anchor.set(0.5);
@@ -1845,30 +1909,90 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
       data = { sprite };
       projectileSprites.set(pr.id, data);
 
-      // EffectManager muzzle flash from weapon hardpoints
-      if (effectManager) {
+      // EffectManager muzzle flash — only for freshly fired projectiles (ttl > 1.2s means just spawned)
+      // Skips projectiles that were already in-flight before the renderer was reset
+      if (effectManager && pr.ttl > 1.2) {
         const angle = Math.atan2(pr.vel.y, pr.vel.x);
-        const weaponType = (pr.weaponKind === "rocket" || pr.size > 4) ? "rocket" : "laser";
+        const weaponType = pr.weaponKind === "rocket" ? "rocket" : "laser";
         const color = PIXI.utils.string2hex(pr.color);
         const shooterId = pr.fromPlayer ? "player" : pr.id;
         const shooterClass = pr.fromPlayer ? state.player.shipClass : undefined;
         const hp = shooterClass ? SHIP_HARDPOINTS[shooterClass] : undefined;
-        let mx = pr.pos.x;
-        let my = pr.pos.y;
-        if (pr.fromPlayer && shooterClass) {
-          const frameIdx = getPlayerFrameIndex(shooterClass, state.player.angle);
-          const editorWeapons = [
-            ...getEditorHardpointsByType(shooterClass, frameIdx, "laser"),
-            ...getEditorHardpointsByType(shooterClass, frameIdx, "rocket"),
-            ...getEditorHardpointsByType(shooterClass, frameIdx, "muzzle"),
-          ];
-          if (editorWeapons.length > 0) {
+
+        // Try 3D GLB hardpoints first for player
+        if (pr.fromPlayer) {
+          const cam = state.player.pos;
+          const glbHardpoints = getShipHardpointPositions("player", cam.x, cam.y);
+
+          if (glbHardpoints && glbHardpoints.muzzles.length > 0) {
+            // Cycle through muzzle hardpoints one per projectile
             const idx = weaponMountIndex.get(shooterId) ?? 0;
-            const w = editorWeapons[idx % editorWeapons.length];
-            mx = state.player.pos.x + w.x;
-            my = state.player.pos.y + w.y;
-            weaponMountIndex.set(shooterId, idx + 1);
-          } else if (hp && hp.weapons.length > 0) {
+            const step = shooterClass === "sovereign" ? 2 : 1;
+            const list = glbHardpoints.muzzles;
+            const muzzlesToFire = shooterClass === "sovereign"
+              ? [list[idx % list.length], list[(idx + 1) % list.length]]
+              : [list[idx % list.length]];
+            for (const muzzle of muzzlesToFire) {
+              if (weaponType === "rocket") {
+                effectManager.spawnRocketLaunch(muzzle.x, muzzle.y, angle);
+              } else {
+                effectManager.spawnMuzzleFlash(muzzle.x, muzzle.y, angle, weaponType, color);
+              }
+            }
+            weaponMountIndex.set(shooterId, idx + step);
+          } else if (glbHardpoints && glbHardpoints.weapons.length > 0) {
+            // Fallback to weapon hardpoints — same cycling logic
+            const idx = weaponMountIndex.get(shooterId) ?? 0;
+            const step = shooterClass === "sovereign" ? 2 : 1;
+            const list = glbHardpoints.weapons;
+            const weaponsToFire = shooterClass === "sovereign"
+              ? [list[idx % list.length], list[(idx + 1) % list.length]]
+              : [list[idx % list.length]];
+            for (const weapon of weaponsToFire) {
+              if (weaponType === "rocket") {
+                effectManager.spawnRocketLaunch(weapon.x, weapon.y, angle);
+              } else {
+                effectManager.spawnMuzzleFlash(weapon.x, weapon.y, angle, weaponType, color);
+              }
+            }
+            weaponMountIndex.set(shooterId, idx + step);
+          } else {
+            // Fallback to 2D hardpoint system (existing code)
+            let mx = pr.pos.x;
+            let my = pr.pos.y;
+            if (shooterClass) {
+              const frameIdx = getPlayerFrameIndex(shooterClass, state.player.angle);
+              const editorWeapons = [
+                ...getEditorHardpointsByType(shooterClass, frameIdx, "laser"),
+                ...getEditorHardpointsByType(shooterClass, frameIdx, "rocket"),
+                ...getEditorHardpointsByType(shooterClass, frameIdx, "muzzle"),
+              ];
+              if (editorWeapons.length > 0) {
+                const idx = weaponMountIndex.get(shooterId) ?? 0;
+                const w = editorWeapons[idx % editorWeapons.length];
+                mx = state.player.pos.x + w.x;
+                my = state.player.pos.y + w.y;
+                weaponMountIndex.set(shooterId, idx + 1);
+              } else if (hp && hp.weapons.length > 0) {
+                const idx = weaponMountIndex.get(shooterId) ?? 0;
+                const w = hp.weapons[idx % hp.weapons.length];
+                const wp = localToWorldHardpoint(state.player.pos.x, state.player.pos.y, w.x, w.y, state.player.angle);
+                mx = wp.x;
+                my = wp.y;
+                weaponMountIndex.set(shooterId, idx + 1);
+              }
+            }
+            if (weaponType === "rocket") {
+              effectManager.spawnRocketLaunch(mx, my, angle);
+            } else {
+              effectManager.spawnMuzzleFlash(mx, my, angle, weaponType, color);
+            }
+          }
+        } else {
+          // Non-player projectiles use existing system
+          let mx = pr.pos.x;
+          let my = pr.pos.y;
+          if (hp && hp.weapons.length > 0) {
             const idx = weaponMountIndex.get(shooterId) ?? 0;
             const w = hp.weapons[idx % hp.weapons.length];
             const wp = localToWorldHardpoint(state.player.pos.x, state.player.pos.y, w.x, w.y, state.player.angle);
@@ -1876,18 +2000,11 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
             my = wp.y;
             weaponMountIndex.set(shooterId, idx + 1);
           }
-        } else if (hp && hp.weapons.length > 0 && pr.fromPlayer) {
-          const idx = weaponMountIndex.get(shooterId) ?? 0;
-          const w = hp.weapons[idx % hp.weapons.length];
-          const wp = localToWorldHardpoint(state.player.pos.x, state.player.pos.y, w.x, w.y, state.player.angle);
-          mx = wp.x;
-          my = wp.y;
-          weaponMountIndex.set(shooterId, idx + 1);
-        }
-        if (weaponType === "rocket") {
-          effectManager.spawnRocketLaunch(mx, my, angle);
-        } else {
-          effectManager.spawnMuzzleFlash(mx, my, angle, weaponType, color);
+          if (weaponType === "rocket") {
+            effectManager.spawnRocketLaunch(mx, my, angle);
+          } else {
+            effectManager.spawnMuzzleFlash(mx, my, angle, weaponType, color);
+          }
         }
       }
     }
@@ -1904,7 +2021,7 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
 
     // Projectile trail particles — rockets get heavy smoke+fire, lasers get glow trail
     if (effectManager) {
-      const isRocket = pr.weaponKind === "rocket" || pr.size > 4;
+      const isRocket = pr.weaponKind === "rocket";
       const trailChance = isRocket ? 1.0 : 0.45;
       if (Math.random() < trailChance) {
         const weaponType = isRocket ? "rocket" : "laser";
@@ -1931,7 +2048,7 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
   for (const pr of state.projectiles) {
     if (Math.abs(pr.pos.x - cam.x) > halfW + 30 || Math.abs(pr.pos.y - cam.y) > halfH + 30) continue;
     const color = PIXI.utils.string2hex(pr.color);
-    const isRocket = pr.weaponKind === "rocket" || pr.size > 4;
+    const isRocket = pr.weaponKind === "rocket";
     if (isRocket) continue;
     const glowR = 3 + pr.size * 0.5;
     const glowTarget = pr.vel.y < 0 ? projectileGlowGraphics : projectileBehindGlowGraphics;
@@ -1968,7 +2085,7 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
         x: pr.pos.x,
         y: pr.pos.y,
         color: PIXI.utils.string2hex(pr.color),
-        weaponKind: (pr.weaponKind === "rocket" || pr.size > 4) ? "rocket" : "laser",
+        weaponKind: pr.weaponKind === "rocket" ? "rocket" : "laser",
         angle: Math.atan2(pr.vel.y, pr.vel.x),
         fromPlayer: pr.fromPlayer,
       });
@@ -2205,6 +2322,7 @@ function syncPlayer(): void {
   const p = state.player;
   if (state.playerRespawnTimer > 0) {
     if (playerContainer) playerContainer.visible = false;
+    if (_labelOverlay) _labelOverlay.innerHTML = "";
     return;
   }
 
@@ -2220,54 +2338,6 @@ function syncPlayer(): void {
     const hitboxRing = new PIXI.Graphics();
     hitboxRing.name = "hitboxRing";
     playerContainer.addChildAt(hitboxRing, 0);
-
-    playerBars = new PIXI.Graphics();
-    playerContainer.addChild(playerBars);
-
-    const rank = rankFor(p.honor);
-    playerNameText = new PIXI.Text(p.name, {
-      fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
-      fontSize: 12,
-      fill: "#e8f0ff",
-      fontWeight: "bold",
-      stroke: "#000000",
-      strokeThickness: 1,
-    });
-    playerNameText.resolution = 2;
-    playerNameText.anchor.set(0.5, 0);
-    playerContainer.addChild(playerNameText);
-
-    playerFactionBadge = new PIXI.Container();
-    const pbCircle = new PIXI.Graphics();
-    pbCircle.name = "circle";
-    playerFactionBadge.addChild(pbCircle);
-    const pbLetter = new PIXI.Text("", {
-      fontFamily: "Arial, sans-serif",
-      fontSize: 8,
-      fill: "#ffffff",
-      fontWeight: "bold",
-    });
-    pbLetter.resolution = 2;
-    pbLetter.anchor.set(0.5);
-    pbLetter.name = "letter";
-    playerFactionBadge.addChild(pbLetter);
-    playerFactionBadge.position.set(0, 30);
-    playerContainer.addChild(playerFactionBadge);
-
-    playerDockedText = new PIXI.Text("DOCKED", {
-      fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
-      fontSize: 11,
-      fill: "#44ff88",
-      fontWeight: "bold",
-      stroke: "#000000",
-      strokeThickness: 2,
-    });
-    playerDockedText.resolution = 2;
-    playerDockedText.anchor.set(0.5, 1);
-    playerDockedText.position.set(0, -35);
-    playerDockedText.visible = false;
-    playerContainer.addChild(playerDockedText);
-
 
     playerLayer.addChild(playerContainer);
     lastPlayerShipClass = p.shipClass;
@@ -2286,23 +2356,13 @@ function syncPlayer(): void {
 
   playerContainer.visible = true;
   playerContainer.position.set(p.pos.x, p.pos.y);
-  const _has3D = has3DModel(p.shipClass);
-  const _ready3D = _has3D ? is3DReady(p.shipClass) : false;
-  const use3D = _has3D && _ready3D;
-  if (!(window as any).__3dLogCount) (window as any).__3dLogCount = 0;
-  if ((window as any).__3dLogCount < 20 || (window as any).__3dLogCount % 300 === 0) {
-    console.log("[3D Sync] ship:", p.shipClass, "has3D:", _has3D, "ready:", _ready3D, "use3D:", use3D, "pixiVisible:", playerVisual?.container.visible);
-  }
-  (window as any).__3dLogCount++;
+  const use3D = has3DModel(p.shipClass) && is3DReady(p.shipClass);
   if (use3D && playerVisual) {
     playerVisual.container.visible = false;
     const cam = state.player.pos;
     const sizeScale = SHIP_SIZE_SCALE[p.shipClass] ?? 1;
     updateShip3D("player", p.shipClass, p.pos.x, p.pos.y, p.angle, sizeScale, cam.x, cam.y);
     markActive("player");
-    if ((window as any).__3dLogCount <= 5) {
-      console.log("[3D Sync] Pixi sprite HIDDEN, 3D ship active");
-    }
   } else if (playerVisual) {
     playerVisual.container.visible = true;
   }
@@ -2342,15 +2402,27 @@ function syncPlayer(): void {
     }
   }
 
-  // EffectManager thruster trail particles from hardpoints (editor data or fallback)
+  // EffectManager thruster trail particles from hardpoints (GLB first, then editor data fallback)
   if (speed > 0.5 && effectManager) {
     const cls = SHIP_CLASSES[p.shipClass];
     const trailScale = cls ? Math.max(0.5, Math.min(1.2, cls.hullMax / 200)) : 1;
-    if (PLASMA_WAKE_SHIPS.has(p.shipClass)) {
+    const cam = state.player.pos;
+
+    // Try to get 3D GLB hardpoints first
+    const glbHardpoints = getShipHardpointPositions("player", cam.x, cam.y);
+
+    if (glbHardpoints && glbHardpoints.thrusters.length > 0) {
+      // Use GLB thruster hardpoints
+      for (const t of glbHardpoints.thrusters) {
+        effectManager.spawnThrusterTrail(t.x, t.y, p.angle, speed, 0x4ee2ff, 1, trailScale);
+      }
+    } else if (PLASMA_WAKE_SHIPS.has(p.shipClass)) {
+      // Fallback: Plasma wake for special ships
       const sizeScale = SHIP_SIZE_SCALE[p.shipClass] ?? 1;
       const shipWidth = 85 * sizeScale * 0.7;
       effectManager.spawnPlasmaWake(p.pos.x, p.pos.y, p.angle, speed, shipWidth, 0x4ee2ff);
     } else {
+      // Fallback: 2D hardpoints from editor/static data
       let allThrusters = [
         ...getInterpolatedHardpoints(p.shipClass, p.angle, "thruster"),
         ...getInterpolatedHardpoints(p.shipClass, p.angle, "engineGlow"),
@@ -2366,72 +2438,74 @@ function syncPlayer(): void {
     }
   }
 
-  // Engine glow at thruster hardpoint positions (behind ship, peeks around edges)
+  // Engine glow at thruster hardpoint positions
   if (effectManager) {
-    let glowThrusters2 = [
-      ...getInterpolatedHardpoints(p.shipClass, p.angle, "thruster"),
-      ...getInterpolatedHardpoints(p.shipClass, p.angle, "engineGlow"),
-    ];
-    if (glowThrusters2.length === 0) {
-      glowThrusters2 = getInterpolatedAutoThrusters(p.shipClass, p.angle);
-    }
-    if (glowThrusters2.length > 0) {
+    const cam = state.player.pos;
+    const glbHardpoints = getShipHardpointPositions("player", cam.x, cam.y);
+
+    if (glbHardpoints && glbHardpoints.thrusters.length > 0) {
+      // For 3D ships with GLB hardpoints, use Three.js engine glow (rendered in 3D scene)
+      updateEngineGlow("player", speed);
+    } else {
+      // Fallback to 2D PixiJS engine glow for non-3D ships
       const thrustI = Math.max(0.15, Math.min(1, speed / 80));
       const glowInFront = Math.sin(p.angle) < 0;
-      for (const t of glowThrusters2) {
-        effectManager.spawnEngineGlow(p.pos.x + t.x, p.pos.y + t.y, thrustI, 0x4488ff, glowInFront);
+      let glowThrusters2 = [
+        ...getInterpolatedHardpoints(p.shipClass, p.angle, "thruster"),
+        ...getInterpolatedHardpoints(p.shipClass, p.angle, "engineGlow"),
+      ];
+      if (glowThrusters2.length === 0) {
+        glowThrusters2 = getInterpolatedAutoThrusters(p.shipClass, p.angle);
+      }
+      if (glowThrusters2.length > 0) {
+        for (const t of glowThrusters2) {
+          effectManager.spawnEngineGlow(p.pos.x + t.x, p.pos.y + t.y, thrustI, 0x4488ff, glowInFront);
+        }
       }
     }
   }
 
-    // Hull/Shield bars
-  const hullPct = Math.max(0, p.hull / es.hullMax);
-  const shieldPct = Math.max(0, p.shield / es.shieldMax);
-  playerBars!.clear();
-  playerBars!.position.set(-14, -26);
-  // Hull
-  playerBars!.beginFill(0x222222, 0.5);
-  playerBars!.drawRect(0, 0, 28, 3);
-  playerBars!.endFill();
-  playerBars!.beginFill(0x44ff66);
-  playerBars!.drawRect(0, 0, 28 * hullPct, 3);
-  playerBars!.endFill();
-  // Shield
-  playerBars!.beginFill(0x222222, 0.5);
-  playerBars!.drawRect(0, 4, 28, 3);
-  playerBars!.endFill();
-  playerBars!.beginFill(0x4ee2ff);
-  playerBars!.drawRect(0, 4, 28 * shieldPct, 3);
-  playerBars!.endFill();
+  // HTML overlay labels (rendered above Three.js canvas via zIndex:2 div)
+  if (_labelOverlay) {
+    const zoom = state.cameraZoom;
+    const w2 = app!.screen.width;
+    const h2 = app!.screen.height;
+    // Player is always at the camera center in world space
+    const sx = w2 / 2;
+    const sy = h2 / 2;
 
-  // Name with rank symbol on right
-  const pRank = rankFor(p.honor);
-  playerNameText!.text = p.name + " " + pRank.symbol;
-  playerNameText!.style.fill = "#e8f0ff";
-  playerNameText!.position.set(0, 30);
-
-  // Faction badge (colored circle with letter) left of name
-  if (playerFactionBadge) {
+    const hullPct = Math.max(0, p.hull / es.hullMax);
+    const shieldPct = Math.max(0, p.shield / es.shieldMax);
+    const pRank = rankFor(p.honor);
     const pFaction = p.faction ? FACTIONS[p.faction as keyof typeof FACTIONS] : null;
-    if (pFaction) {
-      playerFactionBadge.visible = true;
-      const nameW = playerNameText!.width;
-      playerFactionBadge.position.set(-nameW / 2 - 10, 36);
-      const circ = playerFactionBadge.getChildByName("circle") as PIXI.Graphics;
-      circ.clear();
-      circ.beginFill(PIXI.utils.string2hex(pFaction.color));
-      circ.drawCircle(0, 0, 6);
-      circ.endFill();
-      const letter = playerFactionBadge.getChildByName("letter") as PIXI.Text;
-      letter.text = pFaction.tag.charAt(0);
-    } else {
-      playerFactionBadge.visible = false;
-    }
-  }
+    const barW = 56;
+    const hullW = Math.round(barW * hullPct);
+    const shieldW = Math.round(barW * shieldPct);
+    const factionDot = pFaction
+      ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${pFaction.color};margin-right:3px;vertical-align:middle;"></span>`
+      : "";
 
-  // DOCKED label
-  if (playerDockedText) {
-    playerDockedText.visible = !!state.dockedAt;
+    _labelOverlay.innerHTML = `
+      <div style="position:absolute;left:${sx}px;top:${sy - 38}px;transform:translate(-50%,-100%);pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:2px;">
+        <div style="width:${barW}px;height:4px;background:rgba(0,0,0,0.5);border-radius:2px;overflow:hidden;">
+          <div style="width:${hullW}px;height:100%;background:#44ff66;border-radius:2px;"></div>
+        </div>
+        <div style="width:${barW}px;height:4px;background:rgba(0,0,0,0.5);border-radius:2px;overflow:hidden;">
+          <div style="width:${shieldW}px;height:100%;background:#4ee2ff;border-radius:2px;"></div>
+        </div>
+      </div>
+      <div style="position:absolute;left:${sx}px;top:${sy + 38}px;transform:translate(-50%,0);pointer-events:none;">
+      <div style="
+        font-family:'Segoe UI',Arial,sans-serif;
+        font-size:12px;
+        font-weight:bold;
+        color:#e8f0ff;
+        text-shadow:0 0 3px #000,0 0 3px #000;
+        white-space:nowrap;
+        text-align:center;
+        white-space:nowrap;
+      ">${factionDot}${p.name} ${pRank.symbol}${state.dockedAt ? ' <span style="color:#44ff88">DOCKED</span>' : ""}</div>
+      </div>`;
   }
 }
 
@@ -2508,12 +2582,17 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
     data.container.visible = true;
     data.container.position.set(o.pos.x, o.pos.y);
 
-    // Update texture — use rotation frames if available
-    const _oDir = getDirectionalTex(o.shipClass, 1, o.angle, o.id);
-    if (data.body.texture !== _oDir.tex) {
-      data.body.texture = _oDir.tex;
+    // Check 3D FIRST to skip unnecessary sprite loading
+    const use3D = has3DModel(o.shipClass) && is3DReady(o.shipClass);
+
+    // Update texture only if NOT using 3D
+    if (!use3D) {
+      const _oDir = getDirectionalTex(o.shipClass, 1, o.angle, o.id);
+      if (data.body.texture !== _oDir.tex) {
+        data.body.texture = _oDir.tex;
+      }
+      data.body.rotation = _oDir.isDirectional ? 0 : o.angle + Math.PI / 2;
     }
-    data.body.rotation = _oDir.isDirectional ? 0 : o.angle + Math.PI / 2;
 
     // Bars
     const hullPct = Math.max(0, o.hull / o.hullMax);
@@ -2561,16 +2640,46 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
       otherGlow.alpha = 0.05 + 0.03 * Math.sin(state.tick * 2);
     }
 
+    // 3D rendering already checked above
+    
+    if (use3D) {
+      // Hide PixiJS ship sprite when using 3D (keep UI elements visible)
+      if (data && data.body) {
+        data.body.visible = false;
+        const bodyGlow = data.container.getChildByName("bodyGlow");
+        if (bodyGlow) bodyGlow.visible = false;
+      }
+      
+      // Update Three.js 3D ship
+      const sizeScale = SHIP_SIZE_SCALE[o.shipClass] ?? 1;
+      updateShip3D(o.id, o.shipClass, o.pos.x, o.pos.y, o.angle, sizeScale, cam.x, cam.y);
+      markActive(o.id);
+    } else if (data && data.body) {
+      // Ensure PixiJS sprite is visible for non-3D ships
+      data.body.visible = true;
+    }
+
     // Thruster trail for other players from hardpoints
     if (effectManager) {
       const spd = Math.sqrt(o.vel.x * o.vel.x + o.vel.y * o.vel.y);
       if (spd > 0.5) {
         const thrustColor = PIXI.utils.string2hex(factionColor);
-        if (PLASMA_WAKE_SHIPS.has(o.shipClass)) {
+        
+        // Try GLB hardpoints first (for 3D ships)
+        const glbHardpoints = getShipHardpointPositions(o.id, cam.x, cam.y);
+        
+        if (glbHardpoints && glbHardpoints.thrusters.length > 0) {
+          // Use GLB thruster hardpoints
+          for (const t of glbHardpoints.thrusters) {
+            effectManager.spawnThrusterTrail(t.x, t.y, o.angle, spd, thrustColor);
+          }
+        } else if (PLASMA_WAKE_SHIPS.has(o.shipClass)) {
+          // Plasma wake fallback
           const oSizeScale = SHIP_SIZE_SCALE[o.shipClass] ?? 1;
           const oShipWidth = 85 * oSizeScale * 0.7;
           effectManager.spawnPlasmaWake(o.pos.x, o.pos.y, o.angle, spd, oShipWidth, thrustColor);
         } else {
+          // 2D hardpoint fallback
           let oAllThrusters = [
             ...getInterpolatedHardpoints(o.shipClass, o.angle, "thruster"),
             ...getInterpolatedHardpoints(o.shipClass, o.angle, "engineGlow"),
@@ -2584,8 +2693,14 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
             }
           }
         }
+        
+        // Update engine glow for 3D ships
+        if (use3D) {
+          updateEngineGlow(o.id, spd);
+        }
       }
     }
+
   }
 
   // Remove left players
@@ -2594,6 +2709,8 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
       playerLayer.removeChild(data.container);
       data.container.destroy({ children: true });
       otherPlayerSprites.delete(id);
+      // IMPORTANT: Also remove the 3D ship instance
+      removeShip3D(id);
     }
   }
 }

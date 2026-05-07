@@ -16,7 +16,7 @@ export type ZoneId =
   | "danger1" | "danger2" | "danger3" | "danger4" | "danger5"
   | "debug";
 
-export type EnemyType = "scout" | "raider" | "destroyer" | "voidling" | "dread" | "sentinel" | "wraith" | "titan" | "overlord";
+export type EnemyType = "scout" | "raider" | "destroyer" | "voidling" | "dread" | "sentinel" | "wraith" | "titan" | "overlord" | "interceptor" | "corvette" | "specter" | "phantom" | "juggernaut" | "leviathan";
 export type EnemyBehavior = "fast" | "chaser" | "tank" | "ranged";
 
 export type ShipClassId =
@@ -309,6 +309,42 @@ export const ENEMY_DEFS: Record<EnemyType, {
     color: "#ffffff", size: 35,
     loot: { resourceId: "dread", qty: 6 },
   },
+  interceptor: {
+    type: "interceptor", behavior: "fast",
+    hullMax: 130, damage: 28, speed: 150, exp: 22, credits: 60, honor: 2,
+    color: "#ff6a00", size: 11,
+    loot: { resourceId: "scrap", qty: 3 },
+  },
+  corvette: {
+    type: "corvette", behavior: "chaser",
+    hullMax: 340, damage: 38, speed: 95, exp: 50, credits: 140, honor: 5,
+    color: "#00cfff", size: 15,
+    loot: { resourceId: "iron", qty: 3 },
+  },
+  specter: {
+    type: "specter", behavior: "fast",
+    hullMax: 260, damage: 52, speed: 145, exp: 70, credits: 240, honor: 9,
+    color: "#a855f7", size: 12,
+    loot: { resourceId: "void", qty: 2 },
+  },
+  phantom: {
+    type: "phantom", behavior: "ranged",
+    hullMax: 380, damage: 65, speed: 110, exp: 90, credits: 300, honor: 11,
+    color: "#38bdf8", size: 14,
+    loot: { resourceId: "quantum", qty: 3 },
+  },
+  juggernaut: {
+    type: "juggernaut", behavior: "tank",
+    hullMax: 1800, damage: 85, speed: 55, exp: 180, credits: 620, honor: 22,
+    color: "#f97316", size: 32,
+    loot: { resourceId: "dread", qty: 5 },
+  },
+  leviathan: {
+    type: "leviathan", behavior: "tank",
+    hullMax: 3500, damage: 120, speed: 45, exp: 400, credits: 1200, honor: 45,
+    color: "#e11d48", size: 40,
+    loot: { resourceId: "dread", qty: 8 },
+  },
 };
 
 // ── FACTION-SPECIFIC ENEMY MODS ──────────────────────────────────────────────
@@ -355,65 +391,65 @@ export const ZONES: Record<ZoneId, {
   // Earth Faction (1-1 to 1-5)
   alpha: {
     id: "alpha", name: "Alpha Sector", label: "1-1", faction: "earth",
-    enemyTier: 1, enemyTypes: ["scout", "raider"], unlockLevel: 1,
+    enemyTier: 1, enemyTypes: ["scout", "raider", "interceptor"], unlockLevel: 1,
   },
   nebula: {
     id: "nebula", name: "Veil Nebula", label: "1-2", faction: "earth",
-    enemyTier: 2, enemyTypes: ["raider", "destroyer"], unlockLevel: 8,
+    enemyTier: 2, enemyTypes: ["raider", "destroyer", "corvette"], unlockLevel: 8,
   },
   crimson: {
     id: "crimson", name: "Crimson Reach", label: "1-3", faction: "earth",
-        enemyTier: 3, enemyTypes: ["destroyer", "sentinel", "dread"], unlockLevel: 16,
+        enemyTier: 3, enemyTypes: ["destroyer", "sentinel", "specter"], unlockLevel: 16,
   },
   void: {
     id: "void", name: "The Void", label: "1-4", faction: "earth",
-        enemyTier: 4, enemyTypes: ["sentinel", "wraith", "dread"], unlockLevel: 24,
+        enemyTier: 4, enemyTypes: ["sentinel", "wraith", "phantom"], unlockLevel: 24,
   },
   forge: {
     id: "forge", name: "Iron Forge", label: "1-5", faction: "earth",
-        enemyTier: 5, enemyTypes: ["wraith", "titan", "dread"], unlockLevel: 32,
+        enemyTier: 5, enemyTypes: ["wraith", "titan", "juggernaut"], unlockLevel: 32,
   },
   // Mars Faction (2-1 to 2-5)
   corona: {
     id: "corona", name: "Mars Frontier", label: "2-1", faction: "mars",
-    enemyTier: 1, enemyTypes: ["scout", "raider"], unlockLevel: 1,
+    enemyTier: 1, enemyTypes: ["scout", "raider", "interceptor"], unlockLevel: 1,
   },
   fracture: {
     id: "fracture", name: "Dust Expanse", label: "2-2", faction: "mars",
-    enemyTier: 2, enemyTypes: ["raider", "destroyer"], unlockLevel: 8,
+    enemyTier: 2, enemyTypes: ["raider", "destroyer", "corvette"], unlockLevel: 8,
   },
   abyss: {
     id: "abyss", name: "Red Reaches", label: "2-3", faction: "mars",
-        enemyTier: 3, enemyTypes: ["destroyer", "sentinel", "dread"], unlockLevel: 16,
+        enemyTier: 3, enemyTypes: ["destroyer", "sentinel", "specter"], unlockLevel: 16,
   },
   marsdepth: {
     id: "marsdepth", name: "Mars Deep Field", label: "2-4", faction: "mars",
-        enemyTier: 4, enemyTypes: ["sentinel", "wraith", "dread"], unlockLevel: 24,
+        enemyTier: 4, enemyTypes: ["sentinel", "wraith", "phantom"], unlockLevel: 24,
   },
   maelstrom: {
     id: "maelstrom", name: "The Maelstrom", label: "2-5", faction: "mars",
-        enemyTier: 5, enemyTypes: ["wraith", "titan", "dread"], unlockLevel: 32,
+        enemyTier: 5, enemyTypes: ["wraith", "titan", "juggernaut"], unlockLevel: 32,
   },
   // Venus Faction (3-1 to 3-5)
   venus1: {
     id: "venus1", name: "Venus Cloud Gate", label: "3-1", faction: "venus",
-    enemyTier: 1, enemyTypes: ["scout", "raider"], unlockLevel: 1,
+    enemyTier: 1, enemyTypes: ["scout", "raider", "interceptor"], unlockLevel: 1,
   },
   venus2: {
     id: "venus2", name: "Sulphur Winds", label: "3-2", faction: "venus",
-    enemyTier: 2, enemyTypes: ["raider", "destroyer"], unlockLevel: 8,
+    enemyTier: 2, enemyTypes: ["raider", "destroyer", "corvette"], unlockLevel: 8,
   },
   venus3: {
     id: "venus3", name: "Acidic Deep", label: "3-3", faction: "venus",
-        enemyTier: 3, enemyTypes: ["destroyer", "sentinel", "dread"], unlockLevel: 16,
+        enemyTier: 3, enemyTypes: ["destroyer", "sentinel", "specter"], unlockLevel: 16,
   },
   venus4: {
     id: "venus4", name: "Pressure Core", label: "3-4", faction: "venus",
-        enemyTier: 4, enemyTypes: ["sentinel", "wraith", "dread"], unlockLevel: 24,
+        enemyTier: 4, enemyTypes: ["sentinel", "wraith", "phantom"], unlockLevel: 24,
   },
   venus5: {
     id: "venus5", name: "Eye of Venus", label: "3-5", faction: "venus",
-        enemyTier: 5, enemyTypes: ["wraith", "titan", "dread"], unlockLevel: 32,
+        enemyTier: 5, enemyTypes: ["wraith", "titan", "juggernaut"], unlockLevel: 32,
   },
   // Danger Zones (4-1 to 4-5)
   danger1: {
@@ -426,15 +462,15 @@ export const ZONES: Record<ZoneId, {
   },
   danger3: {
     id: "danger3", name: "Pirate Haven", label: "4-3", faction: "venus",
-        enemyTier: 5, enemyTypes: ["titan", "dread", "overlord"], unlockLevel: 30,
+        enemyTier: 5, enemyTypes: ["titan", "dread", "overlord", "leviathan"], unlockLevel: 30,
   },
   danger4: {
     id: "danger4", name: "Null Sector", label: "4-4", faction: "earth",
-        enemyTier: 6, enemyTypes: ["titan", "overlord", "dread"], unlockLevel: 36,
+        enemyTier: 6, enemyTypes: ["titan", "overlord", "juggernaut", "leviathan"], unlockLevel: 36,
   },
   danger5: {
     id: "danger5", name: "The Abyss Gate", label: "4-5", faction: "mars",
-        enemyTier: 7, enemyTypes: ["overlord", "titan", "dread"], unlockLevel: 42,
+        enemyTier: 7, enemyTypes: ["overlord", "leviathan", "juggernaut"], unlockLevel: 42,
   },
   debug: {
     id: "debug", name: "Debug Arena", label: "DBG", faction: "earth",
@@ -1295,13 +1331,19 @@ export const PORTALS: {
 // ── ENEMY NAMES ──────────────────────────────────────────────────────────────
 
 export const ENEMY_NAMES: Record<EnemyType, string[]> = {
-  scout:     ["Scout"],
-  raider:    ["Raider"],
-  destroyer: ["Destroyer"],
-  voidling:  ["Voidling"],
-  dread:     ["Dread"],
-  sentinel:  ["Sentinel"],
-  wraith:    ["Wraith"],
-  titan:     ["Titan"],
-  overlord:  ["Overlord"],
+  scout:       ["Scout"],
+  raider:      ["Raider"],
+  destroyer:   ["Destroyer"],
+  voidling:    ["Voidling"],
+  dread:       ["Dread"],
+  sentinel:    ["Sentinel"],
+  wraith:      ["Wraith"],
+  titan:       ["Titan"],
+  overlord:    ["Overlord"],
+  interceptor: ["Interceptor"],
+  corvette:    ["Corvette"],
+  specter:     ["Specter"],
+  phantom:     ["Phantom"],
+  juggernaut:  ["Juggernaut"],
+  leviathan:   ["Leviathan"],
 };

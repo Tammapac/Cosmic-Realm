@@ -1,6 +1,6 @@
 import {
   bump, pushChat, pushNotification, pushHonor, save, addCargo, pushFloater,
-  pushEvent, bumpMission, state, travelToZone, completeDungeon,
+  pushEvent, bumpMission, state, travelToZone, completeDungeon, registerWarpCallback,
   tickHotbarCooldowns,
   ensureAmmoInitialized, getAmmoWeaponIds, rocketAmmoMax,
   getActiveAmmoType, getActiveRocketAmmoType, getRocketAmmoCount, rocketMissileMax, tryCollectNearbyBoxes,
@@ -689,7 +689,7 @@ function fireProjectile(
   x: number, y: number, angle: number, damage: number, color: string, size = 3,
   opts?: { crit?: boolean; aoeRadius?: number; speedMul?: number; homing?: boolean; empStun?: number; armorPiercing?: boolean; weaponKind?: WeaponKind; renderOnly?: boolean },
 ): void {
-  const speedBase = from === "player" ? 230 : from === "drone" ? 340 : 200;
+  const speedBase = from === "player" ? 230 : from === "drone" ? 600 : 200;
   const speed = speedBase * (opts?.speedMul ?? 1);
   state.projectiles.push({
     id: `pr-${Math.random().toString(36).slice(2, 8)}`,
@@ -929,6 +929,7 @@ function distance(ax: number, ay: number, bx: number, by: number): number {
 // ── MAIN LOOP ─────────────────────────────────────────────────────────────
 export function startLoop(): void {
   if (raf) return;
+  registerWarpCallback(resetOnWarp);
   ensureAmmoInitialized();
   last = performance.now();
   const step = (now: number) => {
@@ -1077,9 +1078,15 @@ function tickWorld(dt: number): void {
   } else {
     // Server owns position; interpolation handles movement in applyServerSmoothing()
     // Do NOT extrapolate with velocity - causes double-speed movement
-    // Just update angle based on velocity direction
-    if (p.vel.x * p.vel.x + p.vel.y * p.vel.y > 9) {
-      p.angle = Math.atan2(p.vel.y, p.vel.x);
+    // Derive target angle from click destination directly (instant, no server tick lag)
+    const tdx = state.cameraTarget.x - p.pos.x;
+    const tdy = state.cameraTarget.y - p.pos.y;
+    if (tdx * tdx + tdy * tdy > MOVEMENT.STOP_DISTANCE * MOVEMENT.STOP_DISTANCE) {
+      const targetAng = Math.atan2(tdy, tdx);
+      let diff = targetAng - p.angle;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      p.angle += diff * (1 - Math.exp(-12.0 * dt));
     }
   }
   // Face attack target when fighting (DarkOrbit style)
@@ -1920,6 +1927,17 @@ function tickWorld(dt: number): void {
 
   // ── Projectiles update + collisions
   state.projectiles = state.projectiles.filter((pr) => {
+    // Redirect fresh player laser projectiles toward the on-screen attack target
+    // so the visual matches the enemy sprite position (not the server-side position)
+    if (pr.fromPlayer && !pr.homing && pr.ttl > 1.2 && state.attackTargetId) {
+      const visTarget = state.enemies.find(e => e.id === state.attackTargetId);
+      if (visTarget) {
+        const spd = Math.sqrt(pr.vel.x * pr.vel.x + pr.vel.y * pr.vel.y);
+        const toAng = Math.atan2(visTarget.pos.y - pr.pos.y, visTarget.pos.x - pr.pos.x);
+        pr.vel.x = Math.cos(toAng) * spd;
+        pr.vel.y = Math.sin(toAng) * spd;
+      }
+    }
     // Homing steering (rockets)
     if (pr.homing && pr.fromPlayer && state.enemies.length > 0) {
       let target: Enemy | null = null;
@@ -2857,22 +2875,45 @@ export function onRocketFireFromServer(data: RocketFireEvent): void {
 }
 
 export function onProjectileSpawnFromServer(data: ProjectileSpawnEvent): void {
+  console.log("[ProjectileSpawn] fromPlayer:", data.fromPlayer, "fromPlayerId:", data.fromPlayerId, "weaponKind:", data.weaponKind, "isLocal:", data.fromPlayerId === serverPlayerId);
   const angle = Math.atan2(data.vy, data.vx);
   const speed = Math.sqrt(data.vx * data.vx + data.vy * data.vy);
-  const baseSpeed = data.fromPlayer ? 280 : 220;
-  const speedMul = baseSpeed > 0 ? speed / baseSpeed : 1;
-
-  fireProjectile(data.fromPlayer ? "player" : "enemy", data.x, data.y, angle, data.damage, data.color, data.size, {
+  
+  // Determine if this projectile is from the local player, a remote player, or an enemy/NPC
+  const isLocalPlayer = data.fromPlayerId !== undefined && data.fromPlayerId === serverPlayerId;
+  const isRemotePlayer = data.fromPlayer && !isLocalPlayer;
+  
+  // CRITICAL: Do NOT render projectiles for the local player - those are client-predicted
+  // Only render projectiles from remote players and enemies
+  if (isLocalPlayer) {
+    return; // Skip - local player projectiles are already client-predicted
+  }
+  
+  // Normalize remote projectile speed to match local visual speed
+  const serverSpeed = Math.sqrt(data.vx * data.vx + data.vy * data.vy);
+  const clientVisualSpeed = data.fromPlayer ? 230 : 200;
+  const speedScale = serverSpeed > 0 ? clientVisualSpeed / serverSpeed : 1;
+  state.projectiles.push({
+    id: `pr-${Math.random().toString(36).slice(2, 8)}`,
+    pos: { x: data.x, y: data.y },
+    vel: { x: data.vx * speedScale, y: data.vy * speedScale },
+    damage: data.damage,
+    ttl: data.homing ? 4.0 : 1.6,
+    fromPlayer: data.fromPlayer,
+    color: data.color,
+    size: data.size,
     crit: data.crit,
     homing: data.homing,
-    speedMul,
     weaponKind: data.weaponKind,
     renderOnly: true,
   });
+  bump();
 
-  if (data.fromPlayer) {
+  // Spawn visual effects for remote player projectiles
+  if (isRemotePlayer) {
     const isRocket = data.weaponKind === "rocket";
     if (isRocket) {
+      // Rocket flash effects
       state.particles.push({
         id: `rf-${Math.random().toString(36).slice(2, 8)}`,
         pos: { x: data.x, y: data.y }, vel: { x: 0, y: 0 },
@@ -2885,6 +2926,7 @@ export function onProjectileSpawnFromServer(data: ProjectileSpawnEvent): void {
         ttl: 0.1, maxTtl: 0.1,
         color: "#ffffff", size: 30, kind: "flash",
       });
+      // Smoke particles
       for (let si = 0; si < 4; si++) {
         const sa = Math.random() * Math.PI * 2;
         const ss = 20 + Math.random() * 35;
@@ -2897,6 +2939,7 @@ export function onProjectileSpawnFromServer(data: ProjectileSpawnEvent): void {
         });
       }
     } else {
+      // Laser flash effect
       state.particles.push({
         id: `lf-${Math.random().toString(36).slice(2, 8)}`,
         pos: { x: data.x, y: data.y }, vel: { x: 0, y: 0 },
@@ -2904,9 +2947,11 @@ export function onProjectileSpawnFromServer(data: ProjectileSpawnEvent): void {
         color: data.color || "#4ee2ff", size: 35, kind: "flash",
       });
     }
+    
+    // Sparks
     emitSpark(data.x, data.y, data.color || "#4ee2ff", data.crit ? 6 : 3, 80, 2);
 
-    // Play shoot sound for other players (distance-attenuated)
+    // Play shoot sound for remote players (distance-attenuated)
     const shootDist = Math.hypot(data.x - state.player.pos.x, data.y - state.player.pos.y);
     if (shootDist < 800) {
       if (isRocket) {
@@ -2948,9 +2993,19 @@ let _deltaCount = 0;
 
 const ENTITY_LERP_RATE = NETCODE.INTERPOLATION_FACTOR;
 
-type RenderTarget = { x: number; y: number; vx: number; vy: number };
+type RenderTarget = { x: number; y: number; vx: number; vy: number; angle?: number };
 const _selfTarget: RenderTarget & { set: boolean } = { x: 0, y: 0, vx: 0, vy: 0, set: false };
 const _entityTargets = new Map<string, RenderTarget>();
+
+export function resetOnWarp(): void {
+  _entityTargets.clear();
+  _selfTarget.x = 0;
+  _selfTarget.y = 0;
+  _selfTarget.vx = 0;
+  _selfTarget.vy = 0;
+  _selfTarget.set = false;
+  state.others = [];
+}
 
 function setSelfTarget(x: number, y: number, vx: number, vy: number): void {
   if (!_selfTarget.set) {
@@ -2964,10 +3019,10 @@ function setSelfTarget(x: number, y: number, vx: number, vy: number): void {
   _selfTarget.vy = vy;
 }
 
-export function setEntityTarget(id: string, x: number, y: number, vx: number, vy: number): void {
+export function setEntityTarget(id: string, x: number, y: number, vx: number, vy: number, angle?: number): void {
   const cur = _entityTargets.get(id);
-  if (cur) { cur.x = x; cur.y = y; cur.vx = vx; cur.vy = vy; }
-  else _entityTargets.set(id, { x, y, vx, vy });
+  if (cur) { cur.x = x; cur.y = y; cur.vx = vx; cur.vy = vy; if (angle != null) cur.angle = angle; }
+  else _entityTargets.set(id, { x, y, vx, vy, angle });
 }
 
 function applyServerSmoothing(dt: number): void {
@@ -3006,6 +3061,17 @@ function applyServerSmoothing(dt: number): void {
     }
     o.vel.x = tgt.vx;
     o.vel.y = tgt.vy;
+    if (tgt.angle != null) {
+      let diff = tgt.angle - o.angle;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      if (Math.abs(diff) > 3) {
+        o.angle = tgt.angle;
+      } else {
+        const angleLerp = 1 - Math.exp(-8.0 * dt);
+        o.angle += diff * angleLerp;
+      }
+    }
     const oSpeed = Math.sqrt(o.vel.x * o.vel.x + o.vel.y * o.vel.y);
     if (oSpeed > 30) {
       const tKey = `ot-${o.id}`;
@@ -3048,10 +3114,10 @@ function applyServerSmoothing(dt: number): void {
     const evx = tgt.vx || e.vel.x;
     const evy = tgt.vy || e.vel.y;
     const espd = Math.sqrt(evx * evx + evy * evy);
-    // Velocity extrapolation for smooth motion
+    // Full velocity extrapolation for smooth visual motion
     e.pos.x += evx * dt;
     e.pos.y += evy * dt;
-    // Correction toward server position - very gentle for slow/big enemies
+    // Correction toward server position
     const edx = tgt.x - e.pos.x;
     const edy = tgt.y - e.pos.y;
     const errDist = Math.sqrt(edx * edx + edy * edy);
@@ -3092,6 +3158,7 @@ function applyServerSmoothing(dt: number): void {
 }
 
 export function onWelcome(data: WelcomePayload): void {
+  (globalThis as any).__serverAuthoritative = true;
   serverConfig = {
     tickRate: data.tickRate,
     friction: data.friction,
@@ -3227,8 +3294,7 @@ function applyEntityUpdate(entity: DeltaEntity): void {
       const numId = entity.id.replace("p-", "");
       const o = state.others.find(op => op.id === numId);
       if (o) {
-        setEntityTarget(entity.id, entity.x, entity.y, entity.vx ?? 0, entity.vy ?? 0);
-        if (entity.angle != null) o.angle = entity.angle;
+        setEntityTarget(entity.id, entity.x, entity.y, entity.vx ?? 0, entity.vy ?? 0, entity.angle ?? undefined);
         if (entity.hp != null) o.hull = entity.hp;
         if (entity.hpMax != null) o.hullMax = entity.hpMax;
         if (entity.shield != null) o.shield = entity.shield;
@@ -3239,7 +3305,7 @@ function applyEntityUpdate(entity: DeltaEntity): void {
         if (entity.level) o.level = entity.level;
         if (entity.miningTargetId !== undefined) o.miningTargetId = entity.miningTargetId ?? null;
       } else {
-        setEntityTarget(entity.id, entity.x, entity.y, entity.vx ?? 0, entity.vy ?? 0);
+        setEntityTarget(entity.id, entity.x, entity.y, entity.vx ?? 0, entity.vy ?? 0, entity.angle ?? undefined);
         state.others.push({
           id: numId,
           name: entity.name || "Pilot",

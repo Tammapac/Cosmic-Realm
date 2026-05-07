@@ -415,6 +415,7 @@ export function setupSocket(io: Server) {
         if (u.equipped !== undefined) setObj.equipped = u.equipped;
         if (u.skills !== undefined) setObj.skills = u.skills;
         if (u.drones !== undefined) setObj.drones = u.drones;
+        if (u.consumables !== undefined) setObj.consumables = u.consumables;
         if (Object.keys(setObj).length === 0) { cb?.({ error: 'No fields' }); return; }
         await db.update(schema.players).set(setObj)
           .where(eq(schema.players.id, data.playerId));
@@ -428,11 +429,20 @@ export function setupSocket(io: Server) {
           if (u.shield !== undefined) online.shield = u.shield;
           if (u.zone !== undefined) online.zone = u.zone;
           if (u.faction !== undefined) online.faction = u.faction;
+          if (u.credits !== undefined) (online as any).credits = u.credits;
+          if (u.exp !== undefined) (online as any).exp = u.exp;
+          if (u.skillPoints !== undefined) (online as any).skillPoints = u.skillPoints;
+          if (u.skills !== undefined) (online as any).skills = u.skills;
+          if (u.ownedShips !== undefined) (online as any).ownedShips = u.ownedShips;
+          if (u.inventory !== undefined) (online as any).inventory = u.inventory;
+          if (u.equipped !== undefined) (online as any).equipped = u.equipped;
+          if (u.drones !== undefined) (online as any).drones = u.drones;
+          if (u.consumables !== undefined) (online as any).consumables = u.consumables;
         }
         console.log('[ADMIN] ' + user.username + ' updated player ' + data.playerId + ': ' + JSON.stringify(u));
         // Force-sync target player's client if they're online
         const targetSocket = activeSockets.get(data.playerId);
-        if (targetSocket && data.playerId !== user.playerId) {
+        if (targetSocket) {
           targetSocket.emit('admin:sync', u);
         }
         cb?.({ ok: true });
@@ -801,6 +811,7 @@ function broadcastEvents(io: Server, events: GameEvent[]): void {
               damage: ev.damage, color: ev.color, size: ev.size,
               crit: ev.crit, weaponKind: ev.weaponKind, homing: ev.homing,
               fromPlayer: true,
+              fromPlayerId: ev.fromPlayerId,
             });
           }
         } else {

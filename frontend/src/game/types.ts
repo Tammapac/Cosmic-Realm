@@ -20,7 +20,7 @@ export type Zone = {
   unlockLevel: number;
 };
 
-export type EnemyType = "scout" | "raider" | "destroyer" | "voidling" | "dread" | "sentinel" | "wraith" | "titan" | "overlord";
+export type EnemyType = "scout" | "raider" | "destroyer" | "voidling" | "dread" | "sentinel" | "wraith" | "titan" | "overlord" | "interceptor" | "corvette" | "specter" | "phantom" | "juggernaut" | "leviathan";
 export type EnemyBehavior = "fast" | "chaser" | "tank" | "ranged";
 
 export type ShipClassId =
@@ -768,93 +768,93 @@ export const ZONES: Record<ZoneId, Zone> = {
   alpha: {
     id: "alpha", name: "Alpha Sector", label: "1-1", faction: "earth",
     bgHueA: "#0a1240", bgHueB: "#020414", enemyTier: 1,
-    enemyTypes: ["scout", "raider"],
+    enemyTypes: ["scout", "raider", "interceptor"],
     description: "Frontier territory. Pirates and scouts patrol the lanes.", unlockLevel: 1,
   },
   nebula: {
     id: "nebula", name: "Veil Nebula", label: "1-2", faction: "earth",
     bgHueA: "#3a0a4a", bgHueB: "#0a0220", enemyTier: 2,
-    enemyTypes: ["raider", "destroyer"],
+    enemyTypes: ["raider", "destroyer", "corvette"],
     description: "Glowing dust clouds hide raider strongholds.", unlockLevel: 8,
   },
   crimson: {
     id: "crimson", name: "Crimson Reach", label: "1-3", faction: "earth",
     bgHueA: "#4a0a18", bgHueB: "#1a0208", enemyTier: 3,
-    enemyTypes: ["destroyer", "sentinel", "dread"],
+    enemyTypes: ["destroyer", "sentinel", "specter"],
     description: "Blood-red expanse. Destroyers hunt in packs.", unlockLevel: 16,
   },
   void: {
     id: "void", name: "The Void", label: "1-4", faction: "earth",
     bgHueA: "#001a1a", bgHueB: "#000508", enemyTier: 4,
-    enemyTypes: ["sentinel", "wraith", "dread"],
+    enemyTypes: ["sentinel", "wraith", "phantom"],
     description: "An empty stretch where reality bends. Voidlings dwell here.", unlockLevel: 24,
   },
   forge: {
     id: "forge", name: "Iron Forge", label: "1-5", faction: "earth",
     bgHueA: "#3a2210", bgHueB: "#1a0c04", enemyTier: 5,
-    enemyTypes: ["wraith", "titan", "dread"],
+    enemyTypes: ["wraith", "titan", "juggernaut"],
     description: "Industrial hellscape. Only Dreadnoughts remain here.", unlockLevel: 32,
   },
   // ── MARS FACTION (2-1 → 2-5) ─────────────────────────────────────────────
   corona: {
     id: "corona", name: "Mars Frontier", label: "2-1", faction: "mars",
     bgHueA: "#3a1800", bgHueB: "#1a0800", enemyTier: 1,
-    enemyTypes: ["scout", "raider"],
+    enemyTypes: ["scout", "raider", "interceptor"],
     description: "The outer Martian reaches. Raiders rule the rust-colored lanes.", unlockLevel: 1,
   },
   fracture: {
     id: "fracture", name: "Dust Expanse", label: "2-2", faction: "mars",
     bgHueA: "#4a1a0a", bgHueB: "#1e0804", enemyTier: 2,
-    enemyTypes: ["raider", "destroyer"],
+    enemyTypes: ["raider", "destroyer", "corvette"],
     description: "Swirling iron dust storms hide outlaw strongholds.", unlockLevel: 8,
   },
   abyss: {
     id: "abyss", name: "Red Reaches", label: "2-3", faction: "mars",
     bgHueA: "#5a0a0a", bgHueB: "#220404", enemyTier: 3,
-    enemyTypes: ["destroyer", "sentinel", "dread"],
+    enemyTypes: ["destroyer", "sentinel", "specter"],
     description: "Combat-torn Martian space. Destroyer fleets fight for control.", unlockLevel: 16,
   },
   marsdepth: {
     id: "marsdepth", name: "Mars Deep Field", label: "2-4", faction: "mars",
     bgHueA: "#400010", bgHueB: "#180006", enemyTier: 4,
-    enemyTypes: ["sentinel", "wraith", "dread"],
+    enemyTypes: ["sentinel", "wraith", "phantom"],
     description: "The deep unknown of Martian space. Void entities breach the hull lines.", unlockLevel: 24,
   },
   maelstrom: {
     id: "maelstrom", name: "The Maelstrom", label: "2-5", faction: "mars",
     bgHueA: "#2a0020", bgHueB: "#0e0008", enemyTier: 5,
-    enemyTypes: ["wraith", "titan", "dread"],
+    enemyTypes: ["wraith", "titan", "juggernaut"],
     description: "A perpetual storm of wreckage and dread. The ultimate Martian challenge.", unlockLevel: 32,
   },
   // ── VENUS FACTION (3-1 → 3-5) ────────────────────────────────────────────
   venus1: {
     id: "venus1", name: "Venus Cloud Gate", label: "3-1", faction: "venus",
     bgHueA: "#2a1a00", bgHueB: "#0e0800", enemyTier: 1,
-    enemyTypes: ["scout", "raider"],
+    enemyTypes: ["scout", "raider", "interceptor"],
     description: "The upper cloud layers. Strange energy-based pirates lurk in the mist.", unlockLevel: 1,
   },
   venus2: {
     id: "venus2", name: "Sulphur Winds", label: "3-2", faction: "venus",
     bgHueA: "#3a2800", bgHueB: "#160e00", enemyTier: 2,
-    enemyTypes: ["raider", "destroyer"],
+    enemyTypes: ["raider", "destroyer", "corvette"],
     description: "Corrosive winds and raider fleets adapted to Venus's brutal atmosphere.", unlockLevel: 8,
   },
   venus3: {
     id: "venus3", name: "Acidic Deep", label: "3-3", faction: "venus",
     bgHueA: "#400a30", bgHueB: "#1a0418", enemyTier: 3,
-    enemyTypes: ["destroyer", "sentinel", "dread"],
+    enemyTypes: ["destroyer", "sentinel", "specter"],
     description: "The pressure increases. Heavy destroyer fleets guard Venusian secrets.", unlockLevel: 16,
   },
   venus4: {
     id: "venus4", name: "Pressure Core", label: "3-4", faction: "venus",
     bgHueA: "#2a003a", bgHueB: "#0e0018", enemyTier: 4,
-    enemyTypes: ["sentinel", "wraith", "dread"],
+    enemyTypes: ["sentinel", "wraith", "phantom"],
     description: "Near the crushing core of Venus. Reality warps under immense force.", unlockLevel: 24,
   },
   venus5: {
     id: "venus5", name: "Eye of Venus", label: "3-5", faction: "venus",
     bgHueA: "#1a0030", bgHueB: "#080010", enemyTier: 5,
-    enemyTypes: ["wraith", "titan", "dread"],
+    enemyTypes: ["wraith", "titan", "juggernaut"],
     description: "The heart of Venusian mystery. Legendary endgame territory.", unlockLevel: 32,
   },
   // ── DANGER ZONES (4-1 → 4-5) — center, free PvP, no faction ─────────────
@@ -873,19 +873,19 @@ export const ZONES: Record<ZoneId, Zone> = {
   danger3: {
     id: "danger3", name: "Pirate Haven", label: "4-3", faction: "venus",
     bgHueA: "#180018", bgHueB: "#08000a", enemyTier: 5,
-    enemyTypes: ["titan", "dread", "overlord"],
+    enemyTypes: ["titan", "dread", "overlord", "leviathan"],
     description: "Pirate stronghold. High-value loot crates and deadly ambushes.", unlockLevel: 30,
   },
   danger4: {
     id: "danger4", name: "Null Sector", label: "4-4", faction: "earth",
     bgHueA: "#0a0a1a", bgHueB: "#020208", enemyTier: 6,
-    enemyTypes: ["titan", "overlord", "dread"],
+    enemyTypes: ["titan", "overlord", "juggernaut", "leviathan"],
     description: "Reality collapses. Only the strongest survive. Premium loot.", unlockLevel: 36,
   },
   danger5: {
     id: "danger5", name: "The Abyss Gate", label: "4-5", faction: "mars",
     bgHueA: "#100005", bgHueB: "#050002", enemyTier: 7,
-    enemyTypes: ["overlord", "titan", "dread"],
+    enemyTypes: ["overlord", "leviathan", "juggernaut"],
     description: "The deepest point. Legendary enemies and endgame rewards.", unlockLevel: 42,
   },
   // ── DEBUG ZONE ────────────────────────────────────────────────────────────
@@ -1119,6 +1119,42 @@ export const ENEMY_DEFS: Record<
     color: "#ffffff", size: 35,
     loot: { resourceId: "dread", qty: 6 },
   },
+  interceptor: {
+    type: "interceptor", behavior: "fast",
+    hullMax: 130, damage: 28, speed: 150, exp: 22, credits: 60, honor: 2,
+    color: "#ff6a00", size: 11,
+    loot: { resourceId: "scrap", qty: 3 },
+  },
+  corvette: {
+    type: "corvette", behavior: "chaser",
+    hullMax: 340, damage: 38, speed: 95, exp: 50, credits: 140, honor: 5,
+    color: "#00cfff", size: 15,
+    loot: { resourceId: "iron", qty: 3 },
+  },
+  specter: {
+    type: "specter", behavior: "fast",
+    hullMax: 260, damage: 52, speed: 145, exp: 70, credits: 240, honor: 9,
+    color: "#a855f7", size: 12,
+    loot: { resourceId: "void", qty: 2 },
+  },
+  phantom: {
+    type: "phantom", behavior: "ranged",
+    hullMax: 380, damage: 65, speed: 110, exp: 90, credits: 300, honor: 11,
+    color: "#38bdf8", size: 14,
+    loot: { resourceId: "quantum", qty: 3 },
+  },
+  juggernaut: {
+    type: "juggernaut", behavior: "tank",
+    hullMax: 1800, damage: 85, speed: 55, exp: 180, credits: 620, honor: 22,
+    color: "#f97316", size: 32,
+    loot: { resourceId: "dread", qty: 5 },
+  },
+  leviathan: {
+    type: "leviathan", behavior: "tank",
+    hullMax: 3500, damage: 120, speed: 45, exp: 400, credits: 1200, honor: 45,
+    color: "#e11d48", size: 40,
+    loot: { resourceId: "dread", qty: 8 },
+  },
 
 };
 
@@ -1139,7 +1175,13 @@ export const FACTION_ENEMY_MODS: Partial<Record<
     sentinel:  { color: "#ff6622", damageMul: 1.15, speedMul: 1.10 },
     wraith:    { color: "#ff4400", speedMul: 1.25, damageMul: 1.10 },
     titan:     { color: "#cc2200", hullMul: 1.20, damageMul: 1.15 },
-    overlord:  { color: "#ff0000", hullMul: 1.25, damageMul: 1.20 },
+    overlord:    { color: "#ff0000", hullMul: 1.25, damageMul: 1.20 },
+    interceptor: { color: "#ff4400", speedMul: 1.20, damageMul: 1.10 },
+    corvette:    { color: "#cc4400", hullMul: 1.15, damageMul: 1.12 },
+    specter:     { color: "#cc2200", speedMul: 1.20, damageMul: 1.15 },
+    phantom:     { color: "#ff5500", damageMul: 1.20 },
+    juggernaut:  { color: "#aa2200", hullMul: 1.18, damageMul: 1.15 },
+    leviathan:   { color: "#880000", hullMul: 1.20, damageMul: 1.18 },
   },
   venus: {
     scout:     { color: "#ffee22", damageMul: 1.22 },
@@ -1150,7 +1192,13 @@ export const FACTION_ENEMY_MODS: Partial<Record<
     sentinel:  { color: "#8844ff", damageMul: 1.20, hullMul: 1.10 },
     wraith:    { color: "#ff22cc", speedMul: 1.15, damageMul: 1.25 },
     titan:     { color: "#9900cc", hullMul: 1.15, damageMul: 1.20 },
-    overlord:  { color: "#cc00ff", hullMul: 1.30, damageMul: 1.25 },
+    overlord:    { color: "#cc00ff", hullMul: 1.30, damageMul: 1.25 },
+    interceptor: { color: "#ffcc00", speedMul: 1.18, damageMul: 1.15 },
+    corvette:    { color: "#aa44ff", hullMul: 1.12, damageMul: 1.15 },
+    specter:     { color: "#dd22ff", speedMul: 1.15, damageMul: 1.20 },
+    phantom:     { color: "#9922ff", damageMul: 1.25, hullMul: 1.10 },
+    juggernaut:  { color: "#7700cc", hullMul: 1.20, damageMul: 1.18 },
+    leviathan:   { color: "#550099", hullMul: 1.25, damageMul: 1.22 },
   },
 };
 
@@ -1663,15 +1711,21 @@ export const FAKE_CLANS = [
 ];
 
 export const ENEMY_NAMES: Record<EnemyType, string[]> = {
-  scout:     ["Scout"],
-  raider:    ["Raider"],
-  destroyer: ["Destroyer"],
-  voidling:  ["Voidling"],
-  dread:     ["Dread"],
-  sentinel:  ["Sentinel"],
-  wraith:    ["Wraith"],
-  titan:     ["Titan"],
-  overlord:  ["Overlord"],
+  scout:       ["Scout"],
+  raider:      ["Raider"],
+  destroyer:   ["Destroyer"],
+  voidling:    ["Voidling"],
+  dread:       ["Dread"],
+  sentinel:    ["Sentinel"],
+  wraith:      ["Wraith"],
+  titan:       ["Titan"],
+  overlord:    ["Overlord"],
+  interceptor: ["Interceptor"],
+  corvette:    ["Corvette"],
+  specter:     ["Specter"],
+  phantom:     ["Phantom"],
+  juggernaut:  ["Juggernaut"],
+  leviathan:   ["Leviathan"],
 };
 
 // ── DRONES ────────────────────────────────────────────────────────────────

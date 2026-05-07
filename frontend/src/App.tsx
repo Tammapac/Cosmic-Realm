@@ -3,7 +3,7 @@ import { state, bump, useGame, save, pushNotification, pushChat, abandonDungeon,
 import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats, hasRocketWeapon, setEntityTarget, applyKill } from "./game/loop";
 import { render } from "./game/render";
 import { initPixiRenderer, destroyPixiRenderer, pixiRender } from "./game/pixi-renderer-v2-integrated";
-import { init3DLayer, destroy3DLayer } from "./game/three-ship-layer";
+import { init3DLayer, destroy3DLayer, getLoadingProgress } from "./game/three-ship-layer";
 import { activeRenderer } from "./game/renderer-config";
 import { TopBar, WorldTargetHud } from "./components/TopBar";
 import { MiniMap } from "./components/MiniMap";
@@ -42,6 +42,7 @@ function GameCanvas() {
   const threeCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const pixiContainerRef = useRef<HTMLDivElement | null>(null);
+  const labelOverlayRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     startLoop();
@@ -53,7 +54,7 @@ function GameCanvas() {
       // PixiJS renderer
       const container = pixiContainerRef.current;
       if (!container) return;
-      initPixiRenderer(container);
+      initPixiRenderer(container, labelOverlayRef.current ?? undefined);
 
       // Initialize Three.js 3D layer on its own canvas
       const threeCanvas = threeCanvasRef.current;
@@ -289,6 +290,11 @@ function GameCanvas() {
           ref={threeCanvasRef}
           className="absolute inset-0 w-full h-full"
           style={{ pointerEvents: "none", zIndex: 1 }}
+        />
+        <div
+          ref={labelOverlayRef}
+          className="absolute inset-0 w-full h-full"
+          style={{ pointerEvents: "none", zIndex: 2, overflow: "hidden" }}
         />
       </>
     ) : (
@@ -565,6 +571,88 @@ function CargoOverlay() {
         <div className="px-3 py-2 border-t text-mute text-[11px] tracking-widest" style={{ borderColor: "var(--border-soft)" }}>
           {used > 0 ? "DOCK TO SELL" : "MINE OR TRADE"}
         </div>
+      </div>
+    </div>
+  );
+}
+
+
+function LoadingScreen({ onReady }: { onReady: () => void }) {
+  const [progress, setProgress] = useState(0);
+  const [fadeOut, setFadeOut] = useState(false);
+
+  useEffect(() => {
+    let elapsed = 0;
+    const interval = setInterval(() => {
+      elapsed += 100;
+      const p = getLoadingProgress();
+      const fakePct = Math.min(95, Math.round((elapsed / 4000) * 95));
+      setProgress(p.playerReady ? 100 : fakePct);
+      if (p.playerReady) {
+        clearInterval(interval);
+        setFadeOut(true);
+        setTimeout(onReady, 800);
+      }
+    }, 100);
+    return () => clearInterval(interval);
+  }, [onReady]);
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 200,
+      background: "#020408",
+      display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center",
+      transition: "opacity 0.7s ease-out",
+      opacity: fadeOut ? 0 : 1,
+      pointerEvents: fadeOut ? "none" : "auto",
+    }}>
+      <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
+        {Array.from({ length: 60 }, (_, i) => (
+          <div key={i} style={{
+            position: "absolute",
+            width: Math.random() * 2 + 1,
+            height: Math.random() * 2 + 1,
+            background: "#fff",
+            borderRadius: "50%",
+            left: `${Math.random() * 100}%`,
+            top: `${Math.random() * 100}%`,
+            opacity: Math.random() * 0.6 + 0.2,
+            animation: `twinkle ${2 + Math.random() * 3}s ease-in-out infinite`,
+            animationDelay: `${Math.random() * 3}s`,
+          }} />
+        ))}
+      </div>
+      <style>{`
+        @keyframes twinkle { 0%, 100% { opacity: 0.2; } 50% { opacity: 0.8; } }
+        @keyframes pulse { 0%, 100% { text-shadow: 0 0 10px #4ee2ff44; } 50% { text-shadow: 0 0 25px #4ee2ff88, 0 0 50px #4ee2ff44; } }
+      `}</style>
+      <div style={{
+        fontSize: 32, letterSpacing: 12, color: "#4ee2ff",
+        fontFamily: "'Courier New', monospace", fontWeight: "bold",
+        animation: "pulse 3s ease-in-out infinite",
+        marginBottom: 40, textAlign: "center",
+      }}>
+        COSMIC REALM
+      </div>
+      <div style={{
+        width: 280, height: 4, background: "#0a1428",
+        borderRadius: 2, overflow: "hidden",
+        border: "1px solid #4ee2ff33",
+      }}>
+        <div style={{
+          width: `${progress}%`, height: "100%",
+          background: "linear-gradient(90deg, #4ee2ff, #44ffcc)",
+          borderRadius: 2,
+          transition: "width 0.3s ease-out",
+          boxShadow: "0 0 8px #4ee2ff88",
+        }} />
+      </div>
+      <div style={{
+        marginTop: 12, fontSize: 11, letterSpacing: 3,
+        color: "#4ee2ff88", fontFamily: "'Courier New', monospace",
+      }}>
+        LOADING SYSTEMS... {progress}%
       </div>
     </div>
   );
@@ -898,10 +986,14 @@ function GameApp() {
     return 1;
   });
 
+  const [assetsReady, setAssetsReady] = useState(false);
+  const handleAssetsReady = useRef(() => setAssetsReady(true)).current;
+
   return (
     <div className="relative w-full h-full overflow-hidden" style={{ background: "#02040c" }}>
+      {!assetsReady && <LoadingScreen onReady={handleAssetsReady} />}
       <GameCanvas />
-      <div style={{ transform: `scale(${currentUiScale})`, transformOrigin: "top left", width: `${100 / (currentUiScale || 1)}%`, height: `${100 / (currentUiScale || 1)}%`, position: "absolute", top: 0, left: 0, pointerEvents: "none" }}>
+      <div style={{ transform: `scale(${currentUiScale})`, transformOrigin: "top left", width: `${100 / (currentUiScale || 1)}%`, height: `${100 / (currentUiScale || 1)}%`, position: "absolute", top: 0, left: 0, pointerEvents: "none", zIndex: 10 }}>
       <div style={{ pointerEvents: "auto" }}>
       <TopBar />
       <WorldTargetHud />

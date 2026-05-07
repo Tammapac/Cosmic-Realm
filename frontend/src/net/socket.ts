@@ -175,6 +175,7 @@ export type ProjectileSpawnEvent = {
   weaponKind: "laser" | "rocket";
   homing: boolean;
   fromPlayer: boolean;
+  fromPlayerId?: number;
 };
 
 type SocketEvents = {
@@ -235,20 +236,24 @@ export function connectSocket(token: string) {
     });
   });
 
-  socket.on("kicked", (data: { reason: string }) => {
-    console.warn("[socket] kicked:", data.reason);
-
   // Admin force-sync: server updated our player data
   socket.on("admin:sync", async (updates: any) => {
     const store = await import("../game/store");
+    const loop = await import("../game/loop");
     const p = store.state.player;
     for (const [k, v] of Object.entries(updates)) {
       if (k in p) (p as any)[k] = v;
     }
+    // Apply hull/shield directly to live game engine so it takes effect immediately
+    if (updates.hull !== undefined) p.hull = Math.min(updates.hull, p.hullMax);
+    if (updates.shield !== undefined) p.shield = Math.min(updates.shield, loop.effectiveStats().shieldMax);
     store.bump();
     store.save();
     console.log("[ADMIN] Received force-sync:", updates);
   });
+
+  socket.on("kicked", (data: { reason: string }) => {
+    console.warn("[socket] kicked:", data.reason);
     alert("Session taken over: " + data.reason + ". This tab will reload.");
     window.location.reload();
   });

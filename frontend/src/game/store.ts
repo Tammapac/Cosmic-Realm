@@ -723,11 +723,19 @@ export function pushEvent(ev: Omit<GameEvent, "id" | "startedAt">): void {
 }
 
 export function refreshOthers(zone: ZoneId): void {
-  state.others = makeOthers(zone);
+  // Skip fake placeholder players when server is authoritative — they cause offset/invisible bugs
+  if ((globalThis as any).__serverAuthoritative) {
+    state.others = [];
+  } else {
+    state.others = makeOthers(zone);
+  }
   state.availableQuests = pickQuests(zone);
   state.asteroids = makeAsteroids(zone);
   bump();
 }
+
+let _onWarpCallback: (() => void) | null = null;
+export function registerWarpCallback(cb: () => void): void { _onWarpCallback = cb; }
 
 export function travelToZone(zoneId: ZoneId, spawnX?: number, spawnY?: number): void {
   if (state.player.zone !== zoneId) {
@@ -745,6 +753,7 @@ export function travelToZone(zoneId: ZoneId, spawnX?: number, spawnY?: number): 
   state.particles = [];
   state.cargoBoxes = [];
   state.npcShips = [];
+  _onWarpCallback?.();
   refreshOthers(zoneId);
   sendWarp(zoneId, spawnX ?? 0, spawnY ?? 80);
   pushNotification(`Warped to ${ZONES[zoneId].name}`, "good");
