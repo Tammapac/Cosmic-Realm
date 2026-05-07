@@ -1573,48 +1573,57 @@ function _bgDestroyLayers(): void {
   _bgPlanetSprite = null; _bgDustTile = null;
 }
 
-function _bgBuildLayers(zone: string, w: number, h: number): void {
-  _bgDestroyLayers();
-  _bgZoneActive = zone;
+function _bgBuildSprites(
+  zone: string, w: number, h: number,
+  sTex: PIXI.Texture, nTex: PIXI.Texture,
+  pTex: PIXI.Texture, dTex: PIXI.Texture,
+): void {
   const cfg = BG_ZONE_CFG[zone] ?? BG_ZONE_CFG.alpha;
-  const base = `/bg/${zone}`;
-
-  // bgGraphics sits at some index in bgLayer; insert Pixellab layers before it
-  // so the glow/star graphics render on top of the sprites.
   const gfxIdx = bgGraphics ? bgLayer.getChildIndex(bgGraphics) : bgLayer.children.length;
 
-  // Solid fill (index 0)
+  // Solid fill
   const fc = document.createElement("canvas"); fc.width = 1; fc.height = 1;
   const fx = fc.getContext("2d")!;
   fx.fillStyle = cfg.fill; fx.fillRect(0, 0, 1, 1);
-  const fillTex = PIXI.Texture.from(fc, { scaleMode: PIXI.SCALE_MODES.NEAREST });
-  _bgFillSprite = new PIXI.Sprite(fillTex);
+  _bgFillSprite = new PIXI.Sprite(PIXI.Texture.from(fc, { scaleMode: PIXI.SCALE_MODES.NEAREST }));
   _bgFillSprite.width = w; _bgFillSprite.height = h;
   bgLayer.addChildAt(_bgFillSprite, 0);
 
-  // Layer 2: distant stars — inserted just before bgGraphics
-  const sTex = PIXI.Texture.from(`${base}/layer_02_stars.png`, { scaleMode: PIXI.SCALE_MODES.NEAREST });
   _bgStarsTile = new PIXI.TilingSprite(sTex, w, h);
   bgLayer.addChildAt(_bgStarsTile, gfxIdx);
 
-  // Layer 3: nebula fog
-  const nTex = PIXI.Texture.from(`${base}/layer_03_nebula.png`, { scaleMode: PIXI.SCALE_MODES.NEAREST });
   _bgNebulaTile = new PIXI.TilingSprite(nTex, w, h);
-  _bgNebulaTile.alpha = 0.92;
+  _bgNebulaTile.alpha = 0.88;
   bgLayer.addChildAt(_bgNebulaTile, gfxIdx + 1);
 
-  // Layer 4: planet
-  const pTex = PIXI.Texture.from(`${base}/layer_04_planet.png`, { scaleMode: PIXI.SCALE_MODES.LINEAR });
   _bgPlanetSprite = new PIXI.Sprite(pTex);
   _bgPlanetSprite.anchor.set(0.5);
   bgLayer.addChildAt(_bgPlanetSprite, gfxIdx + 2);
 
-  // Layer 5: foreground dust — sits just before bgGraphics so glow draws on top
-  const dTex = PIXI.Texture.from(`${base}/layer_05_dust.png`, { scaleMode: PIXI.SCALE_MODES.NEAREST });
   _bgDustTile = new PIXI.TilingSprite(dTex, w, h);
   bgLayer.addChildAt(_bgDustTile, gfxIdx + 3);
 }
 
+function _bgBuildLayers(zone: string, w: number, h: number): void {
+  _bgDestroyLayers();
+  _bgZoneActive = zone;
+  const base = `/bg/${zone}`;
+
+  const urls = [
+    `${base}/layer_02_stars.png`,
+    `${base}/layer_03_nebula.png`,
+    `${base}/layer_04_planet.png`,
+    `${base}/layer_05_dust.png`,
+  ];
+
+  // Load all 4 textures, then build sprites once everything is ready
+  Promise.all(urls.map(u => PIXI.Assets.load(u).catch(() => PIXI.Texture.EMPTY)))
+    .then(([sTex, nTex, pTex, dTex]) => {
+      // Zone may have changed while we were loading — only apply if still current
+      if (_bgZoneActive !== zone) return;
+      _bgBuildSprites(zone, w, h, sTex, nTex, pTex, dTex);
+    });
+}
 function renderBackground(w: number, h: number, cam: { x: number; y: number }): void {
   if (!bgGraphics || !starGraphics) return;
 
