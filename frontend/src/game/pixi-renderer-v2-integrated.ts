@@ -1620,7 +1620,7 @@ function _bgBuildSprites(
   bgLayer.addChildAt(_bgPlanetSprite, 0);
 
   _bgNebulaTile = new PIXI.TilingSprite(nTex, w, h);
-  _bgNebulaTile.alpha = 0.35;
+  _bgNebulaTile.alpha = 0.52;
   bgLayer.addChildAt(_bgNebulaTile, 0);
 
   _bgStarsTile = new PIXI.TilingSprite(sTex, w, h);
