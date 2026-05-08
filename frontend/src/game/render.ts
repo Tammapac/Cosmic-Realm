@@ -2916,7 +2916,7 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
   const z = ZONES[state.player.zone];
   const cam = state.player.pos;
 
-  drawParallaxBackground(ctx, w, h, cam.x, cam.y, state.player.zone, Date.now() / 1000);
+  drawParallaxBackground(ctx, w, h, cam.x, cam.y, ZONES[state.player.zone].label, Date.now() / 1000);
 
   // World transform (with camera shake)
   ctx.save();
