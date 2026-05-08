@@ -1620,7 +1620,7 @@ function _bgBuildSprites(
   bgLayer.addChildAt(_bgPlanetSprite, 0);
 
   _bgNebulaTile = new PIXI.TilingSprite(nTex, w, h);
-  _bgNebulaTile.alpha = 0.88;
+  _bgNebulaTile.alpha = 0.35;
   bgLayer.addChildAt(_bgNebulaTile, 0);
 
   _bgStarsTile = new PIXI.TilingSprite(sTex, w, h);
@@ -1644,10 +1644,10 @@ function _bgBuildLayers(zone: string, w: number, h: number): void {
   const base = `/bg/${label}`;
 
   const urls = [
-    `${base}/layer_02_stars.png`,
-    `${base}/layer_03_nebula.png`,
-    `${base}/layer_04_planet.png`,
-    `${base}/layer_05_dust.png`,
+    `${base}/Layer1_${label}.png`,
+    `${base}/Layer2_${label}.png`,
+    `${base}/Layer3_${label}.png`,
+    `${base}/Layer4_${label}.png`,
   ];
 
   console.log("[bg] loading zone", zone, "label", label, "urls", urls);
