@@ -1439,7 +1439,7 @@ export function pixiRender(): void {
 
   // ── 3D Layer cleanup + render ──
   endFrame();
-  updateNebulaBackground(cam.x, cam.y);
+  // updateNebulaBackground(cam.x, cam.y); — disabled, using sprite layers
   render3DLayer();
 
   // ── Effect Manager Update ──────────────────────────────────────────
