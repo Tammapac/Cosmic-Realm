@@ -1680,22 +1680,22 @@ function renderBackground(w: number, h: number, cam: { x: number; y: number }): 
 
   if (_bgStarsTile) {
     _bgStarsTile.width = w; _bgStarsTile.height = h;
-    _bgStarsTile.tilePosition.x = (-cam.x * 0.05) % _bgStarsTile.texture.width;
-    _bgStarsTile.tilePosition.y = (-cam.y * 0.05) % _bgStarsTile.texture.height;
-    _bgStarsTile.alpha = 0.82 + 0.18 * Math.sin(t * 1.1);
+    _bgStarsTile.tilePosition.x = -cam.x * 0.05;
+    _bgStarsTile.tilePosition.y = -cam.y * 0.05;
+    _bgStarsTile.alpha = 0.55 + 0.45 * Math.sin(t * 1.1);
   }
 
   if (_bgNebulaTile) {
     _bgNebulaTile.width = w; _bgNebulaTile.height = h;
-    _bgNebulaTile.tilePosition.x = (-cam.x * 0.12) % _bgNebulaTile.texture.width;
-    _bgNebulaTile.tilePosition.y = (-cam.y * 0.12) % _bgNebulaTile.texture.height;
+    _bgNebulaTile.tilePosition.x = -cam.x * 0.12;
+    _bgNebulaTile.tilePosition.y = -cam.y * 0.12;
   }
 
   if (_bgNebulaTopTile) {
     _bgNebulaTopTile.width = w; _bgNebulaTopTile.height = h;
-    _bgNebulaTopTile.tilePosition.x = (-cam.x * 0.08) % _bgNebulaTopTile.texture.width;
-    _bgNebulaTopTile.tilePosition.y = (-cam.y * 0.08) % _bgNebulaTopTile.texture.height;
-    _bgNebulaTopTile.alpha = 0.35 + 0.20 * Math.sin(t * 0.4 + 1.0);
+    _bgNebulaTopTile.tilePosition.x = -cam.x * 0.08;
+    _bgNebulaTopTile.tilePosition.y = -cam.y * 0.08;
+    _bgNebulaTopTile.alpha = 0.45 + 0.40 * Math.sin(t * 0.4 + 1.0);
   }
 
   if (_bgPlanetSprite) {
