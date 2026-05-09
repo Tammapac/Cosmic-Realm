@@ -1686,7 +1686,7 @@ function renderBackground(w: number, h: number, cam: { x: number; y: number }): 
     _bgStarsTile.width = w; _bgStarsTile.height = h;
     _bgStarsTile.tilePosition.x = Math.round(-cam.x * 0.05);
     _bgStarsTile.tilePosition.y = Math.round(-cam.y * 0.05);
-    _bgStarsTile.alpha = 0.55 + 0.45 * Math.sin(t * 1.1);
+    _bgStarsTile.alpha = 0.2 + 0.8 * Math.sin(t * 2.5);
   }
 
   if (_bgNebulaTile) {
