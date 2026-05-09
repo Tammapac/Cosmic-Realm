@@ -1655,8 +1655,12 @@ function _bgBuildLayers(zone: string, w: number, h: number): void {
   console.log("[bg] loading zone", zone, "label", label, "urls", urls);
 
   Promise.all(urls.map(u =>
-    (PIXI.Texture as any).fromURL(u)
-      .then((t: PIXI.Texture) => { console.log("[bg] loaded OK:", u, t.width, "x", t.height); return t; })
+    (PIXI.Texture as any).fromURL(u, { scaleMode: PIXI.SCALE_MODES.NEAREST })
+      .then((t: PIXI.Texture) => {
+        t.baseTexture.wrapMode = PIXI.WRAP_MODES.REPEAT;
+        console.log("[bg] loaded OK:", u, t.width, "x", t.height);
+        return t;
+      })
       .catch((e: any) => { console.warn("[bg] FAILED:", u, e?.message ?? e); return PIXI.Texture.EMPTY; })
   )).then(([sTex, nTex, pTex, dTex]) => {
     console.log("[bg] all loaded, building sprites for zone", zone);
@@ -1680,21 +1684,21 @@ function renderBackground(w: number, h: number, cam: { x: number; y: number }): 
 
   if (_bgStarsTile) {
     _bgStarsTile.width = w; _bgStarsTile.height = h;
-    _bgStarsTile.tilePosition.x = -cam.x * 0.05;
-    _bgStarsTile.tilePosition.y = -cam.y * 0.05;
+    _bgStarsTile.tilePosition.x = Math.round(-cam.x * 0.05);
+    _bgStarsTile.tilePosition.y = Math.round(-cam.y * 0.05);
     _bgStarsTile.alpha = 0.55 + 0.45 * Math.sin(t * 1.1);
   }
 
   if (_bgNebulaTile) {
     _bgNebulaTile.width = w; _bgNebulaTile.height = h;
-    _bgNebulaTile.tilePosition.x = -cam.x * 0.12;
-    _bgNebulaTile.tilePosition.y = -cam.y * 0.12;
+    _bgNebulaTile.tilePosition.x = Math.round(-cam.x * 0.12);
+    _bgNebulaTile.tilePosition.y = Math.round(-cam.y * 0.12);
   }
 
   if (_bgNebulaTopTile) {
     _bgNebulaTopTile.width = w; _bgNebulaTopTile.height = h;
-    _bgNebulaTopTile.tilePosition.x = -cam.x * 0.08;
-    _bgNebulaTopTile.tilePosition.y = -cam.y * 0.08;
+    _bgNebulaTopTile.tilePosition.x = Math.round(-cam.x * 0.08);
+    _bgNebulaTopTile.tilePosition.y = Math.round(-cam.y * 0.08);
     _bgNebulaTopTile.alpha = 0.45 + 0.40 * Math.sin(t * 0.4 + 1.0);
   }
 
