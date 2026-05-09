@@ -1590,14 +1590,15 @@ let _bgFillSprite: PIXI.Sprite | null = null;
 let _bgStarsTile: PIXI.TilingSprite | null = null;
 let _bgNebulaTile: PIXI.TilingSprite | null = null;
 let _bgPlanetSprite: PIXI.Sprite | null = null;
+let _bgNebulaTopTile: PIXI.TilingSprite | null = null;
 let _bgDustTile: PIXI.TilingSprite | null = null;
 
 function _bgDestroyLayers(): void {
-  for (const s of [_bgFillSprite, _bgStarsTile, _bgNebulaTile, _bgPlanetSprite, _bgDustTile]) {
+  for (const s of [_bgFillSprite, _bgStarsTile, _bgNebulaTile, _bgPlanetSprite, _bgNebulaTopTile, _bgDustTile]) {
     if (s) { s.parent?.removeChild(s); s.destroy({ texture: false, baseTexture: false }); }
   }
   _bgFillSprite = null; _bgStarsTile = null; _bgNebulaTile = null;
-  _bgPlanetSprite = null; _bgDustTile = null;
+  _bgPlanetSprite = null; _bgNebulaTopTile = null; _bgDustTile = null;
 }
 
 function _bgBuildSprites(
@@ -1612,12 +1613,13 @@ function _bgBuildSprites(
   // 0: fill, 1: stars, 2: nebula, 3: planet, 4: dust, then bgGraphics/starGraphics on top.
   // We insert dust first (lowest priority addChildAt call) through fill last (index 0).
 
-  _bgDustTile = new PIXI.TilingSprite(dTex, w, h);
-  bgLayer.addChildAt(_bgDustTile, 0);
-
-  _bgPlanetSprite = new PIXI.Sprite(pTex);
+  _bgPlanetSprite = new PIXI.Sprite(dTex);
   _bgPlanetSprite.anchor.set(0.5);
   bgLayer.addChildAt(_bgPlanetSprite, 0);
+
+  _bgNebulaTopTile = new PIXI.TilingSprite(pTex, w, h);
+  _bgNebulaTopTile.alpha = 0.45;
+  bgLayer.addChildAt(_bgNebulaTopTile, 0);
 
   _bgNebulaTile = new PIXI.TilingSprite(nTex, w, h);
   _bgNebulaTile.alpha = 0.52;
@@ -1634,7 +1636,7 @@ function _bgBuildSprites(
   _bgFillSprite.width = w; _bgFillSprite.height = h;
   bgLayer.addChildAt(_bgFillSprite, 0);
 
-  // Final order: 0=fill, 1=stars, 2=nebula, 3=planet, 4=dust, 5+=bgGraphics/starGraphics
+  // Final order: 0=fill, 1=stars, 2=nebula(L2), 3=nebula-top(L3), 4=planet(L4), 5+=bgGraphics/starGraphics
 }
 
 function _bgBuildLayers(zone: string, w: number, h: number): void {
@@ -1688,6 +1690,12 @@ function renderBackground(w: number, h: number, cam: { x: number; y: number }): 
     _bgNebulaTile.tilePosition.y = (-cam.y * 0.12) % _bgNebulaTile.texture.height;
   }
 
+  if (_bgNebulaTopTile) {
+    _bgNebulaTopTile.width = w; _bgNebulaTopTile.height = h;
+    _bgNebulaTopTile.tilePosition.x = (-cam.x * 0.08) % _bgNebulaTopTile.texture.width;
+    _bgNebulaTopTile.tilePosition.y = (-cam.y * 0.08) % _bgNebulaTopTile.texture.height;
+  }
+
   if (_bgPlanetSprite) {
     const px = w / 2 + (cfg.wx - cam.x) * cfg.pSpeed;
     const py = h / 2 + (cfg.wy - cam.y) * cfg.pSpeed;
@@ -1702,13 +1710,6 @@ function renderBackground(w: number, h: number, cam: { x: number; y: number }): 
     bgGraphics.beginFill((gr << 16) | (gg << 8) | gb, 0.10);
     bgGraphics.drawCircle(px, py, cfg.pSize * 1.5);
     bgGraphics.endFill();
-  }
-
-  if (_bgDustTile) {
-    _bgDustTile.width = w; _bgDustTile.height = h;
-    _bgDustTile.tilePosition.x = (-cam.x * 0.35) % _bgDustTile.texture.width;
-    _bgDustTile.tilePosition.y = (-cam.y * 0.35) % _bgDustTile.texture.height;
-    _bgDustTile.alpha = 0.78 + 0.22 * Math.sin(t * 0.85 + 1.2);
   }
 
   if (enhancedStars.length === 0) initStars(w, h);
