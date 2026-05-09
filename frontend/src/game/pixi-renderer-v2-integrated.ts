@@ -1682,6 +1682,7 @@ function renderBackground(w: number, h: number, cam: { x: number; y: number }): 
     _bgStarsTile.width = w; _bgStarsTile.height = h;
     _bgStarsTile.tilePosition.x = (-cam.x * 0.05) % _bgStarsTile.texture.width;
     _bgStarsTile.tilePosition.y = (-cam.y * 0.05) % _bgStarsTile.texture.height;
+    _bgStarsTile.alpha = 0.82 + 0.18 * Math.sin(t * 1.1);
   }
 
   if (_bgNebulaTile) {
@@ -1694,6 +1695,7 @@ function renderBackground(w: number, h: number, cam: { x: number; y: number }): 
     _bgNebulaTopTile.width = w; _bgNebulaTopTile.height = h;
     _bgNebulaTopTile.tilePosition.x = (-cam.x * 0.08) % _bgNebulaTopTile.texture.width;
     _bgNebulaTopTile.tilePosition.y = (-cam.y * 0.08) % _bgNebulaTopTile.texture.height;
+    _bgNebulaTopTile.alpha = 0.35 + 0.20 * Math.sin(t * 0.4 + 1.0);
   }
 
   if (_bgPlanetSprite) {
