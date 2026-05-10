@@ -1725,9 +1725,11 @@ function renderBackground(w: number, h: number, cam: { x: number; y: number }): 
   }
 
   if (_bgPlanetSprite) {
-    // Planet: fully opaque, static center of screen, no camera tracking
-    _bgPlanetSprite.x = Math.round(w / 2);
-    _bgPlanetSprite.y = Math.round(h / 2);
+    // Planet: world-space position — moves with camera like any game object
+    const px = Math.round(w / 2 + (cfg.wx - cam.x) * cfg.pSpeed);
+    const py = Math.round(h / 2 + (cfg.wy - cam.y) * cfg.pSpeed);
+    _bgPlanetSprite.x = px;
+    _bgPlanetSprite.y = py;
     _bgPlanetSprite.width = cfg.pSize;
     _bgPlanetSprite.height = cfg.pSize;
     _bgPlanetSprite.alpha = 1.0;
