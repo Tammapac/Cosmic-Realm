@@ -528,7 +528,7 @@ function loadShipSprites(id: string): void {
     img.crossOrigin = "anonymous";
     const idx = i;
     img.onload = () => {
-      frames[idx] = PIXI.Texture.from(img, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+      frames[idx] = PIXI.Texture.from(img, { scaleMode: PIXI.SCALE_MODES.NEAREST });
       loaded++;
       if (loaded === cfg.frames) {
         rotationFrameTextures.set(id, frames as PIXI.Texture[]);
@@ -622,7 +622,7 @@ function getDirectionalTex(shipClass: ShipClassId, scale: number, angle: number,
   ctx.globalAlpha = 1.0;
   ctx.drawImage(src, 0, 0, iw, ih, 0, 0, drawSz, drawSz);
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
   texCache.set(key, tex);
   return { tex, isDirectional: true };
 }
@@ -634,7 +634,7 @@ function preloadShipSprites(): void {
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
-      const tex = PIXI.Texture.from(img, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+      const tex = PIXI.Texture.from(img, { scaleMode: PIXI.SCALE_MODES.NEAREST });
       shipSpriteTextures.set(id, tex);
       shipSpriteLoading.delete(id);
       texCache.forEach((_, k) => { if (k.startsWith(`ship-${id}-`)) texCache.delete(k); });
@@ -660,7 +660,7 @@ function bakeTexture(
   bakeCanvas.height = height;
   bakeCtx.clearRect(0, 0, width, height);
   drawFn(bakeCtx, width, height);
-  const tex = PIXI.Texture.from(bakeCanvas, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  const tex = PIXI.Texture.from(bakeCanvas, { scaleMode: PIXI.SCALE_MODES.NEAREST });
   // Must clone since we reuse bakeCanvas
   const clone = tex.clone();
   return clone;
@@ -717,7 +717,7 @@ function getShipTex(shipClass: ShipClassId, scale: number): PIXI.Texture {
     ctx.globalAlpha = 1.0;
     ctx.drawImage(src, minX, minY, cw, ch, dx, dy, drawW, drawH);
 
-    tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+    tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
     texCache.set(key, tex);
     return tex;
   }
@@ -737,7 +737,7 @@ function getShipTex(shipClass: ShipClassId, scale: number): PIXI.Texture {
   const dk = shadeHex(c, -0.45);
   drawShipPixels(ctx, shipClass, c, a, hi, dk, finalScale);
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
   texCache.set(key, tex);
   return tex;
 }
@@ -778,7 +778,7 @@ function getEnemyTex(e: Enemy): PIXI.Texture {
 
   state.selectedWorldTarget = savedTarget;
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
   texCache.set(key, tex);
   return tex;
 }
@@ -810,7 +810,7 @@ function getCircleTex(radius: number): PIXI.Texture {
   ctx.arc(sz / 2, sz / 2, radius, 0, Math.PI * 2);
   ctx.fill();
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
   texCache.set(key, tex);
   return tex;
 }
@@ -836,7 +836,7 @@ function getNebulaTex(radius: number): PIXI.Texture {
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.fill();
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
   texCache.set(key, tex);
   return tex;
 }
@@ -860,7 +860,7 @@ function getGlowTex(radius: number): PIXI.Texture {
   ctx.arc(sz / 2, sz / 2, radius, 0, Math.PI * 2);
   ctx.fill();
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
   texCache.set(key, tex);
   return tex;
 }
@@ -887,7 +887,7 @@ function getFireballTex(radius: number, color: string): PIXI.Texture {
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.fill();
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
   texCache.set(key, tex);
   return tex;
 }
@@ -912,7 +912,7 @@ function getSmokeTex(radius: number): PIXI.Texture {
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.fill();
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
   texCache.set(key, tex);
   return tex;
 }
@@ -950,7 +950,7 @@ function getEmberTex(radius: number, color: string): PIXI.Texture {
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.fill();
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
   texCache.set(key, tex);
   return tex;
 }
@@ -975,7 +975,7 @@ function getFlashTex(radius: number, color: string): PIXI.Texture {
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.fill();
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
   texCache.set(key, tex);
   return tex;
 }
@@ -1011,7 +1011,7 @@ function getLaserBoltTex(length: number): PIXI.Texture {
   ctx.ellipse(cx, cy, hw * 0.5, hh * 0.4, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
   texCache.set(key, tex);
   return tex;
 }
@@ -1054,7 +1054,7 @@ function getRocketTex(): PIXI.Texture {
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 10, h);
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
   texCache.set(key, tex);
   return tex;
 }
@@ -1082,7 +1082,7 @@ function getTrailTex(radius: number): PIXI.Texture {
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.fill();
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
   texCache.set(key, tex);
   return tex;
 }
@@ -1213,7 +1213,7 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
   app = new PIXI.Application({
     resizeTo: container,
     backgroundColor: 0x020414,
-    antialias: true,
+    antialias: false,
     resolution: Math.min(window.devicePixelRatio || 1, 2),
     autoDensity: true,
   });

@@ -160,27 +160,8 @@ export function createShipVisual(
   baseSprite.anchor.set(0.5);
 
   // Try WebGL shader filter — if it fails, ship still renders fine without it
+  // ShipLightingFilter disabled — pixel art mode, no painted shader effect
   let lightingFilter: ShipLightingFilter | null = null;
-  try {
-    const f = new ShipLightingFilter(quality);
-    const rimCfg = config.rimLight;
-    const isRotShip = ROTATION_FRAME_SHIPS.has(shipClass);
-    f.configure({
-      rimColor: [
-        ((rimCfg.color >> 16) & 0xff) / 255,
-        ((rimCfg.color >> 8) & 0xff) / 255,
-        (rimCfg.color & 0xff) / 255,
-      ],
-      rimIntensity: isRotShip ? rimCfg.alpha * 0.4 : rimCfg.alpha * 3,
-      shadowStrength: isRotShip ? 0.8 : 0.5,
-      lightIntensity: isRotShip ? 1.0 : 0.8,
-      brightness: isRotShip ? 0.7 : 1.0,
-    });
-    baseSprite.filters = [f];
-    lightingFilter = f;
-  } catch (err) {
-    console.error("[ShipLighting] Filter failed:", err);
-  }
   container.addChild(baseSprite);
 
   // 3b. Rim light ON TOP — subtle light reflection, not an outline
@@ -302,7 +283,7 @@ export function updateShipVisual(
     vs.currentRotOffset = lerp(vs.currentRotOffset, targetRotOff, tiltLerp);
     vs.currentScaleY = lerp(vs.currentScaleY, targetScaleY, tiltLerp);
     vs.baseSprite.skew.x = vs.currentSkewX;
-    vs.baseSprite.scale.y = vs.currentScaleY;
+    vs.baseSprite.scale.y = Math.round(vs.currentScaleY * 100) / 100;
     vs.rimLight.skew.x = vs.currentSkewX * 0.8;
     vs.shadow.skew.x = vs.currentSkewX * 1.2;
   }
