@@ -41,9 +41,7 @@ export function createPortalVisual(toZoneName: string, toZoneColor?: string): PI
     anim.anchor.set(0.5);
     // Scale to PORTAL_SIZE, mirror horizontally to face right
     anim.scale.set(-(PORTAL_SIZE / 256), PORTAL_SIZE / 256);
-    anim.animationSpeed = 0.4;
-    anim.loop = true;
-    anim.play();
+    anim.gotoAndStop(0); // ping-pong driven by updatePortalAnimation
     // Clip to fixed size so content zoom in frames doesn't change apparent size
     const mask1 = new PIXI.Graphics();
     mask1.beginFill(0xffffff);
@@ -70,9 +68,7 @@ export function createPortalVisual(toZoneName: string, toZoneColor?: string): PI
       anim.name = "anim";
       anim.anchor.set(0.5);
       anim.scale.set(-(PORTAL_SIZE / 256), PORTAL_SIZE / 256);
-      anim.animationSpeed = 0.4;
-      anim.loop = true;
-      anim.play();
+      anim.gotoAndStop(0); // ping-pong driven by updatePortalAnimation
       const mask2 = new PIXI.Graphics();
       mask2.beginFill(0xffffff);
       mask2.drawRect(-PORTAL_SIZE / 2, -PORTAL_SIZE / 2, PORTAL_SIZE, PORTAL_SIZE);
@@ -114,9 +110,31 @@ export function createPortalVisual(toZoneName: string, toZoneColor?: string): PI
   return container;
 }
 
-// AnimatedSprite handles its own playback — no per-tick update needed.
-// Kept for API compatibility.
-export function updatePortalAnimation(_container: PIXI.Container, _tick: number): void {}
+// Ping-pong the portal animation so it plays forward then reverses smoothly.
+const _portalPingPong = new WeakMap<PIXI.Container, { dir: number; frame: number }>();
+
+export function updatePortalAnimation(container: PIXI.Container, _tick: number): void {
+  const anim = container.getChildByName("anim") as PIXI.AnimatedSprite | null;
+  if (!anim || !anim.totalFrames) return;
+
+  if (!_portalPingPong.has(container)) {
+    _portalPingPong.set(container, { dir: 1, frame: 0 });
+  }
+  const state = _portalPingPong.get(container)!;
+
+  // Advance fractional frame counter at ~0.4 frames per tick
+  state.frame += 0.4 * state.dir;
+
+  if (state.frame >= anim.totalFrames - 1) {
+    state.frame = anim.totalFrames - 1;
+    state.dir = -1;
+  } else if (state.frame <= 0) {
+    state.frame = 0;
+    state.dir = 1;
+  }
+
+  anim.gotoAndStop(Math.round(state.frame));
+}
 
 // ══════════════════════════════════════════════════════════════════════════
 // STATION VISUALS
