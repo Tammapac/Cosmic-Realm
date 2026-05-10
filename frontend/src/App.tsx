@@ -40,7 +40,6 @@ let _riftConfirmSetState: ((id: string | null) => void) | null = null;
 
 function GameCanvas() {
   const threeCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const fxCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const pixiContainerRef = useRef<HTMLDivElement | null>(null);
   const labelOverlayRef = useRef<HTMLDivElement | null>(null);
@@ -55,7 +54,7 @@ function GameCanvas() {
       // PixiJS renderer
       const container = pixiContainerRef.current;
       if (!container) return;
-      initPixiRenderer(container, labelOverlayRef.current ?? undefined, fxCanvasRef.current ?? undefined);
+      initPixiRenderer(container, labelOverlayRef.current ?? undefined);
 
       // Initialize Three.js 3D layer on its own canvas
       const threeCanvas = threeCanvasRef.current;
@@ -292,15 +291,10 @@ function GameCanvas() {
           className="absolute inset-0 w-full h-full"
           style={{ pointerEvents: "none", zIndex: 1 }}
         />
-        <canvas
-          ref={fxCanvasRef}
-          className="absolute inset-0 w-full h-full"
-          style={{ pointerEvents: "none", zIndex: 2 }}
-        />
         <div
           ref={labelOverlayRef}
           className="absolute inset-0 w-full h-full"
-          style={{ pointerEvents: "none", zIndex: 3, overflow: "hidden" }}
+          style={{ pointerEvents: "none", zIndex: 2, overflow: "hidden" }}
         />
       </>
     ) : (

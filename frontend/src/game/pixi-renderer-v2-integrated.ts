@@ -62,9 +62,6 @@ let floaterLayer: PIXI.Container;
 let uiLayer: PIXI.Container;
 
 let effectManager: EffectManager | null = null;
-let fxRenderer: PIXI.Renderer | null = null;
-let fxStage: PIXI.Container | null = null;
-let fxWorldLayer: PIXI.Container | null = null;
 let lastRenderTime = 0;
 let prevEnemyIds = new Set<string>();
 let prevEnemyData = new Map<string, { x: number; y: number; size: number; type: string }>();
@@ -1205,7 +1202,7 @@ let fps = 0;
 
 let _labelOverlay: HTMLDivElement | null = null;
 
-export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLDivElement, fxCanvas?: HTMLCanvasElement): void {
+export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLDivElement): void {
   if (labelOverlay) _labelOverlay = labelOverlay;
   preloadShipSprites();
   preloadRotationSprites();
@@ -1255,35 +1252,6 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
   worldLayer.addChild(floaterLayer);
 
   effectManager = new EffectManager(effectsBehindLayer, effectsFrontLayer);
-
-  // ── FX overlay renderer (effects drawn above Three.js ships) ─────────────
-  if (fxCanvas) {
-    const res = Math.min(window.devicePixelRatio || 1, 2);
-    fxRenderer = new PIXI.Renderer({
-      view: fxCanvas,
-      width: window.innerWidth,
-      height: window.innerHeight,
-      backgroundAlpha: 0,
-      antialias: false,
-      resolution: res,
-      autoDensity: true,
-    });
-    // Transparent clear so Three.js ships show through
-    const gl = fxRenderer.gl;
-    gl.clearColor(0, 0, 0, 0);
-
-    fxStage = new PIXI.Container();
-    fxWorldLayer = new PIXI.Container();
-    fxStage.addChild(fxWorldLayer);
-
-    // Move effects + floaters into fx overlay
-    worldLayer.removeChild(effectsBehindLayer);
-    worldLayer.removeChild(effectsFrontLayer);
-    worldLayer.removeChild(floaterLayer);
-    fxWorldLayer.addChild(effectsBehindLayer);
-    fxWorldLayer.addChild(effectsFrontLayer);
-    fxWorldLayer.addChild(floaterLayer);
-  }
 
   lastRenderTime = performance.now();
 
@@ -1353,12 +1321,6 @@ export function destroyPixiRenderer(): void {
   }
   texCache.clear();
 
-  if (fxRenderer) {
-    fxRenderer.destroy(true);
-    fxRenderer = null;
-    fxStage = null;
-    fxWorldLayer = null;
-  }
   app.destroy(true, { children: true });
   app = null;
 }
@@ -1421,11 +1383,6 @@ export function pixiRender(): void {
   worldLayer.position.set(w / 2 + sx, h / 2 + sy);
   worldLayer.scale.set(zoom);
   worldLayer.pivot.set(cam.x, cam.y);
-  if (fxWorldLayer && fxRenderer && fxStage) {
-    fxWorldLayer.position.set(w / 2 + sx, h / 2 + sy);
-    fxWorldLayer.scale.set(zoom);
-    fxWorldLayer.pivot.set(cam.x, cam.y);
-  }
 
   // ── Trail particles ───────────────────────────────���─────────────────
   // syncTrailParticles disabled — EffectManager handles all trails
@@ -1577,12 +1534,6 @@ export function pixiRender(): void {
       `Others: ${otherPlayerSprites.size}  NPCs: ${npcSprites.size}  Textures: ${texCache.size}`,
       `VFX: ${vfxTotal} (spark:${vfxSparks} smoke:${vfxSmoke} trail:${vfxTrails})`,
     ].join("\n");
-  }
-  // Render fx overlay (effects above Three.js ships)
-  if (fxRenderer && fxStage) {
-    const gl = fxRenderer.gl;
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    fxRenderer.render(fxStage);
   }
 
 }
