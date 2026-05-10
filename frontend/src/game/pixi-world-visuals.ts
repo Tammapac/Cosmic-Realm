@@ -42,8 +42,7 @@ export function createPortalVisual(toZoneName: string, toZoneColor?: string): PI
     // Scale to PORTAL_SIZE, mirror horizontally to face right
     anim.scale.set(PORTAL_SIZE / 512, PORTAL_SIZE / 512);
     anim.animationSpeed = 0.4;
-    anim.loop = false;
-    anim.onComplete = () => { anim.animationSpeed *= -1; anim.play(); };
+    anim.loop = true;
     anim.play();
     // Clip to fixed size so content zoom in frames doesn't change apparent size
     const mask1 = new PIXI.Graphics();
@@ -72,9 +71,8 @@ export function createPortalVisual(toZoneName: string, toZoneColor?: string): PI
       anim.anchor.set(0.5);
       anim.scale.set(PORTAL_SIZE / 512, PORTAL_SIZE / 512);
       anim.animationSpeed = 0.4;
-      anim.loop = false;
-      anim.onComplete = () => { anim.animationSpeed *= -1; anim.play(); };
-      anim.play();
+      anim.loop = true;
+        anim.play();
       const mask2 = new PIXI.Graphics();
       mask2.beginFill(0xffffff);
       mask2.drawRect(-PORTAL_SIZE / 2, -PORTAL_SIZE / 2, PORTAL_SIZE, PORTAL_SIZE);
