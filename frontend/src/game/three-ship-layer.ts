@@ -83,6 +83,11 @@ export function init3DLayer(canvas: HTMLCanvasElement, sharedGl?: WebGLRendering
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setClearColor(0x000000, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  // Don't clear color — we composite on top of Pixi's background
+  renderer.autoClear = false;
+  renderer.autoClearColor = false;
+  renderer.autoClearDepth = true;   // still clear depth so ships sort correctly
+  renderer.autoClearStencil = false;
 
   scene = new THREE.Scene();
 
@@ -507,6 +512,7 @@ export function render3DLayer(): void {
   const now = performance.now() / 1000;
   if (lastFrameTime > 0) frameDt = Math.min(0.1, now - lastFrameTime);
   lastFrameTime = now;
+  renderer.clearDepth(); // clear depth only, preserve Pixi color buffer
   renderer.render(scene, camera);
   renderFrameCount++;
   if (renderFrameCount === 1 || renderFrameCount % 300 === 0) {
