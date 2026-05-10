@@ -62,6 +62,8 @@ let floaterLayer: PIXI.Container;
 let uiLayer: PIXI.Container;
 
 let effectManager: EffectManager | null = null;
+let fxApp: PIXI.Application | null = null;
+let fxWorldLayer: PIXI.Container | null = null;
 let lastRenderTime = 0;
 let prevEnemyIds = new Set<string>();
 let prevEnemyData = new Map<string, { x: number; y: number; size: number; type: string }>();
@@ -1202,7 +1204,7 @@ let fps = 0;
 
 let _labelOverlay: HTMLDivElement | null = null;
 
-export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLDivElement): void {
+export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLDivElement, fxCanvas?: HTMLCanvasElement): void {
   if (labelOverlay) _labelOverlay = labelOverlay;
   preloadShipSprites();
   preloadRotationSprites();
@@ -1252,6 +1254,30 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
   worldLayer.addChild(floaterLayer);
 
   effectManager = new EffectManager(effectsBehindLayer, effectsFrontLayer);
+
+  // ── FX overlay app (renders effects on top of Three.js ships) ────────────
+  if (fxCanvas) {
+    fxApp = new PIXI.Application({
+      view: fxCanvas,
+      width: fxCanvas.clientWidth || window.innerWidth,
+      height: fxCanvas.clientHeight || window.innerHeight,
+      backgroundAlpha: 0,
+      antialias: false,
+      resolution: Math.min(window.devicePixelRatio || 1, 2),
+      autoDensity: true,
+    });
+    fxApp.renderer.resize(fxCanvas.clientWidth || window.innerWidth, fxCanvas.clientHeight || window.innerHeight);
+    fxWorldLayer = new PIXI.Container();
+    fxApp.stage.addChild(fxWorldLayer);
+    // Move effects + floaters out of main worldLayer into fx overlay
+    worldLayer.removeChild(effectsBehindLayer);
+    worldLayer.removeChild(effectsFrontLayer);
+    worldLayer.removeChild(floaterLayer);
+    fxWorldLayer.addChild(effectsBehindLayer);
+    fxWorldLayer.addChild(effectsFrontLayer);
+    fxWorldLayer.addChild(floaterLayer);
+  }
+
   lastRenderTime = performance.now();
 
   app.stage.addChild(bgLayer);
@@ -1320,6 +1346,11 @@ export function destroyPixiRenderer(): void {
   }
   texCache.clear();
 
+  if (fxApp) {
+    fxApp.destroy(true, { children: true });
+    fxApp = null;
+    fxWorldLayer = null;
+  }
   app.destroy(true, { children: true });
   app = null;
 }
@@ -1382,6 +1413,12 @@ export function pixiRender(): void {
   worldLayer.position.set(w / 2 + sx, h / 2 + sy);
   worldLayer.scale.set(zoom);
   worldLayer.pivot.set(cam.x, cam.y);
+  // Keep fx overlay in sync with main world camera
+  if (fxWorldLayer) {
+    fxWorldLayer.position.set(w / 2 + sx, h / 2 + sy);
+    fxWorldLayer.scale.set(zoom);
+    fxWorldLayer.pivot.set(cam.x, cam.y);
+  }
 
   // ── Trail particles ───────────────────────────────���─────────────────
   // syncTrailParticles disabled — EffectManager handles all trails
