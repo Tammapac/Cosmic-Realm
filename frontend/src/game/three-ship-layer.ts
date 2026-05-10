@@ -65,7 +65,7 @@ let frameDt = 1 / 60;
 // Nebula background
 let nebulaBackground: ThreeNebulaBackground | null = null;
 
-export function init3DLayer(canvas: HTMLCanvasElement): void {
+export function init3DLayer(canvas: HTMLCanvasElement, sharedGl?: WebGLRenderingContext | WebGL2RenderingContext): void {
   if (initialized) return;
   initialized = true;
 
@@ -74,8 +74,9 @@ export function init3DLayer(canvas: HTMLCanvasElement): void {
 
   renderer = new THREE.WebGLRenderer({
     canvas,
+    context: sharedGl as WebGLRenderingContext | undefined,
     alpha: true,
-    antialias: true,
+    antialias: sharedGl ? false : true,
     premultipliedAlpha: false,
   });
   renderer.setSize(w, h);
@@ -511,6 +512,10 @@ export function render3DLayer(): void {
   if (renderFrameCount === 1 || renderFrameCount % 300 === 0) {
     console.log("[Three.js] Frame:", renderFrameCount, "ships:", activeShips.size, "models:", loadedModels.size, "loading:", loadingModels.size);
   }
+}
+
+export function resetGLState(): void {
+  if (renderer) renderer.resetState();
 }
 
 export function destroy3DLayer(): void {

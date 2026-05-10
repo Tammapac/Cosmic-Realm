@@ -12,7 +12,7 @@
 import * as PIXI from "pixi.js";
 import { initHardpointEditor, toggleHardpointEditor, isEditorActive } from "./debug/HardpointEditor";
 import { DIRECTIONS_32 } from "./debug/hardpointTypes";
-import { has3DModel, is3DReady, updateShip3D, setCameraZoom, beginFrame, markActive, endFrame, render3DLayer, getShipHardpointPositions, updateEngineGlow, updateNebulaBackground, removeShip3D, preload3DModels, getLoadingProgress } from "./three-ship-layer";
+import { has3DModel, is3DReady, updateShip3D, setCameraZoom, beginFrame, markActive, endFrame, render3DLayer, resetGLState, getShipHardpointPositions, updateEngineGlow, updateNebulaBackground, removeShip3D, preload3DModels, getLoadingProgress } from "./three-ship-layer";
 import { state } from "./store";
 import { effectiveStats } from "./loop";
 import {
@@ -58,6 +58,7 @@ let projectileBehindLayer: PIXI.Container;
 let effectsLayer: PIXI.Container;
 let effectsBehindLayer: PIXI.Container;
 let effectsFrontLayer: PIXI.Container;
+let fxOverlayLayer: PIXI.Container;
 let floaterLayer: PIXI.Container;
 let uiLayer: PIXI.Container;
 
@@ -1216,7 +1217,9 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
     antialias: false,
     resolution: Math.min(window.devicePixelRatio || 1, 2),
     autoDensity: true,
+    autoStart: false,
   });
+  app.ticker.stop(); // We drive rendering manually for correct layer order
 
   const view = app.view as HTMLCanvasElement;
   container.appendChild(view);
@@ -1250,6 +1253,17 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
   worldLayer.addChild(effectsLayer);
   worldLayer.addChild(effectsFrontLayer);
   worldLayer.addChild(floaterLayer);
+
+  // fxOverlayLayer: rendered in a second Pixi pass AFTER Three.js ships
+  fxOverlayLayer = new PIXI.Container();
+  // Move effects into the overlay so they draw above Three.js
+  worldLayer.removeChild(effectsBehindLayer);
+  worldLayer.removeChild(effectsFrontLayer);
+  worldLayer.removeChild(floaterLayer);
+  fxOverlayLayer.addChild(effectsBehindLayer);
+  fxOverlayLayer.addChild(effectsFrontLayer);
+  fxOverlayLayer.addChild(floaterLayer);
+  // fxOverlayLayer is NOT added to app.stage — rendered manually after Three.js
 
   effectManager = new EffectManager(effectsBehindLayer, effectsFrontLayer);
 
@@ -1438,10 +1452,26 @@ export function pixiRender(): void {
   // ── Screen-space overlays ───────────────────────────────────────────
   renderOverlays(w, h);
 
-  // ── 3D Layer cleanup + render ──
+  // ── Render pass 1: Pixi background + world (no fx overlay yet) ──
+  app.renderer.render(app.stage);
+  // Reset Pixi GL state before handing off to Three.js
+  (app.renderer as PIXI.Renderer).state.reset();
+  (app.renderer as PIXI.Renderer).texture.reset();
+
+  // ── 3D Layer cleanup + render (ships drawn on top of Pixi bg) ──
   endFrame();
   // updateNebulaBackground(cam.x, cam.y); — disabled, using sprite layers
   render3DLayer();
+  // Reset Three.js GL state before handing back to Pixi
+  resetGLState();
+
+  // ── Render pass 2: fx overlay (explosions/effects above ships) ──
+  if (fxOverlayLayer) {
+    fxOverlayLayer.position.set(w / 2 + sx, h / 2 + sy);
+    fxOverlayLayer.scale.set(zoom);
+    fxOverlayLayer.pivot.set(cam.x, cam.y);
+    app.renderer.render(fxOverlayLayer, { clear: false });
+  }
 
   // ── Effect Manager Update ──────────────────────────────────────────
   if (effectManager) {

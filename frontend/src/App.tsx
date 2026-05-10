@@ -56,11 +56,16 @@ function GameCanvas() {
       if (!container) return;
       initPixiRenderer(container, labelOverlayRef.current ?? undefined);
 
-      // Initialize Three.js 3D layer on its own canvas
+      // Initialize Three.js sharing Pixi's WebGL context
+      const pixiCanvas = pixiContainerRef.current?.querySelector("canvas") as HTMLCanvasElement | null;
+      const sharedGl = pixiCanvas ? (pixiCanvas.getContext("webgl2") || pixiCanvas.getContext("webgl")) as WebGLRenderingContext | null : null;
       const threeCanvas = threeCanvasRef.current;
-      if (threeCanvas) {
+      if (threeCanvas && sharedGl) {
+        init3DLayer(threeCanvas, sharedGl);
+        console.log("[App] Three.js initialized with shared Pixi GL context");
+      } else if (threeCanvas) {
         init3DLayer(threeCanvas);
-        console.log("[App] Three.js canvas initialized");
+        console.log("[App] Three.js initialized with own canvas (fallback)");
       }
 
       let raf = 0;
@@ -288,8 +293,7 @@ function GameCanvas() {
         />
         <canvas
           ref={threeCanvasRef}
-          className="absolute inset-0 w-full h-full"
-          style={{ pointerEvents: "none", zIndex: 1 }}
+          style={{ display: "none" }}
         />
         <div
           ref={labelOverlayRef}
