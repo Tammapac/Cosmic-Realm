@@ -39,8 +39,10 @@ export function createPortalVisual(toZoneName: string, toZoneColor?: string): PI
     const anim = new PIXI.AnimatedSprite(frames);
     anim.name = "anim";
     anim.anchor.set(0.5);
-    anim.width = PORTAL_SIZE;
-    anim.height = PORTAL_SIZE;
+    // Use scale instead of width/height to avoid per-frame zoom fighting
+    const nativeSize = frames[0].width || 256;
+    const s = PORTAL_SIZE / nativeSize;
+    anim.scale.set(-s, s); // negative x = mirror to face right
     anim.animationSpeed = 0.4;
     anim.loop = true;
     anim.play();
@@ -62,8 +64,9 @@ export function createPortalVisual(toZoneName: string, toZoneColor?: string): PI
       const anim = new PIXI.AnimatedSprite(frames);
       anim.name = "anim";
       anim.anchor.set(0.5);
-      anim.width = PORTAL_SIZE;
-      anim.height = PORTAL_SIZE;
+      const nativeSize = frames[0].width || 256;
+      const s = PORTAL_SIZE / nativeSize;
+      anim.scale.set(-s, s); // negative x = mirror to face right
       anim.animationSpeed = 0.4;
       anim.loop = true;
       anim.play();
