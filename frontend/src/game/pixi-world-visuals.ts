@@ -8,82 +8,68 @@ import * as PIXI from "pixi.js";
 // PORTAL / GATE VISUALS
 // ══════════════════════════════════════════════════════════════════════════
 
+// ── Portal spritesheet atlas (loaded once, reused for all portals) ────────
+let _portalSheet: PIXI.Spritesheet | null = null;
+let _portalSheetLoading = false;
+
+function _loadPortalSheet(): void {
+  if (_portalSheet || _portalSheetLoading) return;
+  _portalSheetLoading = true;
+  (PIXI.Assets as any).load("/sprites/portal_spritesheet.json")
+    .then((sheet: PIXI.Spritesheet) => {
+      _portalSheet = sheet;
+      _portalSheetLoading = false;
+    })
+    .catch((e: any) => {
+      console.warn("[portal] Failed to load spritesheet:", e);
+      _portalSheetLoading = false;
+    });
+}
+
+// Pre-warm the load as soon as this module is imported
+_loadPortalSheet();
+
 export function createPortalVisual(toZoneName: string, toZoneColor?: string): PIXI.Container {
   const container = new PIXI.Container();
-  const color = toZoneColor ? PIXI.utils.string2hex(toZoneColor) : 0x4ee2ff;
+  const PORTAL_SIZE = 128;
 
-  // Outer gate frame: 8-segment ring with struts
-  const frame = new PIXI.Graphics();
-  frame.name = "frame";
-  const gateR = 24;
-  const strutLen = 8;
-
-  // Support struts (8 spokes)
-  frame.lineStyle(2, color, 0.5);
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2;
-    const x1 = Math.cos(a) * (gateR - 2);
-    const y1 = Math.sin(a) * (gateR - 2);
-    const x2 = Math.cos(a) * (gateR + strutLen);
-    const y2 = Math.sin(a) * (gateR + strutLen);
-    frame.moveTo(x1, y1);
-    frame.lineTo(x2, y2);
+  if (_portalSheet) {
+    // ── Animated sprite portal ──────────────────────────────────────────
+    const frames = _portalSheet.animations["portal"];
+    const anim = new PIXI.AnimatedSprite(frames);
+    anim.name = "anim";
+    anim.anchor.set(0.5);
+    anim.width = PORTAL_SIZE;
+    anim.height = PORTAL_SIZE;
+    anim.animationSpeed = 0.4;
+    anim.loop = true;
+    anim.play();
+    container.addChild(anim);
+  } else {
+    // ── Fallback: simple placeholder circle while sheet loads ───────────
+    const ph = new PIXI.Graphics();
+    ph.name = "placeholder";
+    ph.lineStyle(2, 0x4ee2ff, 0.8);
+    ph.drawCircle(0, 0, PORTAL_SIZE / 2);
+    container.addChild(ph);
+    // Retry next frame until sheet is ready
+    const retry = setInterval(() => {
+      if (!_portalSheet) return;
+      clearInterval(retry);
+      const old = container.getChildByName("placeholder");
+      if (old) { container.removeChild(old); old.destroy(); }
+      const frames = _portalSheet.animations["portal"];
+      const anim = new PIXI.AnimatedSprite(frames);
+      anim.name = "anim";
+      anim.anchor.set(0.5);
+      anim.width = PORTAL_SIZE;
+      anim.height = PORTAL_SIZE;
+      anim.animationSpeed = 0.4;
+      anim.loop = true;
+      anim.play();
+      container.addChildAt(anim, 0);
+    }, 200);
   }
-
-  // Outer segmented ring
-  frame.lineStyle(2.5, color, 0.7);
-  for (let i = 0; i < 8; i++) {
-    const a1 = (i / 8) * Math.PI * 2 + 0.08;
-    const a2 = ((i + 1) / 8) * Math.PI * 2 - 0.08;
-    frame.arc(0, 0, gateR + strutLen, a1, a2);
-    frame.moveTo(0, 0);
-  }
-
-  // Inner structural ring
-  frame.lineStyle(1.5, color, 0.4);
-  frame.drawCircle(0, 0, gateR);
-
-  container.addChild(frame);
-
-  // Light nodes at strut endpoints
-  const nodes = new PIXI.Graphics();
-  nodes.name = "nodes";
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2;
-    const nx = Math.cos(a) * (gateR + strutLen);
-    const ny = Math.sin(a) * (gateR + strutLen);
-    nodes.beginFill(0xffffff, 0.9);
-    nodes.drawCircle(nx, ny, 2);
-    nodes.endFill();
-    nodes.beginFill(color, 0.4);
-    nodes.drawCircle(nx, ny, 4);
-    nodes.endFill();
-  }
-  container.addChild(nodes);
-
-  // Inner energy field (animated separately)
-  const energy = new PIXI.Graphics();
-  energy.name = "energy";
-  energy.beginFill(color, 0.08);
-  energy.drawCircle(0, 0, gateR - 2);
-  energy.endFill();
-  container.addChild(energy);
-
-  // Energy swirl rings (inner animated elements)
-  const swirl = new PIXI.Graphics();
-  swirl.name = "swirl";
-  container.addChild(swirl);
-
-  // Core glow
-  const core = new PIXI.Graphics();
-  core.name = "core";
-  core.beginFill(0xffffff, 0.12);
-  core.drawCircle(0, 0, 8);
-  core.endFill();
-  core.beginFill(color, 0.06);
-  core.drawCircle(0, 0, 14);
-  core.endFill();
-  container.addChild(core);
 
   // Destination label
   const label = new PIXI.Text(toZoneName, {
@@ -96,7 +82,7 @@ export function createPortalVisual(toZoneName: string, toZoneColor?: string): PI
   });
   label.resolution = 2;
   label.anchor.set(0.5, 0);
-  label.position.set(0, gateR + strutLen + 8);
+  label.position.set(0, PORTAL_SIZE / 2 + 6);
   container.addChild(label);
 
   // "GATE" sub-label
@@ -110,55 +96,15 @@ export function createPortalVisual(toZoneName: string, toZoneColor?: string): PI
   });
   gateLabel.resolution = 2;
   gateLabel.anchor.set(0.5, 1);
-  gateLabel.position.set(0, -(gateR + strutLen + 6));
+  gateLabel.position.set(0, -(PORTAL_SIZE / 2 + 6));
   container.addChild(gateLabel);
 
   return container;
 }
 
-export function updatePortalAnimation(container: PIXI.Container, tick: number): void {
-  const color = 0x4ee2ff;
-
-  // Animate swirl
-  const swirl = container.getChildByName("swirl") as PIXI.Graphics;
-  if (swirl) {
-    swirl.clear();
-    // Rotating inner arcs
-    for (let i = 0; i < 3; i++) {
-      const a = tick * 1.5 + (i / 3) * Math.PI * 2;
-      const pulse = 0.3 + 0.3 * Math.sin(tick * 4 + i * 2);
-      swirl.lineStyle(1.5, color, pulse);
-      swirl.arc(0, 0, 12 + i * 4, a, a + 1.2);
-    }
-    // Counter-rotating arcs
-    for (let i = 0; i < 2; i++) {
-      const a = -tick * 2 + (i / 2) * Math.PI * 2;
-      const pulse = 0.2 + 0.2 * Math.sin(tick * 3 + i);
-      swirl.lineStyle(1, color, pulse);
-      swirl.arc(0, 0, 8 + i * 6, a, a + 0.8);
-    }
-  }
-
-  // Animate energy field
-  const energy = container.getChildByName("energy") as PIXI.Graphics;
-  if (energy) {
-    energy.alpha = 0.6 + 0.3 * Math.sin(tick * 2);
-  }
-
-  // Animate core
-  const core = container.getChildByName("core") as PIXI.Graphics;
-  if (core) {
-    const pulse = 0.8 + 0.2 * Math.sin(tick * 5);
-    core.scale.set(pulse);
-    core.alpha = 0.7 + 0.3 * Math.sin(tick * 3);
-  }
-
-  // Animate nodes (blinking)
-  const nodes = container.getChildByName("nodes") as PIXI.Graphics;
-  if (nodes) {
-    nodes.alpha = 0.6 + 0.4 * Math.sin(tick * 4);
-  }
-}
+// AnimatedSprite handles its own playback — no per-tick update needed.
+// Kept for API compatibility.
+export function updatePortalAnimation(_container: PIXI.Container, _tick: number): void {}
 
 // ══════════════════════════════════════════════════════════════════════════
 // STATION VISUALS
