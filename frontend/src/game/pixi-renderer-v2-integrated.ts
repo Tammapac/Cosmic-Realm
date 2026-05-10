@@ -1544,7 +1544,7 @@ export function pixiRender(): void {
 // Internal zone IDs (alpha, nebula, ...) are mapped to labels in _bgZoneLabel().
 const BG_ZONE_CFG: Record<string, { fill: string; wx: number; wy: number; pSpeed: number; pSize: number; glow: string }> = {
   // Earth faction (1-x)
-  "1-1": { fill: "#060e2e", wx:  1200, wy:  -900, pSpeed: 0.22, pSize: 220, glow: "#3366cc" },
+  "1-1": { fill: "#060e2e", wx:  1200, wy:  -900, pSpeed: 0.22, pSize: 2048, glow: "#3366cc" },
   "1-2": { fill: "#120832", wx: -1100, wy:  -800, pSpeed: 0.20, pSize: 230, glow: "#7722aa" },
   "1-3": { fill: "#200610", wx:  1000, wy:   900, pSpeed: 0.22, pSize: 210, glow: "#cc2233" },
   "1-4": { fill: "#030e12", wx: -1200, wy:   700, pSpeed: 0.18, pSize: 240, glow: "#006655" },
