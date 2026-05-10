@@ -44,13 +44,6 @@ export function createPortalVisual(toZoneName: string, toZoneColor?: string): PI
     anim.animationSpeed = 0.15;
     anim.loop = true;
     anim.play();
-    // Clip to fixed size so content zoom in frames doesn't change apparent size
-    const mask1 = new PIXI.Graphics();
-    mask1.beginFill(0xffffff);
-    mask1.drawRect(-PORTAL_SIZE / 2, -PORTAL_SIZE / 2, PORTAL_SIZE, PORTAL_SIZE);
-    mask1.endFill();
-    container.addChild(mask1);
-    anim.mask = mask1;
     container.addChild(anim);
   } else {
     // ── Fallback: simple placeholder circle while sheet loads ───────────
@@ -72,14 +65,8 @@ export function createPortalVisual(toZoneName: string, toZoneColor?: string): PI
       anim.scale.set(PORTAL_SIZE / 512, PORTAL_SIZE / 512);
       anim.animationSpeed = 0.15;
       anim.loop = true;
-        anim.play();
-      const mask2 = new PIXI.Graphics();
-      mask2.beginFill(0xffffff);
-      mask2.drawRect(-PORTAL_SIZE / 2, -PORTAL_SIZE / 2, PORTAL_SIZE, PORTAL_SIZE);
-      mask2.endFill();
-      container.addChildAt(mask2, 0);
-      anim.mask = mask2;
-      container.addChildAt(anim, 1);
+      anim.play();
+      container.addChildAt(anim, 0);
     }, 200);
   }
 
