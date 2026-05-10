@@ -39,13 +39,18 @@ export function createPortalVisual(toZoneName: string, toZoneColor?: string): PI
     const anim = new PIXI.AnimatedSprite(frames);
     anim.name = "anim";
     anim.anchor.set(0.5);
-    // Use scale instead of width/height to avoid per-frame zoom fighting
-    const nativeSize = frames[0].width || 256;
-    const s = PORTAL_SIZE / nativeSize;
-    anim.scale.set(-s, s); // negative x = mirror to face right
+    // Scale to PORTAL_SIZE, mirror horizontally to face right
+    anim.scale.set(-(PORTAL_SIZE / 256), PORTAL_SIZE / 256);
     anim.animationSpeed = 0.4;
     anim.loop = true;
     anim.play();
+    // Clip to fixed size so content zoom in frames doesn't change apparent size
+    const mask1 = new PIXI.Graphics();
+    mask1.beginFill(0xffffff);
+    mask1.drawRect(-PORTAL_SIZE / 2, -PORTAL_SIZE / 2, PORTAL_SIZE, PORTAL_SIZE);
+    mask1.endFill();
+    container.addChild(mask1);
+    anim.mask = mask1;
     container.addChild(anim);
   } else {
     // ── Fallback: simple placeholder circle while sheet loads ───────────
@@ -64,13 +69,17 @@ export function createPortalVisual(toZoneName: string, toZoneColor?: string): PI
       const anim = new PIXI.AnimatedSprite(frames);
       anim.name = "anim";
       anim.anchor.set(0.5);
-      const nativeSize = frames[0].width || 256;
-      const s = PORTAL_SIZE / nativeSize;
-      anim.scale.set(-s, s); // negative x = mirror to face right
+      anim.scale.set(-(PORTAL_SIZE / 256), PORTAL_SIZE / 256);
       anim.animationSpeed = 0.4;
       anim.loop = true;
       anim.play();
-      container.addChildAt(anim, 0);
+      const mask2 = new PIXI.Graphics();
+      mask2.beginFill(0xffffff);
+      mask2.drawRect(-PORTAL_SIZE / 2, -PORTAL_SIZE / 2, PORTAL_SIZE, PORTAL_SIZE);
+      mask2.endFill();
+      container.addChildAt(mask2, 0);
+      anim.mask = mask2;
+      container.addChildAt(anim, 1);
     }, 200);
   }
 
