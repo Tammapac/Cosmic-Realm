@@ -31,7 +31,7 @@ _loadPortalSheet();
 
 export function createPortalVisual(toZoneName: string, toZoneColor?: string): PIXI.Container {
   const container = new PIXI.Container();
-  const PORTAL_SIZE = 128;
+  const PORTAL_SIZE = 512;
 
   if (_portalSheet) {
     // ── Animated sprite portal ──────────────────────────────────────────
