@@ -1622,7 +1622,7 @@ function _bgBuildSprites(
   bgLayer.addChildAt(_bgPlanetSprite, 0);
 
   _bgNebulaTopTile = new PIXI.TilingSprite(pTex, w, h);
-  _bgNebulaTopTile.alpha = 0.45;
+  _bgNebulaTopTile.alpha = 0.12;
   _bgNebulaTopTile.tileScale.set(1 / res);
   _bgNebulaTopTile.filters = [new PIXI.ColorMatrixFilter()];
   bgLayer.addChildAt(_bgNebulaTopTile, 0);
@@ -1719,7 +1719,7 @@ function renderBackground(w: number, h: number, cam: { x: number; y: number }): 
     _bgNebulaTopTile.width = w; _bgNebulaTopTile.height = h;
     _bgNebulaTopTile.tilePosition.x = Math.round((-cam.x * 0.08 + _bgDriftX * 0.2) * res) / res;
     _bgNebulaTopTile.tilePosition.y = Math.round((-cam.y * 0.08 + _bgDriftY * 0.2) * res) / res;
-    _bgNebulaTopTile.alpha = 0.45 + 0.40 * Math.sin(t * 0.4 + 1.0);
+    _bgNebulaTopTile.alpha = 0.08 + 0.12 * Math.sin(t * 0.4 + 1.0);
     const ntf = _bgNebulaTopTile.filters?.[0] as PIXI.ColorMatrixFilter;
     if (ntf) ntf.brightness(0.8 + 0.5 * Math.sin(t * 0.4 + 1.0), false);
   }
