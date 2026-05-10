@@ -1605,6 +1605,7 @@ function _bgBuildSprites(
   zone: string, w: number, h: number,
   sTex: PIXI.Texture, nTex: PIXI.Texture,
   pTex: PIXI.Texture, dTex: PIXI.Texture,
+  res: number,
 ): void {
   const label = _bgZoneIdToLabel[zone] ?? zone;
   const cfg = BG_ZONE_CFG[label] ?? BG_ZONE_CFG["1-1"];
@@ -1619,13 +1620,16 @@ function _bgBuildSprites(
 
   _bgNebulaTopTile = new PIXI.TilingSprite(pTex, w, h);
   _bgNebulaTopTile.alpha = 0.45;
+  _bgNebulaTopTile.tileScale.set(1 / res);
   bgLayer.addChildAt(_bgNebulaTopTile, 0);
 
   _bgNebulaTile = new PIXI.TilingSprite(nTex, w, h);
   _bgNebulaTile.alpha = 0.52;
+  _bgNebulaTile.tileScale.set(1 / res);
   bgLayer.addChildAt(_bgNebulaTile, 0);
 
   _bgStarsTile = new PIXI.TilingSprite(sTex, w, h);
+  _bgStarsTile.tileScale.set(1 / res);
   bgLayer.addChildAt(_bgStarsTile, 0);
 
   // Fill goes at index 0 last — pushes everything else up by 1
@@ -1648,7 +1652,7 @@ function _bgBuildLayers(zone: string, w: number, h: number): void {
   const urls = [
     `${base}/Layer1_${label}.png`,
     `${base}/Layer2_${label}.png`,
-    `${base}/Layer3_${label}.png`,
+    `${base}/Layer3_${label}.png?v=2`,
     `${base}/Layer4_${label}.png`,
   ];
 
@@ -1665,7 +1669,7 @@ function _bgBuildLayers(zone: string, w: number, h: number): void {
   )).then(([sTex, nTex, pTex, dTex]) => {
     console.log("[bg] all loaded, building sprites for zone", zone);
     if (_bgZoneActive !== zone) { console.log("[bg] zone changed, skipping"); return; }
-    _bgBuildSprites(zone, w, h, sTex as PIXI.Texture, nTex as PIXI.Texture, pTex as PIXI.Texture, dTex as PIXI.Texture);
+    _bgBuildSprites(zone, w, h, sTex as PIXI.Texture, nTex as PIXI.Texture, pTex as PIXI.Texture, dTex as PIXI.Texture, app ? app.renderer.resolution : 1);
   });
 }
 function renderBackground(w: number, h: number, cam: { x: number; y: number }): void {
@@ -1684,21 +1688,21 @@ function renderBackground(w: number, h: number, cam: { x: number; y: number }): 
 
   if (_bgStarsTile) {
     _bgStarsTile.width = w; _bgStarsTile.height = h;
-    _bgStarsTile.tilePosition.x = Math.round(-cam.x * 0.05);
-    _bgStarsTile.tilePosition.y = Math.round(-cam.y * 0.05);
+    _bgStarsTile.tilePosition.x = Math.round(-cam.x * 0.05 * (app ? app.renderer.resolution : 1)) / (app ? app.renderer.resolution : 1);
+    _bgStarsTile.tilePosition.y = Math.round(-cam.y * 0.05 * (app ? app.renderer.resolution : 1)) / (app ? app.renderer.resolution : 1);
     _bgStarsTile.alpha = 0.2 + 0.8 * Math.sin(t * 10.0);
   }
 
   if (_bgNebulaTile) {
     _bgNebulaTile.width = w; _bgNebulaTile.height = h;
-    _bgNebulaTile.tilePosition.x = Math.round(-cam.x * 0.12);
-    _bgNebulaTile.tilePosition.y = Math.round(-cam.y * 0.12);
+    _bgNebulaTile.tilePosition.x = Math.round(-cam.x * 0.12 * (app ? app.renderer.resolution : 1)) / (app ? app.renderer.resolution : 1);
+    _bgNebulaTile.tilePosition.y = Math.round(-cam.y * 0.12 * (app ? app.renderer.resolution : 1)) / (app ? app.renderer.resolution : 1);
   }
 
   if (_bgNebulaTopTile) {
     _bgNebulaTopTile.width = w; _bgNebulaTopTile.height = h;
-    _bgNebulaTopTile.tilePosition.x = Math.round(-cam.x * 0.08);
-    _bgNebulaTopTile.tilePosition.y = Math.round(-cam.y * 0.08);
+    _bgNebulaTopTile.tilePosition.x = Math.round(-cam.x * 0.08 * (app ? app.renderer.resolution : 1)) / (app ? app.renderer.resolution : 1);
+    _bgNebulaTopTile.tilePosition.y = Math.round(-cam.y * 0.08 * (app ? app.renderer.resolution : 1)) / (app ? app.renderer.resolution : 1);
     _bgNebulaTopTile.alpha = 0.45 + 0.40 * Math.sin(t * 0.4 + 1.0);
   }
 
