@@ -295,7 +295,7 @@ function GameCanvas() {
         <canvas
           ref={fxCanvasRef}
           className="absolute inset-0 w-full h-full"
-          style={{ pointerEvents: "none", zIndex: 2 }}
+          style={{ pointerEvents: "none", zIndex: 2, background: "transparent" }}
         />
         <div
           ref={labelOverlayRef}

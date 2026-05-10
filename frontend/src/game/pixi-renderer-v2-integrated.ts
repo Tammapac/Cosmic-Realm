@@ -1262,6 +1262,8 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
       width: fxCanvas.clientWidth || window.innerWidth,
       height: fxCanvas.clientHeight || window.innerHeight,
       backgroundAlpha: 0,
+      clearBeforeRender: true,
+      transparent: true,
       antialias: false,
       resolution: Math.min(window.devicePixelRatio || 1, 2),
       autoDensity: true,
