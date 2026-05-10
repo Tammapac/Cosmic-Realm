@@ -40,7 +40,7 @@ export function createPortalVisual(toZoneName: string, toZoneColor?: string): PI
     anim.name = "anim";
     anim.anchor.set(0.5);
     // Scale to PORTAL_SIZE, mirror horizontally to face right
-    anim.scale.set(-(PORTAL_SIZE / 256), PORTAL_SIZE / 256);
+    anim.scale.set(PORTAL_SIZE / 512, PORTAL_SIZE / 512);
     anim.animationSpeed = 0.4;
     anim.loop = false;
     anim.onComplete = () => { anim.animationSpeed *= -1; anim.play(); };
@@ -70,7 +70,7 @@ export function createPortalVisual(toZoneName: string, toZoneColor?: string): PI
       const anim = new PIXI.AnimatedSprite(frames);
       anim.name = "anim";
       anim.anchor.set(0.5);
-      anim.scale.set(-(PORTAL_SIZE / 256), PORTAL_SIZE / 256);
+      anim.scale.set(PORTAL_SIZE / 512, PORTAL_SIZE / 512);
       anim.animationSpeed = 0.4;
       anim.loop = false;
       anim.onComplete = () => { anim.animationSpeed *= -1; anim.play(); };
