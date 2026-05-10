@@ -1592,6 +1592,8 @@ let _bgNebulaTile: PIXI.TilingSprite | null = null;
 let _bgPlanetSprite: PIXI.Sprite | null = null;
 let _bgNebulaTopTile: PIXI.TilingSprite | null = null;
 let _bgDustTile: PIXI.TilingSprite | null = null;
+let _bgDriftX = 0;
+let _bgDriftY = 0;
 
 function _bgDestroyLayers(): void {
   for (const s of [_bgFillSprite, _bgStarsTile, _bgNebulaTile, _bgPlanetSprite, _bgNebulaTopTile, _bgDustTile]) {
@@ -1599,6 +1601,7 @@ function _bgDestroyLayers(): void {
   }
   _bgFillSprite = null; _bgStarsTile = null; _bgNebulaTile = null;
   _bgPlanetSprite = null; _bgNebulaTopTile = null; _bgDustTile = null;
+  _bgDriftX = 0; _bgDriftY = 0;
 }
 
 function _bgBuildSprites(
@@ -1621,15 +1624,18 @@ function _bgBuildSprites(
   _bgNebulaTopTile = new PIXI.TilingSprite(pTex, w, h);
   _bgNebulaTopTile.alpha = 0.45;
   _bgNebulaTopTile.tileScale.set(1 / res);
+  _bgNebulaTopTile.filters = [new PIXI.ColorMatrixFilter()];
   bgLayer.addChildAt(_bgNebulaTopTile, 0);
 
   _bgNebulaTile = new PIXI.TilingSprite(nTex, w, h);
   _bgNebulaTile.alpha = 0.52;
   _bgNebulaTile.tileScale.set(1 / res);
+  _bgNebulaTile.filters = [new PIXI.ColorMatrixFilter()];
   bgLayer.addChildAt(_bgNebulaTile, 0);
 
   _bgStarsTile = new PIXI.TilingSprite(sTex, w, h);
   _bgStarsTile.tileScale.set(1 / res);
+  _bgStarsTile.filters = [new PIXI.ColorMatrixFilter()];
   bgLayer.addChildAt(_bgStarsTile, 0);
 
   // Fill goes at index 0 last — pushes everything else up by 1
@@ -1684,42 +1690,47 @@ function renderBackground(w: number, h: number, cam: { x: number; y: number }): 
 
   bgGraphics.clear();
 
+  // Advance slow autonomous drift (makes layers feel alive even when camera is still)
+  _bgDriftX += 0.08;
+  _bgDriftY += 0.04;
+
+  const res = app ? app.renderer.resolution : 1;
+
   if (_bgFillSprite) { _bgFillSprite.width = w; _bgFillSprite.height = h; }
 
   if (_bgStarsTile) {
     _bgStarsTile.width = w; _bgStarsTile.height = h;
-    _bgStarsTile.tilePosition.x = Math.round(-cam.x * 0.05 * (app ? app.renderer.resolution : 1)) / (app ? app.renderer.resolution : 1);
-    _bgStarsTile.tilePosition.y = Math.round(-cam.y * 0.05 * (app ? app.renderer.resolution : 1)) / (app ? app.renderer.resolution : 1);
+    _bgStarsTile.tilePosition.x = Math.round((-cam.x * 0.05 + _bgDriftX * 0.5) * res) / res;
+    _bgStarsTile.tilePosition.y = Math.round((-cam.y * 0.05 + _bgDriftY * 0.5) * res) / res;
     _bgStarsTile.alpha = 0.2 + 0.8 * Math.sin(t * 10.0);
+    const sf = _bgStarsTile.filters?.[0] as PIXI.ColorMatrixFilter;
+    if (sf) sf.brightness(1.0 + 0.6 * Math.sin(t * 10.0), false);
   }
 
   if (_bgNebulaTile) {
     _bgNebulaTile.width = w; _bgNebulaTile.height = h;
-    _bgNebulaTile.tilePosition.x = Math.round(-cam.x * 0.12 * (app ? app.renderer.resolution : 1)) / (app ? app.renderer.resolution : 1);
-    _bgNebulaTile.tilePosition.y = Math.round(-cam.y * 0.12 * (app ? app.renderer.resolution : 1)) / (app ? app.renderer.resolution : 1);
+    _bgNebulaTile.tilePosition.x = Math.round((-cam.x * 0.12 + _bgDriftX * 0.3) * res) / res;
+    _bgNebulaTile.tilePosition.y = Math.round((-cam.y * 0.12 + _bgDriftY * 0.3) * res) / res;
+    const nf = _bgNebulaTile.filters?.[0] as PIXI.ColorMatrixFilter;
+    if (nf) nf.brightness(0.9 + 0.3 * Math.sin(t * 0.6 + 0.5), false);
   }
 
   if (_bgNebulaTopTile) {
     _bgNebulaTopTile.width = w; _bgNebulaTopTile.height = h;
-    _bgNebulaTopTile.tilePosition.x = Math.round(-cam.x * 0.08 * (app ? app.renderer.resolution : 1)) / (app ? app.renderer.resolution : 1);
-    _bgNebulaTopTile.tilePosition.y = Math.round(-cam.y * 0.08 * (app ? app.renderer.resolution : 1)) / (app ? app.renderer.resolution : 1);
+    _bgNebulaTopTile.tilePosition.x = Math.round((-cam.x * 0.08 + _bgDriftX * 0.2) * res) / res;
+    _bgNebulaTopTile.tilePosition.y = Math.round((-cam.y * 0.08 + _bgDriftY * 0.2) * res) / res;
     _bgNebulaTopTile.alpha = 0.45 + 0.40 * Math.sin(t * 0.4 + 1.0);
+    const ntf = _bgNebulaTopTile.filters?.[0] as PIXI.ColorMatrixFilter;
+    if (ntf) ntf.brightness(0.8 + 0.5 * Math.sin(t * 0.4 + 1.0), false);
   }
 
   if (_bgPlanetSprite) {
-    const px = w / 2 + (cfg.wx - cam.x) * cfg.pSpeed;
-    const py = h / 2 + (cfg.wy - cam.y) * cfg.pSpeed;
-    _bgPlanetSprite.x = px; _bgPlanetSprite.y = py;
-    _bgPlanetSprite.width = cfg.pSize; _bgPlanetSprite.height = cfg.pSize;
-    _bgPlanetSprite.alpha = 0.72 + 0.06 * Math.sin(t * 0.3);
-    // Glow halo
-    const [gr, gg, gb] = _bgHexRgb(cfg.glow);
-    bgGraphics.beginFill((gr << 16) | (gg << 8) | gb, 0.22);
-    bgGraphics.drawCircle(px, py, cfg.pSize * 0.9);
-    bgGraphics.endFill();
-    bgGraphics.beginFill((gr << 16) | (gg << 8) | gb, 0.10);
-    bgGraphics.drawCircle(px, py, cfg.pSize * 1.5);
-    bgGraphics.endFill();
+    // Planet: fully opaque, static center of screen, no camera tracking
+    _bgPlanetSprite.x = Math.round(w / 2);
+    _bgPlanetSprite.y = Math.round(h / 2);
+    _bgPlanetSprite.width = cfg.pSize;
+    _bgPlanetSprite.height = cfg.pSize;
+    _bgPlanetSprite.alpha = 1.0;
   }
 
   if (enhancedStars.length === 0) initStars(w, h);
