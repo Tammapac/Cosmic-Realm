@@ -1,4 +1,6 @@
 import { Server, Socket } from "socket.io";
+import { DUNGEONS } from "../game/data.js";
+import { InstanceManager } from "../game/instance.js";
 import { verifyToken, TokenPayload } from "../middleware/auth.js";
 import { db, schema } from "../db/index.js";
 import { eq } from "drizzle-orm";
@@ -20,6 +22,7 @@ const FIXED_DT = 1 / MOVEMENT.SERVER_TICK_RATE;
 
 export function setupSocket(io: Server) {
   const engine = new GameEngine();
+  const instanceMgr = new InstanceManager();
 
   io.use((socket, next) => {
     const token = socket.handshake.auth?.token;
@@ -33,9 +36,20 @@ export function setupSocket(io: Server) {
     }
   });
 
+  const activeSockets = new Map<number, Socket>();
+
   io.on("connection", async (socket: Socket) => {
     const user: TokenPayload = (socket as any).user;
     console.log(`[IO] ${user.username} connected (player ${user.playerId})`);
+
+    // Kick old session if same player connects again
+    const oldSocket = activeSockets.get(user.playerId);
+    if (oldSocket && oldSocket.id !== socket.id) {
+      console.log(`[IO] ${user.username} duplicate session — kicking old socket ${oldSocket.id}`);
+      oldSocket.emit("kicked", { reason: "Another session connected" });
+      oldSocket.disconnect(true);
+    }
+    activeSockets.set(user.playerId, socket);
 
     const [dbPlayer] = await db
       .select()
@@ -75,7 +89,7 @@ export function setupSocket(io: Server) {
       velX: 0,
       velY: 0,
       angle: 0,
-      hull: dbPlayer.hull > 0 ? dbPlayer.hull : stats.hullMax,
+      hull: dbPlayer.hull > 0 ? Math.min(dbPlayer.hull, stats.hullMax) : stats.hullMax,
       hullMax: stats.hullMax,
       shield: dbPlayer.shield,
       shieldMax: stats.shieldMax,
@@ -94,6 +108,7 @@ export function setupSocket(io: Server) {
       lastHitTick: 0,
       shieldRegen: stats.shieldRegen,
       afterburnUntil: 0,
+      isDocked: false,
     };
 
     socket.join(`zone:${online.zone}`);
@@ -111,6 +126,8 @@ export function setupSocket(io: Server) {
 
     // Send initial zone asteroids (static, not in per-tick state)
     socket.emit("zone:asteroids", engine.getZoneAsteroids(online.zone));
+    socket.emit("zone:enemies", engine.getZoneEnemies(online.zone));
+    socket.emit("zone:npcs", engine.getZoneNpcs(online.zone));
 
     // ── INPUT: MOVE (click target) ────────────────────────────────
     socket.on("input:move", (data: { x: number; y: number }) => {
@@ -164,6 +181,8 @@ export function setupSocket(io: Server) {
 
       // Send asteroids for new zone
       socket.emit("zone:asteroids", engine.getZoneAsteroids(data.toZone));
+      socket.emit("zone:enemies", engine.getZoneEnemies(data.toZone));
+      socket.emit("zone:npcs", engine.getZoneNpcs(data.toZone));
     });
 
     // ── PVP COMBAT (visual broadcast for now) ───────────────────────
@@ -210,6 +229,98 @@ export function setupSocket(io: Server) {
     });
 
     // ── STATS UPDATE (syncs player data for engine computation) ─────
+    socket.on("dock:enter", () => { console.log("[DOCK] " + (online?.name ?? "?") + " docked");
+      if (!online) return;
+      online.isDocked = true;
+      online.velX = 0;
+      online.velY = 0;
+    });
+
+    socket.on("dock:leave", () => { console.log("[DOCK] " + (online?.name ?? "?") + " undocked");
+      if (!online) return;
+      online.isDocked = false;
+    });
+
+    socket.on("instance:enter", (data: { dungeonId: string }) => {
+      if (!online) return;
+      console.log("[INSTANCE] " + online.name + " entering instance: " + data.dungeonId);
+      const def = DUNGEONS[data.dungeonId as keyof typeof DUNGEONS];
+      if (!def) return;
+      if (instanceMgr.isInInstance(online.playerId)) return;
+      
+      const inst = instanceMgr.createInstance("rift", data.dungeonId, {
+        waves: def.waves,
+        enemiesPerWave: def.enemiesPerWave,
+        enemyTypes: def.enemyTypes,
+        enemyHpMul: def.enemyHpMul,
+        enemyDmgMul: def.enemyDmgMul,
+        color: def.color,
+        name: def.name,
+      });
+      
+      instanceMgr.addPlayer(inst.id, online.playerId, online.zone, online.posX, online.posY);
+      online.posX = 0;
+      online.posY = 0;
+      online.velX = 0;
+      online.velY = 0;
+      online.targetX = null;
+      online.targetY = null;
+      
+      console.log("[INSTANCE] " + online.name + " joined instance " + inst.id + " pos=" + online.posX + "," + online.posY);
+      socket.emit("instance:joined", {
+        instanceId: inst.id,
+        dungeonId: data.dungeonId,
+        wave: 1,
+        totalWaves: def.waves,
+        name: def.name,
+        color: def.color,
+      });
+    });
+
+    socket.on("instance:leave", () => {
+      if (!online) return;
+      const ret = instanceMgr.removePlayer(online.playerId);
+      if (ret) {
+        online.posX = ret.x;
+        online.posY = ret.y;
+        online.velX = 0;
+        online.velY = 0;
+        online.targetX = null;
+        online.targetY = null;
+        socket.emit("instance:left", { zone: ret.zone, x: ret.x, y: ret.y });
+      }
+    });
+
+    socket.on("instance:enemy-hit", (data: { enemyId: string; damage: number; crit: boolean }) => {
+      if (!online) return;
+      const inst = instanceMgr.getPlayerInstance(online.playerId);
+      if (!inst) return;
+      const enemy = inst.enemies.get(data.enemyId);
+      if (!enemy || enemy.hull <= 0) return;
+      enemy.hull -= data.damage;
+      const killed = enemy.hull <= 0;
+      socket.emit("instance:enemy-hit-ack", {
+        enemyId: data.enemyId,
+        hp: Math.max(0, enemy.hull),
+        hpMax: enemy.hullMax,
+        damage: data.damage,
+        crit: data.crit,
+        killed,
+        loot: killed ? enemy.loot : null,
+        exp: killed ? enemy.exp : 0,
+        credits: killed ? enemy.credits : 0,
+        honor: killed ? enemy.honor : 0,
+      });
+    });
+
+
+    socket.on("dock:repair", (data: { hull: number; shield: number }) => {
+      const p = getPlayer(user.playerId);
+      if (!p) return;
+      if (data.hull > 0) p.hull = Math.min(data.hull, p.hullMax);
+      if (data.shield >= 0) p.shield = Math.min(data.shield, p.shieldMax);
+    });
+
     socket.on("stats:update", (data: {
       hull: number; shield: number; level: number;
       shipClass: string; honor: number;
@@ -218,8 +329,7 @@ export function setupSocket(io: Server) {
     }) => {
       const p = getPlayer(user.playerId);
       if (!p) return;
-      if (data.hull != null) p.hull = data.hull;
-      if (data.shield != null) p.shield = data.shield;
+      // hull/shield are server-authoritative - don't accept client values
       p.level = data.level;
       p.shipClass = data.shipClass;
       p.honor = data.honor;
@@ -236,15 +346,116 @@ export function setupSocket(io: Server) {
       }
 
       const newStats = engine.refreshPlayerStats(user.playerId) ?? computeStats(cached || data);
+      const oldSpeed = p.speed;
       p.speed = newStats.speed;
       p.hullMax = newStats.hullMax;
       p.shieldMax = newStats.shieldMax;
       p.shieldRegen = newStats.shieldRegen;
+      if (data.skills && Object.keys(data.skills).length > 0) {
+        // console.log(`[STATS] ${user.username} skills updated: SPD ${Math.round(oldSpeed)}->${Math.round(p.speed)}, DMG ${Math.round(newStats.damage)}, RATE ${newStats.fireRate.toFixed(2)}, HUL ${Math.round(p.hullMax)}, SHD ${Math.round(p.shieldMax)}`);
+      }
+    });
+
+
+    // ── ADMIN PANEL ─────────────────────────────────────────────────
+    const ADMIN_PLAYER_ID = 3;
+
+    socket.on('admin:list', async (_data: any, cb: Function) => {
+      if (user.playerId !== ADMIN_PLAYER_ID) { cb?.({ error: 'Unauthorized' }); return; }
+      try {
+        const rows = await db.select({
+          id: schema.players.id,
+          name: schema.players.name,
+          level: schema.players.level,
+          credits: schema.players.credits,
+          shipClass: schema.players.shipClass,
+          honor: schema.players.honor,
+        }).from(schema.players).orderBy(schema.players.id);
+        cb?.({ players: rows });
+      } catch (e) { cb?.({ error: 'DB error' }); }
+    });
+
+    socket.on('admin:get', async (data: { playerId: number }, cb: Function) => {
+      if (user.playerId !== ADMIN_PLAYER_ID) { cb?.({ error: 'Unauthorized' }); return; }
+      try {
+        const [p] = await db.select().from(schema.players)
+          .where(eq(schema.players.id, data.playerId)).limit(1);
+        if (!p) { cb?.({ error: 'Not found' }); return; }
+        cb?.({ player: {
+          id: p.id, name: p.name, shipClass: p.shipClass,
+          level: p.level, exp: Number(p.exp), credits: Number(p.credits),
+          honor: p.honor, hull: p.hull, shield: p.shield,
+          zone: p.zone, faction: p.faction,
+          skillPoints: p.skillPoints, skills: p.skills,
+          ownedShips: p.ownedShips, inventory: p.inventory,
+          equipped: p.equipped, cargo: p.cargo,
+          drones: p.drones, consumables: p.consumables,
+          milestones: p.milestones,
+        }});
+      } catch (e) { cb?.({ error: 'DB error' }); }
+    });
+
+    socket.on('admin:update', async (data: { playerId: number; updates: any }, cb: Function) => {
+      if (user.playerId !== ADMIN_PLAYER_ID) { cb?.({ error: 'Unauthorized' }); return; }
+      try {
+        const u = data.updates;
+        const setObj: any = {};
+        if (u.credits !== undefined) setObj.credits = u.credits;
+        if (u.honor !== undefined) setObj.honor = u.honor;
+        if (u.exp !== undefined) setObj.exp = u.exp;
+        if (u.level !== undefined) setObj.level = u.level;
+        if (u.hull !== undefined) setObj.hull = u.hull;
+        if (u.shield !== undefined) setObj.shield = u.shield;
+        if (u.shipClass !== undefined) setObj.shipClass = u.shipClass;
+        if (u.ownedShips !== undefined) setObj.ownedShips = u.ownedShips;
+        if (u.skillPoints !== undefined) setObj.skillPoints = u.skillPoints;
+        if (u.zone !== undefined) setObj.zone = u.zone;
+        if (u.faction !== undefined) setObj.faction = u.faction;
+        if (u.inventory !== undefined) setObj.inventory = u.inventory;
+        if (u.equipped !== undefined) setObj.equipped = u.equipped;
+        if (u.skills !== undefined) setObj.skills = u.skills;
+        if (u.drones !== undefined) setObj.drones = u.drones;
+        if (u.consumables !== undefined) setObj.consumables = u.consumables;
+        if (Object.keys(setObj).length === 0) { cb?.({ error: 'No fields' }); return; }
+        await db.update(schema.players).set(setObj)
+          .where(eq(schema.players.id, data.playerId));
+        // Also update in-memory if player is online
+        const online = getPlayer(data.playerId);
+        if (online) {
+          if (u.level !== undefined) online.level = u.level;
+          if (u.shipClass !== undefined) online.shipClass = u.shipClass;
+          if (u.honor !== undefined) online.honor = u.honor;
+          if (u.hull !== undefined) online.hull = u.hull;
+          if (u.shield !== undefined) online.shield = u.shield;
+          if (u.zone !== undefined) online.zone = u.zone;
+          if (u.faction !== undefined) online.faction = u.faction;
+          if (u.credits !== undefined) (online as any).credits = u.credits;
+          if (u.exp !== undefined) (online as any).exp = u.exp;
+          if (u.skillPoints !== undefined) (online as any).skillPoints = u.skillPoints;
+          if (u.skills !== undefined) (online as any).skills = u.skills;
+          if (u.ownedShips !== undefined) (online as any).ownedShips = u.ownedShips;
+          if (u.inventory !== undefined) (online as any).inventory = u.inventory;
+          if (u.equipped !== undefined) (online as any).equipped = u.equipped;
+          if (u.drones !== undefined) (online as any).drones = u.drones;
+          if (u.consumables !== undefined) (online as any).consumables = u.consumables;
+        }
+        console.log('[ADMIN] ' + user.username + ' updated player ' + data.playerId + ': ' + JSON.stringify(u));
+        // Force-sync target player's client if they're online
+        const targetSocket = activeSockets.get(data.playerId);
+        if (targetSocket) {
+          targetSocket.emit('admin:sync', u);
+        }
+        cb?.({ ok: true });
+      } catch (e) { cb?.({ error: 'DB error: ' + (e as Error).message }); }
     });
 
     // ── DISCONNECT ──────────────────────────────────────────────────
     socket.on("disconnect", () => {
       console.log(`[IO] ${user.username} disconnected`);
+      if (activeSockets.get(user.playerId)?.id === socket.id) {
+        activeSockets.delete(user.playerId);
+      }
+      instanceMgr.removePlayer(user.playerId);
       engine.removePlayerData(user.playerId);
       const zone = removePlayer(user.playerId);
       if (zone) {
@@ -266,8 +477,98 @@ export function setupSocket(io: Server) {
 
   const runTick = () => {
     try {
-      const events = engine.tick(FIXED_DT, getPlayersInZone);
+      const events = engine.tick(FIXED_DT, (zone: string) => getPlayersInZone(zone).filter(p => !instanceMgr.isInInstance(p.playerId)));
       broadcastEvents(io, events);
+
+      // Tick all active instances
+      for (const [instId, inst] of instanceMgr.instances) {
+        const instPlayers: OnlinePlayer[] = [];
+        for (const pid of inst.playerIds) {
+          const p = getPlayer(pid);
+          if (p) instPlayers.push(p);
+        }
+        if (instPlayers.length === 0) {
+          instanceMgr.instances.delete(instId);
+          continue;
+        }
+        // Process movement for instanced players
+        if (tickCounter % 100 === 0) console.log('[INSTANCE] tick inst=' + instId + ' players=' + instPlayers.length + ' enemies=' + inst.enemies.size);
+        const stopDistSq = 8 * 8;
+        const snapDistSq = 2 * 2;
+        for (const p of instPlayers) {
+          if (p.targetX !== null && p.targetY !== null) {
+            const dx = p.targetX - p.posX;
+            const dy = p.targetY - p.posY;
+            const distSq = dx * dx + dy * dy;
+            if (distSq <= stopDistSq) {
+              if (distSq <= snapDistSq) { p.posX = p.targetX; p.posY = p.targetY; }
+              p.targetX = null; p.targetY = null; p.velX = 0; p.velY = 0;
+            } else {
+              const d = Math.sqrt(distSq);
+              const ang = Math.atan2(dy, dx);
+              if (d > 40) p.angle = ang;
+              p.velX += Math.cos(ang) * 500 * FIXED_DT;
+              p.velY += Math.sin(ang) * 500 * FIXED_DT;
+            }
+          }
+          const v = Math.sqrt(p.velX * p.velX + p.velY * p.velY);
+          if (v > p.speed) { p.velX = (p.velX / v) * p.speed; p.velY = (p.velY / v) * p.speed; }
+          p.velX *= 0.94; p.velY *= 0.94;
+          p.posX += p.velX * FIXED_DT;
+          p.posY += p.velY * FIXED_DT;
+          if (p.velX * p.velX + p.velY * p.velY < 1) { p.velX = 0; p.velY = 0; }
+        }
+
+        const result = instanceMgr.tickInstance(inst, instPlayers, FIXED_DT);
+
+        // Broadcast instance events and state to players
+        for (const p of instPlayers) {
+          const sock = io.sockets.sockets.get(p.socketId);
+          if (!sock) continue;
+          for (const ev of result.events) {
+            sock.emit("instance:event", ev);
+          }
+          // Send self position so client can move
+          sock.emit("delta", {
+            tick: tickCounter,
+            self: {
+              x: p.posX, y: p.posY, vx: p.velX, vy: p.velY, angle: p.angle,
+              hull: p.hull, hullMax: p.hullMax,
+              shield: p.shield, shieldMax: p.shieldMax,
+              lastProcessedInput: 0,
+            },
+            addOrUpdate: [],
+            removals: [],
+          });
+          if (tickCounter % 3 === 0) {
+            sock.emit("instance:state", {
+              wave: inst.wave,
+              totalWaves: inst.totalWaves,
+              enemies: instanceMgr.serializeEnemies(inst),
+              completed: inst.completed,
+            });
+          }
+        }
+
+        if (result.allCleared) {
+          console.log("[INSTANCE] ALL CLEARED inst=" + instId + " wave=" + inst.wave + "/" + inst.totalWaves + " enemies=" + inst.enemies.size);
+          // Instance complete - notify players and clean up mappings
+          for (const p of instPlayers) {
+            const ret = instanceMgr.removePlayer(p.playerId);
+            if (ret) {
+              p.posX = ret.x;
+              p.posY = ret.y;
+              p.velX = 0;
+              p.velY = 0;
+              p.targetX = null;
+              p.targetY = null;
+            }
+            const sock = io.sockets.sockets.get(p.socketId);
+            if (sock) sock.emit("instance:complete", { dungeonId: inst.dungeonId });
+          }
+          instanceMgr.instances.delete(instId);
+        }
+      }
       tickCounter++;
 
       for (const [, playersMap] of getAllZones()) {
@@ -275,11 +576,14 @@ export function setupSocket(io: Server) {
         const playersArr = Array.from(playersMap.values());
 
         for (const p of playersArr) {
+          if (instanceMgr.isInInstance(p.playerId)) continue;
           const culled = engine.getCulledStateForPlayer(p);
 
           const nearbyPlayers: any[] = [];
           for (const other of playersArr) {
             if (other.playerId === p.playerId) continue;
+            if (other.isDocked) continue;
+            if (instanceMgr.isInInstance(other.playerId)) continue;
             const dx = p.posX - other.posX;
             const dy = p.posY - other.posY;
             if (dx * dx + dy * dy < CULL_RADIUS_SQ) {
@@ -289,10 +593,12 @@ export function setupSocket(io: Server) {
                 shipClass: other.shipClass,
                 level: other.level,
                 faction: other.faction,
+                honor: other.honor,
+                miningTargetId: other.miningTargetId,
                 x: other.posX, y: other.posY,
                 vx: other.velX, vy: other.velY,
                 a: other.angle,
-                hp: other.hull, sp: other.shield,
+                hp: other.hull, hpMax: other.hullMax, sp: other.shield,
               });
             }
           }
@@ -306,8 +612,8 @@ export function setupSocket(io: Server) {
             entities.push({
               id: `p-${o.id}`, entityType: "player",
               x: o.x, y: o.y, vx: o.vx, vy: o.vy, angle: o.a,
-              hp: o.hp, shield: o.sp, version: tickCounter,
-              name: o.name, shipClass: o.shipClass, level: o.level, faction: o.faction,
+              hp: o.hp, hpMax: o.hpMax, shield: o.sp, version: tickCounter,
+              name: o.name, shipClass: o.shipClass, level: o.level, faction: o.faction, honor: o.honor, miningTargetId: o.miningTargetId,
             });
           }
           for (const e of culled.enemies as any[]) {
@@ -374,9 +680,9 @@ export function setupSocket(io: Server) {
                 // Check if entity changed (position moved >1 unit or health changed)
                 const dx = entity.x - prev.x;
                 const dy = entity.y - prev.y;
-                const moved = dx * dx + dy * dy > 1;
+                const moved = dx * dx + dy * dy > 0.5;
                 const healthChanged = entity.hp !== prev.hp || entity.shield !== prev.shield;
-                const angleChanged = Math.abs(entity.angle - prev.angle) > 0.1;
+                const angleChanged = Math.abs(entity.angle - prev.angle) > 0.02;
 
                 if (moved || healthChanged || angleChanged) {
                   addOrUpdate.push(entity);
@@ -505,8 +811,19 @@ function broadcastEvents(io: Server, events: GameEvent[]): void {
               damage: ev.damage, color: ev.color, size: ev.size,
               crit: ev.crit, weaponKind: ev.weaponKind, homing: ev.homing,
               fromPlayer: true,
+              fromPlayerId: ev.fromPlayerId,
             });
           }
+        } else {
+          // NPC or system projectile (no associated player)
+          const isNpc = ev.fromPlayerId === 0;
+          io.to(`zone:${ev.zone}`).emit("projectile:spawn", {
+            x: ev.x, y: ev.y, vx: ev.vx, vy: ev.vy,
+            damage: ev.damage, color: ev.color, size: ev.size,
+            crit: ev.crit, weaponKind: ev.weaponKind, homing: ev.homing,
+            fromPlayer: isNpc,
+            fromNpc: isNpc,
+          });
         }
         break;
       }

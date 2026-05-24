@@ -13,9 +13,10 @@ export type ZoneId =
   | "alpha" | "nebula" | "crimson" | "void" | "forge"
   | "corona" | "fracture" | "abyss" | "marsdepth" | "maelstrom"
   | "venus1" | "venus2" | "venus3" | "venus4" | "venus5"
-  | "danger1" | "danger2" | "danger3" | "danger4" | "danger5";
+  | "danger1" | "danger2" | "danger3" | "danger4" | "danger5"
+  | "debug";
 
-export type EnemyType = "scout" | "raider" | "destroyer" | "voidling" | "dread";
+export type EnemyType = "scout" | "raider" | "destroyer" | "voidling" | "dread" | "sentinel" | "wraith" | "titan" | "overlord" | "interceptor" | "corvette" | "specter" | "phantom" | "juggernaut" | "leviathan";
 export type EnemyBehavior = "fast" | "chaser" | "tank" | "ranged";
 
 export type ShipClassId =
@@ -37,7 +38,7 @@ export type ShipClassId =
 
 export type ModuleSlot = "weapon" | "generator" | "module";
 export type ModuleRarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
-export type WeaponKind = "laser" | "rocket";
+export type WeaponKind = "laser" | "rocket" | "energy" | "plasma";
 
 export type ModuleStats = {
   damage?: number;
@@ -53,6 +54,7 @@ export type ModuleStats = {
   lootBonus?: number;
   aoeRadius?: number;
   ammoCapacity?: number;
+  miningBonus?: number;
 };
 
 export type RocketAmmoType = "x1" | "x2" | "x3" | "x4";
@@ -90,9 +92,11 @@ export type ResourceId =
   | "artifacts" | "spice" | "silk" | "ore" | "data-core"
   | "cloning-gel" | "medical-serum" | "fusion-lattice" | "star-map"
   | "blackglass" | "titanium" | "cryo-fluid" | "neural-chip"
-  | "dark-matter" | "plasma-coil" | "bio-crystal";
+  | "dark-matter" | "plasma-coil" | "bio-crystal"
+  | "copper" | "cobalt" | "crystal-shard" | "palladium"
+  | "helium-3" | "iridium" | "sulfur" | "obsidian" | "refined-alloy" | "crystal-matrix" | "fusion-core" | "void-steel" | "nano-compound" | "plasma-cell";
 
-export type StationKind = "hub" | "trade" | "mining" | "military" | "outpost";
+export type StationKind = "hub" | "trade" | "mining" | "military" | "outpost" | "factory";
 
 export type MissionKind =
   | "kill-any" | "kill-zone" | "mine" | "earn-credits" | "spend-credits" | "warp-zones" | "level-up";
@@ -141,91 +145,98 @@ export const SHIP_CLASSES: Record<ShipClassId, {
     id: "skimmer",
     hullMax: 100, shieldMax: 50, baseSpeed: 180, baseDamage: 8,
     cargoMax: 20, droneSlots: 1, price: 0,
-    slots: { weapon: 1, generator: 1, module: 1 },
+    slots: { weapon: 1, generator: 2, module: 1 },
   },
   wasp: {
     id: "wasp",
     hullMax: 90, shieldMax: 70, baseSpeed: 240, baseDamage: 10,
     cargoMax: 14, droneSlots: 1, price: 15000,
-    slots: { weapon: 2, generator: 1, module: 1 },
+    slots: { weapon: 2, generator: 2, module: 1 },
   },
   vanguard: {
     id: "vanguard",
     hullMax: 180, shieldMax: 120, baseSpeed: 160, baseDamage: 14,
     cargoMax: 40, droneSlots: 2, price: 50000,
-    slots: { weapon: 2, generator: 2, module: 2 },
+    slots: { weapon: 2, generator: 3, module: 2 },
   },
   reaver: {
     id: "reaver",
     hullMax: 160, shieldMax: 140, baseSpeed: 200, baseDamage: 18,
     cargoMax: 30, droneSlots: 2, price: 120000,
-    slots: { weapon: 3, generator: 2, module: 2 },
+    slots: { weapon: 3, generator: 3, module: 2 },
   },
   obsidian: {
+  // refined materials
+  "refined-alloy":  { id: "refined-alloy",  name: "Refined Alloy",    basePrice: 120,  glyph: "H", color: "#dd8844", description: "High-grade alloy." },
+  "crystal-matrix": { id: "crystal-matrix", name: "Crystal Matrix",   basePrice: 340,  glyph: "*", color: "#dd88ff", description: "Crystalline lattice." },
+  "fusion-core":    { id: "fusion-core",    name: "Fusion Core",      basePrice: 480,  glyph: "O", color: "#88ffaa", description: "Miniaturized fusion reactor." },
+  "void-steel":     { id: "void-steel",     name: "Void Steel",       basePrice: 850,  glyph: "D", color: "#8866cc", description: "Ultra-hard void-forged steel." },
+  "nano-compound":  { id: "nano-compound",  name: "Nano-Compound",    basePrice: 220,  glyph: "o", color: "#66ddcc", description: "Self-assembling nano-material." },
+  "plasma-cell":    { id: "plasma-cell",     name: "Plasma Cell",      basePrice: 180,  glyph: "#", color: "#ff8866", description: "Concentrated plasma fuel cell." },
     id: "obsidian",
     hullMax: 220, shieldMax: 180, baseSpeed: 200, baseDamage: 22,
     cargoMax: 30, droneSlots: 3, price: 65000,
-    slots: { weapon: 3, generator: 3, module: 3 },
+    slots: { weapon: 3, generator: 4, module: 3 },
   },
   marauder: {
     id: "marauder",
     hullMax: 280, shieldMax: 200, baseSpeed: 170, baseDamage: 26,
     cargoMax: 60, droneSlots: 4, price: 500000,
-    slots: { weapon: 4, generator: 3, module: 3 },
+    slots: { weapon: 4, generator: 4, module: 3 },
   },
   phalanx: {
     id: "phalanx",
     hullMax: 340, shieldMax: 280, baseSpeed: 150, baseDamage: 24,
     cargoMax: 70, droneSlots: 5, price: 900000,
-    slots: { weapon: 4, generator: 3, module: 4 },
+    slots: { weapon: 4, generator: 5, module: 4 },
   },
   titan: {
     id: "titan",
     hullMax: 400, shieldMax: 300, baseSpeed: 130, baseDamage: 30,
     cargoMax: 80, droneSlots: 5, price: 1500000,
-    slots: { weapon: 6, generator: 5, module: 5 },
+    slots: { weapon: 6, generator: 7, module: 5 },
   },
   leviathan: {
     id: "leviathan",
     hullMax: 600, shieldMax: 480, baseSpeed: 110, baseDamage: 42,
     cargoMax: 120, droneSlots: 6, price: 3200000,
-    slots: { weapon: 7, generator: 6, module: 7 },
+    slots: { weapon: 7, generator: 8, module: 7 },
   },
   specter: {
     id: "specter",
     hullMax: 220, shieldMax: 360, baseSpeed: 220, baseDamage: 34,
     cargoMax: 40, droneSlots: 6, price: 5000000,
-    slots: { weapon: 7, generator: 6, module: 7 },
+    slots: { weapon: 7, generator: 8, module: 7 },
   },
   colossus: {
     id: "colossus",
     hullMax: 800, shieldMax: 600, baseSpeed: 100, baseDamage: 50,
     cargoMax: 150, droneSlots: 7, price: 8000000,
-    slots: { weapon: 9, generator: 8, module: 8 },
+    slots: { weapon: 9, generator: 10, module: 8 },
   },
   harbinger: {
     id: "harbinger",
     hullMax: 500, shieldMax: 700, baseSpeed: 160, baseDamage: 44,
     cargoMax: 80, droneSlots: 7, price: 12000000,
-    slots: { weapon: 10, generator: 9, module: 9 },
+    slots: { weapon: 10, generator: 11, module: 9 },
   },
   eclipse: {
     id: "eclipse",
     hullMax: 1000, shieldMax: 800, baseSpeed: 90, baseDamage: 60,
     cargoMax: 200, droneSlots: 8, price: 20000000,
-    slots: { weapon: 12, generator: 10, module: 10 },
+    slots: { weapon: 12, generator: 12, module: 10 },
   },
   sovereign: {
     id: "sovereign",
     hullMax: 1400, shieldMax: 1100, baseSpeed: 80, baseDamage: 70,
     cargoMax: 250, droneSlots: 8, price: 35000000,
-    slots: { weapon: 14, generator: 12, module: 12 },
+    slots: { weapon: 14, generator: 14, module: 12 },
   },
   apex: {
     id: "apex",
     hullMax: 2000, shieldMax: 1600, baseSpeed: 70, baseDamage: 85,
     cargoMax: 300, droneSlots: 10, price: 60000000,
-    slots: { weapon: 16, generator: 16, module: 14 },
+    slots: { weapon: 16, generator: 18, module: 14 },
   },
 };
 
@@ -246,33 +257,93 @@ export const ENEMY_DEFS: Record<EnemyType, {
 }> = {
   scout: {
     type: "scout", behavior: "fast",
-    hullMax: 70, damage: 12, speed: 130, exp: 5, credits: 10, honor: 0,
+    hullMax: 70, damage: 12, speed: 130, exp: 8, credits: 18, honor: 0,
     color: "#ff8866", size: 10,
-    loot: { resourceId: "scrap", qty: 1 },
+    loot: { resourceId: "scrap", qty: 2 },
   },
   raider: {
     type: "raider", behavior: "chaser",
-    hullMax: 170, damage: 22, speed: 75, exp: 12, credits: 25, honor: 1,
+    hullMax: 170, damage: 22, speed: 75, exp: 18, credits: 45, honor: 1,
     color: "#ff4466", size: 13,
-    loot: { resourceId: "plasma", qty: 1 },
+    loot: { resourceId: "plasma", qty: 2 },
   },
   destroyer: {
     type: "destroyer", behavior: "tank",
-    hullMax: 500, damage: 40, speed: 50, exp: 30, credits: 75, honor: 3,
+    hullMax: 500, damage: 40, speed: 50, exp: 45, credits: 120, honor: 4,
     color: "#aa44ff", size: 18,
-    loot: { resourceId: "warp", qty: 1 },
+    loot: { resourceId: "warp", qty: 2 },
   },
   voidling: {
     type: "voidling", behavior: "ranged",
-    hullMax: 280, damage: 35, speed: 90, exp: 40, credits: 100, honor: 5,
+    hullMax: 280, damage: 35, speed: 90, exp: 55, credits: 160, honor: 6,
     color: "#44ffe2", size: 14,
-    loot: { resourceId: "void", qty: 1 },
+    loot: { resourceId: "void", qty: 2 },
   },
   dread: {
     type: "dread", behavior: "tank",
-    hullMax: 850, damage: 55, speed: 45, exp: 75, credits: 200, honor: 10,
+    hullMax: 850, damage: 55, speed: 85, exp: 100, credits: 350, honor: 12,
     color: "#ffaa22", size: 24,
-    loot: { resourceId: "dread", qty: 1 },
+    loot: { resourceId: "dread", qty: 3 },
+  },
+  sentinel: {
+    type: "sentinel", behavior: "ranged",
+    hullMax: 450, damage: 48, speed: 100, exp: 65, credits: 220, honor: 8,
+    color: "#22ccff", size: 16,
+    loot: { resourceId: "quantum", qty: 2 },
+  },
+  wraith: {
+    type: "wraith", behavior: "fast",
+    hullMax: 320, damage: 60, speed: 160, exp: 80, credits: 280, honor: 10,
+    color: "#cc44ff", size: 12,
+    loot: { resourceId: "void", qty: 3 },
+  },
+  titan: {
+    type: "titan", behavior: "tank",
+    hullMax: 1500, damage: 75, speed: 80, exp: 150, credits: 500, honor: 18,
+    color: "#ff2244", size: 30,
+    loot: { resourceId: "dread", qty: 4 },
+  },
+  overlord: {
+    type: "overlord", behavior: "tank",
+    hullMax: 2200, damage: 95, speed: 70, exp: 250, credits: 800, honor: 30,
+    color: "#ffffff", size: 35,
+    loot: { resourceId: "dread", qty: 6 },
+  },
+  interceptor: {
+    type: "interceptor", behavior: "fast",
+    hullMax: 130, damage: 28, speed: 150, exp: 22, credits: 60, honor: 2,
+    color: "#ff6a00", size: 11,
+    loot: { resourceId: "scrap", qty: 3 },
+  },
+  corvette: {
+    type: "corvette", behavior: "chaser",
+    hullMax: 340, damage: 38, speed: 95, exp: 50, credits: 140, honor: 5,
+    color: "#00cfff", size: 15,
+    loot: { resourceId: "iron", qty: 3 },
+  },
+  specter: {
+    type: "specter", behavior: "fast",
+    hullMax: 260, damage: 52, speed: 145, exp: 70, credits: 240, honor: 9,
+    color: "#a855f7", size: 12,
+    loot: { resourceId: "void", qty: 2 },
+  },
+  phantom: {
+    type: "phantom", behavior: "ranged",
+    hullMax: 380, damage: 65, speed: 110, exp: 90, credits: 300, honor: 11,
+    color: "#38bdf8", size: 14,
+    loot: { resourceId: "quantum", qty: 3 },
+  },
+  juggernaut: {
+    type: "juggernaut", behavior: "tank",
+    hullMax: 1800, damage: 85, speed: 55, exp: 180, credits: 620, honor: 22,
+    color: "#f97316", size: 32,
+    loot: { resourceId: "dread", qty: 5 },
+  },
+  leviathan: {
+    type: "leviathan", behavior: "tank",
+    hullMax: 3500, damage: 120, speed: 45, exp: 400, credits: 1200, honor: 45,
+    color: "#e11d48", size: 40,
+    loot: { resourceId: "dread", qty: 8 },
   },
 };
 
@@ -288,6 +359,10 @@ export const FACTION_ENEMY_MODS: Partial<Record<
     destroyer: { color: "#cc2200", hullMul: 1.12, damageMul: 1.18 },
     voidling:  { color: "#ff6600", speedMul: 1.20 },
     dread:     { color: "#ff8800", hullMul: 1.15, damageMul: 1.10 },
+    sentinel:  { color: "#ff6622", damageMul: 1.15, speedMul: 1.10 },
+    wraith:    { color: "#ff4400", speedMul: 1.25, damageMul: 1.10 },
+    titan:     { color: "#cc2200", hullMul: 1.20, damageMul: 1.15 },
+    overlord:  { color: "#ff0000", hullMul: 1.25, damageMul: 1.20 },
   },
   venus: {
     scout:     { color: "#ffee22", damageMul: 1.22 },
@@ -295,6 +370,10 @@ export const FACTION_ENEMY_MODS: Partial<Record<
     destroyer: { color: "#9911cc", hullMul: 1.12, damageMul: 1.12 },
     voidling:  { color: "#ff44cc", damageMul: 1.28, speedMul: 0.88 },
     dread:     { color: "#aa00ff", hullMul: 1.20, damageMul: 1.12 },
+    sentinel:  { color: "#8844ff", damageMul: 1.20, hullMul: 1.10 },
+    wraith:    { color: "#ff22cc", speedMul: 1.15, damageMul: 1.25 },
+    titan:     { color: "#9900cc", hullMul: 1.15, damageMul: 1.20 },
+    overlord:  { color: "#cc00ff", hullMul: 1.30, damageMul: 1.25 },
   },
 };
 
@@ -312,86 +391,90 @@ export const ZONES: Record<ZoneId, {
   // Earth Faction (1-1 to 1-5)
   alpha: {
     id: "alpha", name: "Alpha Sector", label: "1-1", faction: "earth",
-    enemyTier: 1, enemyTypes: ["scout", "raider"], unlockLevel: 1,
+    enemyTier: 1, enemyTypes: ["scout", "raider", "interceptor"], unlockLevel: 1,
   },
   nebula: {
     id: "nebula", name: "Veil Nebula", label: "1-2", faction: "earth",
-    enemyTier: 2, enemyTypes: ["raider", "destroyer"], unlockLevel: 8,
+    enemyTier: 2, enemyTypes: ["raider", "destroyer", "corvette"], unlockLevel: 8,
   },
   crimson: {
     id: "crimson", name: "Crimson Reach", label: "1-3", faction: "earth",
-    enemyTier: 3, enemyTypes: ["destroyer", "dread"], unlockLevel: 16,
+        enemyTier: 3, enemyTypes: ["destroyer", "sentinel", "specter"], unlockLevel: 16,
   },
   void: {
     id: "void", name: "The Void", label: "1-4", faction: "earth",
-    enemyTier: 4, enemyTypes: ["voidling", "dread"], unlockLevel: 24,
+        enemyTier: 4, enemyTypes: ["sentinel", "wraith", "phantom"], unlockLevel: 24,
   },
   forge: {
     id: "forge", name: "Iron Forge", label: "1-5", faction: "earth",
-    enemyTier: 5, enemyTypes: ["dread"], unlockLevel: 32,
+        enemyTier: 5, enemyTypes: ["wraith", "titan", "juggernaut"], unlockLevel: 32,
   },
   // Mars Faction (2-1 to 2-5)
   corona: {
     id: "corona", name: "Mars Frontier", label: "2-1", faction: "mars",
-    enemyTier: 1, enemyTypes: ["scout", "raider"], unlockLevel: 1,
+    enemyTier: 1, enemyTypes: ["scout", "raider", "interceptor"], unlockLevel: 1,
   },
   fracture: {
     id: "fracture", name: "Dust Expanse", label: "2-2", faction: "mars",
-    enemyTier: 2, enemyTypes: ["raider", "destroyer"], unlockLevel: 8,
+    enemyTier: 2, enemyTypes: ["raider", "destroyer", "corvette"], unlockLevel: 8,
   },
   abyss: {
     id: "abyss", name: "Red Reaches", label: "2-3", faction: "mars",
-    enemyTier: 3, enemyTypes: ["destroyer", "dread"], unlockLevel: 16,
+        enemyTier: 3, enemyTypes: ["destroyer", "sentinel", "specter"], unlockLevel: 16,
   },
   marsdepth: {
     id: "marsdepth", name: "Mars Deep Field", label: "2-4", faction: "mars",
-    enemyTier: 4, enemyTypes: ["voidling", "dread"], unlockLevel: 24,
+        enemyTier: 4, enemyTypes: ["sentinel", "wraith", "phantom"], unlockLevel: 24,
   },
   maelstrom: {
     id: "maelstrom", name: "The Maelstrom", label: "2-5", faction: "mars",
-    enemyTier: 5, enemyTypes: ["dread"], unlockLevel: 32,
+        enemyTier: 5, enemyTypes: ["wraith", "titan", "juggernaut"], unlockLevel: 32,
   },
   // Venus Faction (3-1 to 3-5)
   venus1: {
     id: "venus1", name: "Venus Cloud Gate", label: "3-1", faction: "venus",
-    enemyTier: 1, enemyTypes: ["scout", "raider"], unlockLevel: 1,
+    enemyTier: 1, enemyTypes: ["scout", "raider", "interceptor"], unlockLevel: 1,
   },
   venus2: {
     id: "venus2", name: "Sulphur Winds", label: "3-2", faction: "venus",
-    enemyTier: 2, enemyTypes: ["raider", "destroyer"], unlockLevel: 8,
+    enemyTier: 2, enemyTypes: ["raider", "destroyer", "corvette"], unlockLevel: 8,
   },
   venus3: {
     id: "venus3", name: "Acidic Deep", label: "3-3", faction: "venus",
-    enemyTier: 3, enemyTypes: ["destroyer", "dread"], unlockLevel: 16,
+        enemyTier: 3, enemyTypes: ["destroyer", "sentinel", "specter"], unlockLevel: 16,
   },
   venus4: {
     id: "venus4", name: "Pressure Core", label: "3-4", faction: "venus",
-    enemyTier: 4, enemyTypes: ["voidling", "dread"], unlockLevel: 24,
+        enemyTier: 4, enemyTypes: ["sentinel", "wraith", "phantom"], unlockLevel: 24,
   },
   venus5: {
     id: "venus5", name: "Eye of Venus", label: "3-5", faction: "venus",
-    enemyTier: 5, enemyTypes: ["dread"], unlockLevel: 32,
+        enemyTier: 5, enemyTypes: ["wraith", "titan", "juggernaut"], unlockLevel: 32,
   },
   // Danger Zones (4-1 to 4-5)
   danger1: {
     id: "danger1", name: "Outer Rift", label: "4-1", faction: "earth",
-    enemyTier: 4, enemyTypes: ["destroyer", "voidling", "dread"], unlockLevel: 20,
+        enemyTier: 4, enemyTypes: ["sentinel", "wraith", "titan"], unlockLevel: 20,
   },
   danger2: {
     id: "danger2", name: "Dead Zone", label: "4-2", faction: "mars",
-    enemyTier: 5, enemyTypes: ["voidling", "dread"], unlockLevel: 26,
+        enemyTier: 5, enemyTypes: ["wraith", "titan", "dread"], unlockLevel: 26,
   },
   danger3: {
     id: "danger3", name: "Pirate Haven", label: "4-3", faction: "venus",
-    enemyTier: 5, enemyTypes: ["dread", "voidling"], unlockLevel: 30,
+        enemyTier: 5, enemyTypes: ["titan", "dread", "overlord", "leviathan"], unlockLevel: 30,
   },
   danger4: {
     id: "danger4", name: "Null Sector", label: "4-4", faction: "earth",
-    enemyTier: 6, enemyTypes: ["dread"], unlockLevel: 36,
+        enemyTier: 6, enemyTypes: ["titan", "overlord", "juggernaut", "leviathan"], unlockLevel: 36,
   },
   danger5: {
     id: "danger5", name: "The Abyss Gate", label: "4-5", faction: "mars",
-    enemyTier: 7, enemyTypes: ["dread"], unlockLevel: 42,
+        enemyTier: 7, enemyTypes: ["overlord", "leviathan", "juggernaut"], unlockLevel: 42,
+  },
+  debug: {
+    id: "debug", name: "Debug Arena", label: "DBG", faction: "earth",
+        enemyTier: 0, enemyTypes: [], unlockLevel: 1,
   },
 };
 
@@ -404,20 +487,34 @@ export const MODULE_DEFS: Record<string, {
   price: number;
   tier: number;
   weaponKind?: WeaponKind;
+  firingPattern?: "standard" | "sniper" | "scatter" | "rail";
 }> = {
   // ── LASER WEAPONS ──────────────────────────────────────────────────────────
   "wp-pulse-1":    { id: "wp-pulse-1",    slot: "weapon", weaponKind: "laser",  tier: 1, price: 5000,    stats: { damage: 6,  fireRate: 1.0 } },
   "wp-pulse-2":    { id: "wp-pulse-2",    slot: "weapon", weaponKind: "laser",  tier: 2, price: 22000,   stats: { damage: 12, fireRate: 1.15 } },
   "wp-pulse-3":    { id: "wp-pulse-3",    slot: "weapon", weaponKind: "laser",  tier: 3, price: 85000,   stats: { damage: 20, fireRate: 1.3, critChance: 0.03 } },
-  "wp-ion":        { id: "wp-ion",        slot: "weapon", weaponKind: "laser",  tier: 2, price: 34000,   stats: { damage: 16, fireRate: 0.95 } },
-  "wp-scatter":    { id: "wp-scatter",    slot: "weapon", weaponKind: "laser",  tier: 2, price: 38000,   stats: { damage: 9,  fireRate: 1.4, aoeRadius: 8 } },
+  "wp-ion":        { id: "wp-ion",        slot: "weapon", weaponKind: "laser",  firingPattern: "sniper", tier: 2, price: 34000,   stats: { damage: 16, fireRate: 0.95 } },
+  "wp-scatter":    { id: "wp-scatter",    slot: "weapon", weaponKind: "laser",  firingPattern: "scatter", tier: 2, price: 38000,   stats: { damage: 18, fireRate: 1.4, aoeRadius: 8 } },
   "wp-plasma":     { id: "wp-plasma",     slot: "weapon", weaponKind: "laser",  tier: 3, price: 78000,   stats: { damage: 22, fireRate: 0.85, critChance: 0.04 } },
-  "wp-phase":      { id: "wp-phase",      slot: "weapon", weaponKind: "laser",  tier: 3, price: 90000,   stats: { damage: 14, fireRate: 1.5, critChance: 0.08 } },
-  "wp-arc":        { id: "wp-arc",        slot: "weapon", weaponKind: "laser",  tier: 3, price: 110000,  stats: { damage: 18, fireRate: 1.1, aoeRadius: 14, critChance: 0.05 } },
-  "wp-sniper":     { id: "wp-sniper",     slot: "weapon", weaponKind: "laser",  tier: 4, price: 180000,  stats: { damage: 48, fireRate: 0.45, critChance: 0.18 } },
+  "wp-phase":      { id: "wp-phase",      slot: "weapon", weaponKind: "laser",  firingPattern: "rail", tier: 3, price: 90000,   stats: { damage: 14, fireRate: 1.5, critChance: 0.08 } },
+  "wp-arc":        { id: "wp-arc",        slot: "weapon", weaponKind: "laser",  firingPattern: "rail", tier: 3, price: 110000,  stats: { damage: 18, fireRate: 1.1, aoeRadius: 14, critChance: 0.05 } },
+  "wp-sniper":     { id: "wp-sniper",     slot: "weapon", weaponKind: "laser",  firingPattern: "sniper", tier: 4, price: 180000,  stats: { damage: 48, fireRate: 0.45, critChance: 0.18 } },
   "wp-solar":      { id: "wp-solar",      slot: "weapon", weaponKind: "laser",  tier: 4, price: 240000,  stats: { damage: 34, fireRate: 1.0, aoeRadius: 18, critChance: 0.06 } },
   "wp-void-lance": { id: "wp-void-lance", slot: "weapon", weaponKind: "laser",  tier: 5, price: 550000,  stats: { damage: 44, fireRate: 1.3, aoeRadius: 22, critChance: 0.10 } },
   "wp-singular":   { id: "wp-singular",   slot: "weapon", weaponKind: "laser",  tier: 5, price: 800000,  stats: { damage: 52, fireRate: 1.1, aoeRadius: 28, critChance: 0.12 } },
+
+
+  // ── NEW TIERED WEAPONS ──
+  "wp-sniper-0":   { id: "wp-sniper-0",   slot: "weapon", weaponKind: "laser",  firingPattern: "sniper",  tier: 1, price: 4000,    stats: { damage: 8,  fireRate: 0.6 } },
+  "wp-scatter-0":  { id: "wp-scatter-0",  slot: "weapon", weaponKind: "laser",  firingPattern: "scatter", tier: 1, price: 4500,    stats: { damage: 10, fireRate: 1.1, aoeRadius: 6 } },
+  "wp-rail-0":     { id: "wp-rail-0",     slot: "weapon", weaponKind: "laser",  firingPattern: "rail",    tier: 1, price: 4200,    stats: { damage: 9,  fireRate: 0.95 } },
+  "wp-sniper-1":   { id: "wp-sniper-1",   slot: "weapon", weaponKind: "laser",  firingPattern: "sniper",  tier: 2, price: 32000,   stats: { damage: 18, fireRate: 0.55, critChance: 0.08 } },
+  "wp-sniper-2":   { id: "wp-sniper-2",   slot: "weapon", weaponKind: "laser",  firingPattern: "sniper",  tier: 3, price: 95000,   stats: { damage: 32, fireRate: 0.5, critChance: 0.12 } },
+  "wp-scatter-2":  { id: "wp-scatter-2",  slot: "weapon", weaponKind: "laser",  firingPattern: "scatter", tier: 3, price: 82000,   stats: { damage: 28, fireRate: 1.2, aoeRadius: 10 } },
+  "wp-scatter-3":  { id: "wp-scatter-3",  slot: "weapon", weaponKind: "laser",  firingPattern: "scatter", tier: 4, price: 200000,  stats: { damage: 40, fireRate: 1.1, aoeRadius: 14, critChance: 0.06 } },
+  "wp-rail-1":     { id: "wp-rail-1",     slot: "weapon", weaponKind: "laser",  firingPattern: "rail",    tier: 2, price: 35000,   stats: { damage: 17, fireRate: 0.9 } },
+  "wp-rail-2":     { id: "wp-rail-2",     slot: "weapon", weaponKind: "laser",  firingPattern: "rail",    tier: 3, price: 88000,   stats: { damage: 25, fireRate: 0.85, critChance: 0.04 } },
+  "wp-rail-3":     { id: "wp-rail-3",     slot: "weapon", weaponKind: "laser",  firingPattern: "rail",    tier: 4, price: 220000,  stats: { damage: 42, fireRate: 0.8, critChance: 0.08 } },
 
   // ── ROCKET WEAPONS ─────────────────────────────────────────────────────────
   "wp-rocket-1":   { id: "wp-rocket-1",   slot: "weapon", weaponKind: "rocket", tier: 2, price: 55000,   stats: { damage: 30, fireRate: 0.5,  aoeRadius: 20 } },
@@ -427,16 +524,16 @@ export const MODULE_DEFS: Record<string, {
 
   // ── GENERATORS ─────────────────────────────────────────────────────────────
   "gn-core-1":     { id: "gn-core-1",     slot: "generator", tier: 1, price: 2500,    stats: { shieldMax: 30,  shieldRegen: 2, shieldAbsorb: 0.05 } },
-  "gn-core-2":     { id: "gn-core-2",     slot: "generator", tier: 2, price: 12000,   stats: { shieldMax: 70,  shieldRegen: 4, hullMax: 20, shieldAbsorb: 0.10 } },
+  "gn-core-2":     { id: "gn-core-2",     slot: "generator", tier: 2, price: 12000,   stats: { shieldMax: 80,  shieldRegen: 5, shieldAbsorb: 0.10 } },
   "gn-sprint":     { id: "gn-sprint",     slot: "generator", tier: 2, price: 16000,   stats: { speed: 45, shieldMax: 30, shieldRegen: 2, shieldAbsorb: 0.05 } },
   "gn-aegis":      { id: "gn-aegis",      slot: "generator", tier: 3, price: 45000,   stats: { shieldMax: 140, shieldRegen: 7, shieldAbsorb: 0.15 } },
-  "gn-fortify":    { id: "gn-fortify",    slot: "generator", tier: 3, price: 45000,   stats: { hullMax: 90, shieldMax: 60, damageReduction: 0.05, shieldAbsorb: 0.10 } },
+  "gn-fortify":    { id: "gn-fortify",    slot: "generator", tier: 3, price: 45000,   stats: { shieldMax: 160, shieldRegen: 6, shieldAbsorb: 0.20 } },
   "gn-hyper":      { id: "gn-hyper",      slot: "generator", tier: 3, price: 60000,   stats: { speed: 90, shieldMax: 50, shieldRegen: 3, shieldAbsorb: 0.08 } },
-  "gn-prism":      { id: "gn-prism",      slot: "generator", tier: 3, price: 55000,   stats: { speed: 40, damage: 8, shieldMax: 80, shieldRegen: 4, shieldAbsorb: 0.10 } },
-  "gn-quantum":    { id: "gn-quantum",    slot: "generator", tier: 4, price: 130000,  stats: { shieldMax: 240, shieldRegen: 12, hullMax: 80, shieldAbsorb: 0.25 } },
+  "gn-prism":      { id: "gn-prism",      slot: "generator", tier: 3, price: 55000,   stats: { speed: 60, shieldMax: 100, shieldRegen: 5, shieldAbsorb: 0.10 } },
+  "gn-quantum":    { id: "gn-quantum",    slot: "generator", tier: 4, price: 130000,  stats: { shieldMax: 280, shieldRegen: 14, shieldAbsorb: 0.25 } },
   "gn-warp-drive": { id: "gn-warp-drive", slot: "generator", tier: 4, price: 150000,  stats: { speed: 130, shieldMax: 100, shieldRegen: 6, shieldAbsorb: 0.12 } },
-  "gn-leviathan":  { id: "gn-leviathan",  slot: "generator", tier: 5, price: 475000,  stats: { shieldMax: 400, shieldRegen: 20, hullMax: 160, damageReduction: 0.08, shieldAbsorb: 0.30 } },
-  "gn-phase-drive":{ id: "gn-phase-drive",slot: "generator", tier: 5, price: 450000,  stats: { speed: 180, shieldMax: 160, shieldRegen: 8, hullMax: 40, shieldAbsorb: 0.15 } },
+  "gn-leviathan":  { id: "gn-leviathan",  slot: "generator", tier: 5, price: 475000,  stats: { shieldMax: 500, shieldRegen: 25, shieldAbsorb: 0.30 } },
+  "gn-phase-drive":{ id: "gn-phase-drive",slot: "generator", tier: 5, price: 450000,  stats: { speed: 200, shieldMax: 180, shieldRegen: 10, shieldAbsorb: 0.15 } },
 
   // ── UTILITY MODULES ────────────────────────────────────────────────────────
   "md-thrust-1":   { id: "md-thrust-1",   slot: "module", tier: 1, price: 3000,    stats: { speed: 30 } },
@@ -606,207 +703,246 @@ export const STATIONS: {
   prices: Partial<Record<ResourceId, number>>;
   controlledBy: FactionId;
 }[] = [
+] = [
   // alpha
   { id: "helix", name: "Helix Station", pos: { x: 0, y: 0 }, zone: "alpha", kind: "hub",
     controlledBy: "earth",
-    prices: { scrap: 1.0, plasma: 1.0, iron: 0.95, synth: 0.9, medpack: 1.1, lumenite: 1.0, food: 0.8, "fuel-cell": 0.9 } },
-  { id: "iron-belt", name: "Iron Belt Refinery", pos: { x: -1800, y: -400 }, zone: "alpha", kind: "mining",
+    prices: { scrap: 1.0, plasma: 1.0, iron: 0.95, synth: 0.9, medpack: 1.1, lumenite: 1.0, food: 0.8, "fuel-cell": 0.9, "refined-alloy": 1.4, "plasma-cell": 1.3, "nano-compound": 1.2} },
+  { id: "iron-belt", name: "Iron Belt Refinery", pos: { x: -4500, y: -2800 }, zone: "alpha", kind: "mining",
     controlledBy: "earth",
     prices: { iron: 0.6, lumenite: 0.7, scrap: 1.2, synth: 1.0, medpack: 1.1, plasma: 1.05,
               food: 0.6, "fuel-cell": 0.7, medicine: 1.2, ore: 0.65, "star-map": 1.25 } },
   // nebula
-  { id: "veiled", name: "Veiled Outpost", pos: { x: 400, y: -1600 }, zone: "nebula", kind: "outpost",
+  { id: "veiled", name: "Veiled Outpost", pos: { x: 3200, y: -4800 }, zone: "nebula", kind: "outpost",
     controlledBy: "earth",
     prices: { plasma: 0.7, warp: 0.85, scrap: 1.2, synth: 1.15, medpack: 1.2, void: 1.3,
-              food: 1.3, medicine: 1.4, nanite: 0.8, "bio-matter": 0.7, luxury: 1.6, silk: 0.75, artifacts: 1.2 } },
-  { id: "azure-port", name: "Azure Trade Port", pos: { x: -1200, y: -2400 }, zone: "nebula", kind: "trade",
+              food: 1.3, medicine: 1.4, nanite: 0.8, "bio-matter": 0.7, luxury: 1.6, silk: 0.75, artifacts: 1.2, "crystal-matrix": 1.5, "fusion-core": 1.4, "void-steel": 1.3} },
+  { id: "azure-port", name: "Azure Trade Port", pos: { x: -4200, y: -5200 }, zone: "nebula", kind: "trade",
     controlledBy: "earth",
     prices: { quantum: 0.7, lumenite: 0.85, dread: 0.9, void: 0.95, plasma: 1.2, warp: 1.25, iron: 1.15, scrap: 1.25,
               luxury: 0.7, precursor: 1.5, relic: 1.6, food: 1.5, medicine: 1.3, nanite: 1.4, blackglass: 0.8, "data-core": 0.9 } },
   // crimson
-  { id: "ember", name: "Ember Citadel", pos: { x: -1200, y: 800 }, zone: "crimson", kind: "military",
+  { id: "ember", name: "Ember Citadel", pos: { x: -3800, y: 2400 }, zone: "crimson", kind: "military",
     controlledBy: "earth",
     prices: { dread: 1.3, warp: 1.3, plasma: 1.4, medpack: 0.85, synth: 0.95, quantum: 1.2,
-              food: 1.6, medicine: 0.7, "fuel-cell": 1.5, contraband: 0.6, blackglass: 0.7, "fusion-lattice": 0.9 } },
-  { id: "scarlet-yard", name: "Scarlet Shipyards", pos: { x: 2200, y: 1600 }, zone: "crimson", kind: "trade",
+              food: 1.6, medicine: 0.7, "fuel-cell": 1.5, contraband: 0.6, blackglass: 0.7, "fusion-lattice": 0.9, "refined-alloy": 1.3, "nano-compound": 1.5, "plasma-cell": 1.2} },
+  { id: "scarlet-yard", name: "Scarlet Shipyards", pos: { x: 4800, y: 3600 }, zone: "crimson", kind: "trade",
     controlledBy: "earth",
     prices: { iron: 1.4, scrap: 1.35, lumenite: 1.2, plasma: 1.1, dread: 0.85,
               nanite: 1.5, "fuel-cell": 1.3, food: 1.5, luxury: 1.7, ore: 1.15, "fusion-lattice": 1.05 } },
   // void
-  { id: "echo", name: "Echo Anchorage", pos: { x: 0, y: -600 }, zone: "void", kind: "outpost",
+  { id: "echo", name: "Echo Anchorage", pos: { x: 800, y: -3200 }, zone: "void", kind: "outpost",
     controlledBy: "earth",
     prices: { void: 0.6, dread: 1.2, quantum: 1.4, medpack: 1.3, synth: 1.2,
-              contraband: 0.5, relic: 0.7, exotic: 0.8, food: 1.8, medicine: 1.6, "medical-serum": 0.85, "cloning-gel": 0.75 } },
-  { id: "obsidian-port", name: "Obsidian Free Port", pos: { x: 1800, y: 1200 }, zone: "void", kind: "trade",
+              contraband: 0.5, relic: 0.7, exotic: 0.8, food: 1.8, medicine: 1.6, "medical-serum": 0.85, "cloning-gel": 0.75, "void-steel": 1.6, "crystal-matrix": 1.3, "fusion-core": 1.2} },
+  { id: "obsidian-port", name: "Obsidian Free Port", pos: { x: 4600, y: 3800 }, zone: "void", kind: "trade",
     controlledBy: "earth",
     prices: { quantum: 0.55, void: 1.4, dread: 1.4, lumenite: 1.3, warp: 1.2,
               contraband: 0.4, luxury: 0.6, relic: 0.65, precursor: 0.7, food: 1.9, exotic: 1.5, artifacts: 0.7, "data-core": 0.75 } },
   // forge
   { id: "ironclad", name: "Ironclad Bastion", pos: { x: 0, y: 0 }, zone: "forge", kind: "military",
     controlledBy: "earth",
-    prices: { dread: 1.5, warp: 1.4, plasma: 1.6, iron: 0.7, scrap: 0.8 } },
-  { id: "forge-gate", name: "Forge Gate Depot", pos: { x: -1600, y: 1800 }, zone: "forge", kind: "trade",
+    prices: { dread: 1.5, warp: 1.4, plasma: 1.6, iron: 0.7, scrap: 0.8, "refined-alloy": 1.5, "plasma-cell": 1.4, "fusion-core": 1.3} },
+  { id: "forge-gate", name: "Forge Gate Depot", pos: { x: -4200, y: 4400 }, zone: "forge", kind: "trade",
     controlledBy: "earth",
     prices: { iron: 0.5, scrap: 0.6, lumenite: 0.75, quantum: 0.9, dread: 1.2, void: 1.3, blackglass: 0.6, ore: 0.55 } },
   // corona
-  { id: "solar-haven", name: "Solar Haven", pos: { x: 800, y: -1200 }, zone: "corona", kind: "outpost",
+  { id: "solar-haven", name: "Solar Haven", pos: { x: 3200, y: -4200 }, zone: "corona", kind: "outpost",
     controlledBy: "mars",
-    prices: { lumenite: 0.5, plasma: 0.6, warp: 0.8, void: 1.2, dread: 1.3, quantum: 1.0, "star-map": 0.7, "fusion-lattice": 0.75 } },
-  { id: "corona-mkt", name: "Corona Market", pos: { x: 2000, y: 1200 }, zone: "corona", kind: "trade",
+    prices: { lumenite: 0.5, plasma: 0.6, warp: 0.8, void: 1.2, dread: 1.3, quantum: 1.0, "star-map": 0.7, "fusion-lattice": 0.75, "crystal-matrix": 1.4, "void-steel": 1.5, "nano-compound": 1.3} },
+  { id: "corona-mkt", name: "Corona Market", pos: { x: 5000, y: 3800 }, zone: "corona", kind: "trade",
     controlledBy: "mars",
     prices: { quantum: 0.6, void: 0.7, dread: 1.1, plasma: 1.3, lumenite: 1.2, iron: 1.5, artifacts: 0.8, relic: 0.9 } },
   // fracture
-  { id: "rift-base", name: "Rift Base Omega", pos: { x: -1000, y: 800 }, zone: "fracture", kind: "military",
+  { id: "rift-base", name: "Rift Base Omega", pos: { x: -3800, y: 3200 }, zone: "fracture", kind: "military",
     controlledBy: "mars",
-    prices: { dread: 2.0, warp: 1.8, plasma: 2.0, medpack: 0.7, quantum: 1.5, void: 1.6, blackglass: 0.55, precursor: 1.2 } },
-  { id: "null-post", name: "Null-Point Station", pos: { x: 1400, y: -1800 }, zone: "fracture", kind: "outpost",
+    prices: { dread: 2.0, warp: 1.8, plasma: 2.0, medpack: 0.7, quantum: 1.5, void: 1.6, blackglass: 0.55, precursor: 1.2, "void-steel": 1.8, "fusion-core": 1.6, "crystal-matrix": 1.4} },
+  { id: "null-post", name: "Null-Point Station", pos: { x: 4200, y: -4800 }, zone: "fracture", kind: "outpost",
     controlledBy: "mars",
     prices: { void: 0.5, quantum: 0.7, dread: 1.4, lumenite: 1.5, synth: 1.3, "data-core": 0.8, "medical-serum": 0.9 } },
   // abyss
   { id: "void-heart", name: "Void Heart Station", pos: { x: 0, y: 0 }, zone: "abyss", kind: "outpost",
     controlledBy: "mars",
-    prices: { void: 0.4, dread: 0.8, quantum: 0.5, lumenite: 1.8, plasma: 2.5, warp: 2.0 } },
-  { id: "abyss-anchor", name: "Abyss Anchorage", pos: { x: -2200, y: 1600 }, zone: "abyss", kind: "trade",
+    prices: { void: 0.4, dread: 0.8, quantum: 0.5, lumenite: 1.8, plasma: 2.5, warp: 2.0, "void-steel": 2.0, "fusion-core": 1.8, "refined-alloy": 1.5} },
+  { id: "abyss-anchor", name: "Abyss Anchorage", pos: { x: -5200, y: 4200 }, zone: "abyss", kind: "trade",
     controlledBy: "mars",
     prices: { quantum: 0.4, void: 1.8, dread: 2.2, iron: 2.0, synth: 1.8, medpack: 0.5 } },
   // marsdepth
   { id: "deep-haven", name: "Deep Field Haven", pos: { x: 0, y: 0 }, zone: "marsdepth", kind: "outpost",
     controlledBy: "mars",
     prices: { void: 0.55, dread: 1.2, quantum: 1.4, medpack: 1.3, synth: 1.2, contraband: 0.5, relic: 0.7, exotic: 0.8 } },
-  { id: "iron-depth", name: "Iron Depth Exchange", pos: { x: 1800, y: -1400 }, zone: "marsdepth", kind: "trade",
+  { id: "iron-depth", name: "Iron Depth Exchange", pos: { x: 4600, y: -4200 }, zone: "marsdepth", kind: "trade",
     controlledBy: "mars",
     prices: { dread: 1.8, warp: 1.7, plasma: 1.9, medpack: 0.75, quantum: 1.5, void: 1.4, lumenite: 1.2 } },
   // maelstrom
   { id: "storm-eye", name: "Eye of the Storm", pos: { x: 0, y: 0 }, zone: "maelstrom", kind: "military",
     controlledBy: "mars",
-    prices: { dread: 2.2, warp: 2.0, plasma: 2.3, iron: 0.65, scrap: 0.7, lumenite: 1.1, quantum: 1.6 } },
-  { id: "wreck-point", name: "Wreckage Point", pos: { x: -1800, y: 1600 }, zone: "maelstrom", kind: "trade",
+    prices: { dread: 2.2, warp: 2.0, plasma: 2.3, iron: 0.65, scrap: 0.7, lumenite: 1.1, quantum: 1.6, "refined-alloy": 1.6, "plasma-cell": 1.5, "fusion-core": 1.4} },
+  { id: "wreck-point", name: "Wreckage Point", pos: { x: -4800, y: 4200 }, zone: "maelstrom", kind: "trade",
     controlledBy: "mars",
     prices: { iron: 0.45, scrap: 0.5, lumenite: 0.7, quantum: 0.85, void: 1.5, dread: 1.9, exotic: 0.7 } },
   // venus1
   { id: "cloud-gate", name: "Cloud Gate Station", pos: { x: 0, y: 0 }, zone: "venus1", kind: "hub",
     controlledBy: "venus",
-    prices: { scrap: 1.0, plasma: 1.0, iron: 0.95, synth: 0.9, medpack: 1.1, lumenite: 1.0, warp: 1.1, void: 1.2, dread: 1.1, food: 0.75, medicine: 0.85, luxury: 1.3 } },
-  { id: "mist-dock", name: "Mist Dock Outpost", pos: { x: -1600, y: -600 }, zone: "venus1", kind: "mining",
+    prices: { scrap: 1.0, plasma: 1.0, iron: 0.95, synth: 0.9, medpack: 1.1, lumenite: 1.0, warp: 1.1, void: 1.2, dread: 1.1, food: 0.75, medicine: 0.85, luxury: 1.3, "refined-alloy": 1.3, "nano-compound": 1.4, "plasma-cell": 1.2} },
+  { id: "mist-dock", name: "Mist Dock Outpost", pos: { x: -4400, y: -2800 }, zone: "venus1", kind: "mining",
     controlledBy: "venus",
     prices: { iron: 0.6, lumenite: 0.65, scrap: 1.2, synth: 1.0, medpack: 1.1, "fuel-cell": 0.7, food: 0.65, medicine: 1.1 } },
-  { id: "halo-walk", name: "Halo Walk Station", pos: { x: 1640, y: 1080 }, zone: "venus1", kind: "trade",
+  { id: "halo-walk", name: "Halo Walk Station", pos: { x: 4200, y: 3400 }, zone: "venus1", kind: "trade",
     controlledBy: "venus",
     prices: { food: 0.7, medicine: 0.9, luxury: 1.1, scrap: 1.1, plasma: 1.05, lumenite: 0.9, synth: 1.0 } },
   // venus2
-  { id: "sulphur-port", name: "Sulphur Port", pos: { x: 400, y: -1400 }, zone: "venus2", kind: "outpost",
+  { id: "sulphur-port", name: "Sulphur Port", pos: { x: 2800, y: -4800 }, zone: "venus2", kind: "outpost",
     controlledBy: "venus",
     prices: { plasma: 0.75, warp: 0.9, scrap: 1.2, synth: 1.1, medpack: 1.2, void: 1.3, food: 1.3, medicine: 1.4, nanite: 0.85, "bio-matter": 0.75 } },
-  { id: "wind-market", name: "Wind Market", pos: { x: -1400, y: -2200 }, zone: "venus2", kind: "trade",
+  { id: "wind-market", name: "Wind Market", pos: { x: -4600, y: -5200 }, zone: "venus2", kind: "trade",
     controlledBy: "venus",
     prices: { quantum: 0.65, lumenite: 0.8, dread: 0.95, void: 0.9, plasma: 1.2, warp: 1.3, iron: 1.1, luxury: 0.75, precursor: 1.4 } },
-  { id: "brass-spire", name: "Brass Spire", pos: { x: 2400, y: -400 }, zone: "venus2", kind: "outpost",
+  { id: "brass-spire", name: "Brass Spire", pos: { x: 5400, y: -2000 }, zone: "venus2", kind: "outpost",
     controlledBy: "venus",
     prices: { plasma: 0.85, warp: 0.95, food: 1.2, medicine: 1.25, nanite: 0.9, luxury: 1.0, "fuel-cell": 0.8 } },
   // venus3
-  { id: "acid-citadel", name: "Acid Citadel", pos: { x: -1000, y: 800 }, zone: "venus3", kind: "military",
+  { id: "acid-citadel", name: "Acid Citadel", pos: { x: -3800, y: 3200 }, zone: "venus3", kind: "military",
     controlledBy: "venus",
     prices: { dread: 1.4, warp: 1.3, plasma: 1.5, medpack: 0.8, synth: 0.9, quantum: 1.2, "fuel-cell": 1.4, contraband: 0.65 } },
-  { id: "pressure-yard", name: "Pressure Yards", pos: { x: 2000, y: 1400 }, zone: "venus3", kind: "trade",
+  { id: "pressure-yard", name: "Pressure Yards", pos: { x: 4800, y: 3800 }, zone: "venus3", kind: "trade",
     controlledBy: "venus",
     prices: { iron: 1.4, scrap: 1.3, lumenite: 1.2, plasma: 1.1, dread: 0.9, nanite: 1.5, "fuel-cell": 1.2, luxury: 1.6 } },
-  { id: "acid-exchange", name: "Acid Exchange", pos: { x: -2500, y: -1300 }, zone: "venus3", kind: "mining",
+  { id: "acid-exchange", name: "Acid Exchange", pos: { x: -5400, y: -4200 }, zone: "venus3", kind: "mining",
     controlledBy: "venus",
     prices: { iron: 0.55, scrap: 0.65, lumenite: 0.8, plasma: 1.0, synth: 1.1, food: 1.3, medicine: 1.2 } },
   // venus4
-  { id: "core-refuge", name: "Core Refuge", pos: { x: 0, y: -600 }, zone: "venus4", kind: "outpost",
+  { id: "core-refuge", name: "Core Refuge", pos: { x: 800, y: -3200 }, zone: "venus4", kind: "outpost",
     controlledBy: "venus",
     prices: { void: 0.6, dread: 1.2, quantum: 1.4, medpack: 1.3, synth: 1.2, contraband: 0.5, relic: 0.7, exotic: 0.8, food: 1.8 } },
-  { id: "pressure-port", name: "Pressure Point Port", pos: { x: 1800, y: 1200 }, zone: "venus4", kind: "trade",
+  { id: "pressure-port", name: "Pressure Point Port", pos: { x: 4600, y: 3800 }, zone: "venus4", kind: "trade",
     controlledBy: "venus",
     prices: { quantum: 0.5, void: 1.4, dread: 1.5, lumenite: 1.3, warp: 1.2, contraband: 0.4, luxury: 0.6, relic: 0.65, precursor: 0.7, exotic: 1.4 } },
-  { id: "cradle", name: "Cradle Station", pos: { x: -2200, y: 500 }, zone: "venus4", kind: "outpost",
+  { id: "cradle", name: "Cradle Station", pos: { x: -5200, y: 2400 }, zone: "venus4", kind: "outpost",
     controlledBy: "venus",
     prices: { food: 1.6, medicine: 1.4, medpack: 1.1, synth: 1.0, quantum: 0.9, relic: 0.8, exotic: 0.9 } },
   // venus5
   { id: "venus-bastion", name: "Venusian Bastion", pos: { x: 0, y: 0 }, zone: "venus5", kind: "military",
     controlledBy: "venus",
-    prices: { dread: 2.0, warp: 1.9, plasma: 2.2, iron: 0.68, scrap: 0.75, lumenite: 1.1, quantum: 1.5 } },
-  { id: "eye-bazaar", name: "Eye Bazaar", pos: { x: -1600, y: 1800 }, zone: "venus5", kind: "trade",
+    prices: { dread: 2.0, warp: 1.9, plasma: 2.2, iron: 0.68, scrap: 0.75, lumenite: 1.1, quantum: 1.5, "void-steel": 1.7, "crystal-matrix": 1.5, "fusion-core": 1.6} },
+  { id: "eye-bazaar", name: "Eye Bazaar", pos: { x: -4600, y: 4400 }, zone: "venus5", kind: "trade",
     controlledBy: "venus",
     prices: { iron: 0.5, scrap: 0.55, lumenite: 0.7, quantum: 0.8, void: 1.5, dread: 2.0, exotic: 0.65, relic: 0.7 } },
-  { id: "singularity-dock", name: "Singularity Dock", pos: { x: 2500, y: -900 }, zone: "venus5", kind: "military",
+  { id: "singularity-dock", name: "Singularity Dock", pos: { x: 5400, y: -3600 }, zone: "venus5", kind: "military",
     controlledBy: "venus",
     prices: { dread: 1.5, warp: 1.6, plasma: 1.8, quantum: 1.0, relic: 0.95, exotic: 0.9, lumenite: 1.1 } },
   // Extra trading posts
-  { id: "alpha-bazaar", name: "Alpha Bazaar", pos: { x: 2800, y: -1600 }, zone: "alpha", kind: "trade",
+  { id: "alpha-bazaar", name: "Alpha Bazaar", pos: { x: 5200, y: -3800 }, zone: "alpha", kind: "trade",
     controlledBy: "earth",
     prices: { scrap: 1.3, iron: 1.2, plasma: 0.8, food: 0.6, medicine: 0.7, titanium: 0.8, "cryo-fluid": 1.1, luxury: 1.5, spice: 0.7, "plasma-coil": 0.75 } },
-  { id: "nebula-exchange", name: "Nebula Exchange", pos: { x: 2600, y: 1800 }, zone: "nebula", kind: "trade",
+  { id: "nebula-exchange", name: "Nebula Exchange", pos: { x: 5400, y: 4200 }, zone: "nebula", kind: "trade",
     controlledBy: "earth",
     prices: { quantum: 0.75, void: 0.8, warp: 1.2, contraband: 0.5, "neural-chip": 0.7, "dark-matter": 1.3, "bio-crystal": 0.8, exotic: 1.4 } },
-  { id: "crimson-market", name: "Crimson Market", pos: { x: -2800, y: 2200 }, zone: "crimson", kind: "trade",
+  { id: "crimson-market", name: "Crimson Market", pos: { x: -5400, y: 5000 }, zone: "crimson", kind: "trade",
     controlledBy: "earth",
     prices: { dread: 0.8, plasma: 1.3, iron: 1.4, "fuel-cell": 1.3, titanium: 0.7, "plasma-coil": 0.6, contraband: 0.5, "neural-chip": 1.2 } },
-  { id: "void-trade", name: "Void Trade Nexus", pos: { x: -2400, y: -2000 }, zone: "void", kind: "trade",
+  { id: "void-trade", name: "Void Trade Nexus", pos: { x: -5200, y: -4800 }, zone: "void", kind: "trade",
     controlledBy: "earth",
     prices: { void: 0.5, quantum: 0.6, dread: 1.3, "dark-matter": 0.6, "bio-crystal": 0.7, relic: 0.7, exotic: 1.2, blackglass: 0.65 } },
-  { id: "forge-market", name: "Forge Market", pos: { x: 2800, y: -1200 }, zone: "forge", kind: "trade",
+  { id: "forge-market", name: "Forge Market", pos: { x: 5400, y: -3800 }, zone: "forge", kind: "trade",
     controlledBy: "earth",
     prices: { iron: 0.4, scrap: 0.5, titanium: 0.55, "plasma-coil": 0.5, lumenite: 0.7, "cryo-fluid": 0.8, dread: 1.4, void: 1.5 } },
-  { id: "corona-exchange", name: "Corona Exchange", pos: { x: -2200, y: -2000 }, zone: "corona", kind: "trade",
+  { id: "corona-exchange", name: "Corona Exchange", pos: { x: -5000, y: -4600 }, zone: "corona", kind: "trade",
     controlledBy: "mars",
     prices: { lumenite: 0.4, "cryo-fluid": 0.5, plasma: 0.6, "plasma-coil": 0.55, quantum: 1.1, dread: 1.3, "dark-matter": 1.4 } },
-  { id: "fracture-bazaar", name: "Fracture Bazaar", pos: { x: 2600, y: 1400 }, zone: "fracture", kind: "trade",
+  { id: "fracture-bazaar", name: "Fracture Bazaar", pos: { x: 5200, y: 3800 }, zone: "fracture", kind: "trade",
     controlledBy: "mars",
     prices: { void: 0.4, "dark-matter": 0.5, "neural-chip": 0.6, quantum: 0.65, dread: 1.6, lumenite: 1.5, "bio-crystal": 0.55, relic: 0.6 } },
-  { id: "abyss-exchange", name: "Abyss Exchange", pos: { x: 2800, y: -1800 }, zone: "abyss", kind: "trade",
+  { id: "abyss-exchange", name: "Abyss Exchange", pos: { x: 5400, y: -4600 }, zone: "abyss", kind: "trade",
     controlledBy: "mars",
     prices: { quantum: 0.35, void: 1.6, dread: 2.0, "dark-matter": 0.4, exotic: 0.5, precursor: 0.5, relic: 0.55, "neural-chip": 0.5 } },
-  { id: "mars-trade", name: "Martian Trade Hub", pos: { x: -2600, y: -1600 }, zone: "marsdepth", kind: "trade",
+  { id: "mars-trade", name: "Martian Trade Hub", pos: { x: -5400, y: -4200 }, zone: "marsdepth", kind: "trade",
     controlledBy: "mars",
     prices: { iron: 0.5, titanium: 0.6, "plasma-coil": 0.55, dread: 1.6, warp: 1.5, "cryo-fluid": 0.7, contraband: 0.4, "fusion-lattice": 0.8 } },
-  { id: "storm-bazaar", name: "Storm Bazaar", pos: { x: 2800, y: -800 }, zone: "maelstrom", kind: "trade",
+  { id: "storm-bazaar", name: "Storm Bazaar", pos: { x: 5600, y: -3200 }, zone: "maelstrom", kind: "trade",
     controlledBy: "mars",
     prices: { iron: 0.4, scrap: 0.45, titanium: 0.5, lumenite: 0.6, quantum: 0.8, void: 1.4, dread: 1.8, exotic: 0.6, "dark-matter": 0.7 } },
-  { id: "venus2-trade", name: "Sulphur Exchange", pos: { x: 2800, y: 1600 }, zone: "venus2", kind: "trade",
+  { id: "venus2-trade", name: "Sulphur Exchange", pos: { x: 5400, y: 4200 }, zone: "venus2", kind: "trade",
     controlledBy: "venus",
     prices: { "bio-matter": 0.6, nanite: 0.7, "bio-crystal": 0.65, food: 1.4, medicine: 1.3, luxury: 0.8, "cryo-fluid": 0.75, "neural-chip": 1.1 } },
-  { id: "venus3-trade", name: "Deep Acid Market", pos: { x: -2800, y: -2400 }, zone: "venus3", kind: "trade",
+  { id: "venus3-trade", name: "Deep Acid Market", pos: { x: -5600, y: -5200 }, zone: "venus3", kind: "trade",
     controlledBy: "venus",
     prices: { titanium: 0.6, "plasma-coil": 0.55, iron: 1.3, dread: 0.85, contraband: 0.5, "dark-matter": 1.2, blackglass: 0.6, "fusion-lattice": 0.9 } },
-  { id: "venus4-trade", name: "Core Trade Post", pos: { x: -2600, y: -1200 }, zone: "venus4", kind: "trade",
+  { id: "venus4-trade", name: "Core Trade Post", pos: { x: -5400, y: -4000 }, zone: "venus4", kind: "trade",
     controlledBy: "venus",
     prices: { quantum: 0.45, void: 1.5, dread: 1.6, "dark-matter": 0.55, exotic: 1.3, relic: 0.6, "neural-chip": 0.55, "bio-crystal": 0.6 } },
-  { id: "venus5-trade", name: "Eye Trade Ring", pos: { x: 2800, y: 1200 }, zone: "venus5", kind: "trade",
+  { id: "venus5-trade", name: "Eye Trade Ring", pos: { x: 5600, y: 3800 }, zone: "venus5", kind: "trade",
     controlledBy: "venus",
     prices: { quantum: 0.4, void: 1.6, dread: 2.1, exotic: 0.55, precursor: 0.45, "dark-matter": 0.5, "neural-chip": 0.5, blackglass: 0.55 } },
-  { id: "danger1-trade", name: "Rift Market", pos: { x: 2400, y: -1800 }, zone: "danger1", kind: "trade",
+  { id: "danger1-trade", name: "Rift Market", pos: { x: 5200, y: -4600 }, zone: "danger1", kind: "trade",
     controlledBy: "earth",
     prices: { contraband: 0.3, dread: 2.0, void: 1.8, exotic: 0.5, "dark-matter": 0.4, "neural-chip": 0.45, relic: 0.45, precursor: 0.5 } },
-  { id: "danger2-trade", name: "Dead Zone Bazaar", pos: { x: 2600, y: 1400 }, zone: "danger2", kind: "trade",
+  { id: "danger2-trade", name: "Dead Zone Bazaar", pos: { x: 5400, y: 3800 }, zone: "danger2", kind: "trade",
     controlledBy: "venus",
     prices: { contraband: 0.25, exotic: 0.4, "dark-matter": 0.35, relic: 0.4, precursor: 0.45, dread: 2.4, void: 2.2, quantum: 1.8 } },
-  { id: "danger3-trade", name: "Pirate Freeport", pos: { x: -2400, y: 1600 }, zone: "danger3", kind: "trade",
+  { id: "danger3-trade", name: "Pirate Freeport", pos: { x: -5200, y: 4200 }, zone: "danger3", kind: "trade",
     controlledBy: "venus",
     prices: { contraband: 0.15, luxury: 0.3, exotic: 0.45, "dark-matter": 0.4, dread: 2.8, void: 2.5, quantum: 2.0, blackglass: 0.4 } },
-  { id: "danger4-trade", name: "Null Zone Exchange", pos: { x: 2200, y: -1400 }, zone: "danger4", kind: "trade",
+  { id: "danger4-trade", name: "Null Zone Exchange", pos: { x: 5000, y: -4200 }, zone: "danger4", kind: "trade",
     controlledBy: "earth",
     prices: { "dark-matter": 0.3, precursor: 0.35, exotic: 0.35, relic: 0.35, dread: 2.8, void: 2.8, quantum: 2.2, "neural-chip": 0.4 } },
-  { id: "danger5-trade", name: "Abyss Gate Bazaar", pos: { x: 2000, y: 1800 }, zone: "danger5", kind: "trade",
+  { id: "danger5-trade", name: "Abyss Gate Bazaar", pos: { x: 4800, y: 4400 }, zone: "danger5", kind: "trade",
     controlledBy: "mars",
     prices: { "dark-matter": 0.2, precursor: 0.25, exotic: 0.25, relic: 0.25, "neural-chip": 0.3, dread: 3.5, void: 3.5, quantum: 3.0 } },
   // Danger zone stations
   { id: "rift-outpost", name: "Rift Outpost", pos: { x: 0, y: 0 }, zone: "danger1", kind: "outpost",
     controlledBy: "earth",
     prices: { dread: 1.8, void: 1.5, quantum: 1.3, scrap: 0.5, iron: 0.6, contraband: 0.4, exotic: 0.7 } },
-  { id: "dead-market", name: "Dead Zone Market", pos: { x: -800, y: 1200 }, zone: "danger2", kind: "trade",
+  { id: "dead-market", name: "Dead Zone Market", pos: { x: -3600, y: 4200 }, zone: "danger2", kind: "trade",
     controlledBy: "mars",
     prices: { dread: 2.2, void: 2.0, quantum: 0.4, contraband: 0.3, relic: 0.5, exotic: 0.5, precursor: 0.6, luxury: 0.4 } },
-  { id: "pirate-dock", name: "Pirate Stronghold", pos: { x: 600, y: -600 }, zone: "danger3", kind: "outpost",
+  { id: "pirate-dock", name: "Pirate Stronghold", pos: { x: 2800, y: -3200 }, zone: "danger3", kind: "outpost",
     controlledBy: "venus",
     prices: { contraband: 0.2, relic: 0.6, exotic: 0.6, dread: 2.5, void: 2.2, quantum: 1.8, luxury: 0.3 } },
-  { id: "null-station", name: "Null Station", pos: { x: 0, y: 800 }, zone: "danger4", kind: "military",
+  { id: "null-station", name: "Null Station", pos: { x: 800, y: 3600 }, zone: "danger4", kind: "military",
     controlledBy: "earth",
     prices: { dread: 2.5, void: 2.5, quantum: 2.0, precursor: 0.4, relic: 0.4, exotic: 0.4, "star-map": 0.3 } },
-  { id: "abyss-gate", name: "Abyss Gate Station", pos: { x: -400, y: -400 }, zone: "danger5", kind: "trade",
+  { id: "abyss-gate", name: "Abyss Gate Station", pos: { x: -2400, y: -2800 }, zone: "danger5", kind: "trade",
     controlledBy: "mars",
     prices: { dread: 3.0, void: 3.0, quantum: 2.5, precursor: 0.3, relic: 0.3, exotic: 0.3, "fusion-lattice": 0.2, "star-map": 0.2 } },
+
+  // Factory stations
+  { id: "alpha-foundry",    name: "Alpha Foundry",       pos: { x: -2800, y: 1800 },  zone: "alpha",    kind: "factory",
+    controlledBy: "earth",
+    prices: { iron: 0.7, copper: 0.75, "refined-alloy": 0.9, scrap: 0.8 } },
+  { id: "nebula-works",     name: "Nebula Works",        pos: { x: 1200, y: 3200 },   zone: "nebula",   kind: "factory",
+    controlledBy: "earth",
+    prices: { cobalt: 0.7, "crystal-shard": 0.75, "crystal-matrix": 0.9, plasma: 0.8 } },
+  { id: "crimson-forge",    name: "Crimson Forge",       pos: { x: 3200, y: -1400 },  zone: "crimson",  kind: "factory",
+    controlledBy: "earth",
+    prices: { iron: 0.65, copper: 0.7, cobalt: 0.7, "refined-alloy": 0.85, "plasma-cell": 0.9 } },
+  { id: "void-refinery",    name: "Void Refinery",       pos: { x: -2200, y: -2800 }, zone: "void",     kind: "factory",
+    controlledBy: "mars",
+    prices: { obsidian: 0.65, "void-steel": 0.85, "nano-compound": 0.9, "crystal-shard": 0.7 } },
+  { id: "forge-smelter",    name: "Forge Smelter",       pos: { x: -3500, y: 2000 },  zone: "forge",    kind: "factory",
+    controlledBy: "mars",
+    prices: { iron: 0.6, copper: 0.65, cobalt: 0.65, "refined-alloy": 0.8, "fusion-core": 0.9 } },
+  { id: "corona-refinery",  name: "Corona Refinery",     pos: { x: -2800, y: -2000 }, zone: "corona",   kind: "factory",
+    controlledBy: "mars",
+    prices: { "helium-3": 0.6, palladium: 0.7, "fusion-core": 0.85, "crystal-matrix": 0.9 } },
+  { id: "fracture-mill",    name: "Fracture Mill",       pos: { x: -2500, y: -2200 }, zone: "fracture", kind: "factory",
+    controlledBy: "earth",
+    prices: { obsidian: 0.7, iridium: 0.75, "void-steel": 0.9, "nano-compound": 0.85 } },
+  { id: "venus-foundry",    name: "Venus Cloud Foundry", pos: { x: 2800, y: -1800 },  zone: "venus1",   kind: "factory",
+    controlledBy: "venus",
+    prices: { sulfur: 0.6, copper: 0.65, iron: 0.7, "refined-alloy": 0.85, "plasma-cell": 0.85 } },
+  { id: "venus3-refinery",  name: "Acid Vat Refinery",   pos: { x: 2800, y: 2200 },   zone: "venus3",   kind: "factory",
+    controlledBy: "venus",
+    prices: { sulfur: 0.55, cobalt: 0.65, "crystal-shard": 0.7, "nano-compound": 0.8, "crystal-matrix": 0.85 } },
+  { id: "venus5-forge",     name: "Eye Forge",           pos: { x: -3200, y: 2800 },  zone: "venus5",   kind: "factory",
+    controlledBy: "venus",
+    prices: { obsidian: 0.6, iridium: 0.65, palladium: 0.65, "void-steel": 0.8, "fusion-core": 0.8 } },
+  { id: "mars-refinery",    name: "Deep Mars Refinery",  pos: { x: 2800, y: 2800 },   zone: "marsdepth", kind: "factory",
+    controlledBy: "mars",
+    prices: { cobalt: 0.6, palladium: 0.65, "helium-3": 0.65, "fusion-core": 0.85, "crystal-matrix": 0.85 } },
+  { id: "storm-works",      name: "Storm Works",         pos: { x: -3200, y: -2400 }, zone: "maelstrom", kind: "factory",
+    controlledBy: "mars",
+    prices: { iron: 0.6, obsidian: 0.65, copper: 0.6, "refined-alloy": 0.8, "void-steel": 0.85 } },
 ];
 
 // ── RESOURCES ────────────────────────────────────────────────────────────────
@@ -852,7 +988,53 @@ export const RESOURCES: Record<ResourceId, {
   "dark-matter":   { id: "dark-matter",     name: "Dark Matter",      basePrice: 450 },
   "plasma-coil":   { id: "plasma-coil",     name: "Plasma Coil",      basePrice: 65 },
   "bio-crystal":   { id: "bio-crystal",     name: "Bio Crystal",      basePrice: 195 },
+  // mineable ores
+  copper:          { id: "copper",          name: "Copper Ore",       basePrice: 22 },
+  cobalt:          { id: "cobalt",          name: "Cobalt Ore",       basePrice: 48 },
+  "crystal-shard": { id: "crystal-shard",   name: "Crystal Shard",    basePrice: 135 },
+  palladium:       { id: "palladium",       name: "Palladium",        basePrice: 210 },
+  "helium-3":      { id: "helium-3",        name: "Helium-3",         basePrice: 95 },
+  iridium:         { id: "iridium",         name: "Iridium Ore",      basePrice: 380 },
+  sulfur:          { id: "sulfur",          name: "Sulfur Deposit",   basePrice: 30 },
+  obsidian:        { id: "obsidian",        name: "Void Obsidian",    basePrice: 165 },
 };
+
+
+// Zone-specific asteroid yield pools (weighted)
+export const ZONE_ASTEROID_YIELDS: Record<string, { resourceId: ResourceId; weight: number }[]> = {
+  alpha:     [{ resourceId: "iron", weight: 45 }, { resourceId: "copper", weight: 35 }, { resourceId: "lumenite", weight: 15 }, { resourceId: "cobalt", weight: 5 }],
+  nebula:    [{ resourceId: "iron", weight: 25 }, { resourceId: "copper", weight: 20 }, { resourceId: "lumenite", weight: 25 }, { resourceId: "helium-3", weight: 20 }, { resourceId: "cobalt", weight: 10 }],
+  crimson:   [{ resourceId: "iron", weight: 15 }, { resourceId: "cobalt", weight: 30 }, { resourceId: "lumenite", weight: 20 }, { resourceId: "crystal-shard", weight: 25 }, { resourceId: "copper", weight: 10 }],
+  void:      [{ resourceId: "cobalt", weight: 20 }, { resourceId: "lumenite", weight: 15 }, { resourceId: "crystal-shard", weight: 25 }, { resourceId: "obsidian", weight: 25 }, { resourceId: "palladium", weight: 15 }],
+  forge:     [{ resourceId: "iron", weight: 10 }, { resourceId: "cobalt", weight: 15 }, { resourceId: "crystal-shard", weight: 20 }, { resourceId: "palladium", weight: 30 }, { resourceId: "iridium", weight: 15 }, { resourceId: "obsidian", weight: 10 }],
+  corona:    [{ resourceId: "iron", weight: 40 }, { resourceId: "copper", weight: 25 }, { resourceId: "lumenite", weight: 20 }, { resourceId: "helium-3", weight: 10 }, { resourceId: "cobalt", weight: 5 }],
+  fracture:  [{ resourceId: "iron", weight: 15 }, { resourceId: "copper", weight: 15 }, { resourceId: "cobalt", weight: 25 }, { resourceId: "lumenite", weight: 20 }, { resourceId: "helium-3", weight: 15 }, { resourceId: "crystal-shard", weight: 10 }],
+  abyss:     [{ resourceId: "cobalt", weight: 20 }, { resourceId: "lumenite", weight: 10 }, { resourceId: "crystal-shard", weight: 25 }, { resourceId: "obsidian", weight: 20 }, { resourceId: "palladium", weight: 15 }, { resourceId: "helium-3", weight: 10 }],
+  marsdepth: [{ resourceId: "cobalt", weight: 10 }, { resourceId: "crystal-shard", weight: 20 }, { resourceId: "obsidian", weight: 20 }, { resourceId: "palladium", weight: 25 }, { resourceId: "iridium", weight: 15 }, { resourceId: "helium-3", weight: 10 }],
+  maelstrom: [{ resourceId: "crystal-shard", weight: 15 }, { resourceId: "obsidian", weight: 15 }, { resourceId: "palladium", weight: 25 }, { resourceId: "iridium", weight: 25 }, { resourceId: "cobalt", weight: 10 }, { resourceId: "helium-3", weight: 10 }],
+  venus1:    [{ resourceId: "iron", weight: 35 }, { resourceId: "copper", weight: 20 }, { resourceId: "sulfur", weight: 30 }, { resourceId: "lumenite", weight: 10 }, { resourceId: "cobalt", weight: 5 }],
+  venus2:    [{ resourceId: "iron", weight: 15 }, { resourceId: "sulfur", weight: 25 }, { resourceId: "copper", weight: 15 }, { resourceId: "cobalt", weight: 20 }, { resourceId: "lumenite", weight: 15 }, { resourceId: "helium-3", weight: 10 }],
+  venus3:    [{ resourceId: "sulfur", weight: 15 }, { resourceId: "cobalt", weight: 20 }, { resourceId: "crystal-shard", weight: 25 }, { resourceId: "lumenite", weight: 15 }, { resourceId: "obsidian", weight: 15 }, { resourceId: "copper", weight: 10 }],
+  venus4:    [{ resourceId: "crystal-shard", weight: 25 }, { resourceId: "obsidian", weight: 20 }, { resourceId: "palladium", weight: 20 }, { resourceId: "sulfur", weight: 10 }, { resourceId: "cobalt", weight: 15 }, { resourceId: "helium-3", weight: 10 }],
+  venus5:    [{ resourceId: "obsidian", weight: 15 }, { resourceId: "palladium", weight: 25 }, { resourceId: "iridium", weight: 20 }, { resourceId: "crystal-shard", weight: 20 }, { resourceId: "cobalt", weight: 10 }, { resourceId: "sulfur", weight: 10 }],
+  danger1:   [{ resourceId: "crystal-shard", weight: 20 }, { resourceId: "palladium", weight: 25 }, { resourceId: "iridium", weight: 20 }, { resourceId: "obsidian", weight: 20 }, { resourceId: "cobalt", weight: 15 }],
+  danger2:   [{ resourceId: "palladium", weight: 25 }, { resourceId: "iridium", weight: 25 }, { resourceId: "obsidian", weight: 20 }, { resourceId: "crystal-shard", weight: 15 }, { resourceId: "helium-3", weight: 15 }],
+  danger3:   [{ resourceId: "iridium", weight: 30 }, { resourceId: "palladium", weight: 25 }, { resourceId: "obsidian", weight: 15 }, { resourceId: "crystal-shard", weight: 15 }, { resourceId: "cobalt", weight: 15 }],
+  danger4:   [{ resourceId: "iridium", weight: 35 }, { resourceId: "palladium", weight: 25 }, { resourceId: "obsidian", weight: 20 }, { resourceId: "crystal-shard", weight: 10 }, { resourceId: "helium-3", weight: 10 }],
+  danger5:   [{ resourceId: "iridium", weight: 40 }, { resourceId: "palladium", weight: 25 }, { resourceId: "obsidian", weight: 15 }, { resourceId: "crystal-shard", weight: 10 }, { resourceId: "helium-3", weight: 10 }],
+};
+
+export function pickAsteroidYield(zone: string): ResourceId {
+  const pool = ZONE_ASTEROID_YIELDS[zone];
+  if (!pool || pool.length === 0) return "iron" as ResourceId;
+  const totalW = pool.reduce((s, e) => s + e.weight, 0);
+  let roll = Math.random() * totalW;
+  for (const entry of pool) {
+    roll -= entry.weight;
+    if (roll <= 0) return entry.resourceId;
+  }
+  return pool[pool.length - 1].resourceId;
+}
 
 // ── QUEST POOL (30) ──────────────────────────────────────────────────────────
 
@@ -1074,6 +1256,11 @@ export const DUNGEONS: Record<DungeonId, {
     waves: 7, enemiesPerWave: 8,
     rewardCredits: 290000, rewardExp: 82000,
     rewardModules: ["wp-singular", "wp-void-lance", "wp-hellfire", "gn-leviathan", "gn-phase-drive", "md-singularity", "md-voidframe"],
+  // Mining Lasers
+  "wp-mining-1": { id: "wp-mining-1", slot: "weapon", weaponKind: "laser", firingPattern: "mining", name: "Mining Laser Mk-I",    description: "Basic mining beam.", rarity: "common",   color: "#e8a050", glyph: "M", tier: 1, price: 2000,   stats: { damage: 3,  fireRate: 1.0, miningBonus: 1.0 } },
+  "wp-mining-2": { id: "wp-mining-2", slot: "weapon", weaponKind: "laser", firingPattern: "mining", name: "Mining Laser Mk-II",   description: "Improved mining beam.", rarity: "uncommon", color: "#ffcc44", glyph: "M", tier: 2, price: 15000,  stats: { damage: 5,  fireRate: 1.0, miningBonus: 2.0 } },
+  "wp-mining-3": { id: "wp-mining-3", slot: "weapon", weaponKind: "laser", firingPattern: "mining", name: "Deep Core Drill",      description: "Industrial mining beam.", rarity: "rare",    color: "#44ddff", glyph: "M", tier: 3, price: 50000,  stats: { damage: 8,  fireRate: 1.0, miningBonus: 3.5 } },
+  "wp-mining-4": { id: "wp-mining-4", slot: "weapon", weaponKind: "laser", firingPattern: "mining", name: "Plasma Core Extractor", description: "Top-tier mining beam.", rarity: "epic",     color: "#ff8844", glyph: "M", tier: 4, price: 120000, stats: { damage: 12, fireRate: 1.0, miningBonus: 5.0 } },
     rewardMaterials: [{ resourceId: "void", qty: 20 }, { resourceId: "dread", qty: 14 }, { resourceId: "quantum", qty: 18 }],
     color: "#7722cc", unlockLevel: 30,
   },
@@ -1144,9 +1331,19 @@ export const PORTALS: {
 // ── ENEMY NAMES ──────────────────────────────────────────────────────────────
 
 export const ENEMY_NAMES: Record<EnemyType, string[]> = {
-  scout:     ["Recon-7","Viper","Dart","Talon","Hornet","Zeta-3","Striker","Epsilon","Gnat","Dart-X"],
-  raider:    ["Fang","Claw","Corsair","Brigand","Hellion","Cutthroat","Marko","Rekt","Blitz","Razorfin"],
-  destroyer: ["Hammer","Colossus","Decimator","Crusher","Iron Fist","Wrecker","Titan-4","Ruin","Broadsword"],
-  voidling:  ["Rift-Eye","Phase","Echo","Glitch","Null-6","Shade","Specter","Whisper","Flicker","Mirage"],
-  dread:     ["APEX-1","TITAN-X","OMEGA","DREAD-9","COLOSSUS","WARMASTER","END-BRINGER","PRIME","NEMESIS"],
+  scout:       ["Scout"],
+  raider:      ["Raider"],
+  destroyer:   ["Destroyer"],
+  voidling:    ["Voidling"],
+  dread:       ["Dread"],
+  sentinel:    ["Sentinel"],
+  wraith:      ["Wraith"],
+  titan:       ["Titan"],
+  overlord:    ["Overlord"],
+  interceptor: ["Interceptor"],
+  corvette:    ["Corvette"],
+  specter:     ["Specter"],
+  phantom:     ["Phantom"],
+  juggernaut:  ["Juggernaut"],
+  leviathan:   ["Leviathan"],
 };

@@ -43,6 +43,7 @@ export type OnlinePlayer = {
   shieldRegen: number;
   afterburnUntil: number;
   lastHitTick: number;
+  isDocked: boolean;
 };
 
 const zones = new Map<string, Map<number, OnlinePlayer>>();
