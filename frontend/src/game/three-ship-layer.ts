@@ -62,8 +62,11 @@ let renderFrameCount = 0;
 let lastFrameTime = 0;
 let frameDt = 1 / 60;
 
-// ── Station GLB ──────────────────────────────────────────────────────────────
+// ── Station layer — separate WebGL renderer so it sits behind Pixi ────────────
 interface Station3D { wrapper: THREE.Group; model: THREE.Group; }
+let stationRenderer: THREE.WebGLRenderer | null = null;
+let stationScene: THREE.Scene | null = null;
+let stationCamera: THREE.OrthographicCamera | null = null;
 const activeStations = new Map<string, Station3D>();
 let stationTemplate: THREE.Group | null = null;
 let stationMaxDim = 1;
@@ -92,6 +95,67 @@ function loadStationGLB(): void {
   );
 }
 
+export function initStationLayer(canvas: HTMLCanvasElement): void {
+  const w = canvas.clientWidth || window.innerWidth;
+  const h = canvas.clientHeight || window.innerHeight;
+
+  stationRenderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, premultipliedAlpha: false });
+  stationRenderer.setSize(w, h);
+  stationRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  stationRenderer.setClearColor(0x000000, 0);
+  stationRenderer.outputColorSpace = THREE.SRGBColorSpace;
+
+  stationScene = new THREE.Scene();
+
+  stationCamera = new THREE.OrthographicCamera(-w / 2, w / 2, h / 2, -h / 2, 0.1, 2000);
+  stationCamera.position.set(0, 500, 0);
+  stationCamera.lookAt(0, 0, 0);
+  stationCamera.up.set(0, 0, -1);
+
+  // Match the same lighting as the ship layer
+  stationScene.add(new THREE.AmbientLight(0x303050, 0.2));
+  const sun = new THREE.DirectionalLight(0xfff8f0, 2.6);
+  sun.position.set(100, 300, -80);
+  stationScene.add(sun);
+  const fill = new THREE.DirectionalLight(0x6699ff, 0.7);
+  fill.position.set(-80, 150, 100);
+  stationScene.add(fill);
+
+  window.addEventListener("resize", onStationResize);
+  console.log("[Three.js] Station layer INIT OK canvas:", w, "x", h);
+}
+
+function onStationResize(): void {
+  if (!stationRenderer || !stationCamera) return;
+  const canvas = stationRenderer.domElement;
+  const w = canvas.clientWidth || window.innerWidth;
+  const h = canvas.clientHeight || window.innerHeight;
+  stationRenderer.setSize(w, h);
+  stationCamera.left = -w / 2;
+  stationCamera.right = w / 2;
+  stationCamera.top = h / 2;
+  stationCamera.bottom = -h / 2;
+  stationCamera.updateProjectionMatrix();
+}
+
+export function renderStationLayer(): void {
+  if (!stationRenderer || !stationScene || !stationCamera) return;
+  stationRenderer.render(stationScene, stationCamera);
+}
+
+export function destroyStationLayer(): void {
+  window.removeEventListener("resize", onStationResize);
+  if (stationRenderer) {
+    stationRenderer.dispose();
+    stationRenderer = null;
+    stationScene = null;
+    stationCamera = null;
+  }
+  activeStations.clear();
+  stationTemplate = null;
+  stationLoading = false;
+}
+
 export function updateStation3D(
   id: string,
   worldX: number,
@@ -100,7 +164,7 @@ export function updateStation3D(
   camY: number,
   tick: number,
 ): void {
-  if (!scene) return;
+  if (!stationScene) return;
   if (!stationTemplate) { loadStationGLB(); return; }
 
   let st = activeStations.get(id);
@@ -109,7 +173,7 @@ export function updateStation3D(
     const wrapper = new THREE.Group();
     wrapper.rotation.x = -0.6;
     wrapper.add(model);
-    scene.add(wrapper);
+    stationScene.add(wrapper);
     st = { wrapper, model };
     activeStations.set(id, st);
   }
@@ -128,8 +192,8 @@ export function updateStation3D(
 
 export function removeStation3D(id: string): void {
   const st = activeStations.get(id);
-  if (st && scene) {
-    scene.remove(st.wrapper);
+  if (st && stationScene) {
+    stationScene.remove(st.wrapper);
     activeStations.delete(id);
   }
 }
@@ -599,9 +663,6 @@ export function destroy3DLayer(): void {
     initialized = false;
   }
   activeShips.clear();
-  activeStations.clear();
-  stationTemplate = null;
-  stationLoading = false;
   loadedModels.clear();
   loadingModels.clear();
   failedModels.clear();
