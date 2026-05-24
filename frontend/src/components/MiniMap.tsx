@@ -1,5 +1,5 @@
 import { useGame, state, bump } from "../game/store";
-import { DUNGEONS, MAP_RADIUS, STATIONS, PORTALS, ZONES } from "../game/types";
+import { DUNGEONS, MAP_RADIUS, STATIONS, PORTALS, ZONES, RESOURCES, ASTEROID_BELTS, } from "../game/types";
 
 const BASE_SIZE = 130;
 const BASE_RANGE = 1800;
@@ -23,11 +23,11 @@ export function MiniMap() {
 
   const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
     if (state.dockedAt) return;
-    const rect = (e.target as SVGSVGElement).getBoundingClientRect();
-    const cx = e.clientX - rect.left;
-    const cy = e.clientY - rect.top;
-    const dx = (cx - SIZE / 2) / scale;
-    const dy = (cy - SIZE / 2) / scale;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const rx = (e.clientX - rect.left) / rect.width;
+    const ry = (e.clientY - rect.top) / rect.height;
+    const dx = (rx - 0.5) * RANGE * 2;
+    const dy = (ry - 0.5) * RANGE * 2;
     state.cameraTarget = {
       x: state.player.pos.x + dx,
       y: state.player.pos.y + dy,
@@ -42,11 +42,11 @@ export function MiniMap() {
     const fullSize = 500;
     const fullScale = fullSize / (zoneRadius * 2.2);
     const handleFullClick = (e: React.MouseEvent<SVGSVGElement>) => {
-      const rect = (e.target as SVGSVGElement).getBoundingClientRect();
-      const cx = e.clientX - rect.left;
-      const cy = e.clientY - rect.top;
-      const wx = (cx - fullSize / 2) / fullScale;
-      const wy = (cy - fullSize / 2) / fullScale;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const rx = (e.clientX - rect.left) / rect.width;
+      const ry = (e.clientY - rect.top) / rect.height;
+      const wx = (rx - 0.5) * zoneRadius * 2.2;
+      const wy = (ry - 0.5) * zoneRadius * 2.2;
       state.cameraTarget = { x: wx, y: wy };
       bump();
     };
@@ -86,6 +86,16 @@ export function MiniMap() {
             </defs>
             <rect width={fullSize} height={fullSize} fill="url(#fm-bg)" rx={4} />
             <circle cx={fullSize / 2} cy={fullSize / 2} r={zoneRadius * fullScale} fill="none" stroke="#1a234866" strokeDasharray="4 6" />
+
+            {(ASTEROID_BELTS[player.zone] ?? []).map((belt, i) => (
+              <ellipse key={`belt-${i}`}
+                cx={fullSize / 2 + belt.cx * fullScale}
+                cy={fullSize / 2 + belt.cy * fullScale}
+                rx={belt.rx * fullScale}
+                ry={belt.ry * fullScale}
+                fill="#a8784a11" stroke="#a8784a33" strokeDasharray="3 5" strokeWidth={1}
+              />
+            ))}
             <line x1={fullSize / 2} y1={4} x2={fullSize / 2} y2={fullSize - 4} stroke="#1a234844" />
             <line x1={4} y1={fullSize / 2} x2={fullSize - 4} y2={fullSize / 2} stroke="#1a234844" />
 
@@ -93,16 +103,22 @@ export function MiniMap() {
               const x = fullSize / 2 + a.pos.x * fullScale;
               const y = fullSize / 2 + a.pos.y * fullScale;
               if (x < 0 || x > fullSize || y < 0 || y > fullSize) return null;
-              return <rect key={a.id} x={x - 1.5} y={y - 1.5} width={3} height={3} fill={a.yields === "lumenite" ? "#7ad8ff" : "#a8784a"} opacity={0.6} />;
+              return <rect key={a.id} x={x - 1.5} y={y - 1.5} width={3} height={3} fill={RESOURCES[a.yields]?.color ?? "#a8784a"} opacity={0.6} />;
             })}
 
             {STATIONS.filter(s => s.zone === player.zone).map((s) => {
               const x = fullSize / 2 + s.pos.x * fullScale;
               const y = fullSize / 2 + s.pos.y * fullScale;
+              const isFactory = s.kind === "factory";
+              const color = isFactory ? "#ff8844" : "#4ee2ff";
               return (
                 <g key={s.id}>
-                  <rect x={x - 5} y={y - 5} width={10} height={10} fill="#4ee2ff" stroke="#fff" strokeWidth={0.5} />
-                  <text x={x} y={y + 16} fill="#4ee2ff" fontSize={8} textAnchor="middle">{s.name}</text>
+                  {isFactory ? (
+                    <polygon points={`${x},${y-6} ${x+6},${y} ${x},${y+6} ${x-6},${y}`} fill={color} stroke="#fff" strokeWidth={0.5} />
+                  ) : (
+                    <rect x={x - 5} y={y - 5} width={10} height={10} fill={color} stroke="#fff" strokeWidth={0.5} />
+                  )}
+                  <text x={x} y={y + 16} fill={color} fontSize={8} textAnchor="middle">{s.name}</text>
                 </g>
               );
             })}
@@ -198,16 +214,22 @@ export function MiniMap() {
           const x = SIZE / 2 + (a.pos.x - player.pos.x) * scale;
           const y = SIZE / 2 + (a.pos.y - player.pos.y) * scale;
           if (x < 0 || x > SIZE || y < 0 || y > SIZE) return null;
-          return <rect key={a.id} x={x - 1} y={y - 1} width={2} height={2} fill={a.yields === "lumenite" ? "#7ad8ff" : "#a8784a"} />;
+          return <rect key={a.id} x={x - 1} y={y - 1} width={2} height={2} fill={RESOURCES[a.yields]?.color ?? "#a8784a"} />;
         })}
 
         {STATIONS.filter((s) => s.zone === player.zone).map((s) => {
           const x = SIZE / 2 + (s.pos.x - player.pos.x) * scale;
           const y = SIZE / 2 + (s.pos.y - player.pos.y) * scale;
           if (x < 0 || x > SIZE || y < 0 || y > SIZE) return null;
+          const isFactory = s.kind === "factory";
+          const color = isFactory ? "#ff8844" : "#4ee2ff";
           return (
             <g key={s.id}>
-              <rect x={x - 3} y={y - 3} width={6} height={6} fill="#4ee2ff" stroke="#fff" strokeWidth={0.5} />
+              {isFactory ? (
+                <polygon points={`${x},${y-3} ${x+3},${y} ${x},${y+3} ${x-3},${y}`} fill={color} stroke="#fff" strokeWidth={0.5} />
+              ) : (
+                <rect x={x - 3} y={y - 3} width={6} height={6} fill={color} stroke="#fff" strokeWidth={0.5} />
+              )}
             </g>
           );
         })}
@@ -269,7 +291,19 @@ export function MiniMap() {
 
         <circle cx={SIZE / 2} cy={SIZE / 2} r={3} fill="#4ee2ff" stroke="#fff" strokeWidth={0.5} />
       </svg>
-      <div className="text-mute text-[8px] tracking-widest text-center mt-0.5">CLICK WARP · M FULL MAP · +/- SIZE</div>
+      <div className="flex items-center justify-center gap-2 mt-0.5">
+        <button
+          className="text-[12px] px-1.5 py-0 leading-none"
+          style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", color: "#4ee2ff", cursor: "pointer", borderRadius: 2 }}
+          onClick={(e) => { e.stopPropagation(); state.minimapScale = Math.max(0.5, state.minimapScale - 0.25); bump(); }}
+        >-</button>
+        <span className="text-mute text-[8px] tracking-widest">M MAP</span>
+        <button
+          className="text-[12px] px-1.5 py-0 leading-none"
+          style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", color: "#4ee2ff", cursor: "pointer", borderRadius: 2 }}
+          onClick={(e) => { e.stopPropagation(); state.minimapScale = Math.min(3, state.minimapScale + 0.25); bump(); }}
+        >+</button>
+      </div>
     </div>
   );
 }

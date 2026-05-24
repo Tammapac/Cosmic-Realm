@@ -40,11 +40,11 @@ router.post("/save", async (req, res) => {
         exp: data.exp,
         credits: data.credits,
         honor: data.honor,
-        hull: data.hull,
-        shield: data.shield,
+        hull: sanitizeFloat(data.hull),
+        shield: sanitizeFloat(data.shield),
         zone: data.zone,
-        posX: data.pos?.x ?? 0,
-        posY: data.pos?.y ?? 0,
+        posX: sanitizeFloat(data.pos?.x ?? 0),
+        posY: sanitizeFloat(data.pos?.y ?? 0),
         faction: data.faction,
         skillPoints: data.skillPoints,
         skills: data.skills,
@@ -89,6 +89,11 @@ router.post("/save", async (req, res) => {
     res.status(500).json({ error: "Save failed" });
   }
 });
+
+function sanitizeFloat(v: number): number {
+  if (!isFinite(v) || Math.abs(v) < 1e-38) return 0;
+  return v;
+}
 
 function toClient(p: any) {
   return {

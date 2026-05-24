@@ -1,53 +1,61 @@
 import {
   Asteroid, CargoBox, DRONE_DEFS, Drone, DUNGEONS, Enemy, FACTIONS, Floater, MAP_RADIUS, NpcShip, OtherPlayer, Particle,
   PORTALS, Projectile, SHIP_CLASSES, STATIONS, ShipClassId, Station, ZONES, rankFor,
-} from "./types";
+RESOURCES, } from "./types";
 import { state } from "./store";
 import { effectiveStats } from "./loop";
+import { drawParallaxBackground } from "./parallax-bg";
 
-// ── STAR FIELDS ────────────────────────────────────────────────────────────
-const STAR_LAYERS = [
-  { count: 220, speed: 0.1, size: 1, color: "#3a4980" },
-  { count: 130, speed: 0.3, size: 1, color: "#7a8ad8" },
-  { count: 65,  speed: 0.55, size: 2, color: "#e8f0ff" },
-];
-type Star = { x: number; y: number; size: number; color: string; speed: number };
-const stars: Star[][] = STAR_LAYERS.map((layer) => {
-  const arr: Star[] = [];
-  for (let i = 0; i < layer.count; i++) {
-    arr.push({
-      x: Math.random() * 4000 - 2000,
-      y: Math.random() * 4000 - 2000,
-      size: layer.size, color: layer.color, speed: layer.speed,
-    });
-  }
-  return arr;
-});
+const MAX_PARTICLES = 600;
 
-let nebulaSeed: { x: number; y: number; r: number; c: string }[] = [];
-function regenNebula(zone: keyof typeof ZONES): void {
-  nebulaSeed = [];
-  const z = ZONES[zone];
-  for (let i = 0; i < 18; i++) {
-    nebulaSeed.push({
-      x: (Math.random() - 0.5) * 6000,
-      y: (Math.random() - 0.5) * 6000,
-      r: 300 + Math.random() * 600,
-      c: i % 2 === 0 ? z.bgHueA : z.bgHueB,
-    });
-  }
+// ── SHIP TEXTURE CACHE (GPU-like optimization for Canvas 2D) ──────────
+const _shipTexCache = new Map<string, HTMLCanvasElement>();
+
+function getCachedShipTex(
+  drawFn: (ctx: CanvasRenderingContext2D) => void,
+  key: string, width: number, height: number
+): HTMLCanvasElement {
+  let cached = _shipTexCache.get(key);
+  if (cached) return cached;
+  cached = document.createElement("canvas");
+  cached.width = width;
+  cached.height = height;
+  const c = cached.getContext("2d")!;
+  c.translate(width / 2, height / 2);
+  drawFn(c);
+  _shipTexCache.set(key, cached);
+  return cached;
 }
-regenNebula(state.player.zone);
-let lastZone = state.player.zone;
+
+function invalidateShipCache(): void {
+  _shipTexCache.clear();
+}
+// ── ENEMY SPRITE CACHE ────────────────────────────────────────────────────
+const _enemySpriteCache = new Map<string, HTMLImageElement | null>();
+
+function getEnemySprite(name: string): HTMLImageElement | null {
+  if (_enemySpriteCache.has(name)) return _enemySpriteCache.get(name)!;
+  const img = new Image();
+  img.src = `/enemies/${name}.png`;
+  img.onload = () => { _enemySpriteCache.set(name, img); };
+  img.onerror = () => { _enemySpriteCache.set(name, null); };
+  _enemySpriteCache.set(name, img);
+  return img.complete ? img : null;
+}
+
+
+
+
+
 
 // ── PIXEL HELPERS ─────────────────────────────────────────────────────────
-function px(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string): void {
+export function px(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string): void {
   ctx.fillStyle = color;
   ctx.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
 }
 
 // ── 16-bit SHIP SPRITES ──────────────────────────────────────────────────
-function drawShip(
+export function drawShip(
   ctx: CanvasRenderingContext2D,
   x: number, y: number, angle: number, shipClass: ShipClassId,
   scale = 1, glow = true,
@@ -68,7 +76,7 @@ function drawShip(
   ctx.restore();
 }
 
-function shadeHex(hex: string, amt: number): string {
+export function shadeHex(hex: string, amt: number): string {
   // hex #rrggbb, amt in [-1,1]
   const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   if (!m) return hex;
@@ -77,7 +85,7 @@ function shadeHex(hex: string, amt: number): string {
   return `rgb(${f(r)},${f(g)},${f(b)})`;
 }
 
-function drawShipPixels(
+export function drawShipPixels(
   ctx: CanvasRenderingContext2D, id: ShipClassId,
   c: string, a: string, hi: string, dk: string, s: number,
 ): void {
@@ -509,7 +517,7 @@ function drawShipPixels(
 }
 
 // ── ENEMY SPRITES ─────────────────────────────────────────────────────────
-function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
+export function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy, bodyOnly = false): void {
   ctx.save();
   ctx.translate(e.pos.x, e.pos.y);
   ctx.rotate(e.angle + Math.PI / 2);
@@ -526,7 +534,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
     ctx.restore();
   }
   ctx.shadowColor = e.color;
-  ctx.shadowBlur = e.isBoss ? 18 : 8;
+  ctx.shadowBlur = e.isBoss ? 10 : 4;
   if (e.isBoss) {
     // Telegraph circle
     ctx.save();
@@ -560,212 +568,70 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
   wingGrad.addColorStop(1, md);
 
   if (e.type === "scout") {
-    // ── SCOUT: Sleek dart/fighter shapes ──
-    const variant = (e.id.charCodeAt(0) + e.id.charCodeAt(e.id.length - 1)) % 3;
-    if (variant === 0) {
-      // Dart interceptor — narrow pointed nose, swept-back fins
-      // Main fuselage
-      ctx.fillStyle = bodyGrad;
-      ctx.beginPath();
-      ctx.moveTo(0, -14 * s * pulse);
-      ctx.lineTo(2 * s, -8 * s);
-      ctx.lineTo(3 * s, -2 * s);
-      ctx.lineTo(2.5 * s, 6 * s);
-      ctx.lineTo(0, 8 * s);
-      ctx.lineTo(-2.5 * s, 6 * s);
-      ctx.lineTo(-3 * s, -2 * s);
-      ctx.lineTo(-2 * s, -8 * s);
-      ctx.closePath();
-      ctx.fill();
-      // Swept-back right wing
-      ctx.beginPath();
-      ctx.moveTo(2.5 * s, -1 * s);
-      ctx.lineTo(11 * s, 3 * s);
-      ctx.lineTo(10 * s, 5 * s);
-      ctx.lineTo(2.5 * s, 4 * s);
-      ctx.closePath();
-      ctx.fill();
-      // Swept-back left wing
-      ctx.beginPath();
-      ctx.moveTo(-2.5 * s, -1 * s);
-      ctx.lineTo(-11 * s, 3 * s);
-      ctx.lineTo(-10 * s, 5 * s);
-      ctx.lineTo(-2.5 * s, 4 * s);
-      ctx.closePath();
-      ctx.fill();
-      // Hull plating (darker center panel)
-      ctx.fillStyle = dk;
-      ctx.beginPath();
-      ctx.moveTo(0, -10 * s);
-      ctx.lineTo(1.5 * s, -4 * s);
-      ctx.lineTo(1.5 * s, 4 * s);
-      ctx.lineTo(0, 6 * s);
-      ctx.lineTo(-1.5 * s, 4 * s);
-      ctx.lineTo(-1.5 * s, -4 * s);
-      ctx.closePath();
-      ctx.fill();
-      // Wing tips (darker)
-      ctx.beginPath();
-      ctx.moveTo(9 * s, 3.5 * s);
-      ctx.lineTo(12 * s, 4 * s);
-      ctx.lineTo(11 * s, 6 * s);
-      ctx.lineTo(9 * s, 5 * s);
-      ctx.closePath();
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(-9 * s, 3.5 * s);
-      ctx.lineTo(-12 * s, 4 * s);
-      ctx.lineTo(-11 * s, 6 * s);
-      ctx.lineTo(-9 * s, 5 * s);
-      ctx.closePath();
-      ctx.fill();
-      // Engine exhaust glow
-      ctx.fillStyle = bodyGrad;
-      ctx.globalAlpha = 0.4 + 0.3 * Math.sin(t * 8);
-      ctx.beginPath();
-      ctx.moveTo(-1.5 * s, 7 * s);
-      ctx.lineTo(1.5 * s, 7 * s);
-      ctx.lineTo(0.5 * s, 11 * s);
-      ctx.lineTo(-0.5 * s, 11 * s);
-      ctx.closePath();
-      ctx.fill();
+    const scoutSprite = getEnemySprite("scout");
+    if (scoutSprite && scoutSprite.complete && scoutSprite.naturalWidth > 0) {
+      const drawSize = 32 * s * pulse;
+      ctx.globalAlpha = 0.92 + 0.08 * Math.sin(t * 4);
+      ctx.drawImage(scoutSprite, -drawSize / 2, -drawSize / 2, drawSize, drawSize);
       ctx.globalAlpha = 1;
-      // Reactor core (small)
-      ctx.fillStyle = hi;
-      ctx.globalAlpha = 0.7 + 0.3 * Math.sin(t * 6);
+      // engine glow
+      ctx.fillStyle = c;
+      ctx.globalAlpha = 0.5 + 0.4 * Math.sin(t * 8);
       ctx.beginPath();
-      ctx.arc(0, -3 * s, 0.8 * s, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-    } else if (variant === 1) {
-      // Needle fighter — ultra-slim with angled stabilizers
-      // Main hull
-      ctx.fillStyle = bodyGrad;
-      ctx.beginPath();
-      ctx.moveTo(0, -13 * s * pulse);
-      ctx.lineTo(1.8 * s, -6 * s);
-      ctx.lineTo(2.5 * s, 2 * s);
-      ctx.lineTo(1.5 * s, 8 * s);
-      ctx.lineTo(0, 9 * s);
-      ctx.lineTo(-1.5 * s, 8 * s);
-      ctx.lineTo(-2.5 * s, 2 * s);
-      ctx.lineTo(-1.8 * s, -6 * s);
-      ctx.closePath();
-      ctx.fill();
-      // Angled stabilizer fins (right)
-      ctx.beginPath();
-      ctx.moveTo(2 * s, 1 * s);
-      ctx.lineTo(9 * s, 5 * s);
-      ctx.lineTo(8 * s, 7 * s);
-      ctx.lineTo(2 * s, 5 * s);
-      ctx.closePath();
-      ctx.fill();
-      // Angled stabilizer fins (left)
-      ctx.beginPath();
-      ctx.moveTo(-2 * s, 1 * s);
-      ctx.lineTo(-9 * s, 5 * s);
-      ctx.lineTo(-8 * s, 7 * s);
-      ctx.lineTo(-2 * s, 5 * s);
-      ctx.closePath();
-      ctx.fill();
-      // Dark panel lines on fuselage
-      ctx.fillStyle = dk;
-      ctx.beginPath();
-      ctx.moveTo(0, -9 * s);
-      ctx.lineTo(1 * s, -3 * s);
-      ctx.lineTo(1 * s, 5 * s);
-      ctx.lineTo(0, 7 * s);
-      ctx.lineTo(-1 * s, 5 * s);
-      ctx.lineTo(-1 * s, -3 * s);
-      ctx.closePath();
-      ctx.fill();
-      // Panel line accents on wings
-      ctx.strokeStyle = dk;
-      ctx.lineWidth = 0.8;
-      ctx.beginPath();
-      ctx.moveTo(3 * s, 2 * s); ctx.lineTo(7 * s, 5.5 * s);
-      ctx.moveTo(-3 * s, 2 * s); ctx.lineTo(-7 * s, 5.5 * s);
-      ctx.stroke();
-      // Engine glow
-      ctx.fillStyle = bodyGrad;
-      ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 7);
-      ctx.beginPath();
-      ctx.moveTo(-1 * s, 8 * s);
-      ctx.lineTo(1 * s, 8 * s);
-      ctx.lineTo(0.3 * s, 12 * s);
-      ctx.lineTo(-0.3 * s, 12 * s);
-      ctx.closePath();
-      ctx.fill();
-      ctx.globalAlpha = 1;
-      // Reactor dot
-      ctx.fillStyle = hi;
-      ctx.globalAlpha = 0.7 + 0.3 * Math.sin(t * 5);
-      ctx.beginPath();
-      ctx.arc(0, -2 * s, 0.7 * s, 0, Math.PI * 2);
+      ctx.ellipse(0, 10 * s, 2 * s, 4 * s, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 1;
     } else {
-      // Arrowhead striker — broad arrow shape, aggressive silhouette
-      // Main body
-      ctx.fillStyle = bodyGrad;
-      ctx.beginPath();
-      ctx.moveTo(0, -12 * s * pulse);
-      ctx.lineTo(3 * s, -5 * s);
-      ctx.lineTo(8 * s, 0);
-      ctx.lineTo(7 * s, 5 * s);
-      ctx.lineTo(2 * s, 7 * s);
-      ctx.lineTo(0, 8 * s);
-      ctx.lineTo(-2 * s, 7 * s);
-      ctx.lineTo(-7 * s, 5 * s);
-      ctx.lineTo(-8 * s, 0);
-      ctx.lineTo(-3 * s, -5 * s);
-      ctx.closePath();
-      ctx.fill();
-      // Hull plating — darker chevron
-      ctx.fillStyle = dk;
-      ctx.beginPath();
-      ctx.moveTo(0, -8 * s);
-      ctx.lineTo(2 * s, -3 * s);
-      ctx.lineTo(5 * s, 0);
-      ctx.lineTo(0, 3 * s);
-      ctx.lineTo(-5 * s, 0);
-      ctx.lineTo(-2 * s, -3 * s);
-      ctx.closePath();
-      ctx.fill();
-      // Sharp wingtip extensions
-      ctx.fillStyle = bodyGrad;
-      ctx.beginPath();
-      ctx.moveTo(7 * s, 1 * s);
-      ctx.lineTo(12 * s, -1 * s);
-      ctx.lineTo(11 * s, 3 * s);
-      ctx.lineTo(7 * s, 4 * s);
-      ctx.closePath();
-      ctx.fill();
-      ctx.beginPath();
-      ctx.moveTo(-7 * s, 1 * s);
-      ctx.lineTo(-12 * s, -1 * s);
-      ctx.lineTo(-11 * s, 3 * s);
-      ctx.lineTo(-7 * s, 4 * s);
-      ctx.closePath();
-      ctx.fill();
-      // Engine exhaust
-      ctx.fillStyle = bodyGrad;
-      ctx.globalAlpha = 0.4 + 0.35 * Math.sin(t * 9);
-      ctx.beginPath();
-      ctx.moveTo(-1 * s, 7 * s);
-      ctx.lineTo(1 * s, 7 * s);
-      ctx.lineTo(0.4 * s, 10 * s);
-      ctx.lineTo(-0.4 * s, 10 * s);
-      ctx.closePath();
-      ctx.fill();
-      ctx.globalAlpha = 1;
-      // Small reactor core
-      ctx.fillStyle = hi;
-      ctx.globalAlpha = 0.7 + 0.3 * Math.sin(t * 6);
-      ctx.beginPath();
-      ctx.arc(0, -2 * s, 0.9 * s, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
+      // fallback canvas drawing while sprite loads
+      // ── SCOUT: Sleek dart/fighter shapes ──
+      const variant = (e.id.charCodeAt(0) + e.id.charCodeAt(e.id.length - 1)) % 3;
+      if (variant === 0) {
+        ctx.fillStyle = bodyGrad;
+        ctx.beginPath();
+        ctx.moveTo(0, -14 * s * pulse);
+        ctx.lineTo(2 * s, -8 * s);
+        ctx.lineTo(3 * s, -2 * s);
+        ctx.lineTo(2.5 * s, 6 * s);
+        ctx.lineTo(0, 8 * s);
+        ctx.lineTo(-2.5 * s, 6 * s);
+        ctx.lineTo(-3 * s, -2 * s);
+        ctx.lineTo(-2 * s, -8 * s);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = dk;
+        ctx.beginPath();
+        ctx.moveTo(0, -10 * s);
+        ctx.lineTo(1.5 * s, -4 * s);
+        ctx.lineTo(1.5 * s, 4 * s);
+        ctx.lineTo(0, 6 * s);
+        ctx.lineTo(-1.5 * s, 4 * s);
+        ctx.lineTo(-1.5 * s, -4 * s);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = hi;
+        ctx.globalAlpha = 0.7 + 0.3 * Math.sin(t * 6);
+        ctx.beginPath();
+        ctx.arc(0, -2 * s, 0.9 * s, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      } else {
+        ctx.fillStyle = bodyGrad;
+        ctx.beginPath();
+        ctx.moveTo(0, -12 * s * pulse);
+        ctx.lineTo(4 * s, -4 * s);
+        ctx.lineTo(5 * s, 4 * s);
+        ctx.lineTo(0, 7 * s);
+        ctx.lineTo(-5 * s, 4 * s);
+        ctx.lineTo(-4 * s, -4 * s);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = hi;
+        ctx.globalAlpha = 0.6 + 0.3 * Math.sin(t * 7);
+        ctx.beginPath();
+        ctx.arc(0, 0, 2 * s, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
     }
   } else if (e.type === "raider") {
     // ── RAIDER: Wider aggressive wing spread, angular attack craft ──
@@ -1527,6 +1393,293 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
       ctx.globalAlpha = 1;
     }
 
+  } else if (e.type === "interceptor") {
+    // INTERCEPTOR: Sleek aggressive dart, forward-swept canards
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.moveTo(0, -15 * s * pulse);
+    ctx.lineTo(3 * s, -8 * s);
+    ctx.lineTo(4 * s, 0);
+    ctx.lineTo(3 * s, 8 * s);
+    ctx.lineTo(0, 10 * s);
+    ctx.lineTo(-3 * s, 8 * s);
+    ctx.lineTo(-4 * s, 0);
+    ctx.lineTo(-3 * s, -8 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = wingGrad;
+    ctx.beginPath();
+    ctx.moveTo(3 * s, -10 * s);
+    ctx.lineTo(12 * s, -6 * s);
+    ctx.lineTo(10 * s, -2 * s);
+    ctx.lineTo(4 * s, -2 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-3 * s, -10 * s);
+    ctx.lineTo(-12 * s, -6 * s);
+    ctx.lineTo(-10 * s, -2 * s);
+    ctx.lineTo(-4 * s, -2 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = dk;
+    ctx.beginPath();
+    ctx.moveTo(0, -12 * s);
+    ctx.lineTo(1.5 * s, -4 * s);
+    ctx.lineTo(1.5 * s, 6 * s);
+    ctx.lineTo(0, 8 * s);
+    ctx.lineTo(-1.5 * s, 6 * s);
+    ctx.lineTo(-1.5 * s, -4 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = c;
+    ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 9);
+    ctx.beginPath();
+    ctx.ellipse(0, 9 * s, 2 * s, 3.5 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+  } else if (e.type === "corvette") {
+    // CORVETTE: Broad-shouldered gunship with heavy side mounts
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.moveTo(0, -17 * s * pulse);
+    ctx.lineTo(5 * s, -10 * s);
+    ctx.lineTo(7 * s, 0);
+    ctx.lineTo(6 * s, 10 * s);
+    ctx.lineTo(0, 13 * s);
+    ctx.lineTo(-6 * s, 10 * s);
+    ctx.lineTo(-7 * s, 0);
+    ctx.lineTo(-5 * s, -10 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = wingGrad;
+    ctx.beginPath();
+    ctx.moveTo(7 * s, -4 * s);
+    ctx.lineTo(16 * s, -7 * s);
+    ctx.lineTo(17 * s, 2 * s);
+    ctx.lineTo(14 * s, 8 * s);
+    ctx.lineTo(7 * s, 6 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-7 * s, -4 * s);
+    ctx.lineTo(-16 * s, -7 * s);
+    ctx.lineTo(-17 * s, 2 * s);
+    ctx.lineTo(-14 * s, 8 * s);
+    ctx.lineTo(-7 * s, 6 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = dk;
+    ctx.fillRect(13 * s, -9 * s, 3 * s, 3 * s);
+    ctx.fillRect(-16 * s, -9 * s, 3 * s, 3 * s);
+    ctx.fillStyle = md;
+    ctx.beginPath();
+    ctx.moveTo(-4 * s, -13 * s);
+    ctx.lineTo(4 * s, -13 * s);
+    ctx.lineTo(5 * s, 8 * s);
+    ctx.lineTo(-5 * s, 8 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = c;
+    ctx.globalAlpha = 0.4 + 0.3 * Math.sin(t * 6);
+    ctx.beginPath(); ctx.ellipse(-2.5 * s, 12 * s, 1.8 * s, 2.5 * s, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(2.5 * s, 12 * s, 1.8 * s, 2.5 * s, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+
+  } else if (e.type === "specter") {
+    // SPECTER: Angular stealth craft, flickering low-profile silhouette
+    const flicker = 0.75 + Math.sin(t * 7 + e.size) * 0.25;
+    ctx.globalAlpha = flicker;
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.moveTo(0, -14 * s * pulse);
+    ctx.lineTo(2 * s, -5 * s);
+    ctx.lineTo(9 * s, -9 * s);
+    ctx.lineTo(6 * s, 0);
+    ctx.lineTo(9 * s, 9 * s);
+    ctx.lineTo(2 * s, 6 * s);
+    ctx.lineTo(0, 12 * s);
+    ctx.lineTo(-2 * s, 6 * s);
+    ctx.lineTo(-9 * s, 9 * s);
+    ctx.lineTo(-6 * s, 0);
+    ctx.lineTo(-9 * s, -9 * s);
+    ctx.lineTo(-2 * s, -5 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = dk;
+    ctx.beginPath();
+    ctx.moveTo(0, -10 * s);
+    ctx.lineTo(2 * s, -3 * s);
+    ctx.lineTo(0, 8 * s);
+    ctx.lineTo(-2 * s, -3 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = lt;
+    ctx.globalAlpha = 0.3 + 0.4 * Math.sin(t * 5);
+    ctx.beginPath();
+    ctx.arc(0, -1 * s, 3 * s, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+  } else if (e.type === "phantom") {
+    // PHANTOM: Long-range sniper, narrow elongated hull with sensor arrays
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.moveTo(0, -18 * s * pulse);
+    ctx.lineTo(2.5 * s, -10 * s);
+    ctx.lineTo(3 * s, 4 * s);
+    ctx.lineTo(2 * s, 11 * s);
+    ctx.lineTo(0, 13 * s);
+    ctx.lineTo(-2 * s, 11 * s);
+    ctx.lineTo(-3 * s, 4 * s);
+    ctx.lineTo(-2.5 * s, -10 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = wingGrad;
+    ctx.beginPath();
+    ctx.moveTo(2.5 * s, -6 * s);
+    ctx.lineTo(14 * s, -12 * s);
+    ctx.lineTo(13 * s, -6 * s);
+    ctx.lineTo(3 * s, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-2.5 * s, -6 * s);
+    ctx.lineTo(-14 * s, -12 * s);
+    ctx.lineTo(-13 * s, -6 * s);
+    ctx.lineTo(-3 * s, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = dk;
+    ctx.fillRect(-1 * s, -22 * s, 2 * s, 8 * s);
+    ctx.fillStyle = lt;
+    ctx.globalAlpha = 0.6 + 0.4 * Math.sin(t * 4);
+    ctx.beginPath(); ctx.arc(13 * s, -9 * s, 1.5 * s, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(-13 * s, -9 * s, 1.5 * s, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = c;
+    ctx.globalAlpha = 0.4 + 0.3 * Math.sin(t * 7);
+    ctx.beginPath(); ctx.ellipse(0, 12 * s, 1.5 * s, 3 * s, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+
+  } else if (e.type === "juggernaut") {
+    // JUGGERNAUT: Massive armored bruiser with thick plating and heavy turrets
+    const breathe2 = 1 + Math.sin(t * 1.5 + e.size * 0.2) * 0.03;
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.moveTo(0, -22 * s * breathe2);
+    ctx.lineTo(8 * s, -16 * s);
+    ctx.lineTo(12 * s, -6 * s);
+    ctx.lineTo(13 * s, 8 * s);
+    ctx.lineTo(10 * s, 18 * s);
+    ctx.lineTo(0, 22 * s);
+    ctx.lineTo(-10 * s, 18 * s);
+    ctx.lineTo(-13 * s, 8 * s);
+    ctx.lineTo(-12 * s, -6 * s);
+    ctx.lineTo(-8 * s, -16 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = wingGrad;
+    ctx.beginPath();
+    ctx.moveTo(12 * s, -5 * s);
+    ctx.lineTo(22 * s, -8 * s);
+    ctx.lineTo(24 * s, 4 * s);
+    ctx.lineTo(22 * s, 12 * s);
+    ctx.lineTo(13 * s, 10 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-12 * s, -5 * s);
+    ctx.lineTo(-22 * s, -8 * s);
+    ctx.lineTo(-24 * s, 4 * s);
+    ctx.lineTo(-22 * s, 12 * s);
+    ctx.lineTo(-13 * s, 10 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = dk;
+    ctx.beginPath(); ctx.arc(18 * s, 0, 3.5 * s, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(-18 * s, 0, 3.5 * s, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = md;
+    ctx.lineWidth = 1.5 * s;
+    ctx.beginPath();
+    ctx.moveTo(-9 * s, -14 * s); ctx.lineTo(9 * s, -14 * s);
+    ctx.moveTo(-11 * s, -4 * s); ctx.lineTo(11 * s, -4 * s);
+    ctx.moveTo(-11 * s, 8 * s); ctx.lineTo(11 * s, 8 * s);
+    ctx.stroke();
+    ctx.fillStyle = lt;
+    ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 3);
+    ctx.beginPath(); ctx.arc(0, 2 * s, 3.5 * s, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = c;
+    ctx.globalAlpha = 0.35 + 0.3 * Math.sin(t * 4);
+    for (let ex = -6; ex <= 6; ex += 3) {
+      ctx.beginPath(); ctx.ellipse(ex * s, 20 * s, 1.5 * s, 3 * s, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+  } else if (e.type === "leviathan") {
+    // LEVIATHAN: Colossal world-ender, multi-sectioned capital ship
+    const breathe3 = 1 + Math.sin(t * 1.2 + e.size * 0.1) * 0.02;
+    ctx.fillStyle = bodyGrad;
+    ctx.beginPath();
+    ctx.moveTo(0, -28 * s * breathe3);
+    ctx.lineTo(10 * s, -20 * s);
+    ctx.lineTo(14 * s, -8 * s);
+    ctx.lineTo(16 * s, 10 * s);
+    ctx.lineTo(12 * s, 24 * s);
+    ctx.lineTo(0, 28 * s);
+    ctx.lineTo(-12 * s, 24 * s);
+    ctx.lineTo(-16 * s, 10 * s);
+    ctx.lineTo(-14 * s, -8 * s);
+    ctx.lineTo(-10 * s, -20 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = wingGrad;
+    ctx.beginPath();
+    ctx.moveTo(14 * s, -6 * s);
+    ctx.lineTo(30 * s, -14 * s);
+    ctx.lineTo(34 * s, 0);
+    ctx.lineTo(30 * s, 14 * s);
+    ctx.lineTo(16 * s, 12 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-14 * s, -6 * s);
+    ctx.lineTo(-30 * s, -14 * s);
+    ctx.lineTo(-34 * s, 0);
+    ctx.lineTo(-30 * s, 14 * s);
+    ctx.lineTo(-16 * s, 12 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = dk;
+    ctx.beginPath(); ctx.moveTo(-3 * s, -24 * s); ctx.lineTo(0, -32 * s); ctx.lineTo(3 * s, -24 * s); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(8 * s, -20 * s); ctx.lineTo(10 * s, -27 * s); ctx.lineTo(13 * s, -20 * s); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-8 * s, -20 * s); ctx.lineTo(-10 * s, -27 * s); ctx.lineTo(-13 * s, -20 * s); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = md;
+    for (const wx of [24, 28, -24, -28]) {
+      ctx.beginPath(); ctx.arc(wx * s, 0, 2.5 * s, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.strokeStyle = shadeHex(c, 0.2);
+    ctx.lineWidth = s;
+    ctx.beginPath();
+    ctx.moveTo(-12 * s, -18 * s); ctx.lineTo(12 * s, -18 * s);
+    ctx.moveTo(-14 * s, -6 * s); ctx.lineTo(14 * s, -6 * s);
+    ctx.moveTo(-15 * s, 6 * s); ctx.lineTo(15 * s, 6 * s);
+    ctx.moveTo(-13 * s, 18 * s); ctx.lineTo(13 * s, 18 * s);
+    ctx.stroke();
+    ctx.fillStyle = hi;
+    ctx.globalAlpha = 0.4 + 0.5 * Math.sin(t * 2.5);
+    ctx.beginPath(); ctx.arc(0, 0, 5 * s, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.15 + 0.2 * Math.sin(t * 2.5);
+    ctx.beginPath(); ctx.arc(0, 0, 12 * s, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = c;
+    ctx.globalAlpha = 0.3 + 0.25 * Math.sin(t * 3.5);
+    for (let ex = -9; ex <= 9; ex += 3) {
+      ctx.beginPath(); ctx.ellipse(ex * s, 25 * s, 2 * s, 4 * s, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
   } else {
     // ── DREAD (boss): Massive capital ship with multiple hull sections ──
     const variant = (e.id.charCodeAt(0) + e.id.charCodeAt(e.id.length - 1)) % 3;
@@ -1885,6 +2038,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
   }
   ctx.restore();
 
+  if (bodyOnly) return;
   // health bar above
   const barW = e.isBoss ? 64 : 28;
   drawHealthBar(ctx, e.pos.x, e.pos.y - e.size - 10, barW, e.hull / e.hullMax);
@@ -1918,7 +2072,7 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy): void {
 }
 
 // Mini health/shield bars above ship
-function drawHealthBar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, pct: number): void {
+export function drawHealthBar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, pct: number): void {
   const h = 5;
   ctx.fillStyle = "rgba(0,0,0,0.75)";
   ctx.fillRect(x - w / 2 - 1, y - 1, w + 2, h + 2);
@@ -1939,7 +2093,7 @@ function drawHealthBar(ctx: CanvasRenderingContext2D, x: number, y: number, w: n
   }
 }
 
-function drawHullShieldBars(
+export function drawHullShieldBars(
   ctx: CanvasRenderingContext2D, x: number, y: number,
   hullPct: number, shieldPct: number,
 ): void {
@@ -1957,7 +2111,7 @@ function drawHullShieldBars(
 }
 
 // ── PROJECTILES ───────────────────────────────────────────────────────────
-function drawProjectile(ctx: CanvasRenderingContext2D, pr: Projectile): void {
+export function drawProjectile(ctx: CanvasRenderingContext2D, pr: Projectile): void {
   ctx.save();
   ctx.translate(pr.pos.x, pr.pos.y);
   ctx.rotate(Math.atan2(pr.vel.y, pr.vel.x));
@@ -2049,6 +2203,76 @@ function drawProjectile(ctx: CanvasRenderingContext2D, pr: Projectile): void {
     ctx.fillStyle = "#ffd24a";
     ctx.fillRect(-15, -1, 3, 2);
     ctx.globalAlpha = 1;
+  } else if (pr.weaponKind === "energy") {
+    // ── Energy Ball: pulsing glowing sphere ──
+    const pulse = 0.8 + 0.2 * Math.sin(Date.now() * 0.015);
+    ctx.shadowColor = pr.color;
+    ctx.shadowBlur = 28 * pulse;
+    // Outer glow ring
+    ctx.globalAlpha = 0.3 * pulse;
+    ctx.fillStyle = pr.color;
+    ctx.beginPath();
+    ctx.arc(0, 0, pr.size * 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    // Main sphere
+    ctx.globalAlpha = 0.85;
+    ctx.fillStyle = pr.color;
+    ctx.beginPath();
+    ctx.arc(0, 0, pr.size * 1.2, 0, Math.PI * 2);
+    ctx.fill();
+    // Bright white core
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.arc(0, 0, pr.size * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    // Crackling sparks
+    ctx.strokeStyle = pr.color;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.7 * pulse;
+    for (let s = 0; s < 3; s++) {
+      const sa = (Date.now() * 0.003 + s * 2.1) % (Math.PI * 2);
+      const sr = pr.size * 1.8;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(sa) * pr.size * 0.8, Math.sin(sa) * pr.size * 0.8);
+      ctx.lineTo(Math.cos(sa + 0.3) * sr, Math.sin(sa + 0.3) * sr);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  } else if (pr.weaponKind === "plasma") {
+    // ── Plasma Bolt: elongated fiery bolt with trail ──
+    ctx.shadowColor = pr.color;
+    ctx.shadowBlur = 22;
+    // Trail particles (fading behind)
+    ctx.globalAlpha = 0.15;
+    ctx.fillStyle = pr.color;
+    ctx.beginPath();
+    ctx.ellipse(-14, 0, 12, pr.size * 0.8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.25;
+    ctx.beginPath();
+    ctx.ellipse(-8, 0, 8, pr.size * 0.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Main plasma body (elongated oval)
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = pr.color;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, pr.size * 2, pr.size * 1.1, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Hot core
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.ellipse(2, 0, pr.size * 0.8, pr.size * 0.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Leading edge flare
+    const flare = 0.7 + 0.3 * Math.sin(Date.now() * 0.02);
+    ctx.globalAlpha = 0.6 * flare;
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.arc(pr.size * 1.8, 0, pr.size * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
   } else {
     // ── Laser: solid glowing beam ──
     ctx.shadowColor = pr.color;
@@ -2073,7 +2297,7 @@ function drawProjectile(ctx: CanvasRenderingContext2D, pr: Projectile): void {
 }
 
 // ── PARTICLES ─────────────────────────────────────────────────────────────
-function drawParticle(ctx: CanvasRenderingContext2D, pa: Particle): void {
+export function drawParticle(ctx: CanvasRenderingContext2D, pa: Particle): void {
   const a = Math.max(0, Math.min(1, pa.ttl / pa.maxTtl));
   if (pa.kind === "ring") {
     const t = 1 - a;
@@ -2093,15 +2317,16 @@ function drawParticle(ctx: CanvasRenderingContext2D, pa: Particle): void {
   }
   if (pa.kind === "trail") {
     const r = pa.size * a;
+    const baseAlpha = pa.alpha ?? 1;
     ctx.save();
-    ctx.globalAlpha = a * a * 0.5;
+    ctx.globalAlpha = a * a * 0.5 * baseAlpha;
     ctx.shadowColor = pa.color;
     ctx.shadowBlur = 6 * a;
     ctx.fillStyle = pa.color;
     ctx.beginPath();
     ctx.arc(pa.pos.x, pa.pos.y, r, 0, Math.PI * 2);
     ctx.fill();
-    ctx.globalAlpha = a * a * 0.8;
+    ctx.globalAlpha = a * a * 0.8 * baseAlpha;
     ctx.fillStyle = "#ffffff";
     ctx.beginPath();
     ctx.arc(pa.pos.x, pa.pos.y, r * 0.4, 0, Math.PI * 2);
@@ -2231,14 +2456,14 @@ function drawParticle(ctx: CanvasRenderingContext2D, pa: Particle): void {
 }
 
 // ── STATIONS ──────────────────────────────────────────────────────────────
-const STATION_GLYPH: Record<string, string> = {
+export const STATION_GLYPH: Record<string, string> = {
   hub: "✦", trade: "$", mining: "▰", military: "⚔", outpost: "□",
 };
-const STATION_COLOR: Record<string, string> = {
-  hub: "#4ee2ff", trade: "#5cff8a", mining: "#ffd24a", military: "#ff5c6c", outpost: "#7ad8ff",
+export const STATION_COLOR: Record<string, string> = {
+  hub: "#4ee2ff", trade: "#5cff8a", mining: "#ffd24a", military: "#ff5c6c", outpost: "#7ad8ff", factory: "#ff8844",
 };
 
-function drawStation(
+export function drawStation(
   ctx: CanvasRenderingContext2D, x: number, y: number, name: string,
   kind: string, t: number, station?: Station,
 ): void {
@@ -2313,6 +2538,17 @@ function drawStation(
     px(ctx,  12, -2, 4, 4, accent);
     px(ctx, -2, -16, 4, 4, accent);
     px(ctx, -2,  12, 4, 4, accent);
+  } else if (kind === "factory") {
+    // factory: gear/cog shape
+    px(ctx, -16, -6, 32, 12, "#3a2010");
+    px(ctx, -6, -16, 12, 32, "#3a2010");
+    px(ctx, -12, -12, 24, 24, accent);
+    px(ctx, -8, -8, 16, 16, "#1a0e04");
+    px(ctx, -4, -4, 8, 8, accent);
+    px(ctx, -14, -14, 6, 6, accent);
+    px(ctx,  8, -14, 6, 6, accent);
+    px(ctx, -14,  8, 6, 6, accent);
+    px(ctx,  8,  8, 6, 6, accent);
   } else {
     // outpost
     px(ctx, -10, -10, 20, 20, "#0c2050");
@@ -2345,7 +2581,7 @@ function drawStation(
 }
 
 // ── FLOATERS ──────────────────────────────────────────────────────────────
-function drawFloater(ctx: CanvasRenderingContext2D, f: Floater): void {
+export function drawFloater(ctx: CanvasRenderingContext2D, f: Floater): void {
   const life = Math.max(0, Math.min(1, f.ttl / f.maxTtl));
   const age = 1 - life;
   // Scale pop: start big, settle to normal, then shrink at end
@@ -2372,7 +2608,7 @@ function drawFloater(ctx: CanvasRenderingContext2D, f: Floater): void {
   ctx.restore();
 }
 
-function drawRift(ctx: CanvasRenderingContext2D, x: number, y: number, color: string, name: string, t: number, active: boolean): void {
+export function drawRift(ctx: CanvasRenderingContext2D, x: number, y: number, color: string, name: string, t: number, active: boolean): void {
   ctx.save();
   ctx.translate(x, y);
   const r = 36;
@@ -2415,7 +2651,7 @@ function drawRift(ctx: CanvasRenderingContext2D, x: number, y: number, color: st
   ctx.restore();
 }
 
-function drawPortal(ctx: CanvasRenderingContext2D, x: number, y: number, toName: string, t: number): void {
+export function drawPortal(ctx: CanvasRenderingContext2D, x: number, y: number, toName: string, t: number): void {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(t);
@@ -2449,7 +2685,7 @@ function drawPortal(ctx: CanvasRenderingContext2D, x: number, y: number, toName:
 }
 
 // ── CARGO BOXES ──────────────────────────────────────────────────────────
-function drawCargoBox(ctx: CanvasRenderingContext2D, cb: CargoBox, t: number): void {
+export function drawCargoBox(ctx: CanvasRenderingContext2D, cb: CargoBox, t: number): void {
   const bob = Math.sin(t * 3) * 3;
   const flash = cb.ttl < 5 ? (Math.sin(t * 12) > 0 ? 1 : 0.3) : 1;
   ctx.save();
@@ -2474,14 +2710,15 @@ function drawCargoBox(ctx: CanvasRenderingContext2D, cb: CargoBox, t: number): v
 }
 
 // ── ASTEROIDS ─────────────────────────────────────────────────────────────
-function drawAsteroid(ctx: CanvasRenderingContext2D, a: Asteroid): void {
+export function drawAsteroid(ctx: CanvasRenderingContext2D, a: Asteroid): void {
   ctx.save();
   ctx.translate(a.pos.x, a.pos.y);
   ctx.rotate(a.rotation);
-  const isLumen = a.yields === "lumenite";
-  const c = isLumen ? "#7ad8ff" : "#a8784a";
-  const dk = isLumen ? "#3a78a8" : "#604028";
-  const lt = isLumen ? "#cdeaff" : "#d8a888";
+  const res = RESOURCES[a.yields];
+  const c = res ? res.color : "#a8784a";
+  const dk = shadeHex(c, -0.4);
+  const lt = shadeHex(c, 0.4);
+  const isGlowing = ["lumenite", "crystal-shard", "helium-3", "palladium", "iridium"].includes(a.yields);
   const s = a.size / 18;
   px(ctx, -10*s, -8*s, 20*s, 16*s, c);
   px(ctx, -8*s, -10*s, 14*s, 4*s, c);
@@ -2489,7 +2726,7 @@ function drawAsteroid(ctx: CanvasRenderingContext2D, a: Asteroid): void {
   px(ctx, -12*s, -4*s, 4*s, 8*s, dk);
   px(ctx,  10*s, -4*s, 4*s, 8*s, dk);
   px(ctx, -4*s, -4*s, 6*s, 6*s, lt);
-  if (isLumen) {
+  if (isGlowing) {
     px(ctx, -2*s, -2*s, 2*s, 2*s, "#ffffff");
     px(ctx, 2*s, 2*s, 2*s, 2*s, "#ffffff");
   } else {
@@ -2504,7 +2741,7 @@ function drawAsteroid(ctx: CanvasRenderingContext2D, a: Asteroid): void {
 }
 
 // ── DRONES ────────────────────────────────────────────────────────────────
-function drawDrone(ctx: CanvasRenderingContext2D, d: Drone): void {
+export function drawDrone(ctx: CanvasRenderingContext2D, d: Drone): void {
   const anchor = (d as Drone & { anchor?: { x: number; y: number } }).anchor;
   if (!anchor) return;
   const def = DRONE_DEFS[d.kind];
@@ -2526,23 +2763,120 @@ function drawDrone(ctx: CanvasRenderingContext2D, d: Drone): void {
 }
 
 // ── OTHER PLAYERS ─────────────────────────────────────────────────────────
-function drawOtherPlayer(ctx: CanvasRenderingContext2D, o: OtherPlayer): void {
+export function drawOtherPlayer(ctx: CanvasRenderingContext2D, o: OtherPlayer): void {
   drawShip(ctx, o.pos.x, o.pos.y, o.angle, o.shipClass, 0.85);
-  ctx.fillStyle = o.inParty ? "#5cff8a" : "#8a9ac8";
-  ctx.font = "18px 'Courier New', monospace";
+  if ((o as any).hull != null && (o as any).hullMax != null && (o as any).hull < (o as any).hullMax) {
+    const hpRatio = (o as any).hullMax > 0 ? (o as any).hull / (o as any).hullMax : 1;
+    const spRatio = (o as any).shieldMax > 0 ? ((o as any).shield ?? 0) / (o as any).shieldMax : 0;
+    drawHullShieldBars(ctx, o.pos.x, o.pos.y - 26, Math.max(0, hpRatio), Math.max(0, spRatio));
+  }
+  const rank = rankFor(o.honor ?? 0);
+  const factionColor = o.faction ? FACTIONS[o.faction as keyof typeof FACTIONS]?.color ?? "#7a8ad8" : "#7a8ad8";
+  ctx.font = "bold 18px 'Courier New', monospace";
   ctx.textAlign = "center";
+  ctx.fillStyle = o.inParty ? "#5cff8a" : "#e8f0ff";
   ctx.shadowColor = "#000";
   ctx.shadowBlur = 3;
-  ctx.fillText(`${o.name} [${o.level}]`, o.pos.x, o.pos.y - 26);
-  if (o.clan) {
-    ctx.fillStyle = "#4ee2ff";
-    ctx.font = "16px 'Courier New', monospace";
-    ctx.fillText(`<${o.clan}>`, o.pos.x, o.pos.y - 42);
+  const nameY = o.pos.y + 36;
+  ctx.fillText(o.name, o.pos.x, nameY);
+  const nameWidth = ctx.measureText(o.name).width;
+  ctx.fillStyle = rank.color;
+  ctx.shadowColor = rank.color;
+  ctx.shadowBlur = 4;
+  ctx.fillText(rank.symbol, o.pos.x + nameWidth / 2 + 8, nameY);
+  if (o.faction) {
+    ctx.fillStyle = factionColor;
+    ctx.shadowColor = factionColor;
+    ctx.fillText("\u25c6", o.pos.x - nameWidth / 2 - 8, nameY);
   }
   ctx.shadowBlur = 0;
+  ctx.fillStyle = "#7a8ad8";
+  ctx.font = "14px 'Courier New', monospace";
+  ctx.fillText(`Lv.${o.level}`, o.pos.x, nameY + 16);
+  if (o.clan) {
+    ctx.fillStyle = "#4ee2ff";
+    ctx.font = "14px 'Courier New', monospace";
+    ctx.fillText(`<${o.clan}>`, o.pos.x, nameY + 30);
+  }
+  if (o.miningTargetId) {
+    const ta = state.asteroids.find((a: any) => a.id === o.miningTargetId);
+    if (ta) {
+      const t = state.tick;
+      const pulse = 0.55 + 0.45 * Math.abs(Math.sin(t * 18));
+      const bdx = ta.pos.x - o.pos.x;
+      const bdy = ta.pos.y - o.pos.y;
+      const bDist = Math.max(1, Math.hypot(bdx, bdy));
+      const bnx = bdx / bDist;
+      const bny = bdy / bDist;
+      const box = -bny;
+      const boy = bnx;
+      ctx.save();
+      ctx.lineCap = "round";
+      ctx.shadowColor = "#44ffcc";
+      ctx.shadowBlur = 20;
+      ctx.globalAlpha = 0.25 + 0.12 * Math.sin(t * 12);
+      ctx.strokeStyle = "#44ffcc";
+      ctx.lineWidth = 12;
+      ctx.beginPath();
+      ctx.moveTo(o.pos.x, o.pos.y);
+      ctx.lineTo(ta.pos.x, ta.pos.y);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      const segCount = Math.floor(bDist / 18);
+      for (let bi = 0; bi < segCount; bi++) {
+        const progress = ((bi / segCount) + t * 3.0) % 1.0;
+        const bpx = o.pos.x + bdx * progress;
+        const bpy = o.pos.y + bdy * progress;
+        const wobble = Math.sin(progress * 20 + t * 14) * (3 + pulse);
+        const ppx = bpx + box * wobble;
+        const ppy = bpy + boy * wobble;
+        const alpha = 0.5 + 0.5 * Math.sin(progress * Math.PI);
+        ctx.globalAlpha = alpha * 0.8;
+        ctx.fillStyle = bi % 3 === 0 ? "#ffffff" : "#44ffcc";
+        ctx.beginPath();
+        ctx.arc(ppx, ppy, 1.5 + pulse * 0.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 0.85;
+      ctx.strokeStyle = "rgba(255,255,255,0.8)";
+      ctx.lineWidth = 3 + pulse;
+      ctx.shadowColor = "#ffffff";
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.moveTo(o.pos.x, o.pos.y);
+      ctx.lineTo(ta.pos.x, ta.pos.y);
+      ctx.stroke();
+      ctx.strokeStyle = "#44ffcc";
+      ctx.lineWidth = 1.5 + pulse * 0.5;
+      ctx.shadowColor = "#44ffcc";
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.moveTo(o.pos.x, o.pos.y);
+      ctx.lineTo(ta.pos.x, ta.pos.y);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.restore();
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = "#ffffff";
+      ctx.shadowColor = "#44ffcc";
+      ctx.shadowBlur = 16;
+      ctx.beginPath();
+      ctx.arc(ta.pos.x, ta.pos.y, 3 + pulse * 2, 0, Math.PI * 2);
+      ctx.fill();
+      const ringR = 6 + pulse * 4 + Math.sin(t * 20) * 2;
+      ctx.strokeStyle = "#44ffcc";
+      ctx.lineWidth = 1.5;
+      ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 15);
+      ctx.beginPath();
+      ctx.arc(ta.pos.x, ta.pos.y, ringR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
 }
 
-function drawNpcShip(ctx: CanvasRenderingContext2D, npc: NpcShip): void {
+export function drawNpcShip(ctx: CanvasRenderingContext2D, npc: NpcShip): void {
   ctx.save();
   ctx.translate(npc.pos.x, npc.pos.y);
   ctx.rotate(npc.angle);
@@ -2579,45 +2913,10 @@ function drawNpcShip(ctx: CanvasRenderingContext2D, npc: NpcShip): void {
 
 // ── MAIN RENDER ───────────────────────────────────────────────────────────
 export function render(ctx: CanvasRenderingContext2D, w: number, h: number): void {
-  if (lastZone !== state.player.zone) {
-    regenNebula(state.player.zone);
-    lastZone = state.player.zone;
-  }
   const z = ZONES[state.player.zone];
   const cam = state.player.pos;
 
-  // Background gradient
-  const grad = ctx.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0, z.bgHueA);
-  grad.addColorStop(1, z.bgHueB);
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, w, h);
-
-  // Distant nebulae
-  for (const n of nebulaSeed) {
-    const sx = w / 2 + (n.x - cam.x * 0.05);
-    const sy = h / 2 + (n.y - cam.y * 0.05);
-    if (sx < -n.r || sx > w + n.r || sy < -n.r || sy > h + n.r) continue;
-    const rg = ctx.createRadialGradient(sx, sy, 0, sx, sy, n.r);
-    rg.addColorStop(0, n.c + "55");
-    rg.addColorStop(1, "transparent");
-    ctx.fillStyle = rg;
-    ctx.beginPath();
-    ctx.arc(sx, sy, n.r, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  // Stars (parallax)
-  for (let li = 0; li < stars.length; li++) {
-    const layer = stars[li];
-    const sp = STAR_LAYERS[li].speed;
-    for (const s of layer) {
-      const sx = ((s.x - cam.x * sp) % w + w * 1.5) % w;
-      const sy = ((s.y - cam.y * sp) % h + h * 1.5) % h;
-      ctx.fillStyle = s.color;
-      ctx.fillRect(sx, sy, s.size, s.size);
-    }
-  }
+  drawParallaxBackground(ctx, w, h, cam.x, cam.y, ZONES[state.player.zone].label, Date.now() / 1000);
 
   // World transform (with camera shake)
   ctx.save();
@@ -2629,6 +2928,11 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
     sy = (Math.random() - 0.5) * m;
   }
   const zoom = state.cameraZoom;
+  // Viewport culling bounds
+  const cullMargin = 100;
+  const camX = cam.x, camY = cam.y;
+  const halfW = w / 2 / zoom + cullMargin;
+  const halfH = h / 2 / zoom + cullMargin;
   ctx.translate(w / 2 + sx, h / 2 + sy);
   ctx.scale(zoom, zoom);
   ctx.translate(-cam.x, -cam.y);
@@ -2642,7 +2946,11 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
 
   // Trail particles draw FIRST (behind ship)
   for (const pa of state.particles) {
-    if (pa.kind === "trail" || pa.kind === "engine") drawParticle(ctx, pa);
+    if (pa.kind === "trail" || pa.kind === "engine") {
+      if (Math.abs(pa.pos.x - camX) < halfW + 30 && Math.abs(pa.pos.y - camY) < halfH + 30) {
+        drawParticle(ctx, pa);
+      }
+    }
   }
 
   // Asteroids
@@ -2695,15 +3003,27 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
   for (const o of state.others) drawOtherPlayer(ctx, o);
   for (const npc of state.npcShips) drawNpcShip(ctx, npc);
 
-  // Enemies
-  for (const e of state.enemies) drawEnemy(ctx, e);
+  // Enemies - viewport culling
+  for (const e of state.enemies) {
+    if (Math.abs(e.pos.x - camX) < halfW + e.size && Math.abs(e.pos.y - camY) < halfH + e.size) {
+      drawEnemy(ctx, e);
+    }
+  }
 
   // Projectiles
-  for (const pr of state.projectiles) drawProjectile(ctx, pr);
+  for (const pr of state.projectiles) {
+    if (Math.abs(pr.pos.x - camX) < halfW + 20 && Math.abs(pr.pos.y - camY) < halfH + 20) {
+      drawProjectile(ctx, pr);
+    }
+  }
 
   // Other particles (sparks, rings)
   for (const pa of state.particles) {
-    if (pa.kind !== "trail" && pa.kind !== "engine") drawParticle(ctx, pa);
+    if (pa.kind !== "trail" && pa.kind !== "engine") {
+      if (Math.abs(pa.pos.x - camX) < halfW + pa.size && Math.abs(pa.pos.y - camY) < halfH + pa.size) {
+        drawParticle(ctx, pa);
+      }
+    }
   }
 
   // Player drones

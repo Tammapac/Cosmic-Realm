@@ -1,6 +1,6 @@
 import {
   bump, pushChat, pushNotification, pushHonor, save, addCargo, pushFloater,
-  pushEvent, bumpMission, state, travelToZone, completeDungeon,
+  pushEvent, bumpMission, state, travelToZone, completeDungeon, registerWarpCallback,
   tickHotbarCooldowns,
   ensureAmmoInitialized, getAmmoWeaponIds, rocketAmmoMax,
   getActiveAmmoType, getActiveRocketAmmoType, getRocketAmmoCount, rocketMissileMax, tryCollectNearbyBoxes,
@@ -11,10 +11,67 @@ import {
   MAP_RADIUS, NpcShip, PORTALS, ROCKET_AMMO_TYPE_DEFS, ROCKET_MISSILE_TYPE_DEFS, WeaponKind,
   SHIP_CLASSES, STATIONS, ZONES, ZoneId,
   rankFor,
-} from "./types";
+RESOURCES, pickAsteroidYield, SHIP_SIZE_SCALE, SHIP_WEAPON_MOUNTS, } from "./types";
 import { sfx } from "./sound";
+import { DIRECTIONS_32 } from "./debug/hardpointTypes";
 import { type ServerEnemy, type ServerAsteroid, type ServerNpc, type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent, type DeltaPayload, type SnapshotPayload, type WelcomePayload, type DeltaEntity, type LaserFireEvent, type RocketFireEvent, type ProjectileSpawnEvent } from "../net/socket";
+import { sendInstanceEnemyHit } from "../net/socket";
 import { MOVEMENT, NETCODE } from "../../../lib/game-constants";
+
+
+// ── Editor hardpoint lookup for projectile positioning ──
+const _hpCache: Map<string, any> = new Map();
+let _hpCacheTime = 0;
+const SHIP_ROTATION_CFG: Record<string, { frame0DirDeg: number; clockwise: boolean }> = {
+  skimmer: { frame0DirDeg: 180, clockwise: false },
+  wasp: { frame0DirDeg: 0, clockwise: true },
+  vanguard: { frame0DirDeg: 0, clockwise: true },
+  reaver: { frame0DirDeg: 0, clockwise: true },
+  obsidian: { frame0DirDeg: 0, clockwise: true },
+  marauder: { frame0DirDeg: 0, clockwise: true },
+  phalanx: { frame0DirDeg: 0, clockwise: true },
+  titan: { frame0DirDeg: 0, clockwise: true },
+  leviathan: { frame0DirDeg: 0, clockwise: true },
+  specter: { frame0DirDeg: 0, clockwise: true },
+  colossus: { frame0DirDeg: 0, clockwise: true },
+  harbinger: { frame0DirDeg: 0, clockwise: true },
+  eclipse: { frame0DirDeg: 0, clockwise: true },
+  sovereign: { frame0DirDeg: 0, clockwise: true },
+  apex: { frame0DirDeg: 0, clockwise: true },
+};
+
+let weaponMountIdx = 0;
+
+function getEditorWeaponPositions(ship: string, angle: number): { x: number; y: number }[] | null {
+  const now = Date.now();
+  if (now - _hpCacheTime > 5000) { _hpCache.clear(); _hpCacheTime = now; }
+  let data = _hpCache.get(ship);
+  if (data === undefined) {
+    try {
+      const raw = localStorage.getItem(`hardpoint-editor:${ship}`);
+      data = raw ? JSON.parse(raw) : null;
+    } catch { data = null; }
+    _hpCache.set(ship, data);
+  }
+  if (!data || !data.directions) return null;
+  // Convert angle to frame index - matches renderer angleToDirectionFrame exactly
+  const screenDeg = (angle * 180) / Math.PI;
+  let compassDeg = ((screenDeg + 90) % 360 + 360) % 360;
+  const rotCfg = SHIP_ROTATION_CFG[ship] || { frame0DirDeg: 0, clockwise: true };
+  let frameDeg = compassDeg - rotCfg.frame0DirDeg;
+  if (!rotCfg.clockwise) frameDeg = -frameDeg;
+  frameDeg = ((frameDeg % 360) + 360) % 360;
+  const step = 360 / 32;
+  const frameIdx = Math.round(frameDeg / step) % 32;
+  const dirKey = DIRECTIONS_32[frameIdx];
+  const dir = data.directions[dirKey];
+  if (!dir || !dir.hardpoints) return null;
+  const weapons = dir.hardpoints.filter((hp: any) => hp.type === "laser" || hp.type === "rocket" || hp.type === "muzzle");
+  if (weapons.length === 0) return null;
+  const sizeScale = SHIP_SIZE_SCALE[ship as keyof typeof SHIP_SIZE_SCALE] ?? 1;
+  const scaleFactor = Math.ceil(85 * sizeScale * 1.6) / 256;
+  return weapons.map((hp: any) => ({ x: hp.x * scaleFactor, y: (hp.y - (hp.z || 0)) * scaleFactor }));
+}
 
 // Returns the equipped weapon's color (used for laser projectiles)
 function equippedWeaponColor(): string {
@@ -45,6 +102,7 @@ function sumEquippedStats(): ModuleStats {
     weaponFireRate *= def.stats.fireRate ?? 1;
     weaponCrit += def.stats.critChance ?? 0;
     weaponAoe = Math.max(weaponAoe, def.stats.aoeRadius ?? 0);
+    acc.miningBonus += def.stats.miningBonus ?? 0;
   }
   // Weapons stack damage; fire rate averaged so dual-equip doesn't 2× the rate
   acc.damage += weaponDmg;
@@ -82,6 +140,11 @@ let saveTimer = 0;
 let chatTimer = 6;
 let aiUpdateTimer = 0;
 let trailTimer = 0;
+
+// Initialize particle density from settings
+const _storedParticles = localStorage.getItem("sf-particles");
+(window as any).__particleDensity = _storedParticles === "low" ? 0.3 : _storedParticles === "medium" ? 0.6 : 1;
+const _otherTrailTimers: Record<string, number> = {};
 let bossActive = false;
 let queuedAttackTargetId: string | null = null;
 
@@ -134,6 +197,7 @@ function spawnNpcShip(): void {
 }
 
 function updateNpcShips(dt: number): void {
+  if (serverAuthoritative) return;
   for (let i = state.npcShips.length - 1; i >= 0; i--) {
     const npc = state.npcShips[i];
     if (npc.zone !== state.player.zone) { state.npcShips.splice(i, 1); continue; }
@@ -184,44 +248,101 @@ function updateNpcShips(dt: number): void {
     npc.pos.x += npc.vel.x * dt;
     npc.pos.y += npc.vel.y * dt;
 
+    // NPC engine trail
+    const npcSpd = Math.sqrt(npc.vel.x * npc.vel.x + npc.vel.y * npc.vel.y);
+    if (npcSpd > 15) {
+      const nBack = npc.angle + Math.PI;
+      if (Math.random() < 0.5) {
+        emitTrail(npc.pos.x + Math.cos(nBack) * 7, npc.pos.y + Math.sin(nBack) * 7, npc.color, 0.5, 2.5);
+      }
+    }
+
     if (npc.hull <= 0) {
-      emitDeath(npc.pos.x, npc.pos.y, npc.color, false);
+      emitDeath(npc.pos.x, npc.pos.y, npc.color, false, npc.size);
       state.npcShips.splice(i, 1);
     }
   }
 }
 
 // ── PLAYER STATS (with drone bonuses + skills + faction) ─────────────────
+function shadeHex(hex: string, factor: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const f = factor > 0 ? factor : factor;
+  const nr = factor > 0 ? Math.min(255, r + (255 - r) * f) : Math.max(0, r + r * f);
+  const ng = factor > 0 ? Math.min(255, g + (255 - g) * f) : Math.max(0, g + g * f);
+  const nb = factor > 0 ? Math.min(255, b + (255 - b) * f) : Math.max(0, b + b * f);
+  return `#${Math.round(nr).toString(16).padStart(2, "0")}${Math.round(ng).toString(16).padStart(2, "0")}${Math.round(nb).toString(16).padStart(2, "0")}`;
+}
+
 export function effectiveStats(): {
   damage: number; speed: number; hullMax: number; shieldMax: number;
   fireRate: number; critChance: number; aoeRadius: number; damageReduction: number; shieldAbsorb: number; shieldRegen: number; lootBonus: number;
 } {
   const p = state.player;
   const cls = SHIP_CLASSES[p.shipClass];
-
-  const skOffPower  = p.skills["off-power"]  ?? 0;
-  const skOffRapid  = p.skills["off-rapid"]  ?? 0;
-  const skOffCrit   = p.skills["off-crit"]   ?? 0;
-  const skOffPierce = p.skills["off-pierce"] ?? 0;
-  const skDefShield = p.skills["def-shield"] ?? 0;
-  const skDefRegen  = p.skills["def-regen"]  ?? 0;
-  const skDefArmor  = p.skills["def-armor"]  ?? 0;
-  const skDefBulw   = p.skills["def-bulwark"] ?? 0;
-  const skUtThrust  = p.skills["ut-thrust"]  ?? 0;
+  const sk = (id: string) => (p.skills[id] ?? 0);
 
   const mod = sumEquippedStats() as Required<ModuleStats>;
-  let damage = (cls.baseDamage + mod.damage) * (1 + skOffPower * 0.03);
-  let hullMax = (cls.hullMax + (mod.hullMax ?? 0)) * (1 + skDefArmor * 0.05);
-  let shieldMax = (cls.shieldMax + (mod.shieldMax ?? 0)) * (1 + skDefShield * 0.05);
-  let speed = (cls.baseSpeed + (mod.speed ?? 0)) * (1 + skUtThrust * 0.03);
-  let shieldRegen = 5 + (mod.shieldRegen ?? 0);
-  let damageReduction = (skDefBulw * 0.03) + (mod.damageReduction ?? 0);
-  let shieldAbsorb = Math.min(0.5, mod.shieldAbsorb ?? 0);
-  let aoeRadius = (skOffPierce * 3) + (mod.aoeRadius ?? 0);
-  let critChance = 0.03 + skOffCrit * 0.02 + (mod.critChance ?? 0);
-  let fireRate = (1 + skOffRapid * 0.03) * (mod.fireRate ?? 1);
-  let lootBonus = mod.lootBonus ?? 0;
 
+  // Log skills once every 5 seconds for debugging
+  if (!((window as any).__lastSkillLog) || Date.now() - (window as any).__lastSkillLog > 5000) {
+    (window as any).__lastSkillLog = Date.now();
+    const allocated = Object.entries(p.skills).filter(([_, v]) => (v as number) > 0);
+    if (allocated.length > 0) {
+      console.log("[SKILLS]", JSON.stringify(p.skills), "pts:", p.skillPoints, "base spd:", cls.baseSpeed, "base dmg:", cls.baseDamage);
+    }
+  }
+
+  // Base stats from ship class + equipment
+  let damage = (cls.baseDamage + mod.damage) + sk("off-power") * 3;
+  let hullMax = (cls.hullMax + (mod.hullMax ?? 0)) + sk("def-armor") * 20;
+  let shieldMax = (cls.shieldMax + (mod.shieldMax ?? 0)) + sk("def-shield") * 15 + sk("def-barrier") * 25;
+  let speed = (cls.baseSpeed + (mod.speed ?? 0)) + sk("ut-thrust") * 5;
+  let shieldRegen = 5 + (mod.shieldRegen ?? 0);
+  let damageReduction = (sk("def-bulwark") * 0.03) + (mod.damageReduction ?? 0);
+  let shieldAbsorb = Math.min(0.5, mod.shieldAbsorb ?? 0);
+  let aoeRadius = (sk("off-pierce") * 6) + (mod.aoeRadius ?? 0);
+  let critChance = 0.02 + sk("off-crit") * 0.02 + (mod.critChance ?? 0);
+  let fireRate = (mod.fireRate ?? 1) + sk("off-rapid") * 0.05;
+  let lootBonus = (mod.lootBonus ?? 0) + sk("ut-scan") * 0.04;
+
+  // Snipe skill: +4% damage & +2% crit per rank
+  damage += sk("off-snipe") * 2;
+  critChance += sk("off-snipe") * 0.01;
+
+  // Engineering skills
+  fireRate += sk("eng-coolant") * 0.04;
+  damage += sk("eng-capacitor") * 2;
+  shieldRegen += sk("eng-capacitor") * 1;
+  critChance += sk("eng-targeting") * 0.02;
+  speed += sk("eng-warp-core") * 4;
+
+  // Overdrive & singularity
+  const od = sk("eng-overdrive");
+  if (od > 0) {
+    damage += od * 4;
+    shieldMax += od * 20;
+    speed += od * 3;
+  }
+  if (sk("eng-singularity") > 0) {
+    damage += 8;
+    fireRate += 0.1;
+    speed += 6;
+  }
+
+  // Nano-repair: +10% shield regen & +5% hull per rank
+  shieldRegen += sk("def-nano") * 2;
+  hullMax += sk("def-nano") * 15;
+
+  // Volley: +15% fire rate per rank
+  fireRate += sk("off-volley") * 0.06;
+
+  // Shield regen skill
+  shieldRegen += sk("def-regen") * 2;
+
+  // Drone bonuses
   for (const d of p.drones) {
     const def = DRONE_DEFS[d.kind];
     damage += def.damageBonus;
@@ -229,10 +350,19 @@ export function effectiveStats(): {
     shieldMax += def.shieldBonus;
   }
 
-  // Faction bonuses disabled
-  shieldRegen *= (1 + skDefRegen * 0.15);
+  // Faction bonuses
+  const faction = p.faction ? FACTIONS[p.faction as keyof typeof FACTIONS] : undefined;
+  if (faction) {
+    if (faction.bonus.damage) damage *= (1 + faction.bonus.damage);
+    if (faction.bonus.speed) speed *= (1 + faction.bonus.speed);
+    if (faction.bonus.shieldRegen) shieldRegen *= faction.bonus.shieldRegen;
+    if (faction.bonus.lootBonus) lootBonus += faction.bonus.lootBonus;
+  }
 
-  return { damage, speed, hullMax, shieldMax, fireRate, critChance, aoeRadius, damageReduction, shieldAbsorb, shieldRegen, lootBonus };
+  damageReduction = Math.min(0.8, damageReduction);
+  shieldAbsorb = 0.5 + shieldAbsorb;
+
+  return { damage, speed, hullMax, shieldMax, fireRate, critChance, aoeRadius, damageReduction, shieldAbsorb, shieldRegen, lootBonus, miningBonus: mod.miningBonus ?? 0 };
 }
 
 export function queueAttackTarget(enemyId: string): void {
@@ -247,6 +377,7 @@ export function queueAttackTarget(enemyId: string): void {
 function spawnEnemy(): void {
   const z = ZONES[state.player.zone];
   if (state.enemies.filter((e) => !e.isBoss).length >= 18 + z.enemyTier * 4) return;
+  if (z.enemyTypes.length === 0) return;
   const type: EnemyType = z.enemyTypes[Math.floor(Math.random() * z.enemyTypes.length)];
   const def = ENEMY_DEFS[type];
   const angle = Math.random() * Math.PI * 2;
@@ -262,8 +393,8 @@ function spawnEnemy(): void {
     px = (Math.random() - 0.5) * 2 * mapR;
     py = (Math.random() - 0.5) * 2 * mapR;
   }
-  const tierMult = 1 + (z.enemyTier - 1) * 0.5;
-  const namePool = ENEMY_NAMES[type];
+  const tierMult = Math.pow(2, z.enemyTier - 1);
+  const namePool = ENEMY_NAMES[type] ?? [type];
   const eName = namePool[Math.floor(Math.random() * namePool.length)];
   // Apply faction-specific stat/color overrides
   const fMod = FACTION_ENEMY_MODS[z.faction]?.[type];
@@ -299,11 +430,12 @@ function spawnEnemy(): void {
 
 // ── DUNGEON ───────────────────────────────────────────────────────────────
 let dungeonSpawnCd = 0;
+let autoSaveTimer = 900;
 
 function spawnDungeonEnemy(type: EnemyType, hpMul: number, dmgMul: number): void {
   const def = ENEMY_DEFS[type];
   const angle = Math.random() * Math.PI * 2;
-  const dist = 480 + Math.random() * 220;
+  const dist = 200 + Math.random() * 250;
   const px = state.player.pos.x + Math.cos(angle) * dist;
   const py = state.player.pos.y + Math.sin(angle) * dist;
   const hullMax = def.hullMax * hpMul;
@@ -326,44 +458,16 @@ function spawnDungeonEnemy(type: EnemyType, hpMul: number, dmgMul: number): void
   });
 }
 
-function updateDungeon(dt: number): void {
-  const run = state.dungeon;
-  if (!run) return;
-  const def = DUNGEONS[run.id];
-  const aliveCount = state.enemies.length;
-  // Spawn the wave's enemies (staggered)
-  if (!run.spawnedThisWave) {
-    dungeonSpawnCd -= dt;
-    if (dungeonSpawnCd <= 0) {
-      const spawned = aliveCount;
-      const target = def.enemiesPerWave;
-      if (spawned < target) {
-        const t: EnemyType = def.enemyTypes[Math.floor(Math.random() * def.enemyTypes.length)];
-        spawnDungeonEnemy(t, def.enemyHpMul, def.enemyDmgMul);
-        dungeonSpawnCd = 0.45;
-      } else {
-        run.spawnedThisWave = true;
-      }
-    }
-  } else if (aliveCount === 0) {
-    // Wave clear
-    if (run.wave >= run.totalWaves) {
-      pushEvent({ title: "✦ ALL WAVES CLEAR", body: `${def.name} subdued.`, ttl: 4, kind: "global", color: def.color });
-      completeDungeon();
-      return;
-    }
-    run.wave++;
-    run.spawnedThisWave = false;
-    run.enemiesLeft = def.enemiesPerWave;
-    dungeonSpawnCd = 1.2;
-    pushEvent({ title: `▼ WAVE ${run.wave} / ${run.totalWaves}`, body: `Hostiles re-engaging.`, ttl: 3.5, kind: "info", color: def.color });
-    sfx.bossWarn();
-  }
+let _waveSpawned = 0;
+
+function updateDungeon(_dt: number): void {
+  // Server-side instances handle all dungeon spawning and wave progression.
+  if (!state.dungeon) { _waveSpawned = 0; return; }
 }
 
 function spawnBoss(): void {
   const z = ZONES[state.player.zone];
-  const tierMult = 1 + (z.enemyTier - 1) * 0.5;
+  const tierMult = Math.pow(2, z.enemyTier - 1);
   const angle = Math.random() * Math.PI * 2;
   const dist = 600;
   const px = state.player.pos.x + Math.cos(angle) * dist;
@@ -432,25 +536,27 @@ function emitRing(x: number, y: number, color: string, radius = 20): void {
   });
 }
 
-function emitTrail(x: number, y: number, color: string): void {
+function emitTrail(x: number, y: number, color: string, alpha?: number, size?: number): void {
   state.particles.push({
     id: `t-${Math.random().toString(36).slice(2, 8)}`,
     pos: { x, y }, vel: { x: 0, y: 0 },
     ttl: 2.0, maxTtl: 2.0,
-    color, size: 5, kind: "trail",
+    color, size: size ?? 5, kind: "trail",
+    ...(alpha !== undefined ? { alpha } : {}),
   });
 }
 
-function emitDeath(x: number, y: number, color: string, big = false): void {
-  const B = big;
+function emitDeath(_x: number, _y: number, _color: string, _big = false, _enemySize = 12): void {
+  return; // PixiJS effect manager handles all explosions now
+  const sizeMul = Math.max(1, enemySize / 12);
 
-  // Central white flash bloom — massive
+  // Central white flash bloom — scaled by enemy size
   state.particles.push({
     id: `fl-${Math.random().toString(36).slice(2, 8)}`,
     pos: { x, y }, vel: { x: 0, y: 0 },
-    ttl: B ? 0.6 : 0.4, maxTtl: B ? 0.6 : 0.4,
+    ttl: B ? 0.6 : 0.35 + sizeMul * 0.05, maxTtl: B ? 0.6 : 0.35 + sizeMul * 0.05,
     color: "#ffffff",
-    size: B ? 300 : 180, kind: "flash",
+    size: B ? 300 : Math.round(160 * sizeMul), kind: "flash",
   });
   state.particles.push({
     id: `fl2-${Math.random().toString(36).slice(2, 8)}`,
@@ -515,23 +621,42 @@ function emitDeath(x: number, y: number, color: string, big = false): void {
     });
   }
 
-  // Large burning hull fragments — big chunks flying far in all directions
-  const debrisCount = B ? 24 : 14;
+  // Large burning hull fragments — big chunks flying far in all directions, scaled by ship size
+  const debrisCount = B ? 24 : Math.round(12 * sizeMul);
   const debrisColors = [color, "#ff8a4e", "#ffd24a", "#ffccaa", "#cccccc", "#ff5c6c"];
   for (let i = 0; i < debrisCount; i++) {
     const a = Math.random() * Math.PI * 2;
-    const spd = (0.4 + Math.random() * 0.6) * (B ? 300 : 200);
+    const spd = (0.4 + Math.random() * 0.6) * (B ? 300 : 180 * sizeMul);
     state.particles.push({
       id: `db-${Math.random().toString(36).slice(2, 8)}`,
       pos: { x: x + (Math.random() - 0.5) * 10, y: y + (Math.random() - 0.5) * 10 },
       vel: { x: Math.cos(a) * spd, y: Math.sin(a) * spd },
-      ttl: 1.0 + Math.random() * 1.0, maxTtl: 2.0,
+      ttl: 1.0 + Math.random() * 1.2, maxTtl: 2.2,
       color: debrisColors[Math.floor(Math.random() * debrisColors.length)],
-      size: B ? (12 + Math.random() * 18) : (8 + Math.random() * 12),
+      size: B ? (12 + Math.random() * 18) : (6 + Math.random() * 10) * sizeMul,
       rot: Math.random() * Math.PI * 2,
       rotVel: (Math.random() - 0.5) * 18,
       kind: "debris",
     });
+  }
+  // Burning wreckage pieces that linger and fade (bigger ships = more wreckage)
+  if (sizeMul >= 1.3 || B) {
+    const wreckCount = B ? 6 : Math.round(3 * sizeMul);
+    for (let wi = 0; wi < wreckCount; wi++) {
+      const wa = Math.random() * Math.PI * 2;
+      const ws = 40 + Math.random() * 80;
+      state.particles.push({
+        id: `wrk-${Math.random().toString(36).slice(2, 8)}`,
+        pos: { x: x + (Math.random() - 0.5) * 20, y: y + (Math.random() - 0.5) * 20 },
+        vel: { x: Math.cos(wa) * ws, y: Math.sin(wa) * ws },
+        ttl: 2.5 + Math.random() * 2.0, maxTtl: 4.5,
+        color: Math.random() > 0.5 ? color : "#555",
+        size: B ? (18 + Math.random() * 14) : (10 + Math.random() * 8) * sizeMul,
+        rot: Math.random() * Math.PI * 2,
+        rotVel: (Math.random() - 0.5) * 6,
+        kind: "debris",
+      });
+    }
   }
 
   // Sparks — five tiers, fast and bright, flying far from explosion
@@ -564,7 +689,7 @@ function fireProjectile(
   x: number, y: number, angle: number, damage: number, color: string, size = 3,
   opts?: { crit?: boolean; aoeRadius?: number; speedMul?: number; homing?: boolean; empStun?: number; armorPiercing?: boolean; weaponKind?: WeaponKind; renderOnly?: boolean },
 ): void {
-  const speedBase = from === "player" ? 280 : from === "drone" ? 260 : 220;
+  const speedBase = from === "player" ? 230 : from === "drone" ? 600 : 200;
   const speed = speedBase * (opts?.speedMul ?? 1);
   state.projectiles.push({
     id: `pr-${Math.random().toString(36).slice(2, 8)}`,
@@ -586,7 +711,7 @@ function fireProjectile(
   bump(); // Trigger React re-render to show projectile
 }
 
-function hasRocketWeapon(): boolean {
+export function hasRocketWeapon(): boolean {
   const p = state.player;
   for (const id of p.equipped.weapon) {
     if (!id) continue;
@@ -644,7 +769,7 @@ function checkMilestoneTier(kind: typeof MILESTONE_KEYS[number], previous: numbe
   }
 }
 
-function applyKill(e: Enemy, killerCrit: boolean): void {
+export function applyKill(e: Enemy, killerCrit: boolean): void {
   const stats = effectiveStats();
   emitDeath(e.pos.x, e.pos.y, e.color, !!e.isBoss);
   if (e.isBoss) {
@@ -659,25 +784,28 @@ function applyKill(e: Enemy, killerCrit: boolean): void {
     state.cameraShake = Math.max(state.cameraShake, baseShake * proximity);
   }
 
-  const expGain = e.exp;
-  const credGain = e.credits + (state.player.skills["ut-salvage"] ?? 0) * Math.max(1, Math.floor(e.honor));
-  const honorGain = e.honor;
+  const expGain = e.exp || 0;
+  const credGain = (e.credits || 0) + (state.player.skills["ut-salvage"] ?? 0) * Math.max(1, Math.floor(e.honor || 0));
+  const honorGain = e.honor || 0;
 
   // Grant exp, credits, honor directly on kill
   const p2 = state.player;
-  p2.exp += expGain;
-  p2.credits += credGain;
-  p2.honor += honorGain;
+  p2.exp = (p2.exp || 0) + expGain;
+  p2.credits = (p2.credits || 0) + credGain;
+  p2.honor = (p2.honor || 0) + honorGain;
   while (p2.exp >= EXP_FOR_LEVEL(p2.level)) {
     p2.exp -= EXP_FOR_LEVEL(p2.level);
     p2.level++;
+    p2.skillPoints += 1;
     state.levelUpFlash = 1.6;
   }
-  pushFloater({ text: `+${expGain} XP`, color: "#ff5cf0", x: e.pos.x, y: e.pos.y - 20, scale: 0.9, bold: false });
-  pushFloater({ text: `+${credGain} CR`, color: "#ffd24a", x: e.pos.x + 20, y: e.pos.y - 8, scale: 0.9, bold: false });
-  if (honorGain > 0) pushFloater({ text: `+${honorGain} ✪`, color: "#c8a0ff", x: e.pos.x - 20, y: e.pos.y - 8, scale: 0.8, bold: false });
+  pushFloater({ text: `+${expGain} XP`, color: "#ff5cf0", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.3, bold: true, ttl: 2.0 });
+  pushFloater({ text: `+${credGain} CR`, color: "#ffd24a", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.3, bold: true, ttl: 2.0 });
+  if (honorGain > 0) pushFloater({ text: `+${honorGain} ✪`, color: "#c8a0ff", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.3, bold: true, ttl: 2.0 });
 
   // Loot box only contains resources (no exp/credits/honor)
+  // Skip loot drops in dungeon - rewards come from completeDungeon
+  if (state.dungeon) { save(); bump(); return; }
   const hasSalvage = state.player.drones.some((d) => d.kind === "salvage");
   const lootQty = e.loot ? e.loot.qty + (hasSalvage ? 1 : 0) + stats.lootBonus : 0;
 
@@ -698,7 +826,9 @@ function applyKill(e: Enemy, killerCrit: boolean): void {
   }
 
   // Ammo drop (x1 basic ammo)
-  const ammoDrop = 1 + Math.floor(Math.random() * 3);
+  const zDef = ZONES[state.player.zone];
+  const zTier = zDef ? zDef.enemyTier : 1;
+  const ammoDrop = Math.ceil((1 + Math.floor(Math.random() * 3)) * (1 + (zTier - 1) * 0.4));
   p2.ammo.x1 = (p2.ammo.x1 ?? 0) + ammoDrop;
   pushFloater({ text: `+${ammoDrop} x1 ammo`, color: "#aabbcc", x: e.pos.x + 30, y: e.pos.y - 20, scale: 0.7, bold: false });
 
@@ -784,6 +914,7 @@ function damagePlayer(amount: number): void {
 }
 
 function damageDrone(d: { id: string; hp: number; hpMax: number }, amount: number): boolean {
+  return false; // Drones no longer die from damage
   d.hp -= amount;
   if (d.hp <= 0) return true;
   return false;
@@ -798,12 +929,15 @@ function distance(ax: number, ay: number, bx: number, by: number): number {
 // ── MAIN LOOP ─────────────────────────────────────────────────────────────
 export function startLoop(): void {
   if (raf) return;
+  registerWarpCallback(resetOnWarp);
   ensureAmmoInitialized();
   last = performance.now();
   const step = (now: number) => {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
-    if (!state.paused && !state.dockedAt) tickWorld(dt);
+    try {
+      if (!state.paused && !state.dockedAt) tickWorld(dt);
+    } catch (err) { console.error("[LOOP] tickWorld error:", err); }
     raf = requestAnimationFrame(step);
   };
   raf = requestAnimationFrame(step);
@@ -840,6 +974,7 @@ function tickWorld(dt: number): void {
       p2.shield = stats2.shieldMax;
       const lostCr = Math.floor(p2.credits * 0.1);
       p2.credits = Math.max(0, p2.credits - lostCr);
+      for (const dr of p2.drones) { dr.hp = Math.max(1, Math.round(dr.hp * 0.99)); }
       // Respawn at main station in current zone
       const homeStation = STATIONS.find((st) => st.zone === p2.zone && st.kind === "hub")
         || STATIONS.find((st) => st.zone === p2.zone)
@@ -865,7 +1000,7 @@ function tickWorld(dt: number): void {
       pa.ttl -= dt;
     }
     state.particles = state.particles.filter((pa) => pa.ttl > 0);
-    for (const f of state.floaters) { f.pos.y += f.vy * dt; f.vy *= 0.96; f.ttl -= dt; }
+    for (const f of state.floaters) { if (f.trackPlayer) { const el = f.maxTtl - f.ttl; f.pos.x = state.player.pos.x; f.pos.y = state.player.pos.y - 45 + (f.trackYOff ?? 0) - el * 25; } else { f.pos.y += f.vy * dt; } f.vy *= 0.96; f.ttl -= dt; }
     state.floaters = state.floaters.filter((f) => f.ttl > 0);
     for (const ev of state.events) ev.ttl -= dt;
     state.events = state.events.filter((ev) => ev.ttl > 0);
@@ -920,7 +1055,7 @@ function tickWorld(dt: number): void {
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist > MOVEMENT.STOP_DISTANCE) {
       p.angle = Math.atan2(dy, dx);
-      const accel = stats.speed * MOVEMENT.ACCELERATION_MULTIPLIER;
+      const accel = 500;
       p.vel.x += Math.cos(p.angle) * accel * dt;
       p.vel.y += Math.sin(p.angle) * accel * dt;
     }
@@ -930,16 +1065,28 @@ function tickWorld(dt: number): void {
       p.vel.x = (p.vel.x / v) * speedCap;
       p.vel.y = (p.vel.y / v) * speedCap;
     }
-    p.vel.x *= MOVEMENT.FRICTION_PER_60FPS_FRAME;
-    p.vel.y *= MOVEMENT.FRICTION_PER_60FPS_FRAME;
+    const friction = Math.pow(MOVEMENT.FRICTION_PER_60FPS_FRAME, dt * 60);
+    p.vel.x *= friction;
+    p.vel.y *= friction;
+    const spd = p.vel.x * p.vel.x + p.vel.y * p.vel.y;
+    if (spd < MOVEMENT.IDLE_SPEED * MOVEMENT.IDLE_SPEED) {
+      p.vel.x = 0;
+      p.vel.y = 0;
+    }
     p.pos.x += p.vel.x * dt;
     p.pos.y += p.vel.y * dt;
   } else {
     // Server owns position; interpolation handles movement in applyServerSmoothing()
     // Do NOT extrapolate with velocity - causes double-speed movement
-    // Just update angle based on velocity direction
-    if (Math.abs(p.vel.x) > 1 || Math.abs(p.vel.y) > 1) {
-      p.angle = Math.atan2(p.vel.y, p.vel.x);
+    // Derive target angle from click destination directly (instant, no server tick lag)
+    const tdx = state.cameraTarget.x - p.pos.x;
+    const tdy = state.cameraTarget.y - p.pos.y;
+    if (tdx * tdx + tdy * tdy > MOVEMENT.STOP_DISTANCE * MOVEMENT.STOP_DISTANCE) {
+      const targetAng = Math.atan2(tdy, tdx);
+      let diff = targetAng - p.angle;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      p.angle += diff * (1 - Math.exp(-12.0 * dt));
     }
   }
   // Face attack target when fighting (DarkOrbit style)
@@ -965,10 +1112,41 @@ function tickWorld(dt: number): void {
   } else {
     sfx.thrusterUpdate(0);
   }
+  // Player ship burning when damaged (<30% HP)
+  if (stats.hullMax > 0 && p.hull / stats.hullMax < 0.3 && Math.random() < 0.4) {
+    const pox = (Math.random() - 0.5) * 14;
+    const poy = (Math.random() - 0.5) * 14;
+    if (Math.random() < 0.6) {
+      state.particles.push({
+        id: `pfire-${Math.random().toString(36).slice(2, 6)}`,
+        pos: { x: p.pos.x + pox, y: p.pos.y + poy },
+        vel: { x: (Math.random() - 0.5) * 20 + p.vel.x * 0.15, y: (Math.random() - 0.5) * 20 + p.vel.y * 0.15 },
+        ttl: 0.3 + Math.random() * 0.3, maxTtl: 0.6,
+        color: Math.random() > 0.4 ? "#ff8c00" : "#ff4500",
+        size: 2.5 + Math.random() * 3, kind: "ember",
+      });
+    } else {
+      state.particles.push({
+        id: `psmk-${Math.random().toString(36).slice(2, 6)}`,
+        pos: { x: p.pos.x + pox, y: p.pos.y + poy },
+        vel: { x: (Math.random() - 0.5) * 10, y: (Math.random() - 0.5) * 10 - 6 },
+        ttl: 0.4 + Math.random() * 0.4, maxTtl: 0.8,
+        color: "#444",
+        size: 3 + Math.random() * 4, kind: "smoke",
+      });
+    }
+  }
 
   // ── Shield regen (only after 5s out of combat)
   if (!serverAuthoritative && outOfCombatFor >= 5 && p.shield < stats.shieldMax) {
     p.shield = Math.min(stats.shieldMax, p.shield + stats.shieldRegen * dt);
+  }
+
+  // ── Auto-save every 15 minutes
+  autoSaveTimer -= dt;
+  if (autoSaveTimer <= 0) {
+    save();
+    autoSaveTimer = 900;
   }
 
   // ── Enemies spawn (server handles spawning when connected, local fallback otherwise)
@@ -1010,6 +1188,33 @@ function tickWorld(dt: number): void {
     }
     if (!serverAuthoritative) {
       updateNpcShips(dt);
+    } else {
+      // NPC trails + damage effects in server mode
+      for (const npc of state.npcShips) {
+        const ns = Math.sqrt(npc.vel.x * npc.vel.x + npc.vel.y * npc.vel.y);
+        if (ns > 15) {
+          if (Math.abs(npc.vel.x) > 1 || Math.abs(npc.vel.y) > 1) {
+            npc.angle = Math.atan2(npc.vel.y, npc.vel.x);
+          }
+          const nb = npc.angle + Math.PI;
+          if (Math.random() < 0.5) {
+            emitTrail(npc.pos.x + Math.cos(nb) * 7, npc.pos.y + Math.sin(nb) * 7, npc.color, 0.5, 2.5);
+          }
+        }
+        // NPC burning when damaged
+        if (npc.hullMax > 0 && npc.hull / npc.hullMax < 0.3 && Math.random() < 0.35) {
+          const ox = (Math.random() - 0.5) * npc.size;
+          const oy = (Math.random() - 0.5) * npc.size;
+          state.particles.push({
+            id: `nfire-${Math.random().toString(36).slice(2, 6)}`,
+            pos: { x: npc.pos.x + ox, y: npc.pos.y + oy },
+            vel: { x: (Math.random() - 0.5) * 15, y: (Math.random() - 0.5) * 15 },
+            ttl: 0.25 + Math.random() * 0.25, maxTtl: 0.5,
+            color: Math.random() > 0.4 ? "#ff8c00" : "#ff4500",
+            size: 2 + Math.random() * 2.5, kind: "ember",
+          });
+        }
+      }
     }
   }
 
@@ -1022,12 +1227,47 @@ function tickWorld(dt: number): void {
       e.combo.ttl -= dt;
       if (e.combo.ttl <= 0) e.combo = undefined;
     }
-    if (serverAuthoritative) {
-      // Server owns enemy positions; just interpolate with velocity
-      e.pos.x += e.vel.x * dt;
-      e.pos.y += e.vel.y * dt;
+    if (serverAuthoritative || state.dungeon) {
+      // Server owns enemy positions; applyServerSmoothing handles interpolation
       if (Math.abs(e.vel.x) > 1 || Math.abs(e.vel.y) > 1) {
         e.angle = Math.atan2(e.vel.y, e.vel.x);
+      }
+      // Enemy engine trail even in server mode
+      const eSpd2 = Math.sqrt(e.vel.x * e.vel.x + e.vel.y * e.vel.y);
+      if (eSpd2 > 5) {
+        const eBack2 = e.angle + Math.PI;
+        const trailRate = Math.min(0.8, eSpd2 / 60);
+        if (Math.random() < trailRate) {
+          const trailSz = Math.min(4, 1.5 + eSpd2 / 40);
+          emitTrail(e.pos.x + Math.cos(eBack2) * (e.size * 0.6), e.pos.y + Math.sin(eBack2) * (e.size * 0.6), e.color, 0.5, trailSz);
+        }
+      }
+      // Burning smoke/fire when damaged (<30% HP)
+      if (e.hullMax > 0 && e.hull / e.hullMax < 0.3) {
+        const dmgRate = 1 - (e.hull / e.hullMax) / 0.3;
+        if (Math.random() < 0.3 + dmgRate * 0.4) {
+          const ox = (Math.random() - 0.5) * e.size;
+          const oy = (Math.random() - 0.5) * e.size;
+          if (Math.random() < 0.6) {
+            state.particles.push({
+              id: `efire-${Math.random().toString(36).slice(2, 6)}`,
+              pos: { x: e.pos.x + ox, y: e.pos.y + oy },
+              vel: { x: (Math.random() - 0.5) * 20 + e.vel.x * 0.2, y: (Math.random() - 0.5) * 20 + e.vel.y * 0.2 },
+              ttl: 0.25 + Math.random() * 0.3, maxTtl: 0.55,
+              color: Math.random() > 0.4 ? "#ff8c00" : "#ff4500",
+              size: 2.5 + Math.random() * 3, kind: "ember",
+            });
+          } else {
+            state.particles.push({
+              id: `esmk-${Math.random().toString(36).slice(2, 6)}`,
+              pos: { x: e.pos.x + ox, y: e.pos.y + oy },
+              vel: { x: (Math.random() - 0.5) * 12, y: (Math.random() - 0.5) * 12 - 8 },
+              ttl: 0.4 + Math.random() * 0.4, maxTtl: 0.8,
+              color: "#444",
+              size: 3 + Math.random() * 4, kind: "smoke",
+            });
+          }
+        }
       }
       continue;
     }
@@ -1113,6 +1353,43 @@ function tickWorld(dt: number): void {
     e.pos.x += e.vel.x * dt;
     e.pos.y += e.vel.y * dt;
 
+    // Enemy engine trail (like player trails but in enemy color)
+    const eSpd = Math.sqrt(e.vel.x * e.vel.x + e.vel.y * e.vel.y);
+    if (eSpd > 20) {
+      const eBack = e.angle + Math.PI;
+      const trailChance = Math.min(1, eSpd / 120);
+      if (Math.random() < trailChance * 0.6) {
+        emitTrail(e.pos.x + Math.cos(eBack) * (e.size * 0.6), e.pos.y + Math.sin(eBack) * (e.size * 0.6), e.color, 0.5, 2.5);
+      }
+    }
+    // Burning smoke/fire when damaged (<30% HP) - local mode
+    if (e.hullMax > 0 && e.hull / e.hullMax < 0.3) {
+      const dmgRate = 1 - (e.hull / e.hullMax) / 0.3;
+      if (Math.random() < 0.3 + dmgRate * 0.4) {
+        const ox = (Math.random() - 0.5) * e.size;
+        const oy = (Math.random() - 0.5) * e.size;
+        if (Math.random() < 0.6) {
+          state.particles.push({
+            id: `efire-${Math.random().toString(36).slice(2, 6)}`,
+            pos: { x: e.pos.x + ox, y: e.pos.y + oy },
+            vel: { x: (Math.random() - 0.5) * 20, y: (Math.random() - 0.5) * 20 },
+            ttl: 0.25 + Math.random() * 0.3, maxTtl: 0.55,
+            color: Math.random() > 0.4 ? "#ff8c00" : "#ff4500",
+            size: 2.5 + Math.random() * 3, kind: "ember",
+          });
+        } else {
+          state.particles.push({
+            id: `esmk-${Math.random().toString(36).slice(2, 6)}`,
+            pos: { x: e.pos.x + ox, y: e.pos.y + oy },
+            vel: { x: (Math.random() - 0.5) * 12, y: (Math.random() - 0.5) * 12 - 8 },
+            ttl: 0.4 + Math.random() * 0.4, maxTtl: 0.8,
+            color: "#444",
+            size: 3 + Math.random() * 4, kind: "smoke",
+          });
+        }
+      }
+    }
+
     // Firing: only when aggroed
     e.fireCd -= dt;
     if (!e.aggro) continue;
@@ -1126,63 +1403,246 @@ function tickWorld(dt: number): void {
         emitRing(e.pos.x, e.pos.y, "#ff8a4e", 60);
         emitSpark(e.pos.x, e.pos.y, "#ff8a4e", 20, 200, 3);
         pushNotification(newPhase === 1 ? "BOSS ENRAGED — Phase 2!" : "BOSS BERSERK — Phase 3!", "bad");
-        pushChat("system", "SYSTEM", newPhase === 1 ? "The dreadnought powers up its secondary weapons!" : "The dreadnought enters berserk mode!");
+        const bossName = e.type === "titan" ? "Titan" : e.type === "overlord" ? "Overlord" : e.type === "wraith" ? "Wraith" : e.type === "sentinel" ? "Sentinel" : "Dreadnought";
+        pushChat("system", "SYSTEM", newPhase === 1 ? `The ${bossName} powers up its secondary weapons!` : `The ${bossName} enters berserk mode!`);
         sfx.bossWarn();
       }
       const phase = e.bossPhase ?? 0;
-      if (e.fireCd <= 0 && ed < 600) {
-        if (phase === 0) {
-          for (let i = -2; i <= 2; i++) {
-            fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.1, e.damage, e.color, 4, { speedMul: 0.95 });
+      if (e.fireCd <= 0 && ed < 700) {
+        if (e.type === "titan" || e.type === "overlord") {
+          // TITAN/OVERLORD BOSS: Heavy plasma barrage + energy ring
+          if (phase === 0) {
+            for (let i = -3; i <= 3; i++) {
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.09, e.damage, e.color, 6, { weaponKind: "plasma", speedMul: 0.8, aoeRadius: 25 });
+            }
+            e.fireCd = 1.3;
+          } else if (phase === 1) {
+            for (let i = -4; i <= 4; i++) {
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.1, e.damage * 1.2, "#ff4466", 6, { weaponKind: "plasma", speedMul: 0.9, aoeRadius: 30 });
+            }
+            for (let i = 0; i < 8; i++) {
+              const ra = (Math.PI * 2 / 8) * i + state.tick * 0.3;
+              fireProjectile("enemy", e.pos.x, e.pos.y, ra, e.damage * 0.6, e.color, 5, { weaponKind: "energy", speedMul: 0.6 });
+            }
+            e.fireCd = 1.0;
+          } else {
+            for (let i = 0; i < 16; i++) {
+              const ra = (Math.PI * 2 / 16) * i + state.tick * 0.4;
+              fireProjectile("enemy", e.pos.x, e.pos.y, ra, e.damage * 0.9, "#ff2244", 5, { weaponKind: "energy", speedMul: 0.65 });
+            }
+            for (let i = -3; i <= 3; i++) {
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.07, e.damage * 1.5, "#ffffff", 7, { weaponKind: "plasma", speedMul: 1.0, aoeRadius: 35 });
+            }
+            e.fireCd = 0.9;
           }
-          e.fireCd = 1.4;
-        } else if (phase === 1) {
-          for (let i = -3; i <= 3; i++) {
-            fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.12, e.damage * 1.2, "#ff5c6c", 4, { speedMul: 1.05 });
+        } else if (e.type === "wraith" || e.type === "sentinel") {
+          // WRAITH/SENTINEL BOSS: Rapid energy storm
+          if (phase === 0) {
+            for (let i = -3; i <= 3; i++) {
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.12, e.damage * 0.8, e.color, 4, { weaponKind: "energy", speedMul: 1.2 });
+            }
+            e.fireCd = 0.8;
+          } else if (phase === 1) {
+            for (let i = -4; i <= 4; i++) {
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.1, e.damage * 0.9, "#cc44ff", 4, { weaponKind: "energy", speedMul: 1.4 });
+            }
+            e.fireCd = 0.5;
+          } else {
+            for (let i = 0; i < 20; i++) {
+              const ra = (Math.PI * 2 / 20) * i + state.tick * 0.7;
+              fireProjectile("enemy", e.pos.x, e.pos.y, ra, e.damage * 0.6, "#cc44ff", 3, { weaponKind: "energy", speedMul: 1.1 });
+            }
+            for (let i = -3; i <= 3; i++) {
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.06, e.damage * 1.3, "#ffffff", 5, { weaponKind: "energy", speedMul: 1.5 });
+            }
+            e.fireCd = 0.4;
           }
-          e.fireCd = 1.0;
         } else {
-          for (let i = 0; i < 12; i++) {
-            const ra = (Math.PI * 2 / 12) * i + state.tick * 0.5;
-            fireProjectile("enemy", e.pos.x, e.pos.y, ra, e.damage * 0.8, "#ff3b4d", 3, { speedMul: 0.7 });
+          // DREAD BOSS (default): Massive plasma barrage - WAY more projectiles
+          if (phase === 0) {
+            for (let i = -4; i <= 4; i++) {
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.08, e.damage, e.color, 5, { weaponKind: "plasma", speedMul: 0.95 });
+            }
+            e.fireCd = 1.1;
+          } else if (phase === 1) {
+            for (let i = -5; i <= 5; i++) {
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.09, e.damage * 1.2, "#ff5c6c", 5, { weaponKind: "plasma", speedMul: 1.1 });
+            }
+            for (let i = 0; i < 6; i++) {
+              const ra = (Math.PI * 2 / 6) * i + state.tick * 0.4;
+              fireProjectile("enemy", e.pos.x, e.pos.y, ra, e.damage * 0.7, "#ffaa22", 4, { weaponKind: "energy", speedMul: 0.7 });
+            }
+            e.fireCd = 0.7;
+          } else {
+            for (let i = 0; i < 24; i++) {
+              const ra = (Math.PI * 2 / 24) * i + state.tick * 0.5;
+              fireProjectile("enemy", e.pos.x, e.pos.y, ra, e.damage * 0.7, "#ff3b4d", 4, { weaponKind: "plasma", speedMul: 0.75 });
+            }
+            for (let i = -4; i <= 4; i++) {
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.06, e.damage * 1.5, "#ffffff", 6, { weaponKind: "plasma", speedMul: 1.2 });
+            }
+            e.fireCd = 0.6;
           }
-          for (let i = -2; i <= 2; i++) {
-            fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.08, e.damage * 1.5, "#ffffff", 5, { speedMul: 1.1 });
-          }
-          e.fireCd = 1.2;
         }
-        e.burstShots = phase >= 1 ? 5 : 3;
-        e.burstCd = 0.12;
+        e.burstShots = phase >= 1 ? 6 : 4;
+        e.burstCd = 0.1;
       }
       if ((e.burstShots ?? 0) > 0) {
         e.burstCd = (e.burstCd ?? 0) - dt;
         if ((e.burstCd ?? 0) <= 0) {
-          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage * 0.7, e.color, 3);
+          const bWk = (e.type === "wraith" || e.type === "sentinel") ? "energy" : "plasma";
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + (Math.random() - 0.5) * 0.2, e.damage * 0.6, e.color, 3, { weaponKind: bWk as any });
           e.burstShots = (e.burstShots ?? 0) - 1;
-          e.burstCd = 0.12;
+          e.burstCd = 0.1;
         }
       }
-      if (phase >= 2) { e.speed = 55; }
-    } else if (e.behavior === "ranged") {
-      if (e.fireCd <= 0 && ed < 480) {
-        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage, e.color);
-        e.fireCd = 0.6 + Math.random() * 0.4;
+      // Boss secondary attacks: spiral + area denial (runs between main volleys)
+      e.secondaryCd = (e.secondaryCd ?? 0.5) - dt;
+      if (e.secondaryCd <= 0 && ed < 700) {
+        const p = state.player;
+        const pAng = Math.atan2(p.pos.y - e.pos.y, p.pos.x - e.pos.x);
+        if (phase >= 1) {
+          // Rotating spiral pattern (2 arms)
+          const spiralBase = state.tick * 2.5;
+          for (let arm = 0; arm < 2; arm++) {
+            const sAng = spiralBase + arm * Math.PI;
+            fireProjectile("enemy", e.pos.x, e.pos.y, sAng, e.damage * 0.4, e.color, 3, { weaponKind: "energy", speedMul: 0.55 });
+          }
+        }
+        if (phase >= 2) {
+          // Area denial: fire at positions around the player
+          const pDist = ed * 0.8;
+          for (let i = 0; i < 3; i++) {
+            const offsetAng = pAng + (i - 1) * 0.4 + (Math.random() - 0.5) * 0.2;
+            fireProjectile("enemy", e.pos.x, e.pos.y, offsetAng, e.damage * 0.5, "#ff8844", 4, { weaponKind: "plasma", speedMul: 0.6, aoeRadius: 35 });
+          }
+          // Slow homing orb (aims at player predicted position)
+          const projSpd = 220 * 0.4;
+          const tHit = ed / projSpd;
+          const predX = p.pos.x + p.vel.x * tHit * 0.5;
+          const predY = p.pos.y + p.vel.y * tHit * 0.5;
+          const homingAng = Math.atan2(predY - e.pos.y, predX - e.pos.x);
+          fireProjectile("enemy", e.pos.x, e.pos.y, homingAng, e.damage * 0.8, "#ffcc00", 5, { weaponKind: "energy", speedMul: 0.4, homing: true });
+        }
+        e.secondaryCd = phase >= 2 ? 0.35 : 0.6;
       }
-    } else if (e.behavior === "tank") {
+      if (phase >= 2) { e.speed = 55; }
+    } else if (e.type === "sentinel") {
+      // Sentinel: predictive double-tap + area denial bursts
+      if (e.fireCd <= 0 && ed < 520) {
+        const p = state.player;
+        // Predictive aim: lead the target based on player velocity
+        const projSpd = 220 * 1.2;
+        const tHit = ed / projSpd;
+        const predX = p.pos.x + p.vel.x * tHit * 0.6;
+        const predY = p.pos.y + p.vel.y * tHit * 0.6;
+        const predAng = Math.atan2(predY - e.pos.y, predX - e.pos.x);
+        // Main shots aimed at predicted position
+        fireProjectile("enemy", e.pos.x, e.pos.y, predAng - 0.04, e.damage, e.color, 4, { weaponKind: "energy", speedMul: 1.2 });
+        fireProjectile("enemy", e.pos.x, e.pos.y, predAng + 0.04, e.damage, e.color, 4, { weaponKind: "energy", speedMul: 1.2 });
+        // Area denial: shots offset to sides of player
+        fireProjectile("enemy", e.pos.x, e.pos.y, predAng + 0.3, e.damage * 0.5, e.color, 3, { weaponKind: "energy", speedMul: 0.9 });
+        fireProjectile("enemy", e.pos.x, e.pos.y, predAng - 0.3, e.damage * 0.5, e.color, 3, { weaponKind: "energy", speedMul: 0.9 });
+        e.fireCd = 0.6 + Math.random() * 0.3;
+      }
+    } else if (e.type === "wraith") {
+      // Wraith: fast predictive burst + flanking shots
+      if (e.fireCd <= 0 && ed < 400) {
+        const p = state.player;
+        const projSpd = 220 * 1.4;
+        const tHit = ed / projSpd;
+        const predX = p.pos.x + p.vel.x * tHit * 0.7;
+        const predY = p.pos.y + p.vel.y * tHit * 0.7;
+        const predAng = Math.atan2(predY - e.pos.y, predX - e.pos.x);
+        // Fast triple burst at predicted position
+        for (let i = -1; i <= 1; i++) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, predAng + i * 0.12, e.damage * 0.7, e.color, 3, { weaponKind: "energy", speedMul: 1.4 });
+        }
+        // Two flanking shots aimed where player might dodge
+        const dodgeAng1 = predAng + Math.PI * 0.4;
+        const dodgeAng2 = predAng - Math.PI * 0.4;
+        fireProjectile("enemy", e.pos.x, e.pos.y, dodgeAng1, e.damage * 0.4, e.color, 2, { weaponKind: "energy", speedMul: 1.6 });
+        fireProjectile("enemy", e.pos.x, e.pos.y, dodgeAng2, e.damage * 0.4, e.color, 2, { weaponKind: "energy", speedMul: 1.6 });
+        e.fireCd = 0.35 + Math.random() * 0.25;
+      }
+    } else if (e.type === "titan") {
+      // Titan: heavy plasma spread + slow homing orb + ground denial
+      if (e.fireCd <= 0 && ed < 520) {
+        const p = state.player;
+        // Main heavy spread
+        for (let i = -1; i <= 1; i++) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.08, e.damage * 1.2, e.color, 6, { weaponKind: "plasma", speedMul: 0.7, aoeRadius: 30 });
+        }
+        // Area denial: shots aimed around the player (not at them)
+        const pAng = Math.atan2(p.pos.y - e.pos.y, p.pos.x - e.pos.x);
+        for (let i = 0; i < 4; i++) {
+          const offsetAng = pAng + (i - 1.5) * 0.25;
+          fireProjectile("enemy", e.pos.x, e.pos.y, offsetAng, e.damage * 0.6, "#ff6644", 5, { weaponKind: "plasma", speedMul: 0.5, aoeRadius: 40 });
+        }
+        e.fireCd = 1.0 + Math.random() * 0.3;
+      }
+    } else if (e.type === "overlord") {
+      // Overlord: predictive barrage + 360 pulse + homing
+      if (e.fireCd <= 0 && ed < 600) {
+        const p = state.player;
+        const projSpd = 220 * 1.1;
+        const tHit = ed / projSpd;
+        const predX = p.pos.x + p.vel.x * tHit * 0.5;
+        const predY = p.pos.y + p.vel.y * tHit * 0.5;
+        const predAng = Math.atan2(predY - e.pos.y, predX - e.pos.x);
+        // Main barrage at predicted position
+        for (let i = -2; i <= 2; i++) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, predAng + i * 0.09, e.damage * 0.7, e.color, 4, { weaponKind: "energy", speedMul: 1.1 });
+        }
+        // Heavy center shot
+        fireProjectile("enemy", e.pos.x, e.pos.y, predAng, e.damage * 1.5, "#ff4466", 7, { weaponKind: "plasma", speedMul: 0.8, aoeRadius: 40 });
+        // Area denial ring (4 shots around player area)
+        for (let i = 0; i < 4; i++) {
+          const ringAng = predAng + (Math.PI / 3) * (i - 1.5);
+          fireProjectile("enemy", e.pos.x, e.pos.y, ringAng, e.damage * 0.4, e.color, 3, { weaponKind: "energy", speedMul: 0.7 });
+        }
+        e.fireCd = 0.7 + Math.random() * 0.3;
+      }
+    } else if (e.type === "dread") {
+      // Dread: heavy plasma spread + predictive shots
+      if (e.fireCd <= 0 && ed < 500) {
+        const p = state.player;
+        const projSpd = 220 * 0.9;
+        const tHit = ed / projSpd;
+        const predX = p.pos.x + p.vel.x * tHit * 0.4;
+        const predY = p.pos.y + p.vel.y * tHit * 0.4;
+        const predAng = Math.atan2(predY - e.pos.y, predX - e.pos.x);
+        for (let i = -1; i <= 1; i++) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.06, e.damage, e.color, 5, { weaponKind: "plasma", speedMul: 0.9 });
+        }
+        e.fireCd = 1.0 + Math.random() * 0.4;
+      }
+    } else if (e.type === "voidling") {
+      // Voidling: pulsing energy shots
+      if (e.fireCd <= 0 && ed < 480) {
+        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage, e.color, 4, { weaponKind: "energy" });
+        e.fireCd = 0.6 + Math.random() * 0.3;
+      }
+    } else if (e.type === "destroyer") {
+      // Destroyer: triple plasma spread
       if (e.fireCd <= 0 && ed < 440) {
-        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle - 0.04, e.damage * 0.9, e.color);
-        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + 0.04, e.damage * 0.9, e.color);
-        e.fireCd = 1.4 + Math.random() * 0.6;
+        for (let i = -1; i <= 1; i++) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.06, e.damage * 0.8, e.color, 4, { weaponKind: "plasma" });
+        }
+        e.fireCd = 1.2 + Math.random() * 0.5;
       }
     } else if (e.behavior === "fast") {
-      if (e.fireCd <= 0 && ed < 280) {
+      // Scout: rapid small lasers
+      if (e.fireCd <= 0 && ed < 300) {
         fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage, e.color, 2);
-        e.fireCd = 0.5 + Math.random() * 0.4;
+        e.fireCd = 0.45 + Math.random() * 0.3;
       }
     } else {
+      // Raider/default: dual laser
       if (e.fireCd <= 0 && ed < 500) {
-        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage, e.color);
-        e.fireCd = 1.0 + Math.random() * 0.8;
+        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle - 0.03, e.damage * 0.9, e.color);
+        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + 0.03, e.damage * 0.9, e.color);
+        e.fireCd = 0.8 + Math.random() * 0.5;
       }
     }
   }
@@ -1216,35 +1676,106 @@ function tickWorld(dt: number): void {
         else laserIds.push(wid);
       }
       const perpAng = ang + Math.PI / 2;
+      const shipScale = SHIP_SIZE_SCALE[p.shipClass] ?? 1;
+      const gunMount = SHIP_WEAPON_MOUNTS[p.shipClass] ?? { spread: 14, forward: 8 };
+      const gunSpread = gunMount.spread;
+      const gunFwd = gunMount.forward;
 
       // Fire lasers on laser cooldown (uses laser ammo) - only when laser firing is active
       const laserAmmo = p.ammo[laserAmmoType] ?? 0;
+      if (laserAmmo < 1 && state.isLaserFiring) {
+        state.isLaserFiring = false;
+      }
       if (state.isLaserFiring && playerFireCd.value <= 0 && laserIds.length > 0 && laserAmmo >= 1) {
         p.ammo[laserAmmoType] = laserAmmo - 1;
         const laserDmg = stats.damage * laserDmgMul;
-        const perShot = Math.round(laserDmg / 2);
-        for (let si = 0; si < 2; si++) {
-          const side = si === 0 ? -1 : 1;
-          const ox = p.pos.x + Math.cos(perpAng) * 14 * side;
-          const oy = p.pos.y + Math.sin(perpAng) * 14 * side;
-          fireProjectile("player", ox, oy, ang - side * 0.03, perShot, laserColor, 4, {
-            weaponKind: "laser",
+
+        // Determine firing pattern from first equipped laser weapon
+        const firstLaser = p.inventory.find(m => m.instanceId === laserIds[0]);
+        const firstDef = firstLaser ? MODULE_DEFS[firstLaser.defId] : null;
+        const pattern = firstDef?.firingPattern || "standard";
+
+        if (pattern === "sniper") {
+          // Single powerful beam from center
+          const dmg = Math.round(laserDmg);
+          const ox = p.pos.x + Math.cos(ang) * gunFwd;
+          const oy = p.pos.y + Math.sin(ang) * gunFwd;
+          fireProjectile("player", ox, oy, ang, dmg, laserColor, 6, {
+            weaponKind: "laser", speedMul: 3.2,
           });
-          // Muzzle flash at gun port — large and visible when zoomed out
-          state.particles.push({
-            id: `mf-${Math.random().toString(36).slice(2, 8)}`,
-            pos: { x: ox, y: oy }, vel: { x: 0, y: 0 },
-            ttl: 0.18, maxTtl: 0.18,
-            color: laserColor, size: 70, kind: "flash",
-          });
-          state.particles.push({
-            id: `mf2-${Math.random().toString(36).slice(2, 8)}`,
-            pos: { x: ox, y: oy }, vel: { x: 0, y: 0 },
-            ttl: 0.1, maxTtl: 0.1,
-            color: "#ffffff", size: 45, kind: "flash",
-          });
-          emitSpark(ox, oy, laserColor, 6, 120, 3);
-          emitSpark(ox, oy, "#ffffff", 3, 70, 2);
+          state.particles.push({ id: `mf-${Math.random().toString(36).slice(2, 8)}`, pos: { x: ox, y: oy }, vel: { x: 0, y: 0 }, ttl: 0.25, maxTtl: 0.25, color: "#ffffff", size: 90, kind: "flash" });
+          state.particles.push({ id: `mf2-${Math.random().toString(36).slice(2, 8)}`, pos: { x: ox, y: oy }, vel: { x: 0, y: 0 }, ttl: 0.15, maxTtl: 0.15, color: laserColor, size: 60, kind: "flash" });
+          emitSpark(ox, oy, "#ffffff", 8, 160, 3);
+          emitSpark(ox, oy, laserColor, 4, 100, 2);
+        } else if (pattern === "scatter") {
+          // Shotgun: 3 heavy pellets in a tight cone
+          const pellets = 3;
+          const perPellet = Math.round(laserDmg * 2.5 / pellets);
+          const spread = 0.1;
+          for (let si = 0; si < pellets; si++) {
+            const spreadAng = ang + (si - 1) * spread;
+            const side = si === 0 ? -1 : si === 2 ? 1 : 0;
+            const ox = p.pos.x + Math.cos(ang) * gunFwd + Math.cos(perpAng) * gunSpread * side;
+            const oy = p.pos.y + Math.sin(ang) * gunFwd + Math.sin(perpAng) * gunSpread * side;
+            fireProjectile("player", ox, oy, spreadAng, perPellet, laserColor, 4, {
+              weaponKind: "laser", speedMul: 1.8,
+            });
+          }
+          const cx = p.pos.x + Math.cos(ang) * gunFwd;
+          const cy = p.pos.y + Math.sin(ang) * gunFwd;
+          state.particles.push({ id: `mf-${Math.random().toString(36).slice(2, 8)}`, pos: { x: cx, y: cy }, vel: { x: 0, y: 0 }, ttl: 0.15, maxTtl: 0.15, color: laserColor, size: 80, kind: "flash" });
+          emitSpark(cx, cy, laserColor, 8, 100, 2);
+          emitSpark(cx, cy, "#ffffff", 4, 70, 2);
+        } else if (pattern === "rail") {
+          // Burst: 3 rapid shots
+          const perBurst = Math.round(laserDmg * 1.3 / 3);
+          for (let bi = 0; bi < 3; bi++) {
+            const side = bi === 0 ? -1 : bi === 1 ? 1 : 0;
+            const ox = p.pos.x + Math.cos(ang) * gunFwd + Math.cos(perpAng) * gunSpread * side;
+            const oy = p.pos.y + Math.sin(ang) * gunFwd + Math.sin(perpAng) * gunSpread * side;
+            const burstAng = ang + (Math.random() - 0.5) * 0.04;
+            fireProjectile("player", ox, oy, burstAng, perBurst, laserColor, 4, {
+              weaponKind: "laser", speedMul: 2.5,
+            });
+            state.particles.push({ id: `mf-${Math.random().toString(36).slice(2, 8)}`, pos: { x: ox, y: oy }, vel: { x: 0, y: 0 }, ttl: 0.12, maxTtl: 0.12, color: laserColor, size: 55, kind: "flash" });
+            emitSpark(ox, oy, laserColor, 4, 90, 2);
+          }
+          emitSpark(p.pos.x, p.pos.y, "#ffffff", 3, 60, 2);
+        } else {
+          // Alternating pairs: fire 2 guns at a time, cycle through pairs
+          const perShot = Math.round(laserDmg / 2);
+          const editorWpns = getEditorWeaponPositions(p.shipClass, ang);
+          const useEditor = editorWpns && editorWpns.length >= 2;
+          const totalGuns = useEditor ? editorWpns!.length : 2;
+          const numPairs = Math.ceil(totalGuns / 2);
+          const pairIdx = useEditor && totalGuns > 2 ? weaponMountIdx % numPairs : 0;
+          if (useEditor && totalGuns > 2) weaponMountIdx++;
+          for (let si = 0; si < 2; si++) {
+            const hpIdx = pairIdx * 2 + si;
+            if (useEditor && hpIdx >= totalGuns) break;
+            const side = si === 0 ? -1 : 1;
+            let ox: number, oy: number;
+            let convergeSide: number;
+            if (useEditor) {
+              ox = p.pos.x + editorWpns![hpIdx].x;
+              oy = p.pos.y + editorWpns![hpIdx].y;
+              const perpX = Math.cos(ang + Math.PI / 2);
+              const perpY = Math.sin(ang + Math.PI / 2);
+              const dot = editorWpns![hpIdx].x * perpX + editorWpns![hpIdx].y * perpY;
+              convergeSide = dot >= 0 ? 1 : -1;
+            } else {
+              convergeSide = side;
+              ox = p.pos.x + Math.cos(ang) * gunFwd + Math.cos(perpAng) * gunSpread * side;
+              oy = p.pos.y + Math.sin(ang) * gunFwd + Math.sin(perpAng) * gunSpread * side;
+            }
+            fireProjectile("player", ox, oy, ang - convergeSide * 0.03, perShot, laserColor, 4, {
+              weaponKind: "laser", speedMul: 2.14,
+            });
+            state.particles.push({ id: `mf-${Math.random().toString(36).slice(2, 8)}`, pos: { x: ox, y: oy }, vel: { x: 0, y: 0 }, ttl: 0.18, maxTtl: 0.18, color: laserColor, size: 70, kind: "flash" });
+            state.particles.push({ id: `mf2-${Math.random().toString(36).slice(2, 8)}`, pos: { x: ox, y: oy }, vel: { x: 0, y: 0 }, ttl: 0.1, maxTtl: 0.1, color: "#ffffff", size: 45, kind: "flash" });
+            emitSpark(ox, oy, laserColor, 6, 120, 3);
+            emitSpark(ox, oy, "#ffffff", 3, 70, 2);
+          }
         }
         sfx.laserShoot();
         atkTarget.aggro = true;
@@ -1257,6 +1788,9 @@ function tickWorld(dt: number): void {
 
       // Fire rockets on separate slower cooldown (uses rocket ammo, higher damage) - only when rocket firing is active
       const rocketAmmo = p.rocketAmmo[rocketAmmoType] ?? 0;
+      if (rocketAmmo < 1 && state.isRocketFiring) {
+        state.isRocketFiring = false;
+      }
       if (state.isRocketFiring && rocketFireCd.value <= 0 && rocketIds.length > 0 && rocketAmmo >= 1) {
         p.rocketAmmo[rocketAmmoType] = rocketAmmo - 1;
         for (const rId of rocketIds) {
@@ -1267,7 +1801,7 @@ function tickWorld(dt: number): void {
           fireProjectile("player", p.pos.x, p.pos.y, ang, rDmg, rocketColor, 5, {
             weaponKind: "rocket",
             homing: true,
-            speedMul: 0.55,
+            speedMul: 1.18,
           });
         }
         // Muzzle flash + smoke burst at ship (radial, not directional)
@@ -1326,31 +1860,14 @@ function tickWorld(dt: number): void {
     if (mAst) {
       const mDist = distance(p.pos.x, p.pos.y, mAst.pos.x, mAst.pos.y);
       if (mDist < 450) {
-        const miningDps = stats.damage * 0.25;
+        const miningDps = stats.damage * 0.25 * (1 + (stats.miningBonus ?? 0));
         // Server handles mining via input state (miningTargetId)
         if (!serverEnemiesReceived) {
           mAst.hp -= miningDps * dt;
         }
         sfx.miningLaserStart();
-        if (Math.random() < dt * 4) {
-          const rx = mAst.pos.x + (Math.random() - 0.5) * mAst.size;
-          const ry = mAst.pos.y + (Math.random() - 0.5) * mAst.size;
-          emitSpark(rx, ry, "#c69060", 2, 40, 1);
-          const da = Math.random() * Math.PI * 2;
-          const dspd = 30 + Math.random() * 60;
-          state.particles.push({
-            id: `rd-${Math.random().toString(36).slice(2, 8)}`,
-            pos: { x: rx, y: ry },
-            vel: { x: Math.cos(da) * dspd, y: Math.sin(da) * dspd },
-            ttl: 0.5 + Math.random() * 0.6, maxTtl: 1.1,
-            color: Math.random() > 0.5 ? "#c0a070" : "#8a7050",
-            size: 2 + Math.random() * 3,
-            rot: Math.random() * Math.PI * 2,
-            rotVel: (Math.random() - 0.5) * 12,
-            kind: "debris",
-          });
-        }
-        if (!serverEnemiesReceived && mAst.hp <= 0) { state.miningTargetId = null; sfx.miningLaserStop(); destroyAsteroid(mAst.id); }
+
+        if ((!serverEnemiesReceived || state.dungeon) && mAst.hp <= 0) { state.miningTargetId = null; sfx.miningLaserStop(); destroyAsteroid(mAst.id); }
       } else {
         state.miningTargetId = null;
         sfx.miningLaserStop();
@@ -1380,12 +1897,16 @@ function tickWorld(dt: number): void {
     const cols = Math.min(4, droneCount);
     const row = Math.floor(i / cols);
     const col = i % cols;
-    const spacing = 38;
+    const spacing = 55;
     const rowOffset = (row + 1) * spacing;
     const colOffset = (col - (Math.min(cols, droneCount - row * cols) - 1) / 2) * spacing;
     const perpAngle = behindAngle + Math.PI / 2;
-    const anchorX = p.pos.x + Math.cos(behindAngle) * rowOffset + Math.cos(perpAngle) * colOffset;
-    const anchorY = p.pos.y + Math.sin(behindAngle) * rowOffset + Math.sin(perpAngle) * colOffset;
+    const targetX = p.pos.x + Math.cos(behindAngle) * rowOffset + Math.cos(perpAngle) * colOffset;
+    const targetY = p.pos.y + Math.sin(behindAngle) * rowOffset + Math.sin(perpAngle) * colOffset;
+    const prev = (d as Drone & { anchor?: { x: number; y: number } }).anchor;
+    const lerpFactor = Math.min(1, dt * 5);
+    const anchorX = prev ? prev.x + (targetX - prev.x) * lerpFactor : targetX;
+    const anchorY = prev ? prev.y + (targetY - prev.y) * lerpFactor : targetY;
     (d as Drone & { anchor?: { x: number; y: number } }).anchor = {
       x: anchorX,
       y: anchorY,
@@ -1406,6 +1927,17 @@ function tickWorld(dt: number): void {
 
   // ── Projectiles update + collisions
   state.projectiles = state.projectiles.filter((pr) => {
+    // Redirect fresh player laser projectiles toward the on-screen attack target
+    // so the visual matches the enemy sprite position (not the server-side position)
+    if (pr.fromPlayer && !pr.homing && pr.ttl > 1.2 && state.attackTargetId) {
+      const visTarget = state.enemies.find(e => e.id === state.attackTargetId);
+      if (visTarget) {
+        const spd = Math.sqrt(pr.vel.x * pr.vel.x + pr.vel.y * pr.vel.y);
+        const toAng = Math.atan2(visTarget.pos.y - pr.pos.y, visTarget.pos.x - pr.pos.x);
+        pr.vel.x = Math.cos(toAng) * spd;
+        pr.vel.y = Math.sin(toAng) * spd;
+      }
+    }
     // Homing steering (rockets)
     if (pr.homing && pr.fromPlayer && state.enemies.length > 0) {
       let target: Enemy | null = null;
@@ -1464,19 +1996,106 @@ function tickWorld(dt: number): void {
         emitRing(pr.pos.x, pr.pos.y, pr.color);
       }
     }
-    if (pr.renderOnly) {
-      return true;
-    }
     if (pr.fromPlayer) {
       // hit enemies
       for (const e of state.enemies) {
         if (distance(pr.pos.x, pr.pos.y, e.pos.x, e.pos.y) < e.size + 4) {
+          if (pr.renderOnly) {
+            e.hitFlash = 1;
+            sfx.enemyHit();
+            emitSpark(pr.pos.x, pr.pos.y, e.color, pr.crit ? 8 : 4, pr.crit ? 180 : 120, pr.crit ? 4 : 3);
+            emitSpark(pr.pos.x, pr.pos.y, "#ffffff", pr.crit ? 4 : 2, pr.crit ? 140 : 90, 2);
+            emitRing(pr.pos.x, pr.pos.y, pr.color, pr.crit ? 35 : 22);
+            state.particles.push({
+              id: `hf-${Math.random().toString(36).slice(2, 8)}`,
+              pos: { x: pr.pos.x, y: pr.pos.y }, vel: { x: 0, y: 0 },
+              ttl: 0.14, maxTtl: 0.14,
+              color: pr.crit ? "#ffd24a" : "#ffffff",
+              size: pr.crit ? 40 : 25, kind: "flash",
+            });
+            const emberCount = pr.crit ? 12 : 7;
+            for (let ei = 0; ei < emberCount; ei++) {
+              const ea = Math.random() * Math.PI * 2;
+              const es = 80 + Math.random() * 200;
+              const eColors = ["#ff8c00", "#ff4500", "#ffd700", e.color, "#ffffff"];
+              state.particles.push({
+                id: `em-${Math.random().toString(36).slice(2, 8)}`,
+                pos: { x: pr.pos.x, y: pr.pos.y },
+                vel: { x: Math.cos(ea) * es, y: Math.sin(ea) * es },
+                ttl: 0.4 + Math.random() * 0.35, maxTtl: 0.75,
+                color: eColors[Math.floor(Math.random() * eColors.length)],
+                size: 2 + Math.random() * 3, kind: "ember",
+              });
+            }
+            // Fire particles on hit
+            if (pr.crit || Math.random() < 0.4) {
+              const fc = pr.crit ? 3 : 1;
+              for (let fi = 0; fi < fc; fi++) {
+                const fa = Math.random() * Math.PI * 2;
+                const fs = 30 + Math.random() * 60;
+                state.particles.push({
+                  id: `hfb-${Math.random().toString(36).slice(2, 8)}`,
+                  pos: { x: pr.pos.x + (Math.random() - 0.5) * 6, y: pr.pos.y + (Math.random() - 0.5) * 6 },
+                  vel: { x: Math.cos(fa) * fs, y: Math.sin(fa) * fs },
+                  ttl: 0.2 + Math.random() * 0.2, maxTtl: 0.4,
+                  color: Math.random() > 0.5 ? "#ff8a4e" : "#ff4500", size: 4 + Math.random() * 5, kind: "fireball",
+                });
+              }
+            }
+            // Burning hull chunks flying off on hits (low HP enemies)
+            if (e.hull / e.hullMax < 0.4 && Math.random() < 0.5) {
+              const da = Math.random() * Math.PI * 2;
+              const ds = 100 + Math.random() * 160;
+              state.particles.push({
+                id: `hdb-${Math.random().toString(36).slice(2, 8)}`,
+                pos: { x: pr.pos.x, y: pr.pos.y },
+                vel: { x: Math.cos(da) * ds, y: Math.sin(da) * ds },
+                ttl: 0.5 + Math.random() * 0.6, maxTtl: 1.1,
+                color: Math.random() > 0.5 ? e.color : "#ff8a4e",
+                size: 3 + Math.random() * 4,
+                rot: Math.random() * Math.PI * 2,
+                rotVel: (Math.random() - 0.5) * 14,
+                kind: "debris",
+              });
+            }
+            if (pr.weaponKind === "rocket") {
+              for (let fi = 0; fi < 4; fi++) {
+                const fa = Math.random() * Math.PI * 2;
+                const fs = 40 + Math.random() * 80;
+                state.particles.push({
+                  id: `rfb-${Math.random().toString(36).slice(2, 8)}`,
+                  pos: { x: pr.pos.x, y: pr.pos.y },
+                  vel: { x: Math.cos(fa) * fs, y: Math.sin(fa) * fs },
+                  ttl: 0.25 + Math.random() * 0.25, maxTtl: 0.5,
+                  color: Math.random() > 0.5 ? "#ff8a4e" : "#ffd24a", size: 5 + Math.random() * 6, kind: "fireball",
+                });
+              }
+              for (let si = 0; si < 4; si++) {
+                const sa = Math.random() * Math.PI * 2;
+                const ss = 25 + Math.random() * 40;
+                state.particles.push({
+                  id: `rsmk-${Math.random().toString(36).slice(2, 8)}`,
+                  pos: { x: pr.pos.x, y: pr.pos.y },
+                  vel: { x: Math.cos(sa) * ss, y: Math.sin(sa) * ss },
+                  ttl: 0.4 + Math.random() * 0.3, maxTtl: 0.7,
+                  color: "#999999", size: 5 + Math.random() * 5, kind: "smoke",
+                });
+              }
+              sfx.explosion();
+            }
+            const hitDist = Math.hypot(pr.pos.x - state.player.pos.x, pr.pos.y - state.player.pos.y);
+            const hitShake = pr.weaponKind === "rocket" ? 0.2 : (pr.crit ? 0.1 : 0.05);
+            state.cameraShake = Math.max(state.cameraShake, hitShake * Math.max(0, 1 - hitDist / 500));
+            return false;
+          }
           const stacks = e.combo ? Math.min(5, e.combo.stacks + 1) : 1;
           e.combo = { stacks, ttl: 3 };
           const comboMul = 1 + (stacks - 1) * 0.10;
           const dmg = pr.damage * comboMul;
           if (!serverEnemiesReceived) {
             e.hull -= dmg;
+          } else if (state.dungeon) {
+            sendInstanceEnemyHit(e.id, dmg, !!pr.crit);
           }
           e.hitFlash = 1;
           e.aggro = true;
@@ -1589,8 +2208,12 @@ function tickWorld(dt: number): void {
           if (pr.aoeRadius && pr.aoeRadius > 0) {
             for (const e2 of state.enemies) {
               if (e2.id === e.id) continue;
-              if (distance(e.pos.x, e.pos.y, e2.pos.x, e2.pos.y) < pr.aoeRadius * 8) {
-                if (!serverEnemiesReceived) e2.hull -= dmg * 0.4;
+              if (distance(e.pos.x, e.pos.y, e2.pos.x, e2.pos.y) < pr.aoeRadius * 3) {
+                if (!serverEnemiesReceived) {
+                  e2.hull -= dmg * 0.4;
+                } else if (state.dungeon) {
+                  sendInstanceEnemyHit(e2.id, dmg * 0.4, false);
+                }
                 e2.hitFlash = 1;
               }
             }
@@ -1605,15 +2228,30 @@ function tickWorld(dt: number): void {
       // enemy projectile -> hit NPC ships, drones, then player
       for (const npc of state.npcShips) {
         if (distance(pr.pos.x, pr.pos.y, npc.pos.x, npc.pos.y) < npc.size + 4) {
-          npc.hull -= pr.damage;
-          emitSpark(pr.pos.x, pr.pos.y, npc.color, 6, 100, 2);
-          emitRing(pr.pos.x, pr.pos.y, pr.color, 20);
+          if (!pr.renderOnly) npc.hull -= pr.damage;
+          emitSpark(pr.pos.x, pr.pos.y, npc.color, 8, 140, 3);
+          emitSpark(pr.pos.x, pr.pos.y, "#ffffff", 3, 100, 2);
+          emitRing(pr.pos.x, pr.pos.y, pr.color, 25);
           state.particles.push({
             id: `nhf-${Math.random().toString(36).slice(2, 8)}`,
             pos: { x: pr.pos.x, y: pr.pos.y }, vel: { x: 0, y: 0 },
-            ttl: 0.12, maxTtl: 0.12,
-            color: "#ffffff", size: 20, kind: "flash",
+            ttl: 0.14, maxTtl: 0.14,
+            color: "#ffffff", size: 28, kind: "flash",
           });
+          // Fire embers on NPC hit
+          for (let ei = 0; ei < 4; ei++) {
+            const ea = Math.random() * Math.PI * 2;
+            const es = 60 + Math.random() * 120;
+            state.particles.push({
+              id: `nem-${Math.random().toString(36).slice(2, 8)}`,
+              pos: { x: pr.pos.x, y: pr.pos.y },
+              vel: { x: Math.cos(ea) * es, y: Math.sin(ea) * es },
+              ttl: 0.3 + Math.random() * 0.25, maxTtl: 0.55,
+              color: ["#ff8c00", "#ff4500", "#ffd700", npc.color][Math.floor(Math.random() * 4)],
+              size: 2 + Math.random() * 2.5, kind: "ember",
+            });
+          }
+          sfx.enemyHit();
           return false;
         }
       }
@@ -1632,7 +2270,30 @@ function tickWorld(dt: number): void {
           return false;
         }
       }
-      if (distance(pr.pos.x, pr.pos.y, p.pos.x, p.pos.y) < 12) {
+      for (const o of state.others) {
+        if (distance(pr.pos.x, pr.pos.y, o.pos.x, o.pos.y) < 14) {
+          emitSpark(pr.pos.x, pr.pos.y, "#ff5c6c", 5, 80, 2);
+          emitRing(pr.pos.x, pr.pos.y, "#ff5c6c", 18);
+          state.particles.push({
+            id: `ohf-${Math.random().toString(36).slice(2, 8)}`,
+            pos: { x: pr.pos.x, y: pr.pos.y }, vel: { x: 0, y: 0 },
+            ttl: 0.1, maxTtl: 0.1,
+            color: "#ff5c6c", size: 20, kind: "flash",
+          });
+          return false;
+        }
+      }
+      if (distance(pr.pos.x, pr.pos.y, p.pos.x, p.pos.y) < 12 * (SHIP_SIZE_SCALE[p.shipClass] ?? 1)) {
+        emitSpark(pr.pos.x, pr.pos.y, "#ff5c6c", 6, 90, 2);
+        emitRing(pr.pos.x, pr.pos.y, "#ff5c6c", 18);
+        state.particles.push({
+          id: `phf-${Math.random().toString(36).slice(2, 8)}`,
+          pos: { x: pr.pos.x, y: pr.pos.y }, vel: { x: 0, y: 0 },
+          ttl: 0.12, maxTtl: 0.12,
+          color: "#ff5c6c", size: 25, kind: "flash",
+        });
+        sfx.hit();
+        state.cameraShake = Math.max(state.cameraShake, 0.12);
         if (!serverAuthoritative) damagePlayer(pr.damage);
         return false;
       }
@@ -1640,7 +2301,7 @@ function tickWorld(dt: number): void {
     return true;
   });
 
-  if (!serverEnemiesReceived) {
+  if (!serverEnemiesReceived || state.dungeon) {
     state.enemies = state.enemies.filter((e) => e.hull > 0);
   }
 
@@ -1668,7 +2329,13 @@ function tickWorld(dt: number): void {
 
   // ── Floaters update
   for (const f of state.floaters) {
-    f.pos.y += f.vy * dt;
+    if (f.trackPlayer) {
+      const elapsed = f.maxTtl - f.ttl;
+      f.pos.x = state.player.pos.x;
+      f.pos.y = state.player.pos.y - 45 + (f.trackYOff ?? 0) - elapsed * 25;
+    } else {
+      f.pos.y += f.vy * dt;
+    }
     f.vy *= 0.96;
     f.ttl -= dt;
   }
@@ -1680,14 +2347,8 @@ function tickWorld(dt: number): void {
 
   // ── Other players movement
   if (serverAuthoritative) {
-    // Server sends positions via delta/snapshot; interpolate with velocity
-    for (const o of state.others) {
-      o.pos.x += o.vel.x * dt;
-      o.pos.y += o.vel.y * dt;
-      if (Math.abs(o.vel.x) > 1 || Math.abs(o.vel.y) > 1) {
-        o.angle = Math.atan2(o.vel.y, o.vel.x);
-      }
-    }
+    // Server sends positions + angle via delta/snapshot; applyServerSmoothing handles lerp
+    // Don't override angle here - server sends the correct angle (including attack facing)
   } else {
     // AI drift (singleplayer fallback)
     aiUpdateTimer -= dt;
@@ -1729,7 +2390,6 @@ function tickWorld(dt: number): void {
   // ── Asteroid rotation + player collision
   for (const a of state.asteroids) {
     a.rotation += a.rotSpeed * dt;
-    if (serverAuthoritative) continue;
     if (a.zone !== state.player.zone) continue;
     const adist = distance(p.pos.x, p.pos.y, a.pos.x, a.pos.y);
     if (adist < a.size + 10) {
@@ -1738,6 +2398,32 @@ function tickWorld(dt: number): void {
       p.pos.y = a.pos.y + Math.sin(pushAng) * (a.size + 12);
       damagePlayer(Math.round(a.size * 0.3));
       emitSpark(p.pos.x, p.pos.y, "#c69060", 3, 50, 2);
+    }
+  }
+
+  // ── Debris fire trails (burning wreckage from explosions)
+  for (const pa of state.particles) {
+    if (pa.kind === "debris" && pa.ttl > 0.3) {
+      const spdSq = pa.vel.x * pa.vel.x + pa.vel.y * pa.vel.y;
+      if (spdSq > 2500 && Math.random() < 0.35) {
+        state.particles.push({
+          id: `dft-${Math.random().toString(36).slice(2, 6)}`,
+          pos: { x: pa.pos.x + (Math.random() - 0.5) * 3, y: pa.pos.y + (Math.random() - 0.5) * 3 },
+          vel: { x: (Math.random() - 0.5) * 15, y: (Math.random() - 0.5) * 15 },
+          ttl: 0.2 + Math.random() * 0.25, maxTtl: 0.45,
+          color: Math.random() > 0.4 ? "#ff8c00" : "#ff4500",
+          size: 2 + Math.random() * 2, kind: "ember",
+        });
+      }
+      if (spdSq > 4000 && Math.random() < 0.15) {
+        state.particles.push({
+          id: `dfs-${Math.random().toString(36).slice(2, 6)}`,
+          pos: { x: pa.pos.x, y: pa.pos.y },
+          vel: { x: (Math.random() - 0.5) * 8, y: (Math.random() - 0.5) * 8 },
+          ttl: 0.3 + Math.random() * 0.3, maxTtl: 0.6,
+          color: "#555", size: 2.5 + Math.random() * 2, kind: "smoke",
+        });
+      }
     }
   }
 
@@ -1754,51 +2440,17 @@ function tickWorld(dt: number): void {
 function destroyAsteroid(id: string): void {
   const a = state.asteroids.find((x) => x.id === id);
   if (!a) return;
-  emitSpark(a.pos.x, a.pos.y, "#c69060", 16, 120, 3);
-  emitSpark(a.pos.x, a.pos.y, "#7a5028", 8, 80, 2);
-  // Smoke-only explosion (no fire) + rock debris
-  state.particles.push({
-    id: `af-${Math.random().toString(36).slice(2, 8)}`,
-    pos: { x: a.pos.x, y: a.pos.y }, vel: { x: 0, y: 0 },
-    ttl: 0.3, maxTtl: 0.3,
-    color: "#ffffff", size: 80, kind: "flash",
-  });
-  for (let i = 0; i < 14; i++) {
-    const sa = Math.random() * Math.PI * 2;
-    const ss = 20 + Math.random() * 50;
-    state.particles.push({
-      id: `as-${Math.random().toString(36).slice(2, 8)}`,
-      pos: { x: a.pos.x + (Math.random() - 0.5) * 10, y: a.pos.y + (Math.random() - 0.5) * 10 },
-      vel: { x: Math.cos(sa) * ss, y: Math.sin(sa) * ss },
-      ttl: 0.8 + Math.random() * 0.8, maxTtl: 1.6,
-      color: i % 3 === 0 ? "#555" : i % 3 === 1 ? "#888" : "#aaa",
-      size: 8 + Math.random() * 12, kind: "smoke",
-    });
-  }
-  for (let i = 0; i < 10; i++) {
-    const da = Math.random() * Math.PI * 2;
-    const ds = 60 + Math.random() * 140;
-    state.particles.push({
-      id: `ad-${Math.random().toString(36).slice(2, 8)}`,
-      pos: { x: a.pos.x, y: a.pos.y },
-      vel: { x: Math.cos(da) * ds, y: Math.sin(da) * ds },
-      ttl: 0.6 + Math.random() * 0.8, maxTtl: 1.4,
-      color: Math.random() > 0.4 ? "#c0a070" : "#7a5028",
-      size: 3 + Math.random() * 5,
-      rot: Math.random() * Math.PI * 2,
-      rotVel: (Math.random() - 0.5) * 16,
-      kind: "debris",
-    });
-  }
-  emitRing(a.pos.x, a.pos.y, "#c0a070", 30);
+  // PixiJS handles asteroid death VFX
   sfx.explosion();
   const qty = 2 + Math.floor(Math.random() * 3);
   const got = addCargo(a.yields, qty);
   if (got > 0) {
-    pushFloater({ text: `+${got} ${a.yields === "iron" ? "Iron" : "Lumenite"}`, color: "#5cff8a", x: a.pos.x, y: a.pos.y - 12, scale: 1, ttl: 0.9 });
+    const res = RESOURCES[a.yields];
+    pushFloater({ text: `+${got} ${res?.name ?? a.yields}`, color: res?.color ?? "#5cff8a", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.3, bold: true, ttl: 2.0 });
     sfx.pickup();
     state.player.milestones.totalMined += got;
     bumpMission("mine", got);
+    bumpMission("gather", got, state.player.zone, { resourceId: a.yields });
     const prev = state.player.milestones.totalMined - got;
     checkMilestoneTier("totalMined", prev, state.player.milestones.totalMined);
   } else {
@@ -1808,14 +2460,13 @@ function destroyAsteroid(id: string): void {
   setTimeout(() => {
     const angle = Math.random() * Math.PI * 2;
     const dist = 1200 + Math.random() * 1200;
-    const yieldsLumenite = Math.random() < 0.18;
     state.asteroids.push({
       id: `ast-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
       pos: { x: Math.cos(angle) * dist, y: Math.sin(angle) * dist },
       hp: 80, hpMax: 80, size: 16 + Math.random() * 14,
       rotation: 0, rotSpeed: (Math.random() - 0.5) * 0.4,
       zone: state.player.zone,
-      yields: yieldsLumenite ? "lumenite" : "iron",
+      yields: pickAsteroidYield(state.player.zone),
     });
   }, 6000);
 }
@@ -1834,7 +2485,10 @@ export function checkPortal(): void {
       p.pos.y += Math.sin(ang) * 80;
       return;
     }
-    travelToZone(portal.toZone);
+    const destPortal = PORTALS.find(dp => dp.fromZone === portal.toZone && dp.toZone === portal.fromZone);
+    const spawnX = destPortal ? destPortal.pos.x : 0;
+    const spawnY = destPortal ? destPortal.pos.y + 80 : 80;
+    travelToZone(portal.toZone, spawnX, spawnY);
   }
 }
 
@@ -1854,6 +2508,7 @@ export type _ZoneId = ZoneId;
 let serverEnemiesReceived = false;
 
 export function onServerZoneEnemies(enemies: ServerEnemy[]): void {
+  if (state.dungeon) return; // Dont overwrite client-side dungeon enemies
   serverEnemiesReceived = true;
   state.enemies = enemies.map(serverEnemyToLocal);
   bump();
@@ -1887,17 +2542,21 @@ export function onServerZoneNpcs(npcs: ServerNpc[]): void {
 }
 
 export function onEnemySpawn(data: ServerEnemy): void {
+  if (state.dungeon) return;
   if (state.enemies.find((e) => e.id === data.id)) return;
   state.enemies.push(serverEnemyToLocal(data));
 }
 
 export function onEnemyHit(data: EnemyHitEvent): void {
+  if (state.dungeon) return;
   const e = state.enemies.find((en) => en.id === data.enemyId);
   if (!e) return;
   e.hull = data.hp;
   e.hullMax = data.hpMax;
   e.hitFlash = 1;
   e.aggro = true;
+  const hitDist = Math.hypot(e.pos.x - state.player.pos.x, e.pos.y - state.player.pos.y);
+  if (hitDist < 800) sfx.enemyHit();
   if (data.crit) {
     emitSpark(e.pos.x, e.pos.y, "#ffee00", 8, 140, 3);
     emitSpark(e.pos.x, e.pos.y, "#ffffff", 4, 100, 2);
@@ -1905,17 +2564,51 @@ export function onEnemyHit(data: EnemyHitEvent): void {
   } else {
     pushFloater({ text: `${Math.round(data.damage)}`, color: "#e8f0ff", x: e.pos.x + (Math.random() - 0.5) * 18, y: e.pos.y - e.size - 8, scale: 0.95, ttl: 0.7 });
   }
-  emitSpark(e.pos.x, e.pos.y, e.color, data.crit ? 8 : 4, data.crit ? 180 : 120, data.crit ? 4 : 3);
+  emitSpark(e.pos.x, e.pos.y, e.color, data.crit ? 10 : 5, data.crit ? 200 : 140, data.crit ? 4 : 3);
+  emitSpark(e.pos.x, e.pos.y, "#ffffff", data.crit ? 5 : 2, data.crit ? 140 : 90, 2);
+
+  // Fire particles on server-confirmed hits
+  if (data.crit || Math.random() < 0.4) {
+    const fCnt = data.crit ? 3 : 1;
+    for (let fi = 0; fi < fCnt; fi++) {
+      const fa = Math.random() * Math.PI * 2;
+      const fs = 30 + Math.random() * 60;
+      state.particles.push({
+        id: `sfb-${Math.random().toString(36).slice(2, 8)}`,
+        pos: { x: e.pos.x + (Math.random() - 0.5) * 6, y: e.pos.y + (Math.random() - 0.5) * 6 },
+        vel: { x: Math.cos(fa) * fs, y: Math.sin(fa) * fs },
+        ttl: 0.2 + Math.random() * 0.2, maxTtl: 0.4,
+        color: Math.random() > 0.5 ? "#ff8a4e" : "#ff4500", size: 4 + Math.random() * 5, kind: "fireball",
+      });
+    }
+  }
+  // Burning hull chunks when enemy is low HP
+  if (e.hull / e.hullMax < 0.4 && Math.random() < 0.5) {
+    const da = Math.random() * Math.PI * 2;
+    const ds = 100 + Math.random() * 160;
+    state.particles.push({
+      id: `sdb-${Math.random().toString(36).slice(2, 8)}`,
+      pos: { x: e.pos.x, y: e.pos.y },
+      vel: { x: Math.cos(da) * ds, y: Math.sin(da) * ds },
+      ttl: 0.5 + Math.random() * 0.6, maxTtl: 1.1,
+      color: Math.random() > 0.5 ? e.color : "#ff8a4e",
+      size: 3 + Math.random() * 4,
+      rot: Math.random() * Math.PI * 2,
+      rotVel: (Math.random() - 0.5) * 14,
+      kind: "debris",
+    });
+  }
 }
 
 export function onEnemyDie(data: EnemyDieEvent): void {
+  if (state.dungeon) return;
   const e = state.enemies.find((en) => en.id === data.enemyId);
   const pos = e ? { x: e.pos.x, y: e.pos.y } : data.pos;
   const wasBoss = e?.isBoss;
   const color = e?.color ?? "#ff5c6c";
   const size = e?.size ?? 12;
 
-  emitDeath(pos.x, pos.y, color, !!wasBoss);
+  emitDeath(pos.x, pos.y, color, !!wasBoss, size);
   if (wasBoss) {
     sfx.bossKill();
     state.cameraShake = Math.max(state.cameraShake, 1);
@@ -1931,31 +2624,76 @@ export function onEnemyDie(data: EnemyDieEvent): void {
     state.cameraShake = Math.max(state.cameraShake, (size > 16 ? 0.75 : 0.5) * Math.max(0, 1 - dist / 800));
   }
 
-  // Grant loot from server
+  // Grant loot from server (only to killer)
   const loot = data.loot;
   const p = state.player;
+  if (data.killerId !== serverPlayerId) {
+    state.enemies = state.enemies.filter(en => en.id !== data.enemyId);
+    bump();
+    return;
+  }
+
+  // XP + credits + honor are instant (no box needed)
   p.exp += loot.exp;
   p.credits += loot.credits;
   p.honor += loot.honor;
   while (p.exp >= EXP_FOR_LEVEL(p.level)) {
     p.exp -= EXP_FOR_LEVEL(p.level);
     p.level++;
+    p.skillPoints += 1;
     state.levelUpFlash = 1.6;
   }
-  pushFloater({ text: `+${loot.exp} XP`, color: "#ff5cf0", x: pos.x, y: pos.y - 20, scale: 0.9 });
-  pushFloater({ text: `+${loot.credits} CR`, color: "#ffd24a", x: pos.x + 20, y: pos.y - 8, scale: 0.9 });
-  if (loot.honor > 0) pushFloater({ text: `+${loot.honor} H`, color: "#c8a0ff", x: pos.x - 20, y: pos.y - 8, scale: 0.8 });
-  if (loot.resource) {
-    const got = addCargo(loot.resource.resourceId as any, loot.resource.qty);
-    if (got > 0) {
-      pushFloater({ text: `+${got} ${loot.resource.resourceId}`, color: "#5cff8a", x: pos.x, y: pos.y + 12, scale: 0.9 });
-      sfx.pickup();
-    }
+  pushFloater({ text: `+${loot.exp} XP`, color: "#ff5cf0", x: pos.x - 15, y: pos.y - 30, scale: 0.9 });
+  pushFloater({ text: `+${loot.credits} CR`, color: "#ffd24a", x: pos.x + 15, y: pos.y - 16, scale: 0.9 });
+  if (loot.honor > 0) pushFloater({ text: `+${loot.honor} H`, color: "#c8a0ff", x: pos.x, y: pos.y - 2, scale: 0.8 });
+
+  // Drop loot boxes (multiple colored boxes per kill)
+  const bossBox = wasBoss;
+  const spread = 40;
+  // Resource box (green / gold for boss)
+  if (loot.resource && loot.resource.qty > 0) {
+    state.cargoBoxes.push({
+      id: `cb-res-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      pos: { x: pos.x + (Math.random() - 0.5) * spread, y: pos.y + (Math.random() - 0.5) * spread },
+      resourceId: loot.resource.resourceId as any,
+      qty: loot.resource.qty,
+      credits: 0, exp: 0, honor: 0,
+      ttl: 45,
+      color: bossBox ? "#ffd24a" : "#5cff8a",
+    });
+  }
+  // Ammo box (blue)
+  const ammoDrop = 1 + Math.floor(Math.random() * 3);
+  state.cargoBoxes.push({
+    id: `cb-ammo-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    pos: { x: pos.x + (Math.random() - 0.5) * spread, y: pos.y + (Math.random() - 0.5) * spread },
+    resourceId: "scrap" as any,
+    qty: 0,
+    credits: 0, exp: 0, honor: 0,
+    ttl: 30,
+    color: "#6688ff",
+    ammoQty: ammoDrop,
+  } as any);
+
+  // Bonus resource box (orange) - extra trade goods
+  if ((loot as any).bonusResource && (loot as any).bonusResource.qty > 0) {
+    const br = (loot as any).bonusResource;
+    state.cargoBoxes.push({
+      id: `cb-bonus-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      pos: { x: pos.x + (Math.random() - 0.5) * spread, y: pos.y + (Math.random() - 0.5) * spread },
+      resourceId: br.resourceId as any,
+      qty: br.qty,
+      credits: 0, exp: 0, honor: 0,
+      ttl: 35,
+      color: "#ffaa33",
+    } as any);
   }
 
-  // Ammo drop
-  const ammoDrop = 1 + Math.floor(Math.random() * 3);
-  p.ammo.x1 = (p.ammo.x1 ?? 0) + ammoDrop;
+  // Kill log in chat
+  const eName = e?.name ?? "Enemy";
+  const eType = e?.type ?? "unknown";
+  const bonusStr = (loot as any).bonusResource ? `, +${(loot as any).bonusResource.qty} ${(loot as any).bonusResource.resourceId}` : "";
+  pushChat("system", "COMBAT", `Destroyed ${eName} (+${loot.credits} CR, +${loot.exp} XP${loot.resource ? `, +${loot.resource.qty} ${loot.resource.resourceId}` : ""}${bonusStr})`);
 
   // Quest + mission progress
   if (e) {
@@ -1981,11 +2719,64 @@ export function onEnemyDie(data: EnemyDieEvent): void {
 }
 
 export function onEnemyAttack(data: EnemyAttackEvent): void {
-  fireProjectile("enemy", data.pos.x, data.pos.y,
-    Math.atan2(data.targetPos.y - data.pos.y, data.targetPos.x - data.pos.x),
-    data.damage, "#ff5c6c", 3);
-  if (!serverAuthoritative) {
+  if (state.dungeon) return;
+  const isTargetingMe = data.targetId === serverPlayerId;
+  const ang = Math.atan2(data.targetPos.y - data.pos.y, data.targetPos.x - data.pos.x);
+  // Look up the enemy to determine projectile style
+  const srcEnemy = state.enemies.find(e => e.id === data.enemyId);
+  const eType = srcEnemy?.type ?? (data as any).enemyType;
+  let projColor = srcEnemy?.color ?? "#ff5c6c";
+  let projSize = 3;
+  let projWk: "laser" | "energy" | "plasma" | undefined = undefined;
+  let projSpeed = 2.73;
+  if (eType === "sentinel" || eType === "wraith" || eType === "voidling" || eType === "overlord") {
+    projWk = "energy";
+    projSize = 4;
+    projSpeed = eType === "wraith" ? 3.2 : 2.8;
+  } else if (eType === "dread" || eType === "titan" || eType === "destroyer") {
+    projWk = "plasma";
+    projSize = eType === "titan" ? 6 : 5;
+    projSpeed = eType === "titan" ? 2.0 : 2.5;
+  }
+  // Muzzle flash at enemy position
+  state.particles.push({
+    id: `emf-${Math.random().toString(36).slice(2, 8)}`,
+    pos: { x: data.pos.x, y: data.pos.y },
+    vel: { x: 0, y: 0 }, ttl: 0.2, maxTtl: 0.2,
+    color: projColor, size: 60 + (projSize * 8), kind: "flash",
+  });
+  state.particles.push({
+    id: `emf2-${Math.random().toString(36).slice(2, 8)}`,
+    pos: { x: data.pos.x + Math.cos(ang) * 10, y: data.pos.y + Math.sin(ang) * 10 },
+    vel: { x: 0, y: 0 }, ttl: 0.12, maxTtl: 0.12,
+    color: "#ffffff", size: 40 + (projSize * 5), kind: "flash",
+  });
+  fireProjectile("enemy", data.pos.x, data.pos.y, ang, data.damage, projColor, projSize, { renderOnly: !isTargetingMe, speedMul: projSpeed, weaponKind: projWk as any });
+  if (!serverAuthoritative && isTargetingMe) {
     damagePlayer(data.damage);
+  }
+  // Impact particles at player position when hit
+  if (isTargetingMe) {
+    const px = state.player?.pos.x ?? data.targetPos.x;
+    const py = state.player?.pos.y ?? data.targetPos.y;
+    const impactDelay = 0;
+    for (let i = 0; i < 6; i++) {
+      const ia = Math.random() * Math.PI * 2;
+      const iv = 40 + Math.random() * 80;
+      state.particles.push({
+        id: `eimp-${Math.random().toString(36).slice(2, 8)}`,
+        pos: { x: px + Math.cos(ia) * 5, y: py + Math.sin(ia) * 5 },
+        vel: { x: Math.cos(ia) * iv, y: Math.sin(ia) * iv },
+        ttl: 0.3 + Math.random() * 0.2, maxTtl: 0.5,
+        color: projColor, size: 2 + Math.random() * 3, kind: "ember",
+      });
+    }
+    state.particles.push({
+      id: `eimpf-${Math.random().toString(36).slice(2, 8)}`,
+      pos: { x: px, y: py },
+      vel: { x: 0, y: 0 }, ttl: 0.15, maxTtl: 0.15,
+      color: "#ffffff", size: 80, kind: "flash",
+    });
   }
 }
 
@@ -2009,6 +2800,7 @@ export function onAsteroidDestroy(data: { asteroidId: string; playerId: number; 
       sfx.pickup();
       state.player.milestones.totalMined += got;
       bumpMission("mine", got);
+      bumpMission("gather", got, state.player.zone, { resourceId: data.ore.resourceId as string });
     }
   }
   state.asteroids = state.asteroids.filter((ast) => ast.id !== data.asteroidId);
@@ -2083,18 +2875,92 @@ export function onRocketFireFromServer(data: RocketFireEvent): void {
 }
 
 export function onProjectileSpawnFromServer(data: ProjectileSpawnEvent): void {
+  console.log("[ProjectileSpawn] fromPlayer:", data.fromPlayer, "fromPlayerId:", data.fromPlayerId, "weaponKind:", data.weaponKind, "isLocal:", data.fromPlayerId === serverPlayerId);
   const angle = Math.atan2(data.vy, data.vx);
   const speed = Math.sqrt(data.vx * data.vx + data.vy * data.vy);
-  const baseSpeed = data.fromPlayer ? 280 : 220;
-  const speedMul = baseSpeed > 0 ? speed / baseSpeed : 1;
-
-  fireProjectile(data.fromPlayer ? "player" : "enemy", data.x, data.y, angle, data.damage, data.color, data.size, {
+  
+  // Determine if this projectile is from the local player, a remote player, or an enemy/NPC
+  const isLocalPlayer = data.fromPlayerId !== undefined && data.fromPlayerId === serverPlayerId;
+  const isRemotePlayer = data.fromPlayer && !isLocalPlayer;
+  
+  // CRITICAL: Do NOT render projectiles for the local player - those are client-predicted
+  // Only render projectiles from remote players and enemies
+  if (isLocalPlayer) {
+    return; // Skip - local player projectiles are already client-predicted
+  }
+  
+  // Normalize remote projectile speed to match local visual speed
+  const serverSpeed = Math.sqrt(data.vx * data.vx + data.vy * data.vy);
+  const clientVisualSpeed = data.fromPlayer ? 230 : 200;
+  const speedScale = serverSpeed > 0 ? clientVisualSpeed / serverSpeed : 1;
+  state.projectiles.push({
+    id: `pr-${Math.random().toString(36).slice(2, 8)}`,
+    pos: { x: data.x, y: data.y },
+    vel: { x: data.vx * speedScale, y: data.vy * speedScale },
+    damage: data.damage,
+    ttl: data.homing ? 4.0 : 1.6,
+    fromPlayer: data.fromPlayer,
+    color: data.color,
+    size: data.size,
     crit: data.crit,
     homing: data.homing,
-    speedMul,
     weaponKind: data.weaponKind,
     renderOnly: true,
   });
+  bump();
+
+  // Spawn visual effects for remote player projectiles
+  if (isRemotePlayer) {
+    const isRocket = data.weaponKind === "rocket";
+    if (isRocket) {
+      // Rocket flash effects
+      state.particles.push({
+        id: `rf-${Math.random().toString(36).slice(2, 8)}`,
+        pos: { x: data.x, y: data.y }, vel: { x: 0, y: 0 },
+        ttl: 0.2, maxTtl: 0.2,
+        color: "#ff8a4e", size: 55, kind: "flash",
+      });
+      state.particles.push({
+        id: `rf2-${Math.random().toString(36).slice(2, 8)}`,
+        pos: { x: data.x, y: data.y }, vel: { x: 0, y: 0 },
+        ttl: 0.1, maxTtl: 0.1,
+        color: "#ffffff", size: 30, kind: "flash",
+      });
+      // Smoke particles
+      for (let si = 0; si < 4; si++) {
+        const sa = Math.random() * Math.PI * 2;
+        const ss = 20 + Math.random() * 35;
+        state.particles.push({
+          id: `rfs-${Math.random().toString(36).slice(2, 8)}`,
+          pos: { x: data.x, y: data.y },
+          vel: { x: Math.cos(sa) * ss, y: Math.sin(sa) * ss },
+          ttl: 0.4 + Math.random() * 0.2, maxTtl: 0.6,
+          color: "#888888", size: 3 + Math.random() * 2, kind: "smoke",
+        });
+      }
+    } else {
+      // Laser flash effect
+      state.particles.push({
+        id: `lf-${Math.random().toString(36).slice(2, 8)}`,
+        pos: { x: data.x, y: data.y }, vel: { x: 0, y: 0 },
+        ttl: 0.12, maxTtl: 0.12,
+        color: data.color || "#4ee2ff", size: 35, kind: "flash",
+      });
+    }
+    
+    // Sparks
+    emitSpark(data.x, data.y, data.color || "#4ee2ff", data.crit ? 6 : 3, 80, 2);
+
+    // Play shoot sound for remote players (distance-attenuated)
+    const shootDist = Math.hypot(data.x - state.player.pos.x, data.y - state.player.pos.y);
+    if (shootDist < 800) {
+      if (isRocket) {
+        sfx.rocketShoot();
+      } else {
+        sfx.laserShoot();
+      }
+    }
+  }
 }
 
 function serverEnemyToLocal(se: ServerEnemy): Enemy {
@@ -2111,7 +2977,7 @@ function serverEnemyToLocal(se: ServerEnemy): Enemy {
     fireCd: Math.random() * 2,
     exp: 0, credits: 0, honor: 0,
     color: se.color, size: se.size,
-    isBoss: se.isBoss, bossPhase: se.bossPhase,
+    isBoss: se.isBoss, bossPhase: se.isBoss ? (se.hull/se.hullMax > 0.66 ? 0 : se.hull/se.hullMax > 0.33 ? 1 : 2) : 0,
     burstCd: 0, burstShots: 0,
     spawnPos: { x: se.x, y: se.y },
     aggro: false,
@@ -2122,14 +2988,24 @@ function serverEnemyToLocal(se: ServerEnemy): Enemy {
 
 let serverConfig = { tickRate: 25, friction: 0.96, frictionRefFps: 60 };
 export let serverAuthoritative = false;
-let serverPlayerId = 0;
+export let serverPlayerId = 0;
 let _deltaCount = 0;
 
 const ENTITY_LERP_RATE = NETCODE.INTERPOLATION_FACTOR;
 
-type RenderTarget = { x: number; y: number; vx: number; vy: number };
+type RenderTarget = { x: number; y: number; vx: number; vy: number; angle?: number };
 const _selfTarget: RenderTarget & { set: boolean } = { x: 0, y: 0, vx: 0, vy: 0, set: false };
 const _entityTargets = new Map<string, RenderTarget>();
+
+export function resetOnWarp(): void {
+  _entityTargets.clear();
+  _selfTarget.x = 0;
+  _selfTarget.y = 0;
+  _selfTarget.vx = 0;
+  _selfTarget.vy = 0;
+  _selfTarget.set = false;
+  state.others = [];
+}
 
 function setSelfTarget(x: number, y: number, vx: number, vy: number): void {
   if (!_selfTarget.set) {
@@ -2143,16 +3019,13 @@ function setSelfTarget(x: number, y: number, vx: number, vy: number): void {
   _selfTarget.vy = vy;
 }
 
-function setEntityTarget(id: string, x: number, y: number, vx: number, vy: number): void {
+export function setEntityTarget(id: string, x: number, y: number, vx: number, vy: number, angle?: number): void {
   const cur = _entityTargets.get(id);
-  if (cur) { cur.x = x; cur.y = y; cur.vx = vx; cur.vy = vy; }
-  else _entityTargets.set(id, { x, y, vx, vy });
+  if (cur) { cur.x = x; cur.y = y; cur.vx = vx; cur.vy = vy; if (angle != null) cur.angle = angle; }
+  else _entityTargets.set(id, { x, y, vx, vy, angle });
 }
 
 function applyServerSmoothing(dt: number): void {
-  // Frame-rate independent interpolation
-  // At 60 FPS: lerp = 1 - (1 - 0.15)^1 = 0.15 (15%)
-  // At 120 FPS: lerp = 1 - (1 - 0.15)^0.5 ≈ 0.078 (7.8% twice as often = same speed)
   const targetFPS = 60;
   const frameRatio = dt * targetFPS;
   const lerp = 1 - Math.pow(1 - NETCODE.INTERPOLATION_FACTOR, frameRatio);
@@ -2161,7 +3034,6 @@ function applyServerSmoothing(dt: number): void {
     const p = state.player;
     const dx = _selfTarget.x - p.pos.x;
     const dy = _selfTarget.y - p.pos.y;
-    // Snap if too far (prevents desyncs from accumulating)
     const snapThreshold = 250;
     if (dx * dx + dy * dy > snapThreshold * snapThreshold) {
       p.pos.x = _selfTarget.x;
@@ -2176,30 +3048,117 @@ function applyServerSmoothing(dt: number): void {
   for (const o of state.others) {
     const tgt = _entityTargets.get(`p-${o.id}`);
     if (!tgt) continue;
-    o.pos.x += (tgt.x - o.pos.x) * lerp;
-    o.pos.y += (tgt.y - o.pos.y) * lerp;
+    const odx = tgt.x - o.pos.x;
+    const ody = tgt.y - o.pos.y;
+    const oDist = odx * odx + ody * ody;
+    const oStopped = tgt.vx * tgt.vx + tgt.vy * tgt.vy < 9;
+    if (oStopped && oDist < 900) {
+      o.pos.x = tgt.x;
+      o.pos.y = tgt.y;
+    } else {
+      o.pos.x += odx * lerp;
+      o.pos.y += ody * lerp;
+    }
     o.vel.x = tgt.vx;
     o.vel.y = tgt.vy;
+    if (tgt.angle != null) {
+      let diff = tgt.angle - o.angle;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      if (Math.abs(diff) > 3) {
+        o.angle = tgt.angle;
+      } else {
+        const angleLerp = 1 - Math.exp(-8.0 * dt);
+        o.angle += diff * angleLerp;
+      }
+    }
+    const oSpeed = Math.sqrt(o.vel.x * o.vel.x + o.vel.y * o.vel.y);
+    if (oSpeed > 30) {
+      const tKey = `ot-${o.id}`;
+      const last = (_otherTrailTimers as any)[tKey] ?? 0;
+      const now = performance.now() / 1000;
+      if (now - last >= 0.08) {
+        ((_otherTrailTimers as any)[tKey] = now);
+        const back = o.angle + Math.PI;
+        emitTrail(o.pos.x + Math.cos(back) * 8, o.pos.y + Math.sin(back) * 8, "#4ee2ff");
+      }
+    }
+    // Burning smoke/fire for other players below 30% HP
+    if (o.hullMax > 0 && o.hull / o.hullMax < 0.3 && Math.random() < 0.4) {
+      const pox = (Math.random() - 0.5) * 14;
+      const poy = (Math.random() - 0.5) * 14;
+      if (Math.random() < 0.6) {
+        state.particles.push({
+          id: `ofire-${Math.random().toString(36).slice(2, 6)}`,
+          pos: { x: o.pos.x + pox, y: o.pos.y + poy },
+          vel: { x: (Math.random() - 0.5) * 20 + o.vel.x * 0.15, y: (Math.random() - 0.5) * 20 + o.vel.y * 0.15 },
+          ttl: 0.3 + Math.random() * 0.3, maxTtl: 0.6,
+          color: Math.random() > 0.4 ? "#ff8c00" : "#ff4500",
+          size: 2.5 + Math.random() * 3, kind: "ember",
+        });
+      } else {
+        state.particles.push({
+          id: `osmk-${Math.random().toString(36).slice(2, 6)}`,
+          pos: { x: o.pos.x + pox, y: o.pos.y + poy },
+          vel: { x: (Math.random() - 0.5) * 10, y: (Math.random() - 0.5) * 10 - 6 },
+          ttl: 0.4 + Math.random() * 0.4, maxTtl: 0.8,
+          color: "#444",
+          size: 3 + Math.random() * 4, kind: "smoke",
+        });
+      }
+    }
   }
   for (const e of state.enemies) {
     const tgt = _entityTargets.get(e.id);
     if (!tgt) continue;
-    e.pos.x += (tgt.x - e.pos.x) * lerp;
-    e.pos.y += (tgt.y - e.pos.y) * lerp;
+    const evx = tgt.vx || e.vel.x;
+    const evy = tgt.vy || e.vel.y;
+    const espd = Math.sqrt(evx * evx + evy * evy);
+    // Full velocity extrapolation for smooth visual motion
+    e.pos.x += evx * dt;
+    e.pos.y += evy * dt;
+    // Correction toward server position
+    const edx = tgt.x - e.pos.x;
+    const edy = tgt.y - e.pos.y;
+    const errDist = Math.sqrt(edx * edx + edy * edy);
+    if (errDist > 200) {
+      // Snap if too far off (teleport/respawn)
+      e.pos.x = tgt.x;
+      e.pos.y = tgt.y;
+    } else if (espd < 60) {
+      // Slow/big enemies: very gentle correction to avoid stutter
+      const corrLerp = Math.min(lerp * 0.3, 0.05);
+      e.pos.x += edx * corrLerp;
+      e.pos.y += edy * corrLerp;
+    } else {
+      // Fast enemies: normal correction
+      e.pos.x += edx * lerp * 0.6;
+      e.pos.y += edy * lerp * 0.6;
+    }
     e.vel.x = tgt.vx;
     e.vel.y = tgt.vy;
   }
   for (const n of state.npcShips) {
     const tgt = _entityTargets.get(n.id);
     if (!tgt) continue;
-    n.pos.x += (tgt.x - n.pos.x) * lerp;
-    n.pos.y += (tgt.y - n.pos.y) * lerp;
+    n.pos.x += tgt.vx * dt;
+    n.pos.y += tgt.vy * dt;
+    const nCorrLerp = Math.min(lerp * 2.0, 0.6);
+    n.pos.x += (tgt.x - n.pos.x) * nCorrLerp;
+    n.pos.y += (tgt.y - n.pos.y) * nCorrLerp;
+    const ndx = tgt.x - n.pos.x;
+    const ndy = tgt.y - n.pos.y;
+    if (ndx * ndx + ndy * ndy > 200 * 200) {
+      n.pos.x = tgt.x;
+      n.pos.y = tgt.y;
+    }
     n.vel.x = tgt.vx;
     n.vel.y = tgt.vy;
   }
 }
 
 export function onWelcome(data: WelcomePayload): void {
+  (globalThis as any).__serverAuthoritative = true;
   serverConfig = {
     tickRate: data.tickRate,
     friction: data.friction,
@@ -2207,6 +3166,7 @@ export function onWelcome(data: WelcomePayload): void {
   };
   serverPlayerId = data.playerId;
   serverAuthoritative = true;
+  serverEnemiesReceived = true;
 }
 
 export function onDelta(data: DeltaPayload): void {
@@ -2246,13 +3206,23 @@ export function onSnapshot(data: SnapshotPayload): void {
     p.shield = self.shield;
   }
 
-  // Apply all entity updates from snapshot
+  // Track which entities are in this snapshot
+  const snapshotIds = new Set<string>();
   for (const entity of data.entities) {
+    snapshotIds.add(entity.id);
     applyEntityUpdate(entity);
   }
 
-  // Don't aggressively filter - deltas handle removals
-  // Snapshot is just a resync, not a replacement of all state
+  // Snapshot is a full state resync - remove entities not present (out of view or dead)
+  if (!state.dungeon) {
+    state.enemies = state.enemies.filter(e => snapshotIds.has(e.id));
+    state.npcShips = state.npcShips.filter(n => snapshotIds.has(n.id));
+    state.others = state.others.filter(o => snapshotIds.has(`p-${o.id}`));
+    // Clean up stale entity targets
+    for (const id of _entityTargets.keys()) {
+      if (!snapshotIds.has(id)) _entityTargets.delete(id);
+    }
+  }
 
   bump();
 }
@@ -2289,6 +3259,7 @@ export function onPlayerDieFromServer(data: { playerId: number; pos: { x: number
 function applyEntityUpdate(entity: DeltaEntity): void {
   switch (entity.entityType) {
     case "enemy": {
+      if (state.dungeon) break;
       const e = state.enemies.find(en => en.id === entity.id);
       if (e) {
         setEntityTarget(entity.id, entity.x, entity.y, entity.vx ?? 0, entity.vy ?? 0);
@@ -2296,7 +3267,7 @@ function applyEntityUpdate(entity: DeltaEntity): void {
         if (entity.hp != null) e.hull = entity.hp;
         if (entity.hpMax != null) e.hullMax = entity.hpMax;
         if (entity.isBoss != null) e.isBoss = entity.isBoss;
-        if (entity.bossPhase != null) e.bossPhase = entity.bossPhase;
+        if (entity.bossPhase != null && entity.bossPhase > (e.bossPhase ?? 0)) e.bossPhase = entity.bossPhase;
       } else {
         setEntityTarget(entity.id, entity.x, entity.y, entity.vx ?? 0, entity.vy ?? 0);
         state.enemies.push({
@@ -2311,7 +3282,7 @@ function applyEntityUpdate(entity: DeltaEntity): void {
           damage: entity.damage || 10, speed: entity.speed || 80,
           fireCd: Math.random() * 2, exp: 0, credits: 0, honor: 0,
           color: entity.color || "#ff5c6c", size: entity.size || 12,
-          isBoss: entity.isBoss || false, bossPhase: entity.bossPhase || 0,
+          isBoss: entity.isBoss || false, bossPhase: (entity.isBoss && entity.hp && entity.hpMax) ? (entity.hp/entity.hpMax > 0.66 ? 0 : entity.hp/entity.hpMax > 0.33 ? 1 : 2) : 0,
           burstCd: 0, burstShots: 0,
           spawnPos: { x: entity.x, y: entity.y },
           aggro: false,
@@ -2323,10 +3294,18 @@ function applyEntityUpdate(entity: DeltaEntity): void {
       const numId = entity.id.replace("p-", "");
       const o = state.others.find(op => op.id === numId);
       if (o) {
-        setEntityTarget(entity.id, entity.x, entity.y, entity.vx ?? 0, entity.vy ?? 0);
-        if (entity.angle != null) o.angle = entity.angle;
+        setEntityTarget(entity.id, entity.x, entity.y, entity.vx ?? 0, entity.vy ?? 0, entity.angle ?? undefined);
+        if (entity.hp != null) o.hull = entity.hp;
+        if (entity.hpMax != null) o.hullMax = entity.hpMax;
+        if (entity.shield != null) o.shield = entity.shield;
+        if (entity.faction !== undefined) o.faction = entity.faction ?? null;
+        if (entity.honor != null) o.honor = entity.honor;
+        if (entity.name) o.name = entity.name;
+        if (entity.shipClass) o.shipClass = entity.shipClass as any;
+        if (entity.level) o.level = entity.level;
+        if (entity.miningTargetId !== undefined) o.miningTargetId = entity.miningTargetId ?? null;
       } else {
-        setEntityTarget(entity.id, entity.x, entity.y, entity.vx ?? 0, entity.vy ?? 0);
+        setEntityTarget(entity.id, entity.x, entity.y, entity.vx ?? 0, entity.vy ?? 0, entity.angle ?? undefined);
         state.others.push({
           id: numId,
           name: entity.name || "Pilot",
@@ -2338,6 +3317,12 @@ function applyEntityUpdate(entity: DeltaEntity): void {
           vel: { x: entity.vx || 0, y: entity.vy || 0 },
           angle: entity.angle || 0,
           inParty: false,
+          faction: entity.faction ?? null,
+          honor: entity.honor ?? 0,
+          miningTargetId: entity.miningTargetId ?? null,
+          hull: entity.hp ?? 100,
+          hullMax: entity.hpMax ?? 100,
+          shield: entity.shield ?? 0,
         });
       }
       break;

@@ -4,7 +4,8 @@ export type ZoneId =
   | "alpha" | "nebula" | "crimson" | "void" | "forge"
   | "corona" | "fracture" | "abyss" | "marsdepth" | "maelstrom"
   | "venus1" | "venus2" | "venus3" | "venus4" | "venus5"
-  | "danger1" | "danger2" | "danger3" | "danger4" | "danger5";
+  | "danger1" | "danger2" | "danger3" | "danger4" | "danger5"
+  | "debug";
 
 export type Zone = {
   id: ZoneId;
@@ -19,7 +20,7 @@ export type Zone = {
   unlockLevel: number;
 };
 
-export type EnemyType = "scout" | "raider" | "destroyer" | "voidling" | "dread";
+export type EnemyType = "scout" | "raider" | "destroyer" | "voidling" | "dread" | "sentinel" | "wraith" | "titan" | "overlord" | "interceptor" | "corvette" | "specter" | "phantom" | "juggernaut" | "leviathan";
 export type EnemyBehavior = "fast" | "chaser" | "tank" | "ranged";
 
 export type ShipClassId =
@@ -73,9 +74,10 @@ export type ModuleStats = {
   lootBonus?: number;
   aoeRadius?: number;
   ammoCapacity?: number;    // additive bonus to max ammo per rocket weapon
+  miningBonus?: number;     // multiplier bonus to mining DPS (0.5 = +50%)
 };
 
-export type WeaponKind = "laser" | "rocket";
+export type WeaponKind = "laser" | "rocket" | "energy" | "plasma";
 
 export type ModuleDef = {
   id: string;
@@ -89,6 +91,7 @@ export type ModuleDef = {
   price: number;
   tier: number; // 1..5 power level
   weaponKind?: WeaponKind; // only for weapon slot modules
+  firingPattern?: string;
 };
 
 export type ModuleItem = {
@@ -112,6 +115,7 @@ export type Quest = {
   rewardCredits: number;
   rewardExp: number;
   rewardHonor: number;
+  tier: number;
 };
 
 export type ActiveQuest = Quest & {
@@ -156,7 +160,22 @@ export type ResourceId =
   | "neural-chip"
   | "dark-matter"
   | "plasma-coil"
-  | "bio-crystal";
+  | "bio-crystal"
+  // mineable ores (zone-specific asteroid drops)
+  | "copper"
+  | "cobalt"
+  | "crystal-shard"
+  | "palladium"
+  | "helium-3"
+  | "iridium"
+  | "sulfur"
+  | "obsidian"
+  | "refined-alloy"
+  | "crystal-matrix"
+  | "fusion-core"
+  | "void-steel"
+  | "nano-compound"
+  | "plasma-cell";
 
 export type Resource = {
   id: ResourceId;
@@ -347,51 +366,55 @@ export type SkillNode = {
 
 export const SKILL_NODES: SkillNode[] = [
   // ── OFFENSE ──────────────────────────────────────────────────────────────
-  { id: "off-power",   branch: "offense", name: "Overcharge",        description: "+5% laser damage per rank.",                       maxRank: 5, cost: 1, pos: { row: 0, col: 0 }, icon: "⚡" },
-  { id: "off-snipe",   branch: "offense", name: "Sniper Focus",      description: "+4% damage & +2% crit per rank.",                  maxRank: 5, cost: 1, pos: { row: 0, col: 1 }, icon: "◎", requires: "off-power" },
+  { id: "off-power",   branch: "offense", name: "Overcharge",        description: "+3 laser damage per rank.",                       maxRank: 5, cost: 1, pos: { row: 0, col: 0 }, icon: "⚡" },
+  { id: "off-snipe",   branch: "offense", name: "Sniper Focus",      description: "+2 damage & +1% crit per rank.",                  maxRank: 5, cost: 1, pos: { row: 0, col: 1 }, icon: "◎", requires: "off-power" },
   { id: "off-void",    branch: "offense", name: "Void Rounds",       description: "+8% damage vs Dread & Voidling per rank.",          maxRank: 3, cost: 2, pos: { row: 0, col: 2 }, icon: "✺", requires: "off-snipe" },
-  { id: "off-rapid",   branch: "offense", name: "Rapid Fire",        description: "+8% fire rate per rank.",                          maxRank: 5, cost: 1, pos: { row: 1, col: 0 }, icon: "≫", requires: "off-power" },
-  { id: "off-volley",  branch: "offense", name: "Volley Protocol",   description: "Fire rate burst: +15% fire rate per rank.",        maxRank: 3, cost: 1, pos: { row: 1, col: 1 }, icon: "⋙", requires: "off-rapid" },
-  { id: "off-crit",    branch: "offense", name: "Critical Strikes",  description: "+3% crit chance per rank.",                        maxRank: 5, cost: 1, pos: { row: 2, col: 0 }, icon: "✦", requires: "off-rapid" },
+  { id: "off-rapid",   branch: "offense", name: "Rapid Fire",        description: "+0.05 fire rate per rank.",                          maxRank: 5, cost: 1, pos: { row: 1, col: 0 }, icon: "≫", requires: "off-power" },
+  { id: "off-volley",  branch: "offense", name: "Volley Protocol",   description: "+0.06 fire rate per rank.",        maxRank: 3, cost: 1, pos: { row: 1, col: 1 }, icon: "⋙", requires: "off-rapid" },
+  { id: "off-crit",    branch: "offense", name: "Critical Strikes",  description: "+2% crit chance per rank.",                        maxRank: 5, cost: 1, pos: { row: 2, col: 0 }, icon: "✦", requires: "off-rapid" },
   { id: "off-execute", branch: "offense", name: "Execute",           description: "+20% damage vs enemies below 25% HP per rank.",    maxRank: 3, cost: 2, pos: { row: 2, col: 1 }, icon: "⚔", requires: "off-crit" },
-  { id: "off-pierce",  branch: "offense", name: "Phase Pierce",      description: "Shots gain splash radius (rank×4 px).",            maxRank: 3, cost: 2, pos: { row: 3, col: 0 }, icon: "✸", requires: "off-crit" },
+  { id: "off-pierce",  branch: "offense", name: "Phase Pierce",      description: "Shots gain splash radius (rank x 6 px).",            maxRank: 3, cost: 2, pos: { row: 3, col: 0 }, icon: "✸", requires: "off-crit" },
 
   // ── DEFENSE ──────────────────────────────────────────────────────────────
-  { id: "def-shield",  branch: "defense", name: "Shield Capacitors", description: "+8% max shield per rank.",                         maxRank: 5, cost: 1, pos: { row: 0, col: 0 }, icon: "◈" },
-  { id: "def-barrier", branch: "defense", name: "Energy Barrier",    description: "+12% max shield per rank.",                        maxRank: 3, cost: 1, pos: { row: 0, col: 1 }, icon: "◇", requires: "def-shield" },
-  { id: "def-fortress",branch: "defense", name: "Fortress Mode",     description: "-10% damage taken when shield > 50%, per rank.",   maxRank: 3, cost: 2, pos: { row: 0, col: 2 }, icon: "⛨", requires: "def-barrier" },
-  { id: "def-regen",   branch: "defense", name: "Recharge Matrix",   description: "+15% shield regen per rank.",                      maxRank: 5, cost: 1, pos: { row: 1, col: 0 }, icon: "↺", requires: "def-shield" },
-  { id: "def-nano",    branch: "defense", name: "Nano-Repair",       description: "+10% shield regen & +5% hull per rank.",           maxRank: 3, cost: 2, pos: { row: 1, col: 1 }, icon: "⬡", requires: "def-regen" },
-  { id: "def-armor",   branch: "defense", name: "Reinforced Hull",   description: "+8% max hull per rank.",                           maxRank: 5, cost: 1, pos: { row: 2, col: 0 }, icon: "▣", requires: "def-regen" },
+  { id: "def-shield",  branch: "defense", name: "Shield Capacitors", description: "+15 max shield per rank.",                         maxRank: 5, cost: 1, pos: { row: 0, col: 0 }, icon: "◈" },
+  { id: "def-barrier", branch: "defense", name: "Energy Barrier",    description: "+25 max shield per rank.",                        maxRank: 3, cost: 1, pos: { row: 0, col: 1 }, icon: "◇", requires: "def-shield" },
+  { id: "def-fortress",branch: "defense", name: "Fortress Mode",     description: "-15% damage taken when shield > 50%, per rank.",   maxRank: 3, cost: 2, pos: { row: 0, col: 2 }, icon: "⛨", requires: "def-barrier" },
+  { id: "def-regen",   branch: "defense", name: "Recharge Matrix",   description: "+2 shield regen per rank.",                      maxRank: 5, cost: 1, pos: { row: 1, col: 0 }, icon: "↺", requires: "def-shield" },
+  { id: "def-nano",    branch: "defense", name: "Nano-Repair",       description: "+2 shield regen & +15 hull per rank.",           maxRank: 3, cost: 2, pos: { row: 1, col: 1 }, icon: "⬡", requires: "def-regen" },
+  { id: "def-armor",   branch: "defense", name: "Reinforced Hull",   description: "+20 max hull per rank.",                           maxRank: 5, cost: 1, pos: { row: 2, col: 0 }, icon: "▣", requires: "def-regen" },
   { id: "def-reflect", branch: "defense", name: "Reactive Plating",  description: "+5% chance to reflect 30% of incoming damage.",    maxRank: 3, cost: 2, pos: { row: 2, col: 1 }, icon: "⟲", requires: "def-armor" },
-  { id: "def-bulwark", branch: "defense", name: "Bulwark Protocol",  description: "Reduce all damage taken by 4% per rank.",          maxRank: 3, cost: 2, pos: { row: 3, col: 0 }, icon: "⬛", requires: "def-armor" },
+  { id: "def-bulwark", branch: "defense", name: "Bulwark Protocol",  description: "Reduce all damage taken by 3% per rank.",          maxRank: 3, cost: 2, pos: { row: 3, col: 0 }, icon: "⬛", requires: "def-armor" },
 
   // ── UTILITY ──────────────────────────────────────────────────────────────
   { id: "ut-cargo",    branch: "utility", name: "Cargo Frame",       description: "+15% cargo capacity per rank.",                    maxRank: 5, cost: 1, pos: { row: 0, col: 0 }, icon: "▤" },
   { id: "ut-trade",    branch: "utility", name: "Trade Acumen",      description: "+5% credits from selling cargo per rank.",         maxRank: 3, cost: 1, pos: { row: 0, col: 1 }, icon: "$", requires: "ut-cargo" },
-  { id: "ut-scan",     branch: "utility", name: "Deep Scanner",      description: "+8% loot bonus per rank.",                         maxRank: 3, cost: 2, pos: { row: 0, col: 2 }, icon: "❖", requires: "ut-trade" },
-  { id: "ut-thrust",   branch: "utility", name: "Thruster Tuning",   description: "+5% top speed per rank.",                          maxRank: 5, cost: 1, pos: { row: 1, col: 0 }, icon: "➤", requires: "ut-cargo" },
+  { id: "ut-scan",     branch: "utility", name: "Deep Scanner",      description: "+4% loot bonus per rank.",                         maxRank: 3, cost: 2, pos: { row: 0, col: 2 }, icon: "❖", requires: "ut-trade" },
+  { id: "ut-thrust",   branch: "utility", name: "Thruster Tuning",   description: "+5 top speed per rank.",                          maxRank: 5, cost: 1, pos: { row: 1, col: 0 }, icon: "➤", requires: "ut-cargo" },
   { id: "ut-warp",     branch: "utility", name: "Warp Navigator",    description: "+3% speed & instant warp charge per rank.",        maxRank: 3, cost: 1, pos: { row: 1, col: 1 }, icon: "▶", requires: "ut-thrust" },
   { id: "ut-salvage",  branch: "utility", name: "Scavenger",         description: "+1 bonus credits per kill per rank.",              maxRank: 5, cost: 1, pos: { row: 2, col: 0 }, icon: "↯", requires: "ut-thrust" },
   { id: "ut-drone2",   branch: "utility", name: "Drone Commander",   description: "+30% drone HP & +10% drone damage per rank.",      maxRank: 3, cost: 2, pos: { row: 2, col: 1 }, icon: "✦", requires: "ut-salvage" },
   { id: "ut-droneops", branch: "utility", name: "Drone Ops",         description: "+1 drone slot per rank (max 3).",                  maxRank: 3, cost: 2, pos: { row: 3, col: 0 }, icon: "◆", requires: "ut-salvage" },
 
   // ── ENGINEERING ──────────────────────────────────────────────────────────
-  { id: "eng-coolant",    branch: "engineering", name: "Coolant System",     description: "+10% fire rate & -heat buildup per rank.",      maxRank: 5, cost: 1, pos: { row: 0, col: 0 }, icon: "❄" },
-  { id: "eng-capacitor",  branch: "engineering", name: "Power Capacitor",    description: "+6% damage & +5% shield regen per rank.",      maxRank: 5, cost: 1, pos: { row: 1, col: 0 }, icon: "◉", requires: "eng-coolant" },
-  { id: "eng-targeting",  branch: "engineering", name: "Target Computer",    description: "+5% crit chance & rockets track better.",       maxRank: 3, cost: 1, pos: { row: 2, col: 0 }, icon: "⊕", requires: "eng-capacitor" },
-  { id: "eng-warp-core",  branch: "engineering", name: "Warp Core Shunt",    description: "+8% speed per rank from generator overclock.",  maxRank: 3, cost: 2, pos: { row: 3, col: 0 }, icon: "⌬", requires: "eng-targeting" },
-  { id: "eng-overdrive",  branch: "engineering", name: "Overdrive Module",   description: "+12% all stats (damage, shield, speed) per rank.", maxRank: 3, cost: 2, pos: { row: 4, col: 0 }, icon: "⚙", requires: "eng-warp-core" },
-  { id: "eng-singularity",branch: "engineering", name: "Singularity Core",   description: "Endgame: +20% damage, +15% fire rate, +10% speed.", maxRank: 1, cost: 3, pos: { row: 5, col: 0 }, icon: "✸", requires: "eng-overdrive" },
+  { id: "eng-coolant",    branch: "engineering", name: "Coolant System",     description: "+15% fire rate & -heat buildup per rank.",      maxRank: 5, cost: 1, pos: { row: 0, col: 0 }, icon: "❄" },
+  { id: "eng-capacitor",  branch: "engineering", name: "Power Capacitor",    description: "+10% damage & +10% shield regen per rank.",      maxRank: 5, cost: 1, pos: { row: 1, col: 0 }, icon: "◉", requires: "eng-coolant" },
+  { id: "eng-targeting",  branch: "engineering", name: "Target Computer",    description: "+8% crit chance & rockets track better.",       maxRank: 3, cost: 1, pos: { row: 2, col: 0 }, icon: "⊕", requires: "eng-capacitor" },
+  { id: "eng-warp-core",  branch: "engineering", name: "Warp Core Shunt",    description: "+15% speed per rank from generator overclock.",  maxRank: 3, cost: 2, pos: { row: 3, col: 0 }, icon: "⌬", requires: "eng-targeting" },
+  { id: "eng-overdrive",  branch: "engineering", name: "Overdrive Module",   description: "+18% all stats (damage, shield, speed) per rank.", maxRank: 3, cost: 2, pos: { row: 4, col: 0 }, icon: "⚙", requires: "eng-warp-core" },
+  { id: "eng-singularity",branch: "engineering", name: "Singularity Core",   description: "Endgame: +30% damage, +25% fire rate, +15% speed.", maxRank: 1, cost: 3, pos: { row: 5, col: 0 }, icon: "✸", requires: "eng-overdrive" },
 ];
 
 // ── MISSIONS & MILESTONES ────────────────────────────────────────────────
 export type MissionKind =
-  | "kill-any" | "kill-zone" | "mine" | "earn-credits" | "spend-credits" | "warp-zones" | "level-up";
+  | "kill-any" | "kill-zone" | "mine" | "earn-credits" | "spend-credits" | "warp-zones" | "level-up"
+  | "transport" | "gather" | "deliver" | "travel-gates" | "visit-zones";
+
+export type MissionCategory = "combat" | "transport" | "gathering" | "delivery" | "exploration";
 
 export type Mission = {
   id: string;
   kind: MissionKind;
+  category: MissionCategory;
   title: string;
   description: string;
   target: number;
@@ -399,6 +422,8 @@ export type Mission = {
   rewardExp: number;
   rewardHonor: number;
   zoneFilter?: ZoneId;
+  targetStationId?: string;
+  targetResourceId?: string;
 };
 
 export type ActiveMission = Mission & {
@@ -425,15 +450,59 @@ export const MILESTONE_TIERS: { kind: keyof Milestones; name: string; tiers: num
 ];
 
 export const DAILY_MISSION_POOL: Mission[] = [
-  { id: "d-kills-10",   kind: "kill-any", title: "Daily: Bug Sweep",      description: "Eliminate 10 hostiles anywhere.",          target: 10,    rewardCredits: 600,  rewardExp: 200, rewardHonor: 8 },
-  { id: "d-kills-25",   kind: "kill-any", title: "Daily: Patrol Duty",    description: "Eliminate 25 hostiles anywhere.",          target: 25,    rewardCredits: 1500, rewardExp: 500, rewardHonor: 18 },
-  { id: "d-mine-30",    kind: "mine",     title: "Daily: Belt Run",       description: "Mine 30 units of any ore.",                target: 30,    rewardCredits: 800,  rewardExp: 250, rewardHonor: 6 },
-  { id: "d-credits-5k", kind: "earn-credits", title: "Daily: Hustler",    description: "Earn 5,000 credits.",                       target: 5000,  rewardCredits: 1500, rewardExp: 300, rewardHonor: 10 },
-  { id: "d-warp-3",     kind: "warp-zones",  title: "Daily: Sector Rounds", description: "Warp between sectors 3 times.",         target: 3,     rewardCredits: 700,  rewardExp: 200, rewardHonor: 6 },
-  { id: "d-spend-3k",   kind: "spend-credits", title: "Daily: Resupply",  description: "Spend 3,000 credits at stations.",         target: 3000,  rewardCredits: 600,  rewardExp: 150, rewardHonor: 4 },
-  { id: "d-zone-alpha", kind: "kill-zone", title: "Daily: Alpha Sweep",   description: "Kill 8 hostiles in Alpha Sector.",         target: 8,     rewardCredits: 700,  rewardExp: 220, rewardHonor: 7,  zoneFilter: "alpha" },
-  { id: "d-zone-nebula",kind: "kill-zone", title: "Daily: Nebula Cleanup",description: "Kill 6 hostiles in Veil Nebula.",          target: 6,     rewardCredits: 1400, rewardExp: 400, rewardHonor: 14, zoneFilter: "nebula" },
+  { id: "d-kills-10",   kind: "kill-any", category: "combat", title: "Daily: Bug Sweep",      description: "Eliminate 10 hostiles anywhere.",          target: 10,    rewardCredits: 600,  rewardExp: 200, rewardHonor: 8 },
+  { id: "d-kills-25",   kind: "kill-any", category: "combat", title: "Daily: Patrol Duty",    description: "Eliminate 25 hostiles anywhere.",          target: 25,    rewardCredits: 1500, rewardExp: 500, rewardHonor: 18 },
+  { id: "d-mine-30",    kind: "mine",     category: "gathering", title: "Daily: Belt Run",       description: "Mine 30 units of any ore.",                target: 30,    rewardCredits: 800,  rewardExp: 250, rewardHonor: 6 },
+  { id: "d-credits-5k", kind: "earn-credits", category: "transport", title: "Daily: Hustler",    description: "Earn 5,000 credits.",                       target: 5000,  rewardCredits: 1500, rewardExp: 300, rewardHonor: 10 },
+  { id: "d-warp-3",     kind: "warp-zones", category: "exploration", title: "Daily: Sector Rounds", description: "Warp between sectors 3 times.",         target: 3,     rewardCredits: 700,  rewardExp: 200, rewardHonor: 6 },
+  { id: "d-spend-3k",   kind: "spend-credits", category: "delivery", title: "Daily: Resupply",  description: "Spend 3,000 credits at stations.",         target: 3000,  rewardCredits: 600,  rewardExp: 150, rewardHonor: 4 },
+  { id: "d-zone-alpha", kind: "kill-zone", category: "combat", title: "Daily: Alpha Sweep",   description: "Kill 8 hostiles in Alpha Sector.",         target: 8,     rewardCredits: 700,  rewardExp: 220, rewardHonor: 7,  zoneFilter: "alpha" },
+  { id: "d-zone-nebula",kind: "kill-zone", category: "combat", title: "Daily: Nebula Cleanup",description: "Kill 6 hostiles in Veil Nebula.",          target: 6,     rewardCredits: 1400, rewardExp: 400, rewardHonor: 14, zoneFilter: "nebula" },
 ];
+
+// ── MISSION BOARD (categorized missions available at stations) ────────────
+export const MISSION_BOARD_POOL: Mission[] = [
+  // ── TRANSPORT (move cargo between stations for profit) ──
+  { id: "m-trans-1",  kind: "transport", category: "transport", title: "Supply Run: Food",         description: "Buy 20 food supplies and sell at any military station.",   target: 20,   rewardCredits: 1200,  rewardExp: 300,  rewardHonor: 8,  targetResourceId: "food" },
+  { id: "m-trans-2",  kind: "transport", category: "transport", title: "Fuel Delivery",            description: "Transport 15 fuel cells to a trade station.",             target: 15,   rewardCredits: 1800,  rewardExp: 400,  rewardHonor: 12, targetResourceId: "fuel-cell" },
+  { id: "m-trans-3",  kind: "transport", category: "transport", title: "Medicine Run",             description: "Deliver 10 medicine to any outpost.",                     target: 10,   rewardCredits: 2500,  rewardExp: 500,  rewardHonor: 15, targetResourceId: "medicine" },
+  { id: "m-trans-4",  kind: "transport", category: "transport", title: "Luxury Courier",           description: "Move 8 luxury goods across zones.",                       target: 8,    rewardCredits: 4000,  rewardExp: 800,  rewardHonor: 25, targetResourceId: "luxury" },
+  { id: "m-trans-5",  kind: "transport", category: "transport", title: "Contraband Smuggling",     description: "Sell 5 contraband at any station. No questions asked.",    target: 5,    rewardCredits: 6000,  rewardExp: 1000, rewardHonor: 35, targetResourceId: "contraband" },
+  { id: "m-trans-6",  kind: "transport", category: "transport", title: "Precursor Tech Courier",   description: "Transport 3 precursor tech to a trade station.",           target: 3,    rewardCredits: 8000,  rewardExp: 1500, rewardHonor: 50, targetResourceId: "precursor" },
+  { id: "m-trans-7",  kind: "transport", category: "transport", title: "Nanite Shipment",          description: "Sell 12 nanite paste at any station.",                    target: 12,   rewardCredits: 3200,  rewardExp: 600,  rewardHonor: 18, targetResourceId: "nanite" },
+  { id: "m-trans-8",  kind: "transport", category: "transport", title: "Exotic Cargo",             description: "Transport 4 exotic goods across the system.",             target: 4,    rewardCredits: 10000, rewardExp: 2000, rewardHonor: 60, targetResourceId: "exotic" },
+
+  // ── GATHERING (mine or collect specific resources) ──
+  { id: "m-gath-1",  kind: "gather", category: "gathering", title: "Iron Harvest",             description: "Mine 50 iron ore from asteroid belts.",                     target: 50,   rewardCredits: 1500,  rewardExp: 350,  rewardHonor: 10, targetResourceId: "iron" },
+  { id: "m-gath-2",  kind: "gather", category: "gathering", title: "Lumenite Collection",      description: "Mine 30 lumenite crystals.",                                target: 30,   rewardCredits: 3000,  rewardExp: 600,  rewardHonor: 18, targetResourceId: "lumenite" },
+  { id: "m-gath-3",  kind: "gather", category: "gathering", title: "Scrap Salvage",            description: "Collect 40 scrap plating from destroyed enemies.",          target: 40,   rewardCredits: 1000,  rewardExp: 250,  rewardHonor: 6,  targetResourceId: "scrap" },
+  { id: "m-gath-4",  kind: "gather", category: "gathering", title: "Plasma Cell Harvest",      description: "Collect 25 plasma cells from raiders.",                     target: 25,   rewardCredits: 2200,  rewardExp: 500,  rewardHonor: 14, targetResourceId: "plasma" },
+  { id: "m-gath-5",  kind: "gather", category: "gathering", title: "Void Crystal Hunt",        description: "Collect 15 void crystals.",                                 target: 15,   rewardCredits: 5000,  rewardExp: 1000, rewardHonor: 30, targetResourceId: "void" },
+  { id: "m-gath-6",  kind: "gather", category: "gathering", title: "Dread Core Recovery",      description: "Salvage 5 dread cores from destroyed Dreads.",              target: 5,    rewardCredits: 12000, rewardExp: 2500, rewardHonor: 80, targetResourceId: "dread" },
+  { id: "m-gath-7",  kind: "gather", category: "gathering", title: "Warp Coil Extraction",     description: "Mine or collect 20 warp coils.",                            target: 20,   rewardCredits: 4000,  rewardExp: 800,  rewardHonor: 22, targetResourceId: "warp" },
+  { id: "m-gath-8",  kind: "gather", category: "gathering", title: "Quantum Chip Acquisition", description: "Acquire 10 quantum chips from any source.",                 target: 10,   rewardCredits: 7000,  rewardExp: 1500, rewardHonor: 40, targetResourceId: "quantum" },
+
+  // ── DELIVERY (deliver specific resource to a specific station) ──
+  { id: "m-del-1",  kind: "deliver", category: "delivery", title: "Helix Resupply",           description: "Deliver 30 iron ore to Helix Station.",                      target: 30,   rewardCredits: 2000,  rewardExp: 400,  rewardHonor: 12, targetResourceId: "iron",    targetStationId: "helix" },
+  { id: "m-del-2",  kind: "deliver", category: "delivery", title: "Ember Citadel Arms",       description: "Deliver 10 plasma cells to Ember Citadel.",                  target: 10,   rewardCredits: 3500,  rewardExp: 700,  rewardHonor: 20, targetResourceId: "plasma",  targetStationId: "ember" },
+  { id: "m-del-3",  kind: "deliver", category: "delivery", title: "Cloud Gate Supplies",      description: "Deliver 25 food supplies to Cloud Gate Station.",             target: 25,   rewardCredits: 2800,  rewardExp: 550,  rewardHonor: 15, targetResourceId: "food",    targetStationId: "cloud-gate" },
+  { id: "m-del-4",  kind: "deliver", category: "delivery", title: "Ironclad Ammunition",      description: "Deliver 8 dread cores to Ironclad Bastion.",                 target: 8,    rewardCredits: 15000, rewardExp: 3000, rewardHonor: 100, targetResourceId: "dread",   targetStationId: "ironclad" },
+  { id: "m-del-5",  kind: "deliver", category: "delivery", title: "Echo Anchorage Medicine",  description: "Deliver 15 medicine to Echo Anchorage.",                     target: 15,   rewardCredits: 4000,  rewardExp: 800,  rewardHonor: 25, targetResourceId: "medicine", targetStationId: "echo" },
+  { id: "m-del-6",  kind: "deliver", category: "delivery", title: "Solar Haven Crystals",     description: "Deliver 12 lumenite to Solar Haven.",                        target: 12,   rewardCredits: 5000,  rewardExp: 1000, rewardHonor: 30, targetResourceId: "lumenite", targetStationId: "solar-haven" },
+  { id: "m-del-7",  kind: "deliver", category: "delivery", title: "Void Heart Quantum",       description: "Deliver 6 quantum chips to Void Heart Station.",             target: 6,    rewardCredits: 18000, rewardExp: 4000, rewardHonor: 120, targetResourceId: "quantum",  targetStationId: "void-heart" },
+  { id: "m-del-8",  kind: "deliver", category: "delivery", title: "Storm Eye Fuel",           description: "Deliver 20 fuel cells to Eye of the Storm.",                 target: 20,   rewardCredits: 6000,  rewardExp: 1200, rewardHonor: 35, targetResourceId: "fuel-cell", targetStationId: "storm-eye" },
+
+  // ── EXPLORATION (jump gates, visit zones, travel) ──
+  { id: "m-exp-1",  kind: "travel-gates", category: "exploration", title: "Sector Hopper",          description: "Jump through 5 warp gates.",                         target: 5,    rewardCredits: 1500,  rewardExp: 400,  rewardHonor: 10 },
+  { id: "m-exp-2",  kind: "travel-gates", category: "exploration", title: "Gate Runner",            description: "Jump through 10 warp gates.",                        target: 10,   rewardCredits: 3500,  rewardExp: 800,  rewardHonor: 25 },
+  { id: "m-exp-3",  kind: "travel-gates", category: "exploration", title: "Hyperlane Explorer",     description: "Jump through 20 warp gates.",                        target: 20,   rewardCredits: 8000,  rewardExp: 2000, rewardHonor: 60 },
+  { id: "m-exp-4",  kind: "visit-zones",  category: "exploration", title: "Frontier Scout",         description: "Visit 3 different zones.",                            target: 3,    rewardCredits: 1200,  rewardExp: 350,  rewardHonor: 8 },
+  { id: "m-exp-5",  kind: "visit-zones",  category: "exploration", title: "Deep Space Surveyor",    description: "Visit 6 different zones.",                            target: 6,    rewardCredits: 3000,  rewardExp: 700,  rewardHonor: 20 },
+  { id: "m-exp-6",  kind: "visit-zones",  category: "exploration", title: "Master Cartographer",    description: "Visit 12 different zones.",                           target: 12,   rewardCredits: 8000,  rewardExp: 2000, rewardHonor: 55 },
+  { id: "m-exp-7",  kind: "travel-gates", category: "exploration", title: "Warp Marathon",          description: "Jump through 50 warp gates total.",                  target: 50,   rewardCredits: 20000, rewardExp: 5000, rewardHonor: 150 },
+  { id: "m-exp-8",  kind: "visit-zones",  category: "exploration", title: "Universal Explorer",     description: "Visit every zone in the system (20 zones).",         target: 20,   rewardCredits: 50000, rewardExp: 15000, rewardHonor: 500 },
+];
+
 
 // ── EVENTS ───────────────────────────────────────────────────────────────
 export type GameEvent = {
@@ -584,6 +653,8 @@ export type Floater = {
   maxTtl: number;
   scale: number;            // text scale (crits start big)
   bold?: boolean;
+  trackPlayer?: boolean;
+  trackYOff?: number;
 };
 
 export type CargoBox = {
@@ -609,9 +680,10 @@ export type Particle = {
   rot?: number;
   rotVel?: number;
   kind?: "trail" | "spark" | "ring" | "engine" | "flash" | "debris" | "fireball" | "smoke" | "ember";
+  alpha?: number;
 };
 
-export type StationKind = "hub" | "trade" | "mining" | "military" | "outpost";
+export type StationKind = "hub" | "trade" | "mining" | "military" | "outpost" | "factory";
 
 export type Station = {
   id: string;
@@ -675,6 +747,12 @@ export type OtherPlayer = {
   zone: ZoneId;
   inParty: boolean;
   clan: string | null;
+  faction: string | null;
+  honor: number;
+  miningTargetId: string | null;
+  hull: number;
+  hullMax: number;
+  shield: number;
 };
 
 export type ChatMessage = {
@@ -690,125 +768,132 @@ export const ZONES: Record<ZoneId, Zone> = {
   alpha: {
     id: "alpha", name: "Alpha Sector", label: "1-1", faction: "earth",
     bgHueA: "#0a1240", bgHueB: "#020414", enemyTier: 1,
-    enemyTypes: ["scout", "raider"],
+    enemyTypes: ["scout", "raider", "interceptor"],
     description: "Frontier territory. Pirates and scouts patrol the lanes.", unlockLevel: 1,
   },
   nebula: {
     id: "nebula", name: "Veil Nebula", label: "1-2", faction: "earth",
     bgHueA: "#3a0a4a", bgHueB: "#0a0220", enemyTier: 2,
-    enemyTypes: ["raider", "destroyer"],
+    enemyTypes: ["raider", "destroyer", "corvette"],
     description: "Glowing dust clouds hide raider strongholds.", unlockLevel: 8,
   },
   crimson: {
     id: "crimson", name: "Crimson Reach", label: "1-3", faction: "earth",
     bgHueA: "#4a0a18", bgHueB: "#1a0208", enemyTier: 3,
-    enemyTypes: ["destroyer", "dread"],
+    enemyTypes: ["destroyer", "sentinel", "specter"],
     description: "Blood-red expanse. Destroyers hunt in packs.", unlockLevel: 16,
   },
   void: {
     id: "void", name: "The Void", label: "1-4", faction: "earth",
     bgHueA: "#001a1a", bgHueB: "#000508", enemyTier: 4,
-    enemyTypes: ["voidling", "dread"],
+    enemyTypes: ["sentinel", "wraith", "phantom"],
     description: "An empty stretch where reality bends. Voidlings dwell here.", unlockLevel: 24,
   },
   forge: {
     id: "forge", name: "Iron Forge", label: "1-5", faction: "earth",
     bgHueA: "#3a2210", bgHueB: "#1a0c04", enemyTier: 5,
-    enemyTypes: ["dread"],
+    enemyTypes: ["wraith", "titan", "juggernaut"],
     description: "Industrial hellscape. Only Dreadnoughts remain here.", unlockLevel: 32,
   },
   // ── MARS FACTION (2-1 → 2-5) ─────────────────────────────────────────────
   corona: {
     id: "corona", name: "Mars Frontier", label: "2-1", faction: "mars",
     bgHueA: "#3a1800", bgHueB: "#1a0800", enemyTier: 1,
-    enemyTypes: ["scout", "raider"],
+    enemyTypes: ["scout", "raider", "interceptor"],
     description: "The outer Martian reaches. Raiders rule the rust-colored lanes.", unlockLevel: 1,
   },
   fracture: {
     id: "fracture", name: "Dust Expanse", label: "2-2", faction: "mars",
     bgHueA: "#4a1a0a", bgHueB: "#1e0804", enemyTier: 2,
-    enemyTypes: ["raider", "destroyer"],
+    enemyTypes: ["raider", "destroyer", "corvette"],
     description: "Swirling iron dust storms hide outlaw strongholds.", unlockLevel: 8,
   },
   abyss: {
     id: "abyss", name: "Red Reaches", label: "2-3", faction: "mars",
     bgHueA: "#5a0a0a", bgHueB: "#220404", enemyTier: 3,
-    enemyTypes: ["destroyer", "dread"],
+    enemyTypes: ["destroyer", "sentinel", "specter"],
     description: "Combat-torn Martian space. Destroyer fleets fight for control.", unlockLevel: 16,
   },
   marsdepth: {
     id: "marsdepth", name: "Mars Deep Field", label: "2-4", faction: "mars",
     bgHueA: "#400010", bgHueB: "#180006", enemyTier: 4,
-    enemyTypes: ["voidling", "dread"],
+    enemyTypes: ["sentinel", "wraith", "phantom"],
     description: "The deep unknown of Martian space. Void entities breach the hull lines.", unlockLevel: 24,
   },
   maelstrom: {
     id: "maelstrom", name: "The Maelstrom", label: "2-5", faction: "mars",
     bgHueA: "#2a0020", bgHueB: "#0e0008", enemyTier: 5,
-    enemyTypes: ["dread"],
+    enemyTypes: ["wraith", "titan", "juggernaut"],
     description: "A perpetual storm of wreckage and dread. The ultimate Martian challenge.", unlockLevel: 32,
   },
   // ── VENUS FACTION (3-1 → 3-5) ────────────────────────────────────────────
   venus1: {
     id: "venus1", name: "Venus Cloud Gate", label: "3-1", faction: "venus",
     bgHueA: "#2a1a00", bgHueB: "#0e0800", enemyTier: 1,
-    enemyTypes: ["scout", "raider"],
+    enemyTypes: ["scout", "raider", "interceptor"],
     description: "The upper cloud layers. Strange energy-based pirates lurk in the mist.", unlockLevel: 1,
   },
   venus2: {
     id: "venus2", name: "Sulphur Winds", label: "3-2", faction: "venus",
     bgHueA: "#3a2800", bgHueB: "#160e00", enemyTier: 2,
-    enemyTypes: ["raider", "destroyer"],
+    enemyTypes: ["raider", "destroyer", "corvette"],
     description: "Corrosive winds and raider fleets adapted to Venus's brutal atmosphere.", unlockLevel: 8,
   },
   venus3: {
     id: "venus3", name: "Acidic Deep", label: "3-3", faction: "venus",
     bgHueA: "#400a30", bgHueB: "#1a0418", enemyTier: 3,
-    enemyTypes: ["destroyer", "dread"],
+    enemyTypes: ["destroyer", "sentinel", "specter"],
     description: "The pressure increases. Heavy destroyer fleets guard Venusian secrets.", unlockLevel: 16,
   },
   venus4: {
     id: "venus4", name: "Pressure Core", label: "3-4", faction: "venus",
     bgHueA: "#2a003a", bgHueB: "#0e0018", enemyTier: 4,
-    enemyTypes: ["voidling", "dread"],
+    enemyTypes: ["sentinel", "wraith", "phantom"],
     description: "Near the crushing core of Venus. Reality warps under immense force.", unlockLevel: 24,
   },
   venus5: {
     id: "venus5", name: "Eye of Venus", label: "3-5", faction: "venus",
     bgHueA: "#1a0030", bgHueB: "#080010", enemyTier: 5,
-    enemyTypes: ["dread"],
+    enemyTypes: ["wraith", "titan", "juggernaut"],
     description: "The heart of Venusian mystery. Legendary endgame territory.", unlockLevel: 32,
   },
   // ── DANGER ZONES (4-1 → 4-5) — center, free PvP, no faction ─────────────
   danger1: {
     id: "danger1", name: "Outer Rift", label: "4-1", faction: "earth",
     bgHueA: "#1a0000", bgHueB: "#0a0000", enemyTier: 4,
-    enemyTypes: ["destroyer", "voidling", "dread"],
+    enemyTypes: ["sentinel", "wraith", "titan"],
     description: "Contested space. All factions fight here. PvP enabled.", unlockLevel: 20,
   },
   danger2: {
     id: "danger2", name: "Dead Zone", label: "4-2", faction: "mars",
     bgHueA: "#200008", bgHueB: "#0c0004", enemyTier: 5,
-    enemyTypes: ["voidling", "dread"],
+    enemyTypes: ["wraith", "titan", "dread"],
     description: "Wrecked fleets drift here. Extreme danger, extreme loot.", unlockLevel: 26,
   },
   danger3: {
     id: "danger3", name: "Pirate Haven", label: "4-3", faction: "venus",
     bgHueA: "#180018", bgHueB: "#08000a", enemyTier: 5,
-    enemyTypes: ["dread", "voidling"],
+    enemyTypes: ["titan", "dread", "overlord", "leviathan"],
     description: "Pirate stronghold. High-value loot crates and deadly ambushes.", unlockLevel: 30,
   },
   danger4: {
     id: "danger4", name: "Null Sector", label: "4-4", faction: "earth",
     bgHueA: "#0a0a1a", bgHueB: "#020208", enemyTier: 6,
-    enemyTypes: ["dread"],
+    enemyTypes: ["titan", "overlord", "juggernaut", "leviathan"],
     description: "Reality collapses. Only the strongest survive. Premium loot.", unlockLevel: 36,
   },
   danger5: {
     id: "danger5", name: "The Abyss Gate", label: "4-5", faction: "mars",
     bgHueA: "#100005", bgHueB: "#050002", enemyTier: 7,
-    enemyTypes: ["dread"],
+    enemyTypes: ["overlord", "leviathan", "juggernaut"],
     description: "The deepest point. Legendary enemies and endgame rewards.", unlockLevel: 42,
+  },
+  // ── DEBUG ZONE ────────────────────────────────────────────────────────────
+  debug: {
+    id: "debug", name: "Debug Arena", label: "DBG", faction: "earth",
+    bgHueA: "#0a0a0a", bgHueB: "#000000", enemyTier: 0,
+    enemyTypes: [],
+    description: "Empty debug zone for testing.", unlockLevel: 1,
   },
 };
 
@@ -816,138 +901,162 @@ export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
   skimmer: {
     id: "skimmer",
     name: "Skimmer Mk-I",
-    hullMax: 100, shieldMax: 50, baseSpeed: 180, baseDamage: 8,
+    hullMax: 100, shieldMax: 50, baseSpeed: 120, baseDamage: 8,
     cargoMax: 20, droneSlots: 1, price: 0,
-    slots: { weapon: 1, generator: 1, module: 1 },
+    slots: { weapon: 1, generator: 2, module: 1 },
     description: "Cheap, nimble, easy to lose.",
     color: "#7ad8ff", accent: "#0a1230",
   },
   wasp: {
     id: "wasp",
     name: "Wasp Interceptor",
-    hullMax: 90, shieldMax: 70, baseSpeed: 240, baseDamage: 10,
+    hullMax: 90, shieldMax: 70, baseSpeed: 145, baseDamage: 10,
     cargoMax: 14, droneSlots: 1, price: 15000,
-    slots: { weapon: 2, generator: 1, module: 1 },
+    slots: { weapon: 2, generator: 2, module: 1 },
     description: "Glass cannon. Fastest hull in the sector.",
     color: "#ffe25c", accent: "#3a2a08",
   },
   vanguard: {
     id: "vanguard",
     name: "Vanguard",
-    hullMax: 180, shieldMax: 120, baseSpeed: 160, baseDamage: 14,
+    hullMax: 180, shieldMax: 120, baseSpeed: 90, baseDamage: 14,
     cargoMax: 40, droneSlots: 2, price: 50000,
-    slots: { weapon: 2, generator: 2, module: 2 },
+    slots: { weapon: 2, generator: 3, module: 2 },
     description: "All-rounder hull. Solid in any zone.",
     color: "#5cff8a", accent: "#0a2a14",
   },
   reaver: {
     id: "reaver",
     name: "Reaver Mk-II",
-    hullMax: 160, shieldMax: 140, baseSpeed: 200, baseDamage: 18,
+    hullMax: 160, shieldMax: 140, baseSpeed: 120, baseDamage: 18,
     cargoMax: 30, droneSlots: 2, price: 120000,
-    slots: { weapon: 3, generator: 2, module: 2 },
+    slots: { weapon: 3, generator: 3, module: 2 },
     description: "Swift hunter. Built for raids.",
     color: "#ff8a4e", accent: "#3a1a08",
   },
   obsidian: {
     id: "obsidian",
     name: "Obsidian Reaver",
-    hullMax: 220, shieldMax: 180, baseSpeed: 200, baseDamage: 22,
+    hullMax: 220, shieldMax: 180, baseSpeed: 120, baseDamage: 22,
     cargoMax: 30, droneSlots: 3, price: 65000,
-    slots: { weapon: 3, generator: 3, module: 3 },
+    slots: { weapon: 3, generator: 4, module: 3 },
     description: "Predator of the deep lanes.",
     color: "#ff5cf0", accent: "#2a0a30",
   },
   marauder: {
     id: "marauder",
     name: "Marauder",
-    hullMax: 280, shieldMax: 200, baseSpeed: 170, baseDamage: 26,
+    hullMax: 280, shieldMax: 200, baseSpeed: 100, baseDamage: 26,
     cargoMax: 60, droneSlots: 4, price: 500000,
-    slots: { weapon: 4, generator: 3, module: 3 },
+    slots: { weapon: 4, generator: 4, module: 3 },
     description: "Heavy gunship with cargo to spare.",
     color: "#aaff5c", accent: "#1a3008",
   },
   phalanx: {
     id: "phalanx",
     name: "Phalanx Cruiser",
-    hullMax: 340, shieldMax: 280, baseSpeed: 150, baseDamage: 24,
+    hullMax: 340, shieldMax: 280, baseSpeed: 90, baseDamage: 24,
     cargoMax: 70, droneSlots: 5, price: 900000,
-    slots: { weapon: 4, generator: 3, module: 4 },
+    slots: { weapon: 4, generator: 5, module: 4 },
     description: "Drone-carrier cruiser. Project power through the swarm.",
     color: "#4ee2ff", accent: "#08203a",
   },
   titan: {
     id: "titan",
     name: "Titan Bulwark",
-    hullMax: 400, shieldMax: 300, baseSpeed: 130, baseDamage: 30,
+    hullMax: 400, shieldMax: 300, baseSpeed: 78, baseDamage: 30,
     cargoMax: 80, droneSlots: 5, price: 1500000,
-    slots: { weapon: 6, generator: 5, module: 5 },
+    slots: { weapon: 6, generator: 7, module: 5 },
     description: "Walking fortress. Slow but devastating.",
     color: "#ffd24a", accent: "#3a2a08",
   },
   leviathan: {
     id: "leviathan",
     name: "Leviathan Dreadnought",
-    hullMax: 600, shieldMax: 480, baseSpeed: 110, baseDamage: 42,
+    hullMax: 600, shieldMax: 480, baseSpeed: 65, baseDamage: 42,
     cargoMax: 120, droneSlots: 6, price: 3200000,
-    slots: { weapon: 7, generator: 6, module: 7 },
+    slots: { weapon: 7, generator: 8, module: 7 },
     description: "Capital-class warship. Sectors part before it.",
     color: "#ff5c6c", accent: "#3a0810",
   },
   specter: {
     id: "specter",
     name: "Specter Phaseframe",
-    hullMax: 220, shieldMax: 360, baseSpeed: 220, baseDamage: 34,
+    hullMax: 220, shieldMax: 360, baseSpeed: 130, baseDamage: 34,
     cargoMax: 40, droneSlots: 6, price: 5000000,
-    slots: { weapon: 7, generator: 6, module: 7 },
+    slots: { weapon: 7, generator: 8, module: 7 },
     description: "Phase-shifted void hull. The endgame chassis.",
     color: "#b06cff", accent: "#15083a",
   },
   colossus: {
     id: "colossus",
     name: "Colossus Mk-X",
-    hullMax: 800, shieldMax: 600, baseSpeed: 100, baseDamage: 50,
+    hullMax: 800, shieldMax: 600, baseSpeed: 55, baseDamage: 50,
     cargoMax: 150, droneSlots: 7, price: 8000000,
-    slots: { weapon: 9, generator: 8, module: 8 },
+    slots: { weapon: 9, generator: 10, module: 8 },
     description: "Massive capital ship. Bristling with weapon banks.",
     color: "#ff4444", accent: "#2a0505",
   },
   harbinger: {
     id: "harbinger",
     name: "Harbinger Class",
-    hullMax: 500, shieldMax: 700, baseSpeed: 160, baseDamage: 44,
+    hullMax: 500, shieldMax: 700, baseSpeed: 90, baseDamage: 44,
     cargoMax: 80, droneSlots: 7, price: 12000000,
-    slots: { weapon: 10, generator: 9, module: 9 },
+    slots: { weapon: 10, generator: 11, module: 9 },
     description: "Advanced stealth dreadnought. Speed and firepower combined.",
     color: "#44ffaa", accent: "#082a18",
   },
   eclipse: {
     id: "eclipse",
     name: "Eclipse Destroyer",
-    hullMax: 1000, shieldMax: 800, baseSpeed: 90, baseDamage: 60,
+    hullMax: 1000, shieldMax: 800, baseSpeed: 48, baseDamage: 60,
     cargoMax: 200, droneSlots: 8, price: 20000000,
-    slots: { weapon: 12, generator: 10, module: 10 },
+    slots: { weapon: 12, generator: 12, module: 10 },
     description: "Endgame destroyer. Unstoppable broadside.",
     color: "#ff8800", accent: "#3a2208",
   },
   sovereign: {
     id: "sovereign",
     name: "Sovereign Flagship",
-    hullMax: 1400, shieldMax: 1100, baseSpeed: 80, baseDamage: 70,
+    hullMax: 1400, shieldMax: 1100, baseSpeed: 42, baseDamage: 70,
     cargoMax: 250, droneSlots: 8, price: 35000000,
-    slots: { weapon: 14, generator: 12, module: 12 },
+    slots: { weapon: 14, generator: 14, module: 12 },
     description: "Fleet command ship. The ultimate in raw power.",
     color: "#ffdd00", accent: "#3a3008",
   },
   apex: {
     id: "apex",
     name: "Apex Predator",
-    hullMax: 2000, shieldMax: 1600, baseSpeed: 70, baseDamage: 85,
+    hullMax: 2000, shieldMax: 1600, baseSpeed: 35, baseDamage: 85,
     cargoMax: 300, droneSlots: 10, price: 60000000,
-    slots: { weapon: 16, generator: 16, module: 14 },
+    slots: { weapon: 16, generator: 18, module: 14 },
     description: "The final ship. 16 weapon slots. Nothing survives.",
     color: "#ffffff", accent: "#1a1a1a",
   },
+};
+
+export const SHIP_SIZE_SCALE: Record<ShipClassId, number> = {
+  skimmer: 0.7, wasp: 0.75, vanguard: 0.85, reaver: 0.9, obsidian: 0.95,
+  marauder: 1.05, phalanx: 1.15, titan: 1.3, leviathan: 1.45, specter: 1.1,
+  colossus: 1.6, harbinger: 1.5, eclipse: 1.7, sovereign: 1.85, apex: 2.0,
+};
+
+export const SHIP_WEAPON_MOUNTS: Record<ShipClassId, { spread: number; forward: number }> = {
+  skimmer: { spread: 12, forward: 8 },
+  wasp: { spread: 10, forward: 10 },
+  vanguard: { spread: 14, forward: 12 },
+  reaver: { spread: 16, forward: 6 },
+  obsidian: { spread: 14, forward: 8 },
+  marauder: { spread: 18, forward: 8 },
+  phalanx: { spread: 20, forward: 10 },
+  titan: { spread: 22, forward: 6 },
+  leviathan: { spread: 24, forward: 8 },
+  specter: { spread: 20, forward: 12 },
+  colossus: { spread: 26, forward: 10 },
+  harbinger: { spread: 24, forward: 14 },
+  eclipse: { spread: 28, forward: 8 },
+  sovereign: { spread: 30, forward: 10 },
+  apex: { spread: 34, forward: 12 },
 };
 
 export const EXP_FOR_LEVEL = (level: number) => 100 * level * level;
@@ -986,6 +1095,67 @@ export const ENEMY_DEFS: Record<
     color: "#ffaa22", size: 24,
     loot: { resourceId: "dread", qty: 1 },
   },
+  sentinel: {
+    type: "sentinel", behavior: "ranged",
+    hullMax: 450, damage: 48, speed: 100, exp: 65, credits: 220, honor: 8,
+    color: "#22ccff", size: 16,
+    loot: { resourceId: "quantum", qty: 2 },
+  },
+  wraith: {
+    type: "wraith", behavior: "fast",
+    hullMax: 320, damage: 60, speed: 160, exp: 80, credits: 280, honor: 10,
+    color: "#cc44ff", size: 12,
+    loot: { resourceId: "void", qty: 3 },
+  },
+  titan: {
+    type: "titan", behavior: "tank",
+    hullMax: 1500, damage: 75, speed: 35, exp: 150, credits: 500, honor: 18,
+    color: "#ff2244", size: 30,
+    loot: { resourceId: "dread", qty: 4 },
+  },
+  overlord: {
+    type: "overlord", behavior: "tank",
+    hullMax: 2200, damage: 95, speed: 30, exp: 250, credits: 800, honor: 30,
+    color: "#ffffff", size: 35,
+    loot: { resourceId: "dread", qty: 6 },
+  },
+  interceptor: {
+    type: "interceptor", behavior: "fast",
+    hullMax: 130, damage: 28, speed: 150, exp: 22, credits: 60, honor: 2,
+    color: "#ff6a00", size: 11,
+    loot: { resourceId: "scrap", qty: 3 },
+  },
+  corvette: {
+    type: "corvette", behavior: "chaser",
+    hullMax: 340, damage: 38, speed: 95, exp: 50, credits: 140, honor: 5,
+    color: "#00cfff", size: 15,
+    loot: { resourceId: "iron", qty: 3 },
+  },
+  specter: {
+    type: "specter", behavior: "fast",
+    hullMax: 260, damage: 52, speed: 145, exp: 70, credits: 240, honor: 9,
+    color: "#a855f7", size: 12,
+    loot: { resourceId: "void", qty: 2 },
+  },
+  phantom: {
+    type: "phantom", behavior: "ranged",
+    hullMax: 380, damage: 65, speed: 110, exp: 90, credits: 300, honor: 11,
+    color: "#38bdf8", size: 14,
+    loot: { resourceId: "quantum", qty: 3 },
+  },
+  juggernaut: {
+    type: "juggernaut", behavior: "tank",
+    hullMax: 1800, damage: 85, speed: 55, exp: 180, credits: 620, honor: 22,
+    color: "#f97316", size: 32,
+    loot: { resourceId: "dread", qty: 5 },
+  },
+  leviathan: {
+    type: "leviathan", behavior: "tank",
+    hullMax: 3500, damage: 120, speed: 45, exp: 400, credits: 1200, honor: 45,
+    color: "#e11d48", size: 40,
+    loot: { resourceId: "dread", qty: 8 },
+  },
+
 };
 
 // Faction-specific stat/color overrides applied at enemy spawn time.
@@ -1002,6 +1172,16 @@ export const FACTION_ENEMY_MODS: Partial<Record<
     destroyer: { color: "#cc2200", hullMul: 1.12, damageMul: 1.18 },
     voidling:  { color: "#ff6600", speedMul: 1.20 },
     dread:     { color: "#ff8800", hullMul: 1.15, damageMul: 1.10 },
+    sentinel:  { color: "#ff6622", damageMul: 1.15, speedMul: 1.10 },
+    wraith:    { color: "#ff4400", speedMul: 1.25, damageMul: 1.10 },
+    titan:     { color: "#cc2200", hullMul: 1.20, damageMul: 1.15 },
+    overlord:    { color: "#ff0000", hullMul: 1.25, damageMul: 1.20 },
+    interceptor: { color: "#ff4400", speedMul: 1.20, damageMul: 1.10 },
+    corvette:    { color: "#cc4400", hullMul: 1.15, damageMul: 1.12 },
+    specter:     { color: "#cc2200", speedMul: 1.20, damageMul: 1.15 },
+    phantom:     { color: "#ff5500", damageMul: 1.20 },
+    juggernaut:  { color: "#aa2200", hullMul: 1.18, damageMul: 1.15 },
+    leviathan:   { color: "#880000", hullMul: 1.20, damageMul: 1.18 },
   },
   venus: {
     scout:     { color: "#ffee22", damageMul: 1.22 },
@@ -1009,42 +1189,59 @@ export const FACTION_ENEMY_MODS: Partial<Record<
     destroyer: { color: "#9911cc", hullMul: 1.12, damageMul: 1.12 },
     voidling:  { color: "#ff44cc", damageMul: 1.28, speedMul: 0.88 },
     dread:     { color: "#aa00ff", hullMul: 1.20, damageMul: 1.12 },
+    sentinel:  { color: "#8844ff", damageMul: 1.20, hullMul: 1.10 },
+    wraith:    { color: "#ff22cc", speedMul: 1.15, damageMul: 1.25 },
+    titan:     { color: "#9900cc", hullMul: 1.15, damageMul: 1.20 },
+    overlord:    { color: "#cc00ff", hullMul: 1.30, damageMul: 1.25 },
+    interceptor: { color: "#ffcc00", speedMul: 1.18, damageMul: 1.15 },
+    corvette:    { color: "#aa44ff", hullMul: 1.12, damageMul: 1.15 },
+    specter:     { color: "#dd22ff", speedMul: 1.15, damageMul: 1.20 },
+    phantom:     { color: "#9922ff", damageMul: 1.25, hullMul: 1.10 },
+    juggernaut:  { color: "#7700cc", hullMul: 1.20, damageMul: 1.18 },
+    leviathan:   { color: "#550099", hullMul: 1.25, damageMul: 1.22 },
   },
 };
 
 export const QUEST_POOL: Quest[] = [
-  { id: "q-alpha-scouts", title: "Sweep the Lanes", description: "Pirate scouts have been raiding traders in Alpha Sector. Eliminate them.", zone: "alpha", killType: "scout", killCount: 5, rewardCredits: 350, rewardExp: 80, rewardHonor: 5 },
-  { id: "q-alpha-raiders", title: "Raider Bounty", description: "A raider crew is harassing the Helix Station. Take them down.", zone: "alpha", killType: "raider", killCount: 3, rewardCredits: 600, rewardExp: 140, rewardHonor: 10 },
-  { id: "q-nebula-raiders", title: "Veil Cleanup", description: "The Veil Nebula is thick with raider holdouts. Clear them.", zone: "nebula", killType: "raider", killCount: 6, rewardCredits: 1400, rewardExp: 320, rewardHonor: 18 },
-  { id: "q-nebula-destroyers", title: "Hunt the Hunters", description: "Hostile destroyers prowl the Veil. End their patrol.", zone: "nebula", killType: "destroyer", killCount: 3, rewardCredits: 2400, rewardExp: 600, rewardHonor: 30 },
-  { id: "q-crimson-destroyers", title: "Crimson Purge", description: "Destroyers have established a beachhead in Crimson Reach.", zone: "crimson", killType: "destroyer", killCount: 5, rewardCredits: 4000, rewardExp: 1100, rewardHonor: 50 },
-  { id: "q-crimson-dread", title: "Bring Down a Dread", description: "A Dread-class warship looms in Crimson Reach. Send it home in pieces.", zone: "crimson", killType: "dread", killCount: 1, rewardCredits: 6000, rewardExp: 1800, rewardHonor: 100 },
-  { id: "q-void-voidlings", title: "Voidling Eradication", description: "Voidlings flicker between dimensions in The Void. Banish them.", zone: "void", killType: "voidling", killCount: 6, rewardCredits: 9000, rewardExp: 2600, rewardHonor: 140 },
-  { id: "q-void-dread", title: "Apex Predator", description: "A Dread haunts The Void. Become its end.", zone: "void", killType: "dread", killCount: 2, rewardCredits: 18000, rewardExp: 5000, rewardHonor: 280 },
-  { id: "q-forge-destroyers", title: "Iron Curtain", description: "Destroyer squadrons have locked down the Iron Forge supply lanes. Break through.", zone: "forge", killType: "destroyer", killCount: 8, rewardCredits: 32000, rewardExp: 9500, rewardHonor: 500 },
-  { id: "q-forge-voidlings", title: "Forge Phantoms", description: "Voidlings are warping through the superheated forges, disrupting production. Eliminate them.", zone: "forge", killType: "voidling", killCount: 5, rewardCredits: 55000, rewardExp: 16000, rewardHonor: 850 },
-  { id: "q-corona-voidlings", title: "Solar Infestation", description: "A voidling swarm orbits the corona, feeding on solar energy. Cleanse it before they breach the station.", zone: "corona", killType: "voidling", killCount: 7, rewardCredits: 90000, rewardExp: 26000, rewardHonor: 1400 },
-  { id: "q-corona-dread", title: "Solarburn Contract", description: "Two Dread-class warships are using the corona as cover. Flush them out and destroy them.", zone: "corona", killType: "dread", killCount: 2, rewardCredits: 150000, rewardExp: 44000, rewardHonor: 2300 },
-  { id: "q-fracture-voidlings", title: "Rift Surge", description: "Voidlings pour through a dimensional fracture in waves. Seal it with their destruction.", zone: "fracture", killType: "voidling", killCount: 9, rewardCredits: 240000, rewardExp: 70000, rewardHonor: 3800 },
-  { id: "q-fracture-dread", title: "Fracture Wardens", description: "Three Dreads patrol the Fracture Zone, blockading the path to the Abyss. Remove them.", zone: "fracture", killType: "dread", killCount: 3, rewardCredits: 400000, rewardExp: 115000, rewardHonor: 6000 },
-  { id: "q-abyss-dread", title: "Into the Dark", description: "The Abyss harbors a pack of Dreads unlike any seen before. Hunt them down and return with proof.", zone: "abyss", killType: "dread", killCount: 4, rewardCredits: 650000, rewardExp: 190000, rewardHonor: 10000 },
-  { id: "q-abyss-apex", title: "God of the Abyss", description: "A legendary Dread fleet dominates the deepest sector of known space. Become the last thing they see.", zone: "abyss", killType: "dread", killCount: 6, rewardCredits: 1100000, rewardExp: 320000, rewardHonor: 17000 },
-  // Mars deep zones
-  { id: "q-marsdepth-voidlings", title: "Deep Field Haunting", description: "Voidlings have swarmed the outer Martian deep field, disrupting passage. Clear the infestation.", zone: "marsdepth", killType: "voidling", killCount: 6, rewardCredits: 9500, rewardExp: 2800, rewardHonor: 150 },
-  { id: "q-marsdepth-dread", title: "Martian Apex", description: "A Dread warship lurks in the Martian deep. Bring back its core as proof.", zone: "marsdepth", killType: "dread", killCount: 2, rewardCredits: 19000, rewardExp: 5500, rewardHonor: 300 },
-  { id: "q-maelstrom-dread", title: "Eye of the Storm", description: "A Dread armada is using The Maelstrom as a staging ground. Tear through them.", zone: "maelstrom", killType: "dread", killCount: 4, rewardCredits: 34000, rewardExp: 10000, rewardHonor: 550 },
-  { id: "q-maelstrom-apex", title: "Master of the Maelstrom", description: "The Maelstrom's supreme Dread fleet blocks all passage. Eliminate them completely.", zone: "maelstrom", killType: "dread", killCount: 6, rewardCredits: 58000, rewardExp: 17000, rewardHonor: 920 },
-  // Venus zones
-  { id: "q-venus1-scouts", title: "Cloud Layer Sweep", description: "Scout ships harry the upper Venus cloud lanes. Dispatch them and restore safe passage.", zone: "venus1", killType: "scout", killCount: 5, rewardCredits: 380, rewardExp: 90, rewardHonor: 6 },
-  { id: "q-venus1-raiders", title: "Citadel Raiders", description: "A raider gang has been looting Venusian cloud-city outposts. Shut them down.", zone: "venus1", killType: "raider", killCount: 3, rewardCredits: 650, rewardExp: 150, rewardHonor: 11 },
-  { id: "q-venus2-raiders", title: "Sulphur Gate Cleanup", description: "Raider packs lurk in the sulphur wind corridors. Clear the route.", zone: "venus2", killType: "raider", killCount: 6, rewardCredits: 1500, rewardExp: 340, rewardHonor: 19 },
-  { id: "q-venus2-destroyers", title: "Atmospheric Threat", description: "Destroyer squadrons patrol the Sulphur Winds, enforcing blockades. Break them.", zone: "venus2", killType: "destroyer", killCount: 3, rewardCredits: 2600, rewardExp: 650, rewardHonor: 32 },
-  { id: "q-venus3-destroyers", title: "Acid Corridor Purge", description: "Destroyer packs control the Acidic Deep passages. Burn through them.", zone: "venus3", killType: "destroyer", killCount: 5, rewardCredits: 4200, rewardExp: 1200, rewardHonor: 55 },
-  { id: "q-venus3-dread", title: "Venusian Dread Hunt", description: "A Dread-class warship lurks in the corrosive depths. Its reactor is your prize.", zone: "venus3", killType: "dread", killCount: 1, rewardCredits: 6500, rewardExp: 1900, rewardHonor: 110 },
-  { id: "q-venus4-voidlings", title: "Pressure Zone Phantoms", description: "Voidlings phase in and out of the crushing core. Exterminate them before the breach widens.", zone: "venus4", killType: "voidling", killCount: 6, rewardCredits: 9500, rewardExp: 2800, rewardHonor: 150 },
-  { id: "q-venus4-dread", title: "Core Guardian", description: "Two Dread warships orbit the Pressure Core as self-appointed warlords. Dethrone them.", zone: "venus4", killType: "dread", killCount: 2, rewardCredits: 19000, rewardExp: 5500, rewardHonor: 300 },
-  { id: "q-venus5-dread", title: "Eye of Venus", description: "The Eye of Venus is guarded by a Dread armada. Only the bold enter — and fewer leave.", zone: "venus5", killType: "dread", killCount: 4, rewardCredits: 34000, rewardExp: 10000, rewardHonor: 550 },
-  { id: "q-venus5-apex", title: "Sovereign of Venus", description: "Six Dread warships orbit the Eye's singularity. Destroy them all and claim the title.", zone: "venus5", killType: "dread", killCount: 6, rewardCredits: 58000, rewardExp: 17000, rewardHonor: 920 },
+  // Tier 1 - Alpha/Corona/Venus1 (beginner maps)
+  { id: "q-t1-scouts", title: "Sweep the Lanes", description: "Pirate scouts raiding traders. Eliminate them.", zone: "alpha", tier: 1, killType: "scout", killCount: 5, rewardCredits: 150, rewardExp: 40, rewardHonor: 2 },
+  { id: "q-t1-raiders", title: "Raider Bounty", description: "A raider crew is harassing traffic. Take them down.", zone: "alpha", tier: 1, killType: "raider", killCount: 3, rewardCredits: 250, rewardExp: 60, rewardHonor: 4 },
+  { id: "q-t1-scouts2", title: "Scout Patrol", description: "Enemy scouts spotted near the station. Clear them out.", zone: "corona", tier: 1, killType: "scout", killCount: 8, rewardCredits: 200, rewardExp: 50, rewardHonor: 3 },
+  { id: "q-t1-raiders2", title: "Outpost Defense", description: "Raiders attacking the outer perimeter.", zone: "venus1", tier: 1, killType: "raider", killCount: 4, rewardCredits: 300, rewardExp: 70, rewardHonor: 5 },
+
+  // Tier 2 - Nebula/Fracture/Venus2
+  { id: "q-t2-raiders", title: "Veil Cleanup", description: "The Nebula is thick with raider holdouts. Clear them.", zone: "nebula", tier: 2, killType: "raider", killCount: 6, rewardCredits: 500, rewardExp: 120, rewardHonor: 8 },
+  { id: "q-t2-destroyers", title: "Destroy the Destroyers", description: "Heavy destroyers blocking trade routes.", zone: "nebula", tier: 2, killType: "destroyer", killCount: 3, rewardCredits: 800, rewardExp: 200, rewardHonor: 12 },
+  { id: "q-t2-raiders2", title: "Dust Storm Raiders", description: "Raiders hiding in the dust storms.", zone: "fracture", tier: 2, killType: "raider", killCount: 8, rewardCredits: 600, rewardExp: 150, rewardHonor: 10 },
+  { id: "q-t2-destroyers2", title: "Wind Breakers", description: "Destroyer patrol in the sulphur corridors.", zone: "venus2", tier: 2, killType: "destroyer", killCount: 4, rewardCredits: 900, rewardExp: 220, rewardHonor: 14 },
+
+  // Tier 3 - Crimson/Abyss/Venus3 (sentinels appear)
+  { id: "q-t3-destroyers", title: "Crimson Purge", description: "Destroyers established a beachhead in Crimson Reach.", zone: "crimson", tier: 3, killType: "destroyer", killCount: 5, rewardCredits: 1200, rewardExp: 350, rewardHonor: 18 },
+  { id: "q-t3-sentinels", title: "Sentinel Hunt", description: "Armored sentinels are patrolling aggressively. Destroy them.", zone: "crimson", tier: 3, killType: "sentinel", killCount: 4, rewardCredits: 1500, rewardExp: 400, rewardHonor: 22 },
+  { id: "q-t3-dread", title: "Bring Down a Dread", description: "A Dread-class warship in the sector. Send it home in pieces.", zone: "crimson", tier: 3, killType: "dread", killCount: 1, rewardCredits: 2000, rewardExp: 500, rewardHonor: 30 },
+  { id: "q-t3-sentinels2", title: "Red Reach Wardens", description: "Sentinels guarding the Martian reaches. Remove them.", zone: "abyss", tier: 3, killType: "sentinel", killCount: 5, rewardCredits: 1800, rewardExp: 450, rewardHonor: 25 },
+  { id: "q-t3-destroyers2", title: "Acid Corridor Purge", description: "Destroy the heavy ships in the acid corridors.", zone: "venus3", tier: 3, killType: "destroyer", killCount: 6, rewardCredits: 1400, rewardExp: 380, rewardHonor: 20 },
+
+  // Tier 4 - Void/MarsDepth/Venus4 (wraiths appear)
+  { id: "q-t4-wraiths", title: "Phantom Menace", description: "Wraiths phase in and out of reality. Banish them.", zone: "void", tier: 4, killType: "wraith", killCount: 5, rewardCredits: 3000, rewardExp: 800, rewardHonor: 40 },
+  { id: "q-t4-sentinels", title: "Void Wardens", description: "Sentinels guard the dimensional rifts. Clear the path.", zone: "void", tier: 4, killType: "sentinel", killCount: 6, rewardCredits: 3500, rewardExp: 900, rewardHonor: 45 },
+  { id: "q-t4-dread", title: "Apex Predator", description: "A Dread haunts the Void. Become its end.", zone: "void", tier: 4, killType: "dread", killCount: 2, rewardCredits: 5000, rewardExp: 1200, rewardHonor: 60 },
+  { id: "q-t4-wraiths2", title: "Deep Field Phantoms", description: "Wraiths swarming the Martian deep field.", zone: "marsdepth", tier: 4, killType: "wraith", killCount: 6, rewardCredits: 3500, rewardExp: 850, rewardHonor: 42 },
+  { id: "q-t4-sentinels2", title: "Pressure Sentinels", description: "Sentinels adapted to Venus's crushing core.", zone: "venus4", tier: 4, killType: "sentinel", killCount: 7, rewardCredits: 4000, rewardExp: 1000, rewardHonor: 50 },
+
+  // Tier 5 - Forge/Maelstrom/Venus5 (titans appear)
+  { id: "q-t5-titans", title: "Titan Takedown", description: "Massive titans block the Iron Forge supply lanes.", zone: "forge", tier: 5, killType: "titan", killCount: 3, rewardCredits: 8000, rewardExp: 2000, rewardHonor: 100 },
+  { id: "q-t5-wraiths", title: "Forge Phantoms", description: "Wraiths warping through the superheated forges.", zone: "forge", tier: 5, killType: "wraith", killCount: 6, rewardCredits: 6000, rewardExp: 1500, rewardHonor: 75 },
+  { id: "q-t5-dread", title: "Iron Curtain", description: "Dread warships have locked down the Forge. Break through.", zone: "forge", tier: 5, killType: "dread", killCount: 3, rewardCredits: 10000, rewardExp: 2500, rewardHonor: 120 },
+  { id: "q-t5-titans2", title: "Storm Colossi", description: "Titans entrenched in the Maelstrom. Bring them down.", zone: "maelstrom", tier: 5, killType: "titan", killCount: 4, rewardCredits: 9000, rewardExp: 2200, rewardHonor: 110 },
+  { id: "q-t5-wraiths2", title: "Eye Specters", description: "Wraiths haunting the Eye of Venus.", zone: "venus5", tier: 5, killType: "wraith", killCount: 8, rewardCredits: 7000, rewardExp: 1800, rewardHonor: 85 },
+
+  // Tier 6-7 - Danger zones (overlords appear)
+  { id: "q-t6-titans", title: "Rift Titans", description: "Titans command the Outer Rift. Challenge them.", zone: "danger1", tier: 5, killType: "titan", killCount: 4, rewardCredits: 12000, rewardExp: 3000, rewardHonor: 150 },
+  { id: "q-t6-overlords", title: "Dead Zone Overlords", description: "Overlords rule the Dead Zone. Dethrone them.", zone: "danger3", tier: 6, killType: "overlord", killCount: 2, rewardCredits: 18000, rewardExp: 5000, rewardHonor: 250 },
+  { id: "q-t7-overlords", title: "Null Sector Supremacy", description: "The most powerful Overlords in known space. Destroy them all.", zone: "danger4", tier: 7, killType: "overlord", killCount: 3, rewardCredits: 25000, rewardExp: 8000, rewardHonor: 400 },
+  { id: "q-t8-titans", title: "Abyss Gate Titans", description: "Titans guard the deepest gate. Only legends attempt this.", zone: "danger5", tier: 8, killType: "titan", killCount: 5, rewardCredits: 30000, rewardExp: 10000, rewardHonor: 500 },
+  { id: "q-t8-overlords", title: "God of the Abyss", description: "A legendary Overlord dominates the deepest sector. Become the last thing it sees.", zone: "danger5", tier: 8, killType: "overlord", killCount: 4, rewardCredits: 40000, rewardExp: 15000, rewardHonor: 800 },
 ];
 
 // ── ECONOMY ────────────────────────────────────────────────────────────────
@@ -1086,213 +1283,367 @@ export const RESOURCES: Record<ResourceId, Resource> = {
   "dark-matter":{ id: "dark-matter", name: "Dark Matter",     basePrice: 450, glyph: "●", color: "#8844cc", description: "Unstable exotic matter. Used in warp drive construction." },
   "plasma-coil":{ id: "plasma-coil", name: "Plasma Coil",     basePrice: 65,  glyph: "◎", color: "#ff6644", description: "Compact energy coil for weapon charging systems." },
   "bio-crystal":{ id: "bio-crystal", name: "Bio Crystal",     basePrice: 195, glyph: "◇", color: "#44ff88", description: "Living crystalline organisms. Medical and research value." },
+  // mineable ores
+  copper:          { id: "copper",          name: "Copper Ore",       basePrice: 22,  glyph: "▰", color: "#e8a050", description: "Common conductive ore. Used in wiring and circuitry." },
+  cobalt:          { id: "cobalt",          name: "Cobalt Ore",       basePrice: 48,  glyph: "▰", color: "#4466cc", description: "Dense blue ore. Essential for high-strength alloys." },
+  "crystal-shard": { id: "crystal-shard",   name: "Crystal Shard",    basePrice: 135, glyph: "◆", color: "#cc88ff", description: "Prismatic energy crystal. Powers advanced shield tech." },
+  palladium:       { id: "palladium",       name: "Palladium",        basePrice: 210, glyph: "◈", color: "#d4e4f0", description: "Precious catalytic metal. Rare and highly sought." },
+  "helium-3":      { id: "helium-3",        name: "Helium-3",         basePrice: 95,  glyph: "◎", color: "#88ddaa", description: "Fusion fuel isotope. Harvested from gas-rich nebulae." },
+  iridium:         { id: "iridium",         name: "Iridium Ore",      basePrice: 380, glyph: "▣", color: "#f0e068", description: "Ultra-dense precious metal. Only found in danger zones." },
+  sulfur:          { id: "sulfur",          name: "Sulfur Deposit",   basePrice: 30,  glyph: "▰", color: "#cccc44", description: "Volcanic mineral. Common near Venus cloud layers." },
+  obsidian:        { id: "obsidian",        name: "Void Obsidian",    basePrice: 165, glyph: "▣", color: "#6644aa", description: "Dark glass forged in the void. Valued for hull reinforcement." },
+  // refined materials (factory output)
+  "refined-alloy":  { id: "refined-alloy",  name: "Refined Alloy",    basePrice: 120,  glyph: "⬡", color: "#dd8844", description: "High-grade alloy refined from iron and copper. Used in advanced hull plating." },
+  "crystal-matrix": { id: "crystal-matrix", name: "Crystal Matrix",   basePrice: 340,  glyph: "✦", color: "#dd88ff", description: "Crystalline lattice structure. Powers advanced shield generators." },
+  "fusion-core":    { id: "fusion-core",    name: "Fusion Core",      basePrice: 480,  glyph: "⊛", color: "#88ffaa", description: "Miniaturized fusion reactor. Extremely valuable to military stations." },
+  "void-steel":     { id: "void-steel",     name: "Void Steel",       basePrice: 850,  glyph: "◆", color: "#8866cc", description: "Ultra-hard steel forged from void obsidian. The rarest refined material." },
+  "nano-compound":  { id: "nano-compound",  name: "Nano-Compound",    basePrice: 220,  glyph: "◎", color: "#66ddcc", description: "Self-assembling nano-material. Medical and engineering applications." },
+  "plasma-cell":    { id: "plasma-cell",     name: "Plasma Cell",      basePrice: 180,  glyph: "▣", color: "#ff8866", description: "Concentrated plasma fuel cell. High energy density for starship reactors." },
+};
+
+
+// Zone-specific asteroid yield pools (weighted)
+export const ZONE_ASTEROID_YIELDS: Record<ZoneId, { resourceId: ResourceId; weight: number }[]> = {
+  // Earth faction (tier 1-5)
+  alpha:     [{ resourceId: "iron", weight: 45 }, { resourceId: "copper", weight: 35 }, { resourceId: "lumenite", weight: 15 }, { resourceId: "cobalt", weight: 5 }],
+  nebula:    [{ resourceId: "iron", weight: 25 }, { resourceId: "copper", weight: 20 }, { resourceId: "lumenite", weight: 25 }, { resourceId: "helium-3", weight: 20 }, { resourceId: "cobalt", weight: 10 }],
+  crimson:   [{ resourceId: "iron", weight: 15 }, { resourceId: "cobalt", weight: 30 }, { resourceId: "lumenite", weight: 20 }, { resourceId: "crystal-shard", weight: 25 }, { resourceId: "copper", weight: 10 }],
+  void:      [{ resourceId: "cobalt", weight: 20 }, { resourceId: "lumenite", weight: 15 }, { resourceId: "crystal-shard", weight: 25 }, { resourceId: "obsidian", weight: 25 }, { resourceId: "palladium", weight: 15 }],
+  forge:     [{ resourceId: "iron", weight: 10 }, { resourceId: "cobalt", weight: 15 }, { resourceId: "crystal-shard", weight: 20 }, { resourceId: "palladium", weight: 30 }, { resourceId: "iridium", weight: 15 }, { resourceId: "obsidian", weight: 10 }],
+  // Mars faction (tier 1-5)
+  corona:    [{ resourceId: "iron", weight: 40 }, { resourceId: "copper", weight: 25 }, { resourceId: "lumenite", weight: 20 }, { resourceId: "helium-3", weight: 10 }, { resourceId: "cobalt", weight: 5 }],
+  fracture:  [{ resourceId: "iron", weight: 15 }, { resourceId: "copper", weight: 15 }, { resourceId: "cobalt", weight: 25 }, { resourceId: "lumenite", weight: 20 }, { resourceId: "helium-3", weight: 15 }, { resourceId: "crystal-shard", weight: 10 }],
+  abyss:     [{ resourceId: "cobalt", weight: 20 }, { resourceId: "lumenite", weight: 10 }, { resourceId: "crystal-shard", weight: 25 }, { resourceId: "obsidian", weight: 20 }, { resourceId: "palladium", weight: 15 }, { resourceId: "helium-3", weight: 10 }],
+  marsdepth: [{ resourceId: "cobalt", weight: 10 }, { resourceId: "crystal-shard", weight: 20 }, { resourceId: "obsidian", weight: 20 }, { resourceId: "palladium", weight: 25 }, { resourceId: "iridium", weight: 15 }, { resourceId: "helium-3", weight: 10 }],
+  maelstrom: [{ resourceId: "crystal-shard", weight: 15 }, { resourceId: "obsidian", weight: 15 }, { resourceId: "palladium", weight: 25 }, { resourceId: "iridium", weight: 25 }, { resourceId: "cobalt", weight: 10 }, { resourceId: "helium-3", weight: 10 }],
+  // Venus faction (tier 1-5)
+  venus1:    [{ resourceId: "iron", weight: 35 }, { resourceId: "copper", weight: 20 }, { resourceId: "sulfur", weight: 30 }, { resourceId: "lumenite", weight: 10 }, { resourceId: "cobalt", weight: 5 }],
+  venus2:    [{ resourceId: "iron", weight: 15 }, { resourceId: "sulfur", weight: 25 }, { resourceId: "copper", weight: 15 }, { resourceId: "cobalt", weight: 20 }, { resourceId: "lumenite", weight: 15 }, { resourceId: "helium-3", weight: 10 }],
+  venus3:    [{ resourceId: "sulfur", weight: 15 }, { resourceId: "cobalt", weight: 20 }, { resourceId: "crystal-shard", weight: 25 }, { resourceId: "lumenite", weight: 15 }, { resourceId: "obsidian", weight: 15 }, { resourceId: "copper", weight: 10 }],
+  venus4:    [{ resourceId: "crystal-shard", weight: 25 }, { resourceId: "obsidian", weight: 20 }, { resourceId: "palladium", weight: 20 }, { resourceId: "sulfur", weight: 10 }, { resourceId: "cobalt", weight: 15 }, { resourceId: "helium-3", weight: 10 }],
+  venus5:    [{ resourceId: "obsidian", weight: 15 }, { resourceId: "palladium", weight: 25 }, { resourceId: "iridium", weight: 20 }, { resourceId: "crystal-shard", weight: 20 }, { resourceId: "cobalt", weight: 10 }, { resourceId: "sulfur", weight: 10 }],
+  // Danger zones (tier 4-7) — premium ores
+  danger1:   [{ resourceId: "crystal-shard", weight: 20 }, { resourceId: "palladium", weight: 25 }, { resourceId: "iridium", weight: 20 }, { resourceId: "obsidian", weight: 20 }, { resourceId: "cobalt", weight: 15 }],
+  danger2:   [{ resourceId: "palladium", weight: 25 }, { resourceId: "iridium", weight: 25 }, { resourceId: "obsidian", weight: 20 }, { resourceId: "crystal-shard", weight: 15 }, { resourceId: "helium-3", weight: 15 }],
+  danger3:   [{ resourceId: "iridium", weight: 30 }, { resourceId: "palladium", weight: 25 }, { resourceId: "obsidian", weight: 15 }, { resourceId: "crystal-shard", weight: 15 }, { resourceId: "cobalt", weight: 15 }],
+  danger4:   [{ resourceId: "iridium", weight: 35 }, { resourceId: "palladium", weight: 25 }, { resourceId: "obsidian", weight: 20 }, { resourceId: "crystal-shard", weight: 10 }, { resourceId: "helium-3", weight: 10 }],
+  danger5:   [{ resourceId: "iridium", weight: 40 }, { resourceId: "palladium", weight: 25 }, { resourceId: "obsidian", weight: 15 }, { resourceId: "crystal-shard", weight: 10 }, { resourceId: "helium-3", weight: 10 }],
+  debug:     [{ resourceId: "iron", weight: 100 }],
+};
+
+export function pickAsteroidYield(zone: ZoneId): ResourceId {
+  const pool = ZONE_ASTEROID_YIELDS[zone];
+  if (!pool || pool.length === 0) return "iron";
+  const totalW = pool.reduce((s, e) => s + e.weight, 0);
+  let roll = Math.random() * totalW;
+  for (const entry of pool) {
+    roll -= entry.weight;
+    if (roll <= 0) return entry.resourceId;
+  }
+  return pool[pool.length - 1].resourceId;
+}
+
+
+// ── ASTEROID BELTS: dense mining regions per zone ─────────────────────────
+
+// ── REFINING RECIPES ──────────────────────────────────────────────────────
+export type RefineRecipe = {
+  id: string;
+  name: string;
+  inputs: { resourceId: ResourceId; qty: number }[];
+  output: { resourceId: ResourceId; qty: number };
+  timeSeconds: number;
+  minFactoryLevel: number;
+};
+
+export const REFINE_RECIPES: RefineRecipe[] = [
+  { id: "r-alloy",   name: "Smelt Alloy",       inputs: [{ resourceId: "iron", qty: 8 }, { resourceId: "copper", qty: 4 }],                     output: { resourceId: "refined-alloy", qty: 2 },  timeSeconds: 120, minFactoryLevel: 1 },
+  { id: "r-plasma",  name: "Compress Plasma",    inputs: [{ resourceId: "plasma", qty: 5 }, { resourceId: "fuel-cell", qty: 3 }],                output: { resourceId: "plasma-cell", qty: 2 },   timeSeconds: 150, minFactoryLevel: 1 },
+  { id: "r-nano",    name: "Synthesize Nano",    inputs: [{ resourceId: "nanite", qty: 4 }, { resourceId: "bio-matter", qty: 3 }],               output: { resourceId: "nano-compound", qty: 2 }, timeSeconds: 180, minFactoryLevel: 2 },
+  { id: "r-crystal", name: "Grow Crystal Matrix", inputs: [{ resourceId: "crystal-shard", qty: 3 }, { resourceId: "cobalt", qty: 5 }],           output: { resourceId: "crystal-matrix", qty: 1 }, timeSeconds: 240, minFactoryLevel: 2 },
+  { id: "r-fusion",  name: "Forge Fusion Core",  inputs: [{ resourceId: "helium-3", qty: 6 }, { resourceId: "palladium", qty: 2 }],              output: { resourceId: "fusion-core", qty: 1 },   timeSeconds: 300, minFactoryLevel: 3 },
+  { id: "r-vsteel",  name: "Forge Void Steel",   inputs: [{ resourceId: "obsidian", qty: 3 }, { resourceId: "iridium", qty: 1 }],                output: { resourceId: "void-steel", qty: 1 },    timeSeconds: 420, minFactoryLevel: 4 },
+];
+
+export type RefineJob = {
+  recipeId: string;
+  startedAt: number;
+  completesAt: number;
+};
+
+export const FACTORY_UPGRADE_COSTS = [0, 5000, 25000, 80000, 200000];
+export const FACTORY_SPEED_BONUS = [1.0, 1.0, 0.85, 0.7, 0.55, 0.4];
+
+export const ASTEROID_BELTS: Record<ZoneId, { cx: number; cy: number; rx: number; ry: number }[]> = {
+  alpha:    [{ cx: -3000, cy: 1500, rx: 2000, ry: 800 }, { cx: 2500, cy: -2000, rx: 1500, ry: 1000 }],
+  nebula:   [{ cx: 0, cy: 3500, rx: 2500, ry: 600 }, { cx: -3000, cy: -2000, rx: 1800, ry: 900 }],
+  crimson:  [{ cx: 3500, cy: 0, rx: 800, ry: 2500 }, { cx: -2500, cy: 3000, rx: 1500, ry: 700 }],
+  void:     [{ cx: -2000, cy: -3000, rx: 2200, ry: 700 }, { cx: 3000, cy: 2000, rx: 1200, ry: 1500 }],
+  forge:    [{ cx: 0, cy: -3500, rx: 3000, ry: 600 }, { cx: -3500, cy: 1500, rx: 1000, ry: 2000 }],
+  corona:   [{ cx: 3000, cy: -1500, rx: 2000, ry: 900 }, { cx: -2000, cy: 3500, rx: 1800, ry: 600 }],
+  fracture: [{ cx: -3500, cy: -1000, rx: 1500, ry: 2000 }, { cx: 2500, cy: 2500, rx: 2000, ry: 800 }],
+  abyss:    [{ cx: 0, cy: 0, rx: 3000, ry: 1000 }],
+  marsdepth:[{ cx: -2500, cy: 2500, rx: 2000, ry: 900 }, { cx: 3000, cy: -1500, rx: 1500, ry: 1200 }],
+  maelstrom:[{ cx: 2000, cy: 3000, rx: 1800, ry: 700 }, { cx: -3000, cy: -2500, rx: 1200, ry: 1800 }],
+  venus1:   [{ cx: -2500, cy: -1500, rx: 2000, ry: 800 }, { cx: 3000, cy: 2000, rx: 1500, ry: 1000 }],
+  venus2:   [{ cx: 0, cy: -3500, rx: 2500, ry: 700 }, { cx: -3500, cy: 1000, rx: 1200, ry: 1800 }],
+  venus3:   [{ cx: 3500, cy: 1500, rx: 900, ry: 2500 }, { cx: -2000, cy: -3000, rx: 2000, ry: 600 }],
+  venus4:   [{ cx: -3000, cy: 0, rx: 800, ry: 3000 }, { cx: 2500, cy: -2500, rx: 1800, ry: 800 }],
+  venus5:   [{ cx: 0, cy: 3000, rx: 3000, ry: 800 }, { cx: -2500, cy: -2000, rx: 1500, ry: 1500 }],
+  danger1:  [{ cx: 2000, cy: -2000, rx: 1500, ry: 1500 }],
+  danger2:  [{ cx: -2500, cy: 2500, rx: 1800, ry: 800 }],
+  danger3:  [{ cx: 3000, cy: 0, rx: 800, ry: 2000 }],
+  danger4:  [{ cx: 0, cy: -3000, rx: 2000, ry: 700 }],
+  danger5:  [{ cx: -2000, cy: 2000, rx: 1200, ry: 1200 }],
+  debug:    [],
 };
 
 export const STATIONS: Station[] = [
   // alpha
   { id: "helix",   name: "Helix Station",  pos: { x: 0, y: 0 },     zone: "alpha",   kind: "hub",
     description: "Capital hub of the Alpha Frontier.", controlledBy: "earth",
-    prices: { scrap: 1.0, plasma: 1.0, iron: 0.95, synth: 0.9, medpack: 1.1, lumenite: 1.0, food: 0.8, "fuel-cell": 0.9 } },
-  { id: "iron-belt", name: "Iron Belt Refinery", pos: { x: -1800, y: -400 }, zone: "alpha", kind: "mining",
+    prices: { scrap: 1.0, plasma: 1.0, iron: 0.95, synth: 0.9, medpack: 1.1, lumenite: 1.0, food: 0.8, "fuel-cell": 0.9 , copper: 1.2, cobalt: 1.3, "refined-alloy": 1.4, "plasma-cell": 1.3, "nano-compound": 1.2} },
+  { id: "iron-belt", name: "Iron Belt Refinery", pos: { x: -4500, y: -2800 }, zone: "alpha", kind: "mining",
     description: "Refinery sitting on a rich mineral belt.", controlledBy: "earth",
     prices: { iron: 0.6, lumenite: 0.7, scrap: 1.2, synth: 1.0, medpack: 1.1, plasma: 1.05,
-              food: 0.6, "fuel-cell": 0.7, medicine: 1.2, ore: 0.65, "star-map": 1.25 } },
+              food: 0.6, "fuel-cell": 0.7, medicine: 1.2, ore: 0.65, "star-map": 1.25 , copper: 0.65, cobalt: 0.8} },
   // nebula
-  { id: "veiled",   name: "Veiled Outpost", pos: { x: 400, y: -1600 }, zone: "nebula",  kind: "outpost",
+  { id: "veiled",   name: "Veiled Outpost", pos: { x: 3200, y: -4800 }, zone: "nebula",  kind: "outpost",
     description: "A mining outpost run by a raider truce.", controlledBy: "earth",
     prices: { plasma: 0.7, warp: 0.85, scrap: 1.2, synth: 1.15, medpack: 1.2, void: 1.3,
-              food: 1.3, medicine: 1.4, nanite: 0.8, "bio-matter": 0.7, luxury: 1.6, silk: 0.75, artifacts: 1.2 } },
-  { id: "azure-port", name: "Azure Trade Port", pos: { x: -1200, y: -2400 }, zone: "nebula", kind: "trade",
+              food: 1.3, medicine: 1.4, nanite: 0.8, "bio-matter": 0.7, luxury: 1.6, silk: 0.75, artifacts: 1.2, "crystal-matrix": 1.5, "fusion-core": 1.4, "void-steel": 1.3} },
+  { id: "azure-port", name: "Azure Trade Port", pos: { x: -4200, y: -5200 }, zone: "nebula", kind: "trade",
     description: "Bustling free-port. Buys high, sells fair.", controlledBy: "earth",
     prices: { quantum: 0.7, lumenite: 0.85, dread: 0.9, void: 0.95, plasma: 1.2, warp: 1.25, iron: 1.15, scrap: 1.25,
-              luxury: 0.7, precursor: 1.5, relic: 1.6, food: 1.5, medicine: 1.3, nanite: 1.4, blackglass: 0.8, "data-core": 0.9 } },
+              luxury: 0.7, precursor: 1.5, relic: 1.6, food: 1.5, medicine: 1.3, nanite: 1.4, blackglass: 0.8, "data-core": 0.9 , cobalt: 1.1, "crystal-shard": 1.3, "helium-3": 1.2} },
   // crimson
-  { id: "ember",    name: "Ember Citadel",  pos: { x: -1200, y: 800 },  zone: "crimson", kind: "military",
+  { id: "ember",    name: "Ember Citadel",  pos: { x: -3800, y: 2400 },  zone: "crimson", kind: "military",
     description: "Crimson Reach naval citadel. Premium for war goods.", controlledBy: "earth",
     prices: { dread: 1.3, warp: 1.3, plasma: 1.4, medpack: 0.85, synth: 0.95, quantum: 1.2,
-              food: 1.6, medicine: 0.7, "fuel-cell": 1.5, contraband: 0.6, blackglass: 0.7, "fusion-lattice": 0.9 } },
-  { id: "scarlet-yard", name: "Scarlet Shipyards", pos: { x: 2200, y: 1600 }, zone: "crimson", kind: "trade",
+              food: 1.6, medicine: 0.7, "fuel-cell": 1.5, contraband: 0.6, blackglass: 0.7, "fusion-lattice": 0.9 , cobalt: 1.4, "crystal-shard": 1.5, "refined-alloy": 1.3, "nano-compound": 1.5, "plasma-cell": 1.2} },
+  { id: "scarlet-yard", name: "Scarlet Shipyards", pos: { x: 4800, y: 3600 }, zone: "crimson", kind: "trade",
     description: "Capital ship construction yards.", controlledBy: "earth",
     prices: { iron: 1.4, scrap: 1.35, lumenite: 1.2, plasma: 1.1, dread: 0.85,
-              nanite: 1.5, "fuel-cell": 1.3, food: 1.5, luxury: 1.7, ore: 1.15, "fusion-lattice": 1.05 } },
+              nanite: 1.5, "fuel-cell": 1.3, food: 1.5, luxury: 1.7, ore: 1.15, "fusion-lattice": 1.05 , copper: 1.3, cobalt: 1.2} },
   // void
-  { id: "echo",     name: "Echo Anchorage", pos: { x: 0, y: -600 },    zone: "void",    kind: "outpost",
+  { id: "echo",     name: "Echo Anchorage", pos: { x: 800, y: -3200 },    zone: "void",    kind: "outpost",
     description: "Last refuge in The Void.", controlledBy: "earth",
     prices: { void: 0.6, dread: 1.2, quantum: 1.4, medpack: 1.3, synth: 1.2,
-              contraband: 0.5, relic: 0.7, exotic: 0.8, food: 1.8, medicine: 1.6, "medical-serum": 0.85, "cloning-gel": 0.75 } },
-  { id: "obsidian-port", name: "Obsidian Free Port", pos: { x: 1800, y: 1200 }, zone: "void", kind: "trade",
+              contraband: 0.5, relic: 0.7, exotic: 0.8, food: 1.8, medicine: 1.6, "medical-serum": 0.85, "cloning-gel": 0.75, "void-steel": 1.6, "crystal-matrix": 1.3, "fusion-core": 1.2} },
+  { id: "obsidian-port", name: "Obsidian Free Port", pos: { x: 4600, y: 3800 }, zone: "void", kind: "trade",
     description: "A trade haven for ghosts and smugglers.", controlledBy: "earth",
     prices: { quantum: 0.55, void: 1.4, dread: 1.4, lumenite: 1.3, warp: 1.2,
               contraband: 0.4, luxury: 0.6, relic: 0.65, precursor: 0.7, food: 1.9, exotic: 1.5, artifacts: 0.7, "data-core": 0.75 } },
   // forge
   { id: "ironclad",    name: "Ironclad Bastion",   pos: { x: 0, y: 0 },       zone: "forge",    kind: "military",
     description: "Heavily fortified military hub. Sells advanced weapons at a premium.", controlledBy: "earth",
-    prices: { dread: 1.5, warp: 1.4, plasma: 1.6, iron: 0.7, scrap: 0.8 } },
-  { id: "forge-gate",  name: "Forge Gate Depot",   pos: { x: -1600, y: 1800 },  zone: "forge",    kind: "trade",
+    prices: { dread: 1.5, warp: 1.4, plasma: 1.6, iron: 0.7, scrap: 0.8, "refined-alloy": 1.5, "plasma-cell": 1.4, "fusion-core": 1.3} },
+  { id: "forge-gate",  name: "Forge Gate Depot",   pos: { x: -4200, y: 4400 },  zone: "forge",    kind: "trade",
     description: "Industrial depot trading raw ore and components.", controlledBy: "earth",
-    prices: { iron: 0.5, scrap: 0.6, lumenite: 0.75, quantum: 0.9, dread: 1.2, void: 1.3, blackglass: 0.6, ore: 0.55 } },
+    prices: { iron: 0.5, scrap: 0.6, lumenite: 0.75, quantum: 0.9, dread: 1.2, void: 1.3, blackglass: 0.6, ore: 0.55 , cobalt: 0.6, palladium: 0.8, copper: 0.7} },
   // corona
-  { id: "solar-haven", name: "Solar Haven",         pos: { x: 800, y: -1200 }, zone: "corona",   kind: "outpost",
+  { id: "solar-haven", name: "Solar Haven",         pos: { x: 3200, y: -4200 }, zone: "corona",   kind: "outpost",
     description: "Heat-shielded station orbiting the corona. Rare energy crystals for sale.", controlledBy: "mars",
-    prices: { lumenite: 0.5, plasma: 0.6, warp: 0.8, void: 1.2, dread: 1.3, quantum: 1.0, "star-map": 0.7, "fusion-lattice": 0.75 } },
-  { id: "corona-mkt",  name: "Corona Market",       pos: { x: 2000, y: 1200 }, zone: "corona",   kind: "trade",
+    prices: { lumenite: 0.5, plasma: 0.6, warp: 0.8, void: 1.2, dread: 1.3, quantum: 1.0, "star-map": 0.7, "fusion-lattice": 0.75 , "crystal-shard": 0.7, "helium-3": 0.6, "crystal-matrix": 1.4, "void-steel": 1.5, "nano-compound": 1.3} },
+  { id: "corona-mkt",  name: "Corona Market",       pos: { x: 5000, y: 3800 }, zone: "corona",   kind: "trade",
     description: "Black-market hub. Strange goods at strange prices.", controlledBy: "mars",
     prices: { quantum: 0.6, void: 0.7, dread: 1.1, plasma: 1.3, lumenite: 1.2, iron: 1.5, artifacts: 0.8, relic: 0.9 } },
   // fracture
-  { id: "rift-base",   name: "Rift Base Omega",     pos: { x: -1000, y: 800 }, zone: "fracture", kind: "military",
+  { id: "rift-base",   name: "Rift Base Omega",     pos: { x: -3800, y: 3200 }, zone: "fracture", kind: "military",
     description: "Last militarized foothold before the Abyss. Legendary gear.", controlledBy: "mars",
-    prices: { dread: 2.0, warp: 1.8, plasma: 2.0, medpack: 0.7, quantum: 1.5, void: 1.6, blackglass: 0.55, precursor: 1.2 } },
-  { id: "null-post",   name: "Null-Point Station",  pos: { x: 1400, y: -1800 }, zone: "fracture", kind: "outpost",
+    prices: { dread: 2.0, warp: 1.8, plasma: 2.0, medpack: 0.7, quantum: 1.5, void: 1.6, blackglass: 0.55, precursor: 1.2, "void-steel": 1.8, "fusion-core": 1.6, "crystal-matrix": 1.4} },
+  { id: "null-post",   name: "Null-Point Station",  pos: { x: 4200, y: -4800 }, zone: "fracture", kind: "outpost",
     description: "Barely functional outpost in folded space.", controlledBy: "mars",
     prices: { void: 0.5, quantum: 0.7, dread: 1.4, lumenite: 1.5, synth: 1.3, "data-core": 0.8, "medical-serum": 0.9 } },
   // abyss
   { id: "void-heart",  name: "Void Heart Station",  pos: { x: 0, y: 0 },      zone: "abyss",    kind: "outpost",
     description: "The deepest station in known space. No questions asked.", controlledBy: "mars",
-    prices: { void: 0.4, dread: 0.8, quantum: 0.5, lumenite: 1.8, plasma: 2.5, warp: 2.0 } },
-  { id: "abyss-anchor",name: "Abyss Anchorage",     pos: { x: -2200, y: 1600 }, zone: "abyss",   kind: "trade",
+    prices: { void: 0.4, dread: 0.8, quantum: 0.5, lumenite: 1.8, plasma: 2.5, warp: 2.0 , obsidian: 0.5, palladium: 0.7, "void-steel": 2.0, "fusion-core": 1.8, "refined-alloy": 1.5} },
+  { id: "abyss-anchor",name: "Abyss Anchorage",     pos: { x: -5200, y: 4200 }, zone: "abyss",   kind: "trade",
     description: "Endgame trading post. Buy or sell anything at extreme prices.", controlledBy: "mars",
     prices: { quantum: 0.4, void: 1.8, dread: 2.2, iron: 2.0, synth: 1.8, medpack: 0.5 } },
   // marsdepth
   { id: "deep-haven",  name: "Deep Field Haven",   pos: { x: 0, y: 0 },       zone: "marsdepth", kind: "outpost",
     description: "Isolated Martian outpost in the outer deep field. Last stop before the Maelstrom.", controlledBy: "mars",
     prices: { void: 0.55, dread: 1.2, quantum: 1.4, medpack: 1.3, synth: 1.2, contraband: 0.5, relic: 0.7, exotic: 0.8 } },
-  { id: "iron-depth",  name: "Iron Depth Exchange", pos: { x: 1800, y: -1400 }, zone: "marsdepth", kind: "trade",
+  { id: "iron-depth",  name: "Iron Depth Exchange", pos: { x: 4600, y: -4200 }, zone: "marsdepth", kind: "trade",
     description: "Remote Martian trade post for rare salvage and tactical goods.", controlledBy: "mars",
     prices: { dread: 1.8, warp: 1.7, plasma: 1.9, medpack: 0.75, quantum: 1.5, void: 1.4, lumenite: 1.2 } },
   // maelstrom
   { id: "storm-eye",   name: "Eye of the Storm",   pos: { x: 0, y: 0 },       zone: "maelstrom", kind: "military",
     description: "Entrenched Martian warstation at the storm's calm center. Top-tier military gear only.", controlledBy: "mars",
-    prices: { dread: 2.2, warp: 2.0, plasma: 2.3, iron: 0.65, scrap: 0.7, lumenite: 1.1, quantum: 1.6 } },
-  { id: "wreck-point", name: "Wreckage Point",     pos: { x: -1800, y: 1600 }, zone: "maelstrom", kind: "trade",
+    prices: { dread: 2.2, warp: 2.0, plasma: 2.3, iron: 0.65, scrap: 0.7, lumenite: 1.1, quantum: 1.6, "refined-alloy": 1.6, "plasma-cell": 1.5, "fusion-core": 1.4} },
+  { id: "wreck-point", name: "Wreckage Point",     pos: { x: -4800, y: 4200 }, zone: "maelstrom", kind: "trade",
     description: "Salvage bazaar built into the wreckage field. Everything's for sale, no questions asked.", controlledBy: "mars",
     prices: { iron: 0.45, scrap: 0.5, lumenite: 0.7, quantum: 0.85, void: 1.5, dread: 1.9, exotic: 0.7 } },
   // venus1
   { id: "cloud-gate",  name: "Cloud Gate Station", pos: { x: 0, y: 0 },       zone: "venus1",   kind: "hub",
     description: "Entry hub to the Venusian cloud cities. Friendly to all factions.", controlledBy: "venus",
-    prices: { scrap: 1.0, plasma: 1.0, iron: 0.95, synth: 0.9, medpack: 1.1, lumenite: 1.0, warp: 1.1, void: 1.2, dread: 1.1, food: 0.75, medicine: 0.85, luxury: 1.3 } },
-  { id: "mist-dock",   name: "Mist Dock Outpost",  pos: { x: -1600, y: -600 }, zone: "venus1",   kind: "mining",
+    prices: { scrap: 1.0, plasma: 1.0, iron: 0.95, synth: 0.9, medpack: 1.1, lumenite: 1.0, warp: 1.1, void: 1.2, dread: 1.1, food: 0.75, medicine: 0.85, luxury: 1.3 , sulfur: 1.2, copper: 1.1, "refined-alloy": 1.3, "nano-compound": 1.4, "plasma-cell": 1.2} },
+  { id: "mist-dock",   name: "Mist Dock Outpost",  pos: { x: -4400, y: -2800 }, zone: "venus1",   kind: "mining",
     description: "Floating mining platform harvesting rare cloud minerals.", controlledBy: "venus",
-    prices: { iron: 0.6, lumenite: 0.65, scrap: 1.2, synth: 1.0, medpack: 1.1, "fuel-cell": 0.7, food: 0.65, medicine: 1.1 } },
-  { id: "halo-walk",  name: "Halo Walk Station",  pos: { x: 1640, y: 1080 },   zone: "venus1",   kind: "trade",
+    prices: { iron: 0.6, lumenite: 0.65, scrap: 1.2, synth: 1.0, medpack: 1.1, "fuel-cell": 0.7, food: 0.65, medicine: 1.1 , sulfur: 0.55, copper: 0.6} },
+  { id: "halo-walk",  name: "Halo Walk Station",  pos: { x: 4200, y: 3400 },   zone: "venus1",   kind: "trade",
     description: "A bright civilian waypoint for cloud travelers and merchants.", controlledBy: "venus",
     prices: { food: 0.7, medicine: 0.9, luxury: 1.1, scrap: 1.1, plasma: 1.05, lumenite: 0.9, synth: 1.0 } },
   // venus2
-  { id: "sulphur-port", name: "Sulphur Port",      pos: { x: 400, y: -1400 },  zone: "venus2",   kind: "outpost",
+  { id: "sulphur-port", name: "Sulphur Port",      pos: { x: 2800, y: -4800 },  zone: "venus2",   kind: "outpost",
     description: "Corrosive atmosphere station. Raider-truce outpost with exotic supplies.", controlledBy: "venus",
     prices: { plasma: 0.75, warp: 0.9, scrap: 1.2, synth: 1.1, medpack: 1.2, void: 1.3, food: 1.3, medicine: 1.4, nanite: 0.85, "bio-matter": 0.75 } },
-  { id: "wind-market", name: "Wind Market",        pos: { x: -1400, y: -2200 }, zone: "venus2",  kind: "trade",
+  { id: "wind-market", name: "Wind Market",        pos: { x: -4600, y: -5200 }, zone: "venus2",  kind: "trade",
     description: "Chaotic trade station deep in the Sulphur Winds. Cheap quantum parts.", controlledBy: "venus",
     prices: { quantum: 0.65, lumenite: 0.8, dread: 0.95, void: 0.9, plasma: 1.2, warp: 1.3, iron: 1.1, luxury: 0.75, precursor: 1.4 } },
-  { id: "brass-spire", name: "Brass Spire",       pos: { x: 2400, y: -400 }, zone: "venus2",  kind: "outpost",
+  { id: "brass-spire", name: "Brass Spire",       pos: { x: 5400, y: -2000 }, zone: "venus2",  kind: "outpost",
     description: "A wind-battered relay with fuel, repairs, and hot gossip.", controlledBy: "venus",
     prices: { plasma: 0.85, warp: 0.95, food: 1.2, medicine: 1.25, nanite: 0.9, luxury: 1.0, "fuel-cell": 0.8 } },
   // venus3
-  { id: "acid-citadel", name: "Acid Citadel",      pos: { x: -1000, y: 800 },  zone: "venus3",   kind: "military",
+  { id: "acid-citadel", name: "Acid Citadel",      pos: { x: -3800, y: 3200 },  zone: "venus3",   kind: "military",
     description: "Fortified deep-atmosphere platform. Specialized war contracts available.", controlledBy: "venus",
     prices: { dread: 1.4, warp: 1.3, plasma: 1.5, medpack: 0.8, synth: 0.9, quantum: 1.2, "fuel-cell": 1.4, contraband: 0.65 } },
-  { id: "pressure-yard", name: "Pressure Yards",   pos: { x: 2000, y: 1400 },  zone: "venus3",   kind: "trade",
+  { id: "pressure-yard", name: "Pressure Yards",   pos: { x: 4800, y: 3800 },  zone: "venus3",   kind: "trade",
     description: "High-pressure fabrication yards building deep-atmosphere hulls.", controlledBy: "venus",
     prices: { iron: 1.4, scrap: 1.3, lumenite: 1.2, plasma: 1.1, dread: 0.9, nanite: 1.5, "fuel-cell": 1.2, luxury: 1.6 } },
-  { id: "acid-exchange", name: "Acid Exchange",   pos: { x: -2500, y: -1300 }, zone: "venus3", kind: "mining",
+  { id: "acid-exchange", name: "Acid Exchange",   pos: { x: -5400, y: -4200 }, zone: "venus3", kind: "mining",
     description: "Strip-mining exchange for hulls, ore, and deep-atmosphere salvage.", controlledBy: "venus",
-    prices: { iron: 0.55, scrap: 0.65, lumenite: 0.8, plasma: 1.0, synth: 1.1, food: 1.3, medicine: 1.2 } },
+    prices: { iron: 0.55, scrap: 0.65, lumenite: 0.8, plasma: 1.0, synth: 1.1, food: 1.3, medicine: 1.2 , sulfur: 0.5, cobalt: 0.65, "crystal-shard": 0.8} },
   // venus4
-  { id: "core-refuge",  name: "Core Refuge",       pos: { x: 0, y: -600 },    zone: "venus4",   kind: "outpost",
+  { id: "core-refuge",  name: "Core Refuge",       pos: { x: 800, y: -3200 },    zone: "venus4",   kind: "outpost",
     description: "Shielded station near the crushing core. Last refuge before the Eye.", controlledBy: "venus",
     prices: { void: 0.6, dread: 1.2, quantum: 1.4, medpack: 1.3, synth: 1.2, contraband: 0.5, relic: 0.7, exotic: 0.8, food: 1.8 } },
-  { id: "pressure-port", name: "Pressure Point Port", pos: { x: 1800, y: 1200 }, zone: "venus4",  kind: "trade",
+  { id: "pressure-port", name: "Pressure Point Port", pos: { x: 4600, y: 3800 }, zone: "venus4",  kind: "trade",
     description: "Shadow market near the core. Extreme rarity items surface here.", controlledBy: "venus",
     prices: { quantum: 0.5, void: 1.4, dread: 1.5, lumenite: 1.3, warp: 1.2, contraband: 0.4, luxury: 0.6, relic: 0.65, precursor: 0.7, exotic: 1.4 } },
-  { id: "cradle", name: "Cradle Station",          pos: { x: -2200, y: 500 }, zone: "venus4", kind: "outpost",
+  { id: "cradle", name: "Cradle Station",          pos: { x: -5200, y: 2400 }, zone: "venus4", kind: "outpost",
     description: "A shielded refuge that services long-haul couriers and prospectors.", controlledBy: "venus",
     prices: { food: 1.6, medicine: 1.4, medpack: 1.1, synth: 1.0, quantum: 0.9, relic: 0.8, exotic: 0.9 } },
   // venus5
   { id: "venus-bastion", name: "Venusian Bastion",  pos: { x: 0, y: 0 },      zone: "venus5",   kind: "military",
     description: "The ultimate Venusian military fortress. Sells the rarest gear in the solar system.", controlledBy: "venus",
-    prices: { dread: 2.0, warp: 1.9, plasma: 2.2, iron: 0.68, scrap: 0.75, lumenite: 1.1, quantum: 1.5 } },
-  { id: "eye-bazaar",   name: "Eye Bazaar",         pos: { x: -1600, y: 1800 }, zone: "venus5",   kind: "trade",
+    prices: { dread: 2.0, warp: 1.9, plasma: 2.2, iron: 0.68, scrap: 0.75, lumenite: 1.1, quantum: 1.5 , obsidian: 1.4, palladium: 1.3, iridium: 1.5, "void-steel": 1.7, "crystal-matrix": 1.5, "fusion-core": 1.6} },
+  { id: "eye-bazaar",   name: "Eye Bazaar",         pos: { x: -4600, y: 4400 }, zone: "venus5",   kind: "trade",
     description: "Legendary trading post in the heart of Venus. Anything can be bought — at a price.", controlledBy: "venus",
-    prices: { iron: 0.5, scrap: 0.55, lumenite: 0.7, quantum: 0.8, void: 1.5, dread: 2.0, exotic: 0.65, relic: 0.7 } },
-  { id: "singularity-dock", name: "Singularity Dock", pos: { x: 2500, y: -900 }, zone: "venus5", kind: "military",
+    prices: { iron: 0.5, scrap: 0.55, lumenite: 0.7, quantum: 0.8, void: 1.5, dread: 2.0, exotic: 0.65, relic: 0.7 , palladium: 0.7, iridium: 0.8, obsidian: 0.6} },
+  { id: "singularity-dock", name: "Singularity Dock", pos: { x: 5400, y: -3600 }, zone: "venus5", kind: "military",
     description: "A blackglass dock for elite escorts and endgame merchants.", controlledBy: "venus",
     prices: { dread: 1.5, warp: 1.6, plasma: 1.8, quantum: 1.0, relic: 0.95, exotic: 0.9, lumenite: 1.1 } },
   // ── EXTRA TRADING POSTS ──────────────────────────────────────────────────
-  { id: "alpha-bazaar", name: "Alpha Bazaar",       pos: { x: 2800, y: -1600 }, zone: "alpha", kind: "trade",
+  { id: "alpha-bazaar", name: "Alpha Bazaar",       pos: { x: 5200, y: -3800 }, zone: "alpha", kind: "trade",
     description: "Busy frontier market. Traders flock here for bulk deals.", controlledBy: "earth",
     prices: { scrap: 1.3, iron: 1.2, plasma: 0.8, food: 0.6, medicine: 0.7, titanium: 0.8, "cryo-fluid": 1.1, luxury: 1.5, spice: 0.7, "plasma-coil": 0.75 } },
-  { id: "nebula-exchange", name: "Nebula Exchange", pos: { x: 2600, y: 1800 }, zone: "nebula", kind: "trade",
+  { id: "nebula-exchange", name: "Nebula Exchange", pos: { x: 5400, y: 4200 }, zone: "nebula", kind: "trade",
     description: "Hidden exchange deep in the nebula clouds.", controlledBy: "earth",
     prices: { quantum: 0.75, void: 0.8, warp: 1.2, contraband: 0.5, "neural-chip": 0.7, "dark-matter": 1.3, "bio-crystal": 0.8, exotic: 1.4 } },
-  { id: "crimson-market", name: "Crimson Market",   pos: { x: -2800, y: 2200 }, zone: "crimson", kind: "trade",
+  { id: "crimson-market", name: "Crimson Market",   pos: { x: -5400, y: 5000 }, zone: "crimson", kind: "trade",
     description: "War-zone black market. Weapons and rare goods.", controlledBy: "earth",
     prices: { dread: 0.8, plasma: 1.3, iron: 1.4, "fuel-cell": 1.3, titanium: 0.7, "plasma-coil": 0.6, contraband: 0.5, "neural-chip": 1.2 } },
-  { id: "void-trade", name: "Void Trade Nexus",     pos: { x: -2400, y: -2000 }, zone: "void", kind: "trade",
+  { id: "void-trade", name: "Void Trade Nexus",     pos: { x: -5200, y: -4800 }, zone: "void", kind: "trade",
     description: "Nexus point where void traders gather.", controlledBy: "earth",
     prices: { void: 0.5, quantum: 0.6, dread: 1.3, "dark-matter": 0.6, "bio-crystal": 0.7, relic: 0.7, exotic: 1.2, blackglass: 0.65 } },
-  { id: "forge-market", name: "Forge Market",       pos: { x: 2800, y: -1200 }, zone: "forge", kind: "trade",
+  { id: "forge-market", name: "Forge Market",       pos: { x: 5400, y: -3800 }, zone: "forge", kind: "trade",
     description: "Industrial market for refined materials.", controlledBy: "earth",
-    prices: { iron: 0.4, scrap: 0.5, titanium: 0.55, "plasma-coil": 0.5, lumenite: 0.7, "cryo-fluid": 0.8, dread: 1.4, void: 1.5 } },
-  { id: "corona-exchange", name: "Corona Exchange", pos: { x: -2200, y: -2000 }, zone: "corona", kind: "trade",
+    prices: { iron: 0.4, scrap: 0.5, titanium: 0.55, "plasma-coil": 0.5, lumenite: 0.7, "cryo-fluid": 0.8, dread: 1.4, void: 1.5 , cobalt: 0.55, copper: 0.6, palladium: 0.7} },
+  { id: "corona-exchange", name: "Corona Exchange", pos: { x: -5000, y: -4600 }, zone: "corona", kind: "trade",
     description: "High-energy trade hub near the solar corona.", controlledBy: "mars",
-    prices: { lumenite: 0.4, "cryo-fluid": 0.5, plasma: 0.6, "plasma-coil": 0.55, quantum: 1.1, dread: 1.3, "dark-matter": 1.4 } },
-  { id: "fracture-bazaar", name: "Fracture Bazaar", pos: { x: 2600, y: 1400 }, zone: "fracture", kind: "trade",
+    prices: { lumenite: 0.4, "cryo-fluid": 0.5, plasma: 0.6, "plasma-coil": 0.55, quantum: 1.1, dread: 1.3, "dark-matter": 1.4 , "helium-3": 0.55, "crystal-shard": 0.65} },
+  { id: "fracture-bazaar", name: "Fracture Bazaar", pos: { x: 5200, y: 3800 }, zone: "fracture", kind: "trade",
     description: "Dimensional rift bazaar. Strange goods at strange prices.", controlledBy: "mars",
     prices: { void: 0.4, "dark-matter": 0.5, "neural-chip": 0.6, quantum: 0.65, dread: 1.6, lumenite: 1.5, "bio-crystal": 0.55, relic: 0.6 } },
-  { id: "abyss-exchange", name: "Abyss Exchange",   pos: { x: 2800, y: -1800 }, zone: "abyss", kind: "trade",
+  { id: "abyss-exchange", name: "Abyss Exchange",   pos: { x: 5400, y: -4600 }, zone: "abyss", kind: "trade",
     description: "Deep-space exchange post. Ultimate trade goods.", controlledBy: "mars",
-    prices: { quantum: 0.35, void: 1.6, dread: 2.0, "dark-matter": 0.4, exotic: 0.5, precursor: 0.5, relic: 0.55, "neural-chip": 0.5 } },
-  { id: "mars-trade", name: "Martian Trade Hub",    pos: { x: -2600, y: -1600 }, zone: "marsdepth", kind: "trade",
+    prices: { quantum: 0.35, void: 1.6, dread: 2.0, "dark-matter": 0.4, exotic: 0.5, precursor: 0.5, relic: 0.55, "neural-chip": 0.5 , obsidian: 0.55, palladium: 0.6, iridium: 0.7} },
+  { id: "mars-trade", name: "Martian Trade Hub",    pos: { x: -5400, y: -4200 }, zone: "marsdepth", kind: "trade",
     description: "Remote Martian trading hub for rare salvage.", controlledBy: "mars",
     prices: { iron: 0.5, titanium: 0.6, "plasma-coil": 0.55, dread: 1.6, warp: 1.5, "cryo-fluid": 0.7, contraband: 0.4, "fusion-lattice": 0.8 } },
-  { id: "storm-bazaar", name: "Storm Bazaar",       pos: { x: 2800, y: -800 }, zone: "maelstrom", kind: "trade",
+  { id: "storm-bazaar", name: "Storm Bazaar",       pos: { x: 5600, y: -3200 }, zone: "maelstrom", kind: "trade",
     description: "Floating bazaar in the storm's edge. Everything for sale.", controlledBy: "mars",
-    prices: { iron: 0.4, scrap: 0.45, titanium: 0.5, lumenite: 0.6, quantum: 0.8, void: 1.4, dread: 1.8, exotic: 0.6, "dark-matter": 0.7 } },
-  { id: "venus2-trade", name: "Sulphur Exchange",   pos: { x: 2800, y: 1600 }, zone: "venus2", kind: "trade",
+    prices: { iron: 0.4, scrap: 0.45, titanium: 0.5, lumenite: 0.6, quantum: 0.8, void: 1.4, dread: 1.8, exotic: 0.6, "dark-matter": 0.7 , palladium: 0.6, iridium: 0.65, obsidian: 0.7} },
+  { id: "venus2-trade", name: "Sulphur Exchange",   pos: { x: 5400, y: 4200 }, zone: "venus2", kind: "trade",
     description: "Secondary trade post in the sulphur corridors.", controlledBy: "venus",
     prices: { "bio-matter": 0.6, nanite: 0.7, "bio-crystal": 0.65, food: 1.4, medicine: 1.3, luxury: 0.8, "cryo-fluid": 0.75, "neural-chip": 1.1 } },
-  { id: "venus3-trade", name: "Deep Acid Market",   pos: { x: -2800, y: -2400 }, zone: "venus3", kind: "trade",
+  { id: "venus3-trade", name: "Deep Acid Market",   pos: { x: -5600, y: -5200 }, zone: "venus3", kind: "trade",
     description: "Market at the acid layer boundary. Hazardous but lucrative.", controlledBy: "venus",
     prices: { titanium: 0.6, "plasma-coil": 0.55, iron: 1.3, dread: 0.85, contraband: 0.5, "dark-matter": 1.2, blackglass: 0.6, "fusion-lattice": 0.9 } },
-  { id: "venus4-trade", name: "Core Trade Post",    pos: { x: -2600, y: -1200 }, zone: "venus4", kind: "trade",
+  { id: "venus4-trade", name: "Core Trade Post",    pos: { x: -5400, y: -4000 }, zone: "venus4", kind: "trade",
     description: "Trade post near the crushing core. Extreme prices.", controlledBy: "venus",
     prices: { quantum: 0.45, void: 1.5, dread: 1.6, "dark-matter": 0.55, exotic: 1.3, relic: 0.6, "neural-chip": 0.55, "bio-crystal": 0.6 } },
-  { id: "venus5-trade", name: "Eye Trade Ring",     pos: { x: 2800, y: 1200 }, zone: "venus5", kind: "trade",
+  { id: "venus5-trade", name: "Eye Trade Ring",     pos: { x: 5600, y: 3800 }, zone: "venus5", kind: "trade",
     description: "Ring station orbiting the Eye of Venus. Legendary goods.", controlledBy: "venus",
     prices: { quantum: 0.4, void: 1.6, dread: 2.1, exotic: 0.55, precursor: 0.45, "dark-matter": 0.5, "neural-chip": 0.5, blackglass: 0.55 } },
-  { id: "danger1-trade", name: "Rift Market",       pos: { x: 2400, y: -1800 }, zone: "danger1", kind: "trade",
+  { id: "danger1-trade", name: "Rift Market",       pos: { x: 5200, y: -4600 }, zone: "danger1", kind: "trade",
     description: "Lawless market in the rift zone. No rules, no refunds.", controlledBy: "earth",
-    prices: { contraband: 0.3, dread: 2.0, void: 1.8, exotic: 0.5, "dark-matter": 0.4, "neural-chip": 0.45, relic: 0.45, precursor: 0.5 } },
-  { id: "danger2-trade", name: "Dead Zone Bazaar",  pos: { x: 2600, y: 1400 }, zone: "danger2", kind: "trade",
+    prices: { contraband: 0.3, dread: 2.0, void: 1.8, exotic: 0.5, "dark-matter": 0.4, "neural-chip": 0.45, relic: 0.45, precursor: 0.5 , iridium: 0.5, palladium: 0.6, obsidian: 0.65} },
+  { id: "danger2-trade", name: "Dead Zone Bazaar",  pos: { x: 5400, y: 3800 }, zone: "danger2", kind: "trade",
     description: "Ghost station bazaar. Deals that shouldn't exist.", controlledBy: "venus",
     prices: { contraband: 0.25, exotic: 0.4, "dark-matter": 0.35, relic: 0.4, precursor: 0.45, dread: 2.4, void: 2.2, quantum: 1.8 } },
-  { id: "danger3-trade", name: "Pirate Freeport",   pos: { x: -2400, y: 1600 }, zone: "danger3", kind: "trade",
+  { id: "danger3-trade", name: "Pirate Freeport",   pos: { x: -5200, y: 4200 }, zone: "danger3", kind: "trade",
     description: "Pirate-run freeport. Everything has a price.", controlledBy: "venus",
     prices: { contraband: 0.15, luxury: 0.3, exotic: 0.45, "dark-matter": 0.4, dread: 2.8, void: 2.5, quantum: 2.0, blackglass: 0.4 } },
-  { id: "danger4-trade", name: "Null Zone Exchange", pos: { x: 2200, y: -1400 }, zone: "danger4", kind: "trade",
+  { id: "danger4-trade", name: "Null Zone Exchange", pos: { x: 5000, y: -4200 }, zone: "danger4", kind: "trade",
     description: "Exchange post in null space. Reality is optional.", controlledBy: "earth",
     prices: { "dark-matter": 0.3, precursor: 0.35, exotic: 0.35, relic: 0.35, dread: 2.8, void: 2.8, quantum: 2.2, "neural-chip": 0.4 } },
-  { id: "danger5-trade", name: "Abyss Gate Bazaar", pos: { x: 2000, y: 1800 }, zone: "danger5", kind: "trade",
+  { id: "danger5-trade", name: "Abyss Gate Bazaar", pos: { x: 4800, y: 4400 }, zone: "danger5", kind: "trade",
     description: "The deepest market. Prices beyond comprehension.", controlledBy: "mars",
-    prices: { "dark-matter": 0.2, precursor: 0.25, exotic: 0.25, relic: 0.25, "neural-chip": 0.3, dread: 3.5, void: 3.5, quantum: 3.0 } },
+    prices: { "dark-matter": 0.2, precursor: 0.25, exotic: 0.25, relic: 0.25, "neural-chip": 0.3, dread: 3.5, void: 3.5, quantum: 3.0 , iridium: 0.4, palladium: 0.5} },
   // ── DANGER ZONES ──────────────────────────────────────────────────────────
   { id: "rift-outpost", name: "Rift Outpost",      pos: { x: 0, y: 0 },     zone: "danger1", kind: "outpost",
     description: "A lawless outpost in contested space. No faction protection.", controlledBy: "earth",
     prices: { dread: 1.8, void: 1.5, quantum: 1.3, scrap: 0.5, iron: 0.6, contraband: 0.4, exotic: 0.7 } },
-  { id: "dead-market", name: "Dead Zone Market",   pos: { x: -800, y: 1200 }, zone: "danger2", kind: "trade",
+  { id: "dead-market", name: "Dead Zone Market",   pos: { x: -3600, y: 4200 }, zone: "danger2", kind: "trade",
     description: "Black market deep in the Dead Zone. Extreme prices, extreme goods.", controlledBy: "mars",
     prices: { dread: 2.2, void: 2.0, quantum: 0.4, contraband: 0.3, relic: 0.5, exotic: 0.5, precursor: 0.6, luxury: 0.4 } },
-  { id: "pirate-dock", name: "Pirate Stronghold",  pos: { x: 600, y: -600 }, zone: "danger3", kind: "outpost",
+  { id: "pirate-dock", name: "Pirate Stronghold",  pos: { x: 2800, y: -3200 }, zone: "danger3", kind: "outpost",
     description: "Pirate-run dock. They'll sell to anyone with credits.", controlledBy: "venus",
     prices: { contraband: 0.2, relic: 0.6, exotic: 0.6, dread: 2.5, void: 2.2, quantum: 1.8, luxury: 0.3 } },
-  { id: "null-station", name: "Null Station",      pos: { x: 0, y: 800 },   zone: "danger4", kind: "military",
+  { id: "null-station", name: "Null Station",      pos: { x: 800, y: 3600 },   zone: "danger4", kind: "military",
     description: "Abandoned military station, now a neutral ground for all factions.", controlledBy: "earth",
     prices: { dread: 2.5, void: 2.5, quantum: 2.0, precursor: 0.4, relic: 0.4, exotic: 0.4, "star-map": 0.3 } },
-  { id: "abyss-gate", name: "Abyss Gate Station",  pos: { x: -400, y: -400 }, zone: "danger5", kind: "trade",
+  { id: "abyss-gate", name: "Abyss Gate Station",  pos: { x: -2400, y: -2800 }, zone: "danger5", kind: "trade",
     description: "The deepest station in known space. Legendary equipment and resources.", controlledBy: "mars",
     prices: { dread: 3.0, void: 3.0, quantum: 2.5, precursor: 0.3, relic: 0.3, exotic: 0.3, "fusion-lattice": 0.2, "star-map": 0.2 } },
+
+  // ── FACTORY STATIONS (standalone refineries) ──
+  { id: "alpha-foundry",    name: "Alpha Foundry",       pos: { x: -2800, y: 1800 },  zone: "alpha",    kind: "factory",
+    description: "Automated smelting complex. Converts raw ores into refined alloys.", controlledBy: "earth",
+    prices: { iron: 0.7, copper: 0.75, "refined-alloy": 0.9, scrap: 0.8 } },
+  { id: "nebula-works",     name: "Nebula Works",        pos: { x: 1200, y: 3200 },   zone: "nebula",   kind: "factory",
+    description: "Crystal processing facility hidden in the nebula.", controlledBy: "earth",
+    prices: { cobalt: 0.7, "crystal-shard": 0.75, "crystal-matrix": 0.9, plasma: 0.8 } },
+  { id: "crimson-forge",    name: "Crimson Forge",       pos: { x: 3200, y: -1400 },  zone: "crimson",  kind: "factory",
+    description: "Heavy industrial forge in the Crimson sector.", controlledBy: "earth",
+    prices: { iron: 0.65, copper: 0.7, cobalt: 0.7, "refined-alloy": 0.85, "plasma-cell": 0.9 } },
+  { id: "void-refinery",    name: "Void Refinery",       pos: { x: -2200, y: -2800 }, zone: "void",     kind: "factory",
+    description: "Deep-space processing plant. Handles exotic materials.", controlledBy: "mars",
+    prices: { obsidian: 0.65, "void-steel": 0.85, "nano-compound": 0.9, "crystal-shard": 0.7 } },
+  { id: "forge-smelter",    name: "Forge Smelter",       pos: { x: -3500, y: 2000 },  zone: "forge",    kind: "factory",
+    description: "White-hot smelting station orbiting the Forge.", controlledBy: "mars",
+    prices: { iron: 0.6, copper: 0.65, cobalt: 0.65, "refined-alloy": 0.8, "fusion-core": 0.9 } },
+  { id: "corona-refinery",  name: "Corona Refinery",     pos: { x: -2800, y: -2000 }, zone: "corona",   kind: "factory",
+    description: "Solar-powered refinery extracting energy crystals.", controlledBy: "mars",
+    prices: { "helium-3": 0.6, palladium: 0.7, "fusion-core": 0.85, "crystal-matrix": 0.9 } },
+  { id: "fracture-mill",    name: "Fracture Mill",       pos: { x: -2500, y: -2200 }, zone: "fracture", kind: "factory",
+    description: "Salvage processing mill at the edge of fractured space.", controlledBy: "earth",
+    prices: { obsidian: 0.7, iridium: 0.75, "void-steel": 0.9, "nano-compound": 0.85 } },
+  { id: "venus-foundry",    name: "Venus Cloud Foundry", pos: { x: 2800, y: -1800 },  zone: "venus1",   kind: "factory",
+    description: "Cloud-suspended foundry using Venus atmospheric heat.", controlledBy: "venus",
+    prices: { sulfur: 0.6, copper: 0.65, iron: 0.7, "refined-alloy": 0.85, "plasma-cell": 0.85 } },
+  { id: "venus3-refinery",  name: "Acid Vat Refinery",   pos: { x: 2800, y: 2200 },   zone: "venus3",   kind: "factory",
+    description: "Uses corrosive Venus atmosphere for material processing.", controlledBy: "venus",
+    prices: { sulfur: 0.55, cobalt: 0.65, "crystal-shard": 0.7, "nano-compound": 0.8, "crystal-matrix": 0.85 } },
+  { id: "venus5-forge",     name: "Eye Forge",           pos: { x: -3200, y: 2800 },  zone: "venus5",   kind: "factory",
+    description: "Advanced forge near the Eye of Venus. Handles all material types.", controlledBy: "venus",
+    prices: { obsidian: 0.6, iridium: 0.65, palladium: 0.65, "void-steel": 0.8, "fusion-core": 0.8 } },
+  { id: "mars-refinery",    name: "Deep Mars Refinery",  pos: { x: 2800, y: 2800 },   zone: "marsdepth", kind: "factory",
+    description: "Underground Martian refinery processing rare deep-field ores.", controlledBy: "mars",
+    prices: { cobalt: 0.6, palladium: 0.65, "helium-3": 0.65, "fusion-core": 0.85, "crystal-matrix": 0.85 } },
+  { id: "storm-works",      name: "Storm Works",         pos: { x: -3200, y: -2400 }, zone: "maelstrom", kind: "factory",
+    description: "Storm-shielded factory in the Maelstrom core.", controlledBy: "mars",
+    prices: { iron: 0.6, obsidian: 0.65, copper: 0.6, "refined-alloy": 0.8, "void-steel": 0.85 } },
 ];
 
 export const PORTALS: Portal[] = [
+  // Debug zone portal (from alpha)
+  { id: "p-a-dbg", pos: { x: 1300, y: -300 }, fromZone: "alpha",  toZone: "debug"  },
+  { id: "p-dbg-a", pos: { x:  0, y:  6500 }, fromZone: "debug",  toZone: "alpha"  },
   // Earth chain: alpha ↔ nebula ↔ crimson ↔ void ↔ forge (top-right / bottom-left corners)
   { id: "p-a-n",   pos: { x:  6500, y: -6500 }, fromZone: "alpha",    toZone: "nebula"   },
   { id: "p-n-a",   pos: { x: -6500, y:  6500 }, fromZone: "nebula",   toZone: "alpha"    },
@@ -1360,11 +1711,21 @@ export const FAKE_CLANS = [
 ];
 
 export const ENEMY_NAMES: Record<EnemyType, string[]> = {
-  scout:     ["Recon-7","Viper","Dart","Talon","Hornet","Zeta-3","Striker","Epsilon","Gnat","Dart-X"],
-  raider:    ["Fang","Claw","Corsair","Brigand","Hellion","Cutthroat","Marko","Rekt","Blitz","Razorfin"],
-  destroyer: ["Hammer","Colossus","Decimator","Crusher","Iron Fist","Wrecker","Titan-4","Ruin","Broadsword"],
-  voidling:  ["Rift-Eye","Phase","Echo","Glitch","Null-6","Shade","Specter","Whisper","Flicker","Mirage"],
-  dread:     ["APEX-1","TITAN-X","OMEGA","DREAD-9","COLOSSUS","WARMASTER","END-BRINGER","PRIME","NEMESIS"],
+  scout:       ["Scout"],
+  raider:      ["Raider"],
+  destroyer:   ["Destroyer"],
+  voidling:    ["Voidling"],
+  dread:       ["Dread"],
+  sentinel:    ["Sentinel"],
+  wraith:      ["Wraith"],
+  titan:       ["Titan"],
+  overlord:    ["Overlord"],
+  interceptor: ["Interceptor"],
+  corvette:    ["Corvette"],
+  specter:     ["Specter"],
+  phantom:     ["Phantom"],
+  juggernaut:  ["Juggernaut"],
+  leviathan:   ["Leviathan"],
 };
 
 // ── DRONES ────────────────────────────────────────────────────────────────
@@ -1406,18 +1767,38 @@ export const RARITY_COLOR: Record<ModuleRarity, string> = {
 
 export const MODULE_DEFS: Record<string, ModuleDef> = {
   // ── LASER WEAPONS ────────────────────────────────────────────────────────
+
+  // ── TIER 1 STARTER VARIANTS ─────────────────────────────────────────────
+  "wp-sniper-0":  { id: "wp-sniper-0",  slot: "weapon", weaponKind: "laser",  firingPattern: "sniper",  name: "Focus Beam",           description: "Entry-level beam weapon. One shot, big hit.",             rarity: "common",    color: "#aaddff", glyph: "\u2014", tier: 1, price: 4000,   stats: { damage: 8,  fireRate: 0.6 } },
+  "wp-scatter-0": { id: "wp-scatter-0", slot: "weapon", weaponKind: "laser",  firingPattern: "scatter", name: "Pellet Blaster",        description: "Basic shotgun laser. Short range, wide spread.",          rarity: "common",    color: "#7ad8ff", glyph: "\u22d9", tier: 1, price: 4500,   stats: { damage: 10,  fireRate: 1.1, aoeRadius: 6 } },
+  "wp-rail-0":    { id: "wp-rail-0",    slot: "weapon", weaponKind: "laser",  firingPattern: "rail",    name: "Tri-Shot",              description: "Entry burst cannon. 3 quick shots per trigger.",          rarity: "common",    color: "#ffaa44", glyph: "\u2261", tier: 1, price: 4200,   stats: { damage: 9,  fireRate: 0.95 } },
+
   "wp-pulse-1":   { id: "wp-pulse-1",   slot: "weapon", weaponKind: "laser",  name: "Pulse Laser Mk-I",     description: "Basic laser. Reliable starter weapon.",                   rarity: "common",    color: "#4ee2ff", glyph: "▶", tier: 1, price: 5000,   stats: { damage: 6,  fireRate: 1.0 } },
   "wp-pulse-2":   { id: "wp-pulse-2",   slot: "weapon", weaponKind: "laser",  name: "Pulse Laser Mk-II",    description: "Tuned pulse array. More damage, faster fire.",             rarity: "uncommon",  color: "#5cff8a", glyph: "▶", tier: 2, price: 22000,  stats: { damage: 12, fireRate: 1.15 } },
   "wp-pulse-3":   { id: "wp-pulse-3",   slot: "weapon", weaponKind: "laser",  name: "Pulse Laser Mk-III",   description: "Military-grade pulse array. High output.",                 rarity: "rare",      color: "#4ee2ff", glyph: "▶", tier: 3, price: 85000,  stats: { damage: 20, fireRate: 1.3, critChance: 0.03 } },
-  "wp-ion":       { id: "wp-ion",       slot: "weapon", weaponKind: "laser",  name: "Ion Cannon",           description: "Heavy ion burst. Solid damage at mid range.",              rarity: "uncommon",  color: "#aaff5c", glyph: "≫", tier: 2, price: 34000,  stats: { damage: 16, fireRate: 0.95 } },
-  "wp-scatter":   { id: "wp-scatter",   slot: "weapon", weaponKind: "laser",  name: "Scatter Laser",        description: "Fires 3 thin beams at once. Great vs groups.",             rarity: "uncommon",  color: "#7ad8ff", glyph: "⋙", tier: 2, price: 38000,  stats: { damage: 9,  fireRate: 1.4, aoeRadius: 8 } },
+  "wp-ion":       { id: "wp-ion",       slot: "weapon", weaponKind: "laser",  firingPattern: "sniper",  name: "Ion Cannon",           description: "Heavy ion burst. Solid damage at mid range.",              rarity: "uncommon",  color: "#aaff5c", glyph: "≫", tier: 2, price: 34000,  stats: { damage: 16, fireRate: 0.95 } },
+  "wp-scatter":   { id: "wp-scatter",   slot: "weapon", weaponKind: "laser",  firingPattern: "scatter",  name: "Scatter Laser",        description: "Fires 3 thin beams at once. Great vs groups.",             rarity: "uncommon",  color: "#7ad8ff", glyph: "⋙", tier: 2, price: 38000,  stats: { damage: 18,  fireRate: 1.4, aoeRadius: 8 } },
   "wp-plasma":    { id: "wp-plasma",    slot: "weapon", weaponKind: "laser",  name: "Plasma Cannon",        description: "Heavy plasma slug. High damage, slower cycle.",            rarity: "rare",      color: "#ff5cf0", glyph: "◆", tier: 3, price: 78000,  stats: { damage: 22, fireRate: 0.85, critChance: 0.04 } },
-  "wp-phase":     { id: "wp-phase",     slot: "weapon", weaponKind: "laser",  name: "Phase Repeater",       description: "Rapid-fire phase array. Crit-leaning.",                    rarity: "rare",      color: "#ff5cf0", glyph: "≫", tier: 3, price: 90000,  stats: { damage: 14, fireRate: 1.5, critChance: 0.08 } },
-  "wp-arc":       { id: "wp-arc",       slot: "weapon", weaponKind: "laser",  name: "Arc Disruptor",        description: "Chain-arc lightning. Splash effect on hit.",               rarity: "rare",      color: "#c8ffaa", glyph: "⚡", tier: 3, price: 110000, stats: { damage: 18, fireRate: 1.1, aoeRadius: 14, critChance: 0.05 } },
-  "wp-sniper":    { id: "wp-sniper",    slot: "weapon", weaponKind: "laser",  name: "Precision Sniper",     description: "Long-range beam. Extreme damage, very slow fire.",         rarity: "epic",      color: "#ffffff", glyph: "—", tier: 4, price: 180000, stats: { damage: 48, fireRate: 0.45, critChance: 0.18 } },
+  "wp-phase":     { id: "wp-phase",     slot: "weapon", weaponKind: "laser",  firingPattern: "rail",  name: "Phase Repeater",       description: "Rapid-fire phase array. Crit-leaning.",                    rarity: "rare",      color: "#ff5cf0", glyph: "≫", tier: 3, price: 90000,  stats: { damage: 14, fireRate: 1.5, critChance: 0.08 } },
+  "wp-arc":       { id: "wp-arc",       slot: "weapon", weaponKind: "laser",  firingPattern: "rail",  name: "Arc Disruptor",        description: "Chain-arc lightning. Splash effect on hit.",               rarity: "rare",      color: "#c8ffaa", glyph: "⚡", tier: 3, price: 110000, stats: { damage: 18, fireRate: 1.1, aoeRadius: 14, critChance: 0.05 } },
+  "wp-sniper":    { id: "wp-sniper",    slot: "weapon", weaponKind: "laser",  firingPattern: "sniper",  name: "Precision Sniper",     description: "Long-range beam. Extreme damage, very slow fire.",         rarity: "epic",      color: "#ffffff", glyph: "—", tier: 4, price: 180000, stats: { damage: 48, fireRate: 0.45, critChance: 0.18 } },
   "wp-solar":     { id: "wp-solar",     slot: "weapon", weaponKind: "laser",  name: "Solar Lance",          description: "Star-grade lance. Splash damage, brutal output.",          rarity: "epic",      color: "#ffd24a", glyph: "✺", tier: 4, price: 240000, stats: { damage: 34, fireRate: 1.0, aoeRadius: 18, critChance: 0.06 } },
   "wp-void-lance":{ id: "wp-void-lance",slot: "weapon", weaponKind: "laser",  name: "Void Lance",           description: "Phase-shifted lance. Endgame laser weapon.",               rarity: "legendary", color: "#b06cff", glyph: "✸", tier: 5, price: 550000, stats: { damage: 44, fireRate: 1.3, aoeRadius: 22, critChance: 0.10 } },
   "wp-singular":  { id: "wp-singular",  slot: "weapon", weaponKind: "laser",  name: "Singularity Driver",   description: "Endgame weapon. Massive splash + crit.",                   rarity: "legendary", color: "#ff5c6c", glyph: "✸", tier: 5, price: 800000, stats: { damage: 52, fireRate: 1.1, aoeRadius: 28, critChance: 0.12 } },
+
+
+  // ── SNIPER WEAPONS (beam) ───────────────────────────────────────────────
+  "wp-sniper-1":  { id: "wp-sniper-1",  slot: "weapon", weaponKind: "laser",  firingPattern: "sniper",  name: "Marksman Beam Mk-I",   description: "Focused beam. High damage, slow fire.",                   rarity: "uncommon",  color: "#aaddff", glyph: "—", tier: 2, price: 32000,  stats: { damage: 18, fireRate: 0.55, critChance: 0.08 } },
+  "wp-sniper-2":  { id: "wp-sniper-2",  slot: "weapon", weaponKind: "laser",  firingPattern: "sniper",  name: "Marksman Beam Mk-II",  description: "Enhanced beam. Devastating single-shot power.",            rarity: "rare",      color: "#88ccff", glyph: "—", tier: 3, price: 95000,  stats: { damage: 32, fireRate: 0.5, critChance: 0.12 } },
+
+  // ── SCATTER WEAPONS (shotgun) ───────────────────────────────────────────
+  "wp-scatter-2": { id: "wp-scatter-2", slot: "weapon", weaponKind: "laser",  firingPattern: "scatter", name: "Spread Cannon Mk-II",  description: "Wide cone of pellets. Devastating at close range.",        rarity: "rare",      color: "#88eeff", glyph: "\u22d9", tier: 3, price: 82000,  stats: { damage: 28, fireRate: 1.2, aoeRadius: 10 } },
+  "wp-scatter-3": { id: "wp-scatter-3", slot: "weapon", weaponKind: "laser",  firingPattern: "scatter", name: "Storm Blaster",        description: "Military-grade shotgun array. Shreds close targets.",      rarity: "epic",      color: "#55ddff", glyph: "\u22d9", tier: 4, price: 200000, stats: { damage: 40, fireRate: 1.1, aoeRadius: 14, critChance: 0.06 } },
+
+  // ── RAIL WEAPONS (burst/salvo) ──────────────────────────────────────────
+  "wp-rail-1":    { id: "wp-rail-1",    slot: "weapon", weaponKind: "laser",  firingPattern: "rail",    name: "Burst Cannon Mk-I",    description: "Fires 3 rapid shots per burst. Good sustained damage.",    rarity: "uncommon",  color: "#ffaa44", glyph: "\u2261", tier: 2, price: 35000,  stats: { damage: 17, fireRate: 0.9 } },
+  "wp-rail-2":    { id: "wp-rail-2",    slot: "weapon", weaponKind: "laser",  firingPattern: "rail",    name: "Burst Cannon Mk-II",   description: "Triple-shot rail system. Fast and lethal.",                rarity: "rare",      color: "#ff8844", glyph: "\u2261", tier: 3, price: 88000,  stats: { damage: 25, fireRate: 0.85, critChance: 0.04 } },
+  "wp-rail-3":    { id: "wp-rail-3",    slot: "weapon", weaponKind: "laser",  firingPattern: "rail",    name: "Railstorm Driver",     description: "Endgame burst weapon. Rapid triple-shot devastation.",     rarity: "epic",      color: "#ff6622", glyph: "\u2261", tier: 4, price: 220000, stats: { damage: 42, fireRate: 0.8, critChance: 0.08 } },
 
   // ── ROCKET WEAPONS ───────────────────────────────────────────────────────
   "wp-rocket-1":  { id: "wp-rocket-1",  slot: "weapon", weaponKind: "rocket", name: "Rocket Launcher Mk-I", description: "Fires slow homing rockets. High damage, low fire rate.",    rarity: "uncommon",  color: "#ff8a4e", glyph: "↑", tier: 2, price: 55000,  stats: { damage: 30, fireRate: 0.5,  aoeRadius: 20 } },
@@ -1427,16 +1808,16 @@ export const MODULE_DEFS: Record<string, ModuleDef> = {
 
   // ── GENERATORS (shields + regen, speed-focused, hybrid) ──────────────────
   "gn-core-1":    { id: "gn-core-1",    slot: "generator", name: "Core Generator Mk-I",   description: "Stock reactor. Modest shield + regen. 55% absorb.",    rarity: "common",    color: "#8aa0c0", glyph: "◈", tier: 1, price: 2500,   stats: { shieldMax: 30,  shieldRegen: 2, shieldAbsorb: 0.05 } },
-  "gn-core-2":    { id: "gn-core-2",    slot: "generator", name: "Core Generator Mk-II",  description: "Improved reactor. Better shield & hull. 60% absorb.",  rarity: "uncommon",  color: "#5cff8a", glyph: "◈", tier: 2, price: 12000,  stats: { shieldMax: 70,  shieldRegen: 4,  hullMax: 20, shieldAbsorb: 0.10 } },
+  "gn-core-2":    { id: "gn-core-2",    slot: "generator", name: "Core Generator Mk-II",  description: "Improved reactor. Better shield & regen. 60% absorb.", rarity: "uncommon",  color: "#5cff8a", glyph: "◈", tier: 2, price: 12000,  stats: { shieldMax: 80,  shieldRegen: 5, shieldAbsorb: 0.10 } },
   "gn-sprint":    { id: "gn-sprint",    slot: "generator", name: "Sprint Drive",          description: "Speed-focused reactor. Light shield, 55% absorb.",     rarity: "uncommon",  color: "#aaff5c", glyph: "➤", tier: 2, price: 16000,  stats: { speed: 45,      shieldMax: 30,   shieldRegen: 2, shieldAbsorb: 0.05 } },
   "gn-aegis":     { id: "gn-aegis",     slot: "generator", name: "Aegis Reactor",         description: "Shield-focused core. 65% absorb.",                    rarity: "rare",      color: "#4ee2ff", glyph: "◇", tier: 3, price: 45000,  stats: { shieldMax: 140, shieldRegen: 7, shieldAbsorb: 0.15 } },
-  "gn-fortify":   { id: "gn-fortify",   slot: "generator", name: "Fortify Reactor",       description: "Hull-focused core. Tanky, 60% absorb.",               rarity: "rare",      color: "#ff8a4e", glyph: "▣", tier: 3, price: 45000,  stats: { hullMax: 90,    shieldMax: 60,   damageReduction: 0.05, shieldAbsorb: 0.10 } },
+  "gn-fortify":   { id: "gn-fortify",   slot: "generator", name: "Fortify Reactor",       description: "High shield capacity with strong absorb. 70% absorb.", rarity: "rare",      color: "#ff8a4e", glyph: "▣", tier: 3, price: 45000,  stats: { shieldMax: 160, shieldRegen: 6, shieldAbsorb: 0.20 } },
   "gn-hyper":     { id: "gn-hyper",     slot: "generator", name: "Hyperdrive Core",       description: "Massive speed boost. 58% absorb.",                    rarity: "rare",      color: "#5cff8a", glyph: "≫", tier: 3, price: 60000, stats: { speed: 90,      shieldMax: 50,   shieldRegen: 3, shieldAbsorb: 0.08 } },
-  "gn-prism":     { id: "gn-prism",     slot: "generator", name: "Prism Reactor",         description: "Balanced: speed + damage + shield. 60% absorb.",      rarity: "rare",      color: "#ffd24a", glyph: "◉", tier: 3, price: 55000, stats: { speed: 40,      damage: 8,       shieldMax: 80,   shieldRegen: 4, shieldAbsorb: 0.10 } },
-  "gn-quantum":   { id: "gn-quantum",   slot: "generator", name: "Quantum Reactor",       description: "Endgame core. Massive shield & regen. 75% absorb.",   rarity: "epic",      color: "#ff5cf0", glyph: "⌬", tier: 4, price: 130000, stats: { shieldMax: 240, shieldRegen: 12, hullMax: 80, shieldAbsorb: 0.25 } },
+  "gn-prism":     { id: "gn-prism",     slot: "generator", name: "Prism Reactor",         description: "Balanced: speed + shield. 60% absorb.",               rarity: "rare",      color: "#ffd24a", glyph: "◉", tier: 3, price: 55000, stats: { speed: 60,      shieldMax: 100,  shieldRegen: 5, shieldAbsorb: 0.10 } },
+  "gn-quantum":   { id: "gn-quantum",   slot: "generator", name: "Quantum Reactor",       description: "Endgame core. Massive shield & regen. 75% absorb.",   rarity: "epic",      color: "#ff5cf0", glyph: "⌬", tier: 4, price: 130000, stats: { shieldMax: 280, shieldRegen: 14, shieldAbsorb: 0.25 } },
   "gn-warp-drive":{ id: "gn-warp-drive",slot: "generator", name: "Warp Drive Core",       description: "Speed-endgame: fastest gen. 62% absorb.",             rarity: "epic",      color: "#aaff5c", glyph: "⇒", tier: 4, price: 150000, stats: { speed: 130,     shieldMax: 100,  shieldRegen: 6, shieldAbsorb: 0.12 } },
-  "gn-leviathan": { id: "gn-leviathan", slot: "generator", name: "Leviathan Core",        description: "Legendary generator. Max survivability. 80% absorb.", rarity: "legendary", color: "#ff5c6c", glyph: "✸", tier: 5, price: 475000, stats: { shieldMax: 400, shieldRegen: 20, hullMax: 160, damageReduction: 0.08, shieldAbsorb: 0.30 } },
-  "gn-phase-drive":{ id:"gn-phase-drive",slot:"generator", name: "Phase Drive",           description: "Legendary speed gen. 65% absorb.",                    rarity: "legendary", color: "#b06cff", glyph: "✺", tier: 5, price: 450000, stats: { speed: 180,     shieldMax: 160,  shieldRegen: 8,  hullMax: 40, shieldAbsorb: 0.15 } },
+  "gn-leviathan": { id: "gn-leviathan", slot: "generator", name: "Leviathan Core",        description: "Legendary generator. Maximum shield power. 80% absorb.", rarity: "legendary", color: "#ff5c6c", glyph: "✸", tier: 5, price: 475000, stats: { shieldMax: 500, shieldRegen: 25, shieldAbsorb: 0.30 } },
+  "gn-phase-drive":{ id:"gn-phase-drive",slot:"generator", name: "Phase Drive",           description: "Legendary speed gen. 65% absorb.",                    rarity: "legendary", color: "#b06cff", glyph: "✺", tier: 5, price: 450000, stats: { speed: 200,     shieldMax: 180,  shieldRegen: 10, shieldAbsorb: 0.15 } },
 
   // ── MODULES (utility: speed, cargo, loot, crit, AoE, armor, etc.) ────────
   "md-thrust-1":  { id: "md-thrust-1",  slot: "module", name: "Ion Thruster Mk-I",      description: "Boosts top speed by 30.",                               rarity: "common",    color: "#5cff8a", glyph: "➤", tier: 1, price: 3000,   stats: { speed: 30 } },
@@ -1641,6 +2022,12 @@ export const DUNGEONS: Record<DungeonId, DungeonDef> = {
     waves: 7, enemiesPerWave: 8,
     rewardCredits: 290000, rewardExp: 82000,
     rewardModules: ["wp-singular", "wp-void-lance", "wp-hellfire", "gn-leviathan", "gn-phase-drive", "md-singularity", "md-voidframe"],
+
+  // ── Mining Lasers ──
+  "wp-mining-1": { id: "wp-mining-1", slot: "weapon", weaponKind: "laser", firingPattern: "mining", name: "Mining Laser Mk-I",    description: "Basic mining beam. Doubles asteroid mining speed.",                rarity: "common",    color: "#e8a050", glyph: "⛏", tier: 1, price: 2000,   stats: { damage: 3,  fireRate: 1.0, miningBonus: 1.0 } },
+  "wp-mining-2": { id: "wp-mining-2", slot: "weapon", weaponKind: "laser", firingPattern: "mining", name: "Mining Laser Mk-II",   description: "Improved mining beam with focused ore extraction.",                rarity: "uncommon",  color: "#ffcc44", glyph: "⛏", tier: 2, price: 15000,  stats: { damage: 5,  fireRate: 1.0, miningBonus: 2.0 } },
+  "wp-mining-3": { id: "wp-mining-3", slot: "weapon", weaponKind: "laser", firingPattern: "mining", name: "Deep Core Drill",      description: "Industrial-grade mining beam. Chews through asteroids.",           rarity: "rare",      color: "#44ddff", glyph: "⛏", tier: 3, price: 50000,  stats: { damage: 8,  fireRate: 1.0, miningBonus: 3.5 } },
+  "wp-mining-4": { id: "wp-mining-4", slot: "weapon", weaponKind: "laser", firingPattern: "mining", name: "Plasma Core Extractor", description: "Top-tier mining beam. Extracts ore at incredible speed.",           rarity: "epic",      color: "#ff8844", glyph: "⛏", tier: 4, price: 120000, stats: { damage: 12, fireRate: 1.0, miningBonus: 5.0 } },
     rewardMaterials: [{ resourceId: "void", qty: 20 }, { resourceId: "dread", qty: 14 }, { resourceId: "quantum", qty: 18 }],
     color: "#7722cc", unlockLevel: 30,
   },

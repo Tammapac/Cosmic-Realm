@@ -2,6 +2,13 @@ import { io, Socket } from "socket.io-client";
 
 let socket: Socket | null = null;
 
+let onInstanceJoined: ((data: any) => void) | null = null;
+let onInstanceLeft: ((data: any) => void) | null = null;
+let onInstanceState: ((data: any) => void) | null = null;
+let onInstanceEvent: ((data: any) => void) | null = null;
+let onInstanceComplete: ((data: any) => void) | null = null;
+let onInstanceEnemyHitAck: ((data: any) => void) | null = null;
+
 // ── TYPES ────────────────────────────────────────────────────────────────
 
 export type RemotePlayer = {
@@ -59,6 +66,8 @@ export type DeltaEntity = {
   state?: string;
   // Asteroid-specific
   yields?: string;
+  // Mining state
+  miningTargetId?: string | null;
 };
 
 export type DeltaPayload = {
@@ -166,13 +175,14 @@ export type ProjectileSpawnEvent = {
   weaponKind: "laser" | "rocket";
   homing: boolean;
   fromPlayer: boolean;
+  fromPlayerId?: number;
 };
 
 type SocketEvents = {
   onWelcome: (payload: WelcomePayload) => void;
   onDelta: (payload: DeltaPayload) => void;
   onSnapshot: (payload: SnapshotPayload) => void;
-  onPlayerJoin: (player: { id: number; name: string; shipClass: string; level: number; faction: string | null; zone: string }) => void;
+  onPlayerJoin: (player: { id: number; name: string; shipClass: string; level: number; faction: string | null; honor: number; zone: string }) => void;
   onPlayerLeave: (data: { playerId: number }) => void;
   onCombatAttack: (event: CombatEvent) => void;
   onChatMessage: (msg: { from: string; text: string; channel: string; time: number }) => void;
@@ -224,6 +234,28 @@ export function connectSocket(token: string) {
     console.log("[socket] upgraded", {
       transport: socket!.io.engine.transport.name,
     });
+  });
+
+  // Admin force-sync: server updated our player data
+  socket.on("admin:sync", async (updates: any) => {
+    const store = await import("../game/store");
+    const loop = await import("../game/loop");
+    const p = store.state.player;
+    for (const [k, v] of Object.entries(updates)) {
+      if (k in p) (p as any)[k] = v;
+    }
+    // Apply hull/shield directly to live game engine so it takes effect immediately
+    if (updates.hull !== undefined) p.hull = Math.min(updates.hull, p.hullMax);
+    if (updates.shield !== undefined) p.shield = Math.min(updates.shield, loop.effectiveStats().shieldMax);
+    store.bump();
+    store.save();
+    console.log("[ADMIN] Received force-sync:", updates);
+  });
+
+  socket.on("kicked", (data: { reason: string }) => {
+    console.warn("[socket] kicked:", data.reason);
+    alert("Session taken over: " + data.reason + ". This tab will reload.");
+    window.location.reload();
   });
 
   socket.on("disconnect", (reason) => {
@@ -342,6 +374,31 @@ export function connectSocket(token: string) {
     listeners.onBossWarn?.();
   });
 
+
+  socket.on("instance:joined", (data: any) => {
+    onInstanceJoined?.(data);
+  });
+
+  socket.on("instance:left", (data: any) => {
+    onInstanceLeft?.(data);
+  });
+
+  socket.on("instance:state", (data: any) => {
+    onInstanceState?.(data);
+  });
+
+  socket.on("instance:event", (data: any) => {
+    onInstanceEvent?.(data);
+  });
+
+  socket.on("instance:complete", (data: any) => {
+    onInstanceComplete?.(data);
+  });
+
+  socket.on("instance:enemy-hit-ack", (data: any) => {
+    onInstanceEnemyHitAck?.(data);
+  });
+
   socket.on("npc:spawn", (npc: ServerNpc) => {
     listeners.onNpcSpawn?.(npc);
   });
@@ -435,10 +492,64 @@ export function sendStatsUpdate(data: {
   socket?.emit("stats:update", data);
 }
 
+export function sendDockEnter() {
+  socket?.emit("dock:enter");
+}
+
+export function sendDockLeave() {
+  socket?.emit("dock:leave");
+}
+
+export function sendDockRepair(hull: number, shield: number) {
+  socket?.emit("dock:repair", { hull, shield });
+}
+
+export function sendInstanceEnter(dungeonId: string) {
+  socket?.emit("instance:enter", { dungeonId });
+}
+
+export function sendInstanceLeave() {
+  socket?.emit("instance:leave");
+}
+
+export function sendInstanceEnemyHit(enemyId: string, damage: number, crit: boolean) {
+  socket?.emit("instance:enemy-hit", { enemyId, damage, crit });
+}
+
+export function setInstanceCallbacks(cbs: {
+  onJoined?: (data: any) => void;
+  onLeft?: (data: any) => void;
+  onState?: (data: any) => void;
+  onEvent?: (data: any) => void;
+  onComplete?: (data: any) => void;
+  onEnemyHitAck?: (data: any) => void;
+}) {
+  onInstanceJoined = cbs.onJoined ?? null;
+  onInstanceLeft = cbs.onLeft ?? null;
+  onInstanceState = cbs.onState ?? null;
+  onInstanceEvent = cbs.onEvent ?? null;
+  onInstanceComplete = cbs.onComplete ?? null;
+  onInstanceEnemyHitAck = cbs.onEnemyHitAck ?? null;
+}
+
 export function isConnected(): boolean {
   return socket?.connected ?? false;
 }
 
 export function getInputSeq(): number {
   return _inputSeq;
+}
+
+
+// ── ADMIN ───────────────────────────────────────────────────────────
+export function adminListPlayers(cb: (data: any) => void) {
+  socket?.emit("admin:list", {}, cb);
+}
+
+export function adminGetPlayer(playerId: number, cb: (data: any) => void) {
+  socket?.emit("admin:get", { playerId }, cb);
+}
+
+export function adminUpdatePlayer(playerId: number, updates: any, cb: (data: any) => void) {
+  socket?.emit("admin:update", { playerId, updates }, cb);
 }

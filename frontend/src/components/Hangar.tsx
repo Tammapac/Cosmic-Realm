@@ -1,13 +1,18 @@
-import { state, bump, useGame, pushNotification, save, stationPrice, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, rocketAmmoMax, getAmmoWeaponIds, ensureAmmoInitialized, setAutoRestock, setAutoRepairHull, setAutoShieldRecharge, getActiveAmmoType, switchAmmoType, purchaseAmmoAmount, getAmmoCount, ROCKET_AMMO_COST_PER, rocketMissileMax, getActiveRocketAmmoType, switchRocketAmmoType, purchaseRocketAmmo, getRocketAmmoCount } from "../game/store";
+import { sendDockRepair, sendDockLeave } from "../net/socket";
+import { state, bump, useGame, pushNotification, pushFloater, save, stationPrice, priceDirection, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, rerollMissionBoard, bumpMission, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, rocketAmmoMax, getAmmoWeaponIds, ensureAmmoInitialized, setAutoRestock, setAutoRepairHull, setAutoShieldRecharge, getActiveAmmoType, switchAmmoType, purchaseAmmoAmount, getAmmoCount, ROCKET_AMMO_COST_PER, rocketMissileMax, getActiveRocketAmmoType, switchRocketAmmoType, purchaseRocketAmmo, getRocketAmmoCount, startRefineJob, collectRefineJob, upgradeFactory } from "../game/store";
 import {
   ActiveQuest, CONSUMABLE_DEFS, ConsumableId, DAILY_DUNGEON_BONUS, DRONE_DEFS, DroneKind, DroneMode, DUNGEONS, DungeonId, FACTIONS, MODULE_DEFS, ModuleDef, ModuleSlot, ModuleStats, RARITY_COLOR,
-  Quest, QUEST_POOL, RESOURCES, ResourceId, ROCKET_AMMO_TYPE_DEFS, RocketAmmoType, ROCKET_MISSILE_TYPE_DEFS, RocketMissileType, ROCKET_MISSILE_TYPE_ORDER, SHIP_CLASSES, SKILL_NODES, SkillNode, STATIONS, ShipClassId, SkillBranch,
-  SkillId, ZONES, getDailyFeaturedDungeon,
+  Quest, QUEST_POOL, MISSION_BOARD_POOL, MissionCategory, RESOURCES, ResourceId, ROCKET_AMMO_TYPE_DEFS, RocketAmmoType, ROCKET_MISSILE_TYPE_DEFS, RocketMissileType, ROCKET_MISSILE_TYPE_ORDER, SHIP_CLASSES, SKILL_NODES, SkillNode, STATIONS, ShipClassId, SkillBranch,
+  SkillId, ZONES, getDailyFeaturedDungeon, REFINE_RECIPES, FACTORY_SPEED_BONUS, FACTORY_UPGRADE_COSTS,
 } from "../game/types";
 import type { HangarTab } from "../game/store";
 import { effectiveStats } from "../game/loop";
 import { buySkillRank, resetSkills } from "../game/store";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { createPortal } from "react-dom";
+
+let _pendingRiftConfirm: string | null = null;
+let _riftConfirmBump: (() => void) | null = null;
 
 const TABS: { id: HangarTab; label: string; glyph: string }[] = [
   { id: "bounties", label: "Bounties", glyph: "★" },
@@ -17,7 +22,13 @@ const TABS: { id: HangarTab; label: string; glyph: string }[] = [
   { id: "loadout",  label: "Loadout",  glyph: "⚙" },
   { id: "drones",   label: "Drones",   glyph: "✦" },
   { id: "market",   label: "Market",   glyph: "$" },
-  { id: "cargo",    label: "Cargo",    glyph: "▤" },
+  { id: "repair",   label: "Services", glyph: "✚" },
+];
+
+const FACTORY_TABS: { id: HangarTab; label: string; glyph: string }[] = [
+  { id: "refinery", label: "Refinery", glyph: "⚒" },
+  { id: "market",   label: "Market",   glyph: "$" },
+  { id: "missions", label: "Missions", glyph: "▣" },
   { id: "repair",   label: "Services", glyph: "✚" },
 ];
 
@@ -40,7 +51,7 @@ export function Hangar({ stationId }: { stationId: string }) {
           <button
             className="btn btn-danger"
             onClick={() => {
-              state.dockedAt = null;
+              state.dockedAt = null; sendDockLeave();
               state.player.pos.y += 200;
               state.cameraTarget = { ...state.player.pos };
               save();
@@ -53,7 +64,7 @@ export function Hangar({ stationId }: { stationId: string }) {
 
         {/* Tabs */}
         <div className="flex border-b overflow-x-auto" style={{ borderColor: "var(--border-soft)" }}>
-          {TABS.map((t) => (
+          {(station.kind === "factory" ? FACTORY_TABS : TABS).map((t) => (
             <button
               key={t.id}
               className="px-4 py-2.5 text-[13px] tracking-widest uppercase whitespace-nowrap transition-colors"
@@ -80,9 +91,11 @@ export function Hangar({ stationId }: { stationId: string }) {
           {tab === "market" && <MarketTab stationId={stationId} />}
           {tab === "ammo" && <AmmoTab />}  {/* kept for loadout inline popup */}
           {tab === "cargo" && <CargoTab />}
+          {tab === "refinery" && <RefineryTab stationId={stationId} />}
           {tab === "repair" && <RepairTab stationId={stationId} />}
         </div>
       </div>
+
     </div>
   );
 }
@@ -96,32 +109,14 @@ const ZONE_FACTION_META: Record<string, { label: string; color: string; glyph: s
 
 function BountiesTab() {
   const player = useGame((s) => s.player);
-  const available = useGame((s) => s.availableQuests);
+  const [tierFilter, setTierFilter] = useState<number>(0);
 
-  // Cross-faction: quests from other factions' zones that the player's level unlocks
-  const currentFaction = ZONES[player.zone as keyof typeof ZONES]?.faction ?? "earth";
-  const crossFactionQuests = useMemo(() =>
-    QUEST_POOL.filter((q) => {
-      const z = ZONES[q.zone as keyof typeof ZONES];
-      return z && z.faction !== currentFaction && z.unlockLevel <= player.level && !player.completedQuests.includes(q.id);
-    }),
-    // Using join as dependency so memo invalidates on any quest completion change
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [currentFaction, player.level, player.completedQuests.join(",")]
-  );
+  const allBounties = QUEST_POOL;
+  const tiers = [...new Set(allBounties.map(q => q.tier ?? 1))].sort((a, b) => a - b);
+  const filtered = tierFilter === 0 ? allBounties : allBounties.filter(q => (q.tier ?? 1) === tierFilter);
 
-  const crossByFaction = useMemo(() =>
-    crossFactionQuests.reduce<Record<string, Quest[]>>((acc, q) => {
-      const f = ZONES[q.zone as keyof typeof ZONES].faction;
-      if (!acc[f]) acc[f] = [];
-      acc[f].push(q);
-      return acc;
-    }, {}),
-    [crossFactionQuests]
-  );
-
-  const accept = (q: Quest) => {
-    if (player.activeQuests.find((x) => x.id === q.id)) return;
+  const accept = (q: any) => {
+    if (player.activeQuests.find((x: any) => x.id === q.id)) return;
     if (player.activeQuests.length >= 5) {
       pushNotification("Quest log full (5 max)", "bad");
       return;
@@ -131,45 +126,67 @@ function BountiesTab() {
     save(); bump();
   };
 
-  const turnIn = (q: ActiveQuest) => {
+  const turnIn = (q: any) => {
     if (!q.completed) return;
     player.credits += q.rewardCredits;
     player.exp += q.rewardExp;
     player.honor += q.rewardHonor;
-    player.completedQuests.push(q.id);
-    player.activeQuests = player.activeQuests.filter((x) => x.id !== q.id);
+    player.activeQuests = player.activeQuests.filter((x: any) => x.id !== q.id);
+    player.milestones.totalKills += 0;
     pushNotification(`+${q.rewardCredits}cr +${q.rewardExp}xp +${q.rewardHonor} honor`, "good");
+    pushFloater({ text: `+${q.rewardCredits} CR`, color: "#ffd24a", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.5, bold: true, ttl: 2.5 });
+    pushFloater({ text: `+${q.rewardExp} XP`, color: "#ff5cf0", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.5, bold: true, ttl: 2.5 });
+    if (q.rewardHonor > 0) pushFloater({ text: `+${q.rewardHonor} HONOR`, color: "#c8a0ff", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.5, bold: true, ttl: 2.5 });
     save(); bump();
   };
 
+  const tierColors: Record<number, string> = { 1: "#5cff8a", 2: "#4ee2ff", 3: "#ffcc44", 4: "#ff8a4e", 5: "#ff5c6c", 6: "#ff5cf0", 7: "#aa44ff", 8: "#ff4466", 9: "#ffffff" };
+
   return (
     <div className="p-4 space-y-4">
-      {/* Top row: available bounties (current zone) + active log */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="flex items-center justify-between">
         <div>
-          <div className="text-cyan tracking-widest text-sm mb-3">▶ AVAILABLE BOUNTIES</div>
-          <div className="space-y-2">
-            {available.length === 0 && (
-              <div className="text-mute text-sm italic">No bounties posted in this zone.</div>
-            )}
-            {available.map((q) => {
-              const has = player.activeQuests.find((x) => x.id === q.id);
-              const done = player.completedQuests.includes(q.id);
+          <div className="text-cyan tracking-widest text-sm">BOUNTY BOARD</div>
+          <div className="text-mute text-[13px] mt-1">Kill contracts available across all sectors. Repeatable.</div>
+        </div>
+      </div>
+
+      {/* Tier filter */}
+      <div className="flex gap-2 flex-wrap">
+        <button className={"btn " + (tierFilter === 0 ? "btn-primary" : "")} style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => setTierFilter(0)}>ALL</button>
+        {tiers.map(t => (
+          <button key={t} className={"btn " + (tierFilter === t ? "btn-primary" : "")} style={{ padding: "4px 10px", fontSize: 12, borderColor: tierColors[t] ?? "#888" }} onClick={() => setTierFilter(t)}>
+            T{t}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        {/* Available bounties */}
+        <div>
+          <div className="text-cyan tracking-widest text-sm mb-3">AVAILABLE ({filtered.length})</div>
+          <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+            {filtered.map((q) => {
+              const has = player.activeQuests.find((x: any) => x.id === q.id);
+              const tierColor = tierColors[q.tier ?? 1] ?? "#888";
               return (
-                <div key={q.id} className="panel p-3">
+                <div key={q.id} className="panel p-3" style={{ borderLeft: `2px solid ${tierColor}` }}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1">
-                      <div className="text-amber glow-amber text-sm font-bold">{q.title}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-bold px-1 rounded" style={{ background: tierColor + "22", color: tierColor }}>T{q.tier ?? 1}</span>
+                        <span className="text-amber glow-amber text-sm font-bold">{q.title}</span>
+                      </div>
                       <div className="text-dim text-[13px] mt-1 mb-2">{q.description}</div>
                       <div className="flex gap-3 text-[13px] flex-wrap">
-                        <span className="text-cyan">⚔ {q.killCount}× {q.killType}</span>
+                        <span className="text-cyan">{q.killCount}x {q.killType} in {ZONES[q.zone as keyof typeof ZONES]?.name ?? q.zone}</span>
                         <span className="text-amber">+{q.rewardCredits.toLocaleString()}cr</span>
                         <span className="text-magenta">+{q.rewardExp.toLocaleString()}xp</span>
                         <span className="text-green">+{q.rewardHonor} honor</span>
                       </div>
                     </div>
-                    <button className="btn btn-primary" disabled={!!has || done} onClick={() => accept(q)}>
-                      {done ? "Done" : has ? "Active" : "Accept"}
+                    <button className="btn btn-primary" disabled={!!has} onClick={() => accept(q)}>
+                      {has ? "Active" : "Accept"}
                     </button>
                   </div>
                 </div>
@@ -177,17 +194,19 @@ function BountiesTab() {
             })}
           </div>
         </div>
+
+        {/* Active quests */}
         <div>
-          <div className="text-cyan tracking-widest text-sm mb-3">▶ ACTIVE QUESTS ({player.activeQuests.length}/5)</div>
+          <div className="text-cyan tracking-widest text-sm mb-3">ACTIVE QUESTS ({player.activeQuests.length}/5)</div>
           <div className="space-y-2">
             {player.activeQuests.length === 0 && (
               <div className="text-mute text-sm italic">No active quests. Take a contract from the board.</div>
             )}
-            {player.activeQuests.map((q) => (
+            {player.activeQuests.map((q: any) => (
               <div key={q.id} className="panel p-3">
                 <div className="text-amber glow-amber text-sm font-bold">{q.title}</div>
                 <div className="text-dim text-[13px] mt-1 mb-2">
-                  {q.progress}/{q.killCount} {q.killType}s eliminated
+                  {q.progress}/{q.killCount} {q.killType}s eliminated in {ZONES[q.zone as keyof typeof ZONES]?.name ?? q.zone}
                 </div>
                 <div className="bar mb-2">
                   <div className="bar-fill" style={{
@@ -204,58 +223,6 @@ function BountiesTab() {
           </div>
         </div>
       </div>
-
-      {/* Cross-faction contracts */}
-      {Object.keys(crossByFaction).length > 0 && (
-        <div className="border-t pt-4" style={{ borderColor: "var(--border-soft)" }}>
-          <div className="text-cyan tracking-widest text-sm mb-1">▶ CROSS-FACTION CONTRACTS</div>
-          <div className="text-mute text-[13px] mb-3">Accept now — progress counts when you arrive in that zone.</div>
-          {Object.entries(crossByFaction).map(([faction, quests]) => {
-            const meta = ZONE_FACTION_META[faction] ?? ZONE_FACTION_META.earth;
-            return (
-              <div key={faction} className="mb-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-sm tracking-widest font-bold" style={{ color: meta.color }}>
-                    {meta.glyph} {meta.label.toUpperCase()}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {quests.map((q) => {
-                    const has = player.activeQuests.find((x) => x.id === q.id);
-                    const done = player.completedQuests.includes(q.id);
-                    const zone = ZONES[q.zone as keyof typeof ZONES];
-                    return (
-                      <div
-                        key={q.id}
-                        className="panel p-3"
-                        style={{ borderLeft: `2px solid ${meta.color}55` }}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="text-[12px] tracking-widest mb-1" style={{ color: meta.color }}>
-                              {zone.label} · {zone.name.toUpperCase()}
-                            </div>
-                            <div className="text-amber text-sm font-bold truncate">{q.title}</div>
-                            <div className="text-dim text-[13px] mt-1 mb-2 line-clamp-2">{q.description}</div>
-                            <div className="flex gap-2 text-[13px] flex-wrap">
-                              <span className="text-cyan">⚔ {q.killCount}× {q.killType}</span>
-                              <span className="text-amber">+{q.rewardCredits.toLocaleString()}cr</span>
-                              <span className="text-magenta">+{q.rewardExp.toLocaleString()}xp</span>
-                            </div>
-                          </div>
-                          <button className="btn btn-primary shrink-0" disabled={!!has || done} onClick={() => accept(q)}>
-                            {done ? "Done" : has ? "Active" : "Accept"}
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
     </div>
   );
 }
@@ -425,16 +392,20 @@ function SlotCell({
             <span style={{ color: def.color, fontSize: 14 }}>{def.glyph}</span>
             <span className="text-[13px] font-bold tracking-widest" style={{ color }}>{def.name}</span>
           </div>
-          <div className="text-mute text-[12px] mt-0.5 leading-tight">{def.description}</div>
-          {ammoCount !== null && (
-            <div className="flex items-center gap-1 mt-1">
-              <span className="text-[12px] tracking-widest" style={{ color: ammoLow ? "#ff5c6c" : ROCKET_AMMO_TYPE_DEFS[activeType].color }}>
-                ⟁ {ROCKET_AMMO_TYPE_DEFS[activeType].shortName}: {ammoCount}/{ammoMax}
-              </span>
-              {ammoLow && ammoCount > 0 && <span className="text-[13px] text-red font-bold">LOW</span>}
-              {ammoCount === 0 && <span className="text-[13px] font-bold" style={{ color: "#ff5c6c" }}>EMPTY</span>}
-            </div>
-          )}
+          <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5 text-[11px] tracking-wider">
+            {def.stats.damage != null && <span style={{color:"#ff5c6c"}}>DMG {def.stats.damage}</span>}
+            {def.stats.fireRate != null && def.stats.fireRate !== 1 && <span style={{color:"#ffaa44"}}>ROF {def.stats.fireRate}x</span>}
+            {def.stats.critChance != null && <span style={{color:"#ff5cf0"}}>CRIT {Math.round(def.stats.critChance*100)}%</span>}
+            {def.stats.aoeRadius != null && <span style={{color:"#ff8844"}}>AOE {def.stats.aoeRadius}</span>}
+            {def.stats.shieldMax != null && <span style={{color:"#4ee2ff"}}>SHD +{def.stats.shieldMax}</span>}
+            {def.stats.shieldRegen != null && <span style={{color:"#4ee2ff"}}>REG +{def.stats.shieldRegen}</span>}
+            {def.stats.hullMax != null && <span style={{color:"#5cff8a"}}>HUL +{def.stats.hullMax}</span>}
+            {def.stats.speed != null && <span style={{color:"#aaff5c"}}>SPD +{def.stats.speed}</span>}
+            {def.stats.damageReduction != null && <span style={{color:"#ffd24a"}}>DR {Math.round(def.stats.damageReduction*100)}%</span>}
+            {def.stats.ammoCapacity != null && <span style={{color:"#ffcc88"}}>AMMO +{def.stats.ammoCapacity}</span>}
+            {def.stats.lootBonus != null && <span style={{color:"#ffd24a"}}>LOOT +{def.stats.lootBonus}</span>}
+          </div>
+
           {isComparing && diffs.length > 0 && (
             <div className="mt-1.5 pt-1" style={{ borderTop: "1px dashed #ffd24a33" }}>
               <div className="text-[13px] tracking-widest mb-0.5" style={{ color: "#ffd24a99" }}>IF REPLACED:</div>
@@ -492,8 +463,10 @@ function LoadoutTab({ stationId }: { stationId: string }) {
   })();
 
   // Shop offer: 4 random buyable modules, capped to ones unlocked by ship tier-ish
-  const shopPool = Object.values(MODULE_DEFS).filter((d) => d.tier <= Math.min(5, Math.max(1, Math.ceil(player.level / 4))));
-  const shopOffer = shopPool.slice(0, 8); // simple: show first 8 affordable ones
+  const tierCap2 = Math.min(5, Math.max(1, Math.ceil(player.level / 4)));
+  const shopPool = Object.values(MODULE_DEFS).filter((d) => d.tier <= tierCap2);
+  // Show all available weapons + generators + modules (no arbitrary limit)
+  const shopOffer = shopPool;
 
   // Determine which shop module is the single best upgrade for the player's current build
   const bestUpgradeDefId = useMemo(() => {
@@ -551,7 +524,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
     <div className="grid gap-3 p-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
       {/* LEFT — equipped slots + stats summary */}
       <div className="space-y-3">
-        <div className="text-cyan tracking-widest text-sm">▶ LOADOUT · {cls.name.toUpperCase()}</div>
+        <div className="flex items-center justify-between"><div className="text-cyan tracking-widest text-sm">▶ LOADOUT · {cls.name.toUpperCase()}</div><div className="text-amber font-bold text-[14px]">{player.credits.toLocaleString()} CR</div></div>
         {renderSlotRow("weapon",    "WEAPONS",    "#ff5c6c")}
         {renderSlotRow("generator", "GENERATORS", "#4ee2ff")}
         {renderSlotRow("module",    "MODULES",    "#ff5cf0")}
@@ -588,7 +561,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
             </button>
           </div>
         </div>
-        {!showShop && (
+        {(
           <div className="flex gap-1">
             {(["all", "weapon", "generator", "module"] as const).map((f) => (
               <button key={f} className="btn"
@@ -604,7 +577,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
           onMouseLeave={() => { setHoveredShopDefId(null); setHoveredInvInstanceId(null); }}
         >
           {showShop ? (
-            shopOffer.map((def) => {
+            shopOffer.filter(d => filter === "all" || d.slot === filter).map((def) => {
               const canAfford = player.credits >= def.price;
               const isHovered = hoveredShopDefId === def.id;
               const isBestUpgrade = bestUpgradeDefId === def.id;
@@ -741,6 +714,8 @@ function fmtClearTime(ms: number): string {
 function DungeonsTab() {
   const player = useGame((s) => s.player);
   const dungeon = useGame((s) => s.dungeon);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+
   const featuredId = getDailyFeaturedDungeon();
   // Featured dungeon first, rest in original order
   const allDungeons = Object.values(DUNGEONS);
@@ -830,17 +805,21 @@ function DungeonsTab() {
                   <div className="text-[12px] text-amber">⏱ {fmtClearTime(bestMs)}</div>
                 )}
               </div>
-              <button
-                className="btn btn-primary w-full mt-2"
-                style={{ padding: "3px 6px", fontSize: 13, ...(isFeatured && !locked && !dungeon ? { background: "#ffd24a", color: "#000" } : {}) }}
-                disabled={locked || !!dungeon}
-                onClick={() => {
-                  state.dockedAt = null;
-                  enterDungeon(d.id as DungeonId);
-                }}
-              >
-                {locked ? `Locked · Lv ${d.unlockLevel}` : dungeon ? "In a dungeon" : isFeatured ? "⭐ Launch Featured Run" : "Launch run"}
-              </button>
+              {confirmId === d.id ? (
+                <div className="mt-2" style={{ display: "flex", gap: 6 }}>
+                  <button className="btn w-full" style={{ padding: "4px 8px", fontSize: 12, background: "#333", color: "#ccc", border: "1px solid #555" }} onClick={() => setConfirmId(null)}>Cancel</button>
+                  <button className="btn btn-primary w-full" style={{ padding: "4px 8px", fontSize: 12, background: "#4a6cf7" }} onClick={() => { setConfirmId(null); state.dockedAt = null; sendDockLeave(); enterDungeon(d.id as DungeonId); }}>Confirm Entry</button>
+                </div>
+              ) : (
+                <button
+                  className="btn btn-primary w-full mt-2"
+                  style={{ padding: "3px 6px", fontSize: 13, ...(isFeatured && !locked && !dungeon ? { background: "#ffd24a", color: "#000" } : {}) }}
+                  disabled={locked || !!dungeon}
+                  onClick={() => setConfirmId(d.id)}
+                >
+                  {locked ? `Locked \u00b7 Lv ${d.unlockLevel}` : dungeon ? "In a dungeon" : isFeatured ? "\u2b50 Launch Featured Run" : "Launch run"}
+                </button>
+              )}
             </div>
           );
         })}
@@ -901,12 +880,17 @@ function ShipsTab() {
               </div>
               {active && <div className="text-cyan text-[12px] tracking-widest">[ACTIVE]</div>}
             </div>
-            <div className="grid grid-cols-5 gap-1 text-[13px] mb-2">
+            <div className="grid grid-cols-4 gap-1 text-[13px] mb-1">
               <Stat label="HUL" v={cls.hullMax} />
               <Stat label="SHD" v={cls.shieldMax} />
               <Stat label="SPD" v={cls.baseSpeed} />
               <Stat label="DMG" v={cls.baseDamage} />
               <Stat label="DRN" v={cls.droneSlots} />
+            </div>
+            <div className="grid grid-cols-3 gap-1 text-[13px] mb-2">
+              <Stat label="WPN" v={cls.slots.weapon} />
+              <Stat label="GEN" v={cls.slots.generator} />
+              <Stat label="MOD" v={cls.slots.module} />
             </div>
             <button className="btn btn-primary w-full" disabled={active || (!owned && player.credits < cls.price)} onClick={() => buy(cls.id)}>
               {active ? "Currently flying" : owned ? "Switch" : `Buy · ${cls.price.toLocaleString()}cr`}
@@ -1075,6 +1059,11 @@ function DronesTab() {
 // ── MARKET ────────────────────────────────────────────────────────────────
 function MarketTab({ stationId }: { stationId: string }) {
   const player = useGame((s) => s.player);
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const iv = setInterval(() => setTick((t) => t + 1), 10000);
+    return () => clearInterval(iv);
+  }, []);
   const station = STATIONS.find((s) => s.id === stationId)!;
   const cls = SHIP_CLASSES[player.shipClass];
   const tierCap = Math.min(5, Math.max(1, Math.ceil(player.level / 4)));
@@ -1084,7 +1073,7 @@ function MarketTab({ stationId }: { stationId: string }) {
     const price = stationPrice(stationId, rid);
     const cost = price * qty;
     if (player.credits < cost) { pushNotification("Not enough credits", "bad"); return; }
-    if (cargoUsed() + qty > cls.cargoMax) { pushNotification("Cargo bay full", "bad"); return; }
+    if (cargoUsed() + qty > cargoCapacity()) { pushNotification("Cargo bay full", "bad"); return; }
     player.credits -= cost;
     addCargo(rid, qty);
     pushNotification(`Bought ${qty}× ${RESOURCES[rid].name} · -${cost.toLocaleString()}cr`, "good");
@@ -1101,10 +1090,18 @@ function MarketTab({ stationId }: { stationId: string }) {
     removeCargo(rid, take);
     player.credits += earn;
     pushNotification(`Sold ${take}× ${RESOURCES[rid].name} · +${earn.toLocaleString()}cr`, "good");
-    save(); bump();
+        bumpMission("transport", take, undefined, { resourceId: rid });
+    bumpMission("deliver", take, undefined, { resourceId: rid, stationId });
+    bumpMission("earn-credits", earn);
+save(); bump();
   };
 
-  const allRes = Object.values(RESOURCES);
+  // Show resources this station trades + any the player is carrying
+  const stationResIds = new Set(Object.keys(station.prices));
+  const cargoResIds = new Set(player.cargo.map(c => c.resourceId));
+  const allRes = Object.values(RESOURCES).filter(
+    r => stationResIds.has(r.id) || cargoResIds.has(r.id)
+  );
   const isTrade = true;
 
   const sellAll = () => {
@@ -1118,6 +1115,8 @@ function MarketTab({ stationId }: { stationId: string }) {
     if (totalEarn > 0) {
       player.credits += totalEarn;
       pushNotification(`Sold all cargo · +${totalEarn.toLocaleString()}cr`, "good");
+            bumpMission("transport", 1, undefined, {});
+      bumpMission("earn-credits", totalEarn);
       save(); bump();
     } else {
       pushNotification("Nothing to sell", "bad");
@@ -1146,12 +1145,13 @@ function MarketTab({ stationId }: { stationId: string }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-7 gap-2 px-2 py-1 text-[12px] tracking-widest text-mute border-b" style={{ borderColor: "var(--border-soft)" }}>
-            <div className="col-span-2">RESOURCE</div>
+          <div className="grid gap-2 px-2 py-1 text-[12px] tracking-widest text-mute border-b" style={{ borderColor: "var(--border-soft)", gridTemplateColumns: "2fr 50px 55px 45px 40px 90px 160px" }}>
+            <div>RESOURCE</div>
             <div className="text-right">BASE</div>
             <div className="text-right">HERE</div>
             <div className="text-right">±</div>
-            <div className="text-right">CARGO</div>
+            <div className="text-right">QTY</div>
+            <div className="text-center">BEST SELL</div>
             <div className="text-center">TRADE</div>
           </div>
 
@@ -1160,9 +1160,20 @@ function MarketTab({ stationId }: { stationId: string }) {
               const price = stationPrice(stationId, r.id);
               const diff = ((price - r.basePrice) / r.basePrice) * 100;
               const have = player.cargo.find((c) => c.resourceId === r.id)?.qty ?? 0;
+              // Find best station to sell this resource
+              const bestStation = STATIONS.reduce<{ name: string; price: number; zone: string } | null>((best, s) => {
+                if (s.id === stationId) return best;
+                const sp = stationPrice(s.id, r.id);
+                if (!best || sp > best.price) return { name: s.name, price: sp, zone: s.zone };
+                return best;
+              }, null);
+              const dir = priceDirection(stationId, r.id);
+              const dirIcon = dir === "up" ? "▲" : dir === "down" ? "▼" : "●";
+              const dirColor = dir === "up" ? "#ff5c6c" : dir === "down" ? "#5cff8a" : "#666";
+              const profitVsHere = bestStation ? bestStation.price - price : 0;
               return (
-                <div key={r.id} className="grid grid-cols-7 gap-2 items-center px-2 py-1.5 hover:bg-white/5 border-b" style={{ borderColor: "var(--border-soft)" }}>
-                  <div className="col-span-2 flex items-center gap-2">
+                <div key={r.id} className="grid gap-2 items-center px-2 py-1.5 hover:bg-white/5 border-b" style={{ borderColor: "var(--border-soft)", gridTemplateColumns: "2fr 50px 55px 45px 40px 90px 160px" }}>
+                  <div className="flex items-center gap-2">
                     <div
                       className="flex items-center justify-center"
                       style={{ width: 22, height: 22, background: `${r.color}22`, border: `1px solid ${r.color}`, color: r.color, fontSize: 12 }}
@@ -1171,23 +1182,35 @@ function MarketTab({ stationId }: { stationId: string }) {
                     </div>
                     <div>
                       <div className="text-bright text-[13px]">{r.name}</div>
-                      <div className="text-mute text-[13px]">{r.description}</div>
+                      <div className="text-mute text-[11px] truncate" style={{ maxWidth: 160 }}>{r.description}</div>
                     </div>
                   </div>
                   <div className="text-right text-mute text-[13px] tabular-nums">{r.basePrice}</div>
-                  <div className="text-right font-bold tabular-nums" style={{ color: diff < 0 ? "#5cff8a" : diff > 0 ? "#ff5c6c" : "var(--text-dim)" }}>
+                  <div className="text-right font-bold tabular-nums flex items-center justify-end gap-1" style={{ color: diff < 0 ? "#5cff8a" : diff > 0 ? "#ff5c6c" : "var(--text-dim)" }}>
+                    <span style={{ color: dirColor, fontSize: 8 }}>{dirIcon}</span>
                     {price}
                   </div>
-                  <div className="text-right text-[13px] tabular-nums" style={{ color: diff < 0 ? "#5cff8a" : "#ff5c6c" }}>
+                  <div className="text-right text-[12px] tabular-nums" style={{ color: diff < 0 ? "#5cff8a" : "#ff5c6c" }}>
                     {diff > 0 ? "+" : ""}{diff.toFixed(0)}%
                   </div>
                   <div className="text-right text-cyan text-[13px] tabular-nums">{have}</div>
+                  <div className="text-center text-[11px]" title={bestStation ? `${bestStation.name} (${(ZONES as any)[bestStation.zone]?.label ?? bestStation.zone}) — ${(ZONES as any)[bestStation.zone]?.name ?? ""} — pays ${bestStation.price}cr` : ""}>
+                    {bestStation && profitVsHere > 0 ? (
+                      <div>
+                        <div style={{ color: "#5cff8a", fontWeight: "bold" }}>+{profitVsHere}cr</div>
+                        <div className="text-mute truncate" style={{ maxWidth: 85, fontSize: 10 }}>{bestStation.name}</div>
+                        <div className="text-cyan" style={{ fontSize: 9 }}>[{(ZONES as any)[bestStation.zone]?.label ?? "?"}]</div>
+                      </div>
+                    ) : (
+                      <span style={{ color: "#ffd24a" }}>BEST</span>
+                    )}
+                  </div>
                   <div className="flex gap-1 justify-center">
-                    <button className="btn" style={{ padding: "2px 6px", fontSize: 13 }} onClick={() => buy(r.id, 1)}>+1</button>
-                    <button className="btn" style={{ padding: "2px 6px", fontSize: 13 }} onClick={() => buy(r.id, 10)}>+10</button>
-                    <button className="btn btn-amber" style={{ padding: "2px 6px", fontSize: 13 }} disabled={have <= 0} onClick={() => sell(r.id, 1)}>-1</button>
-                    <button className="btn btn-amber" style={{ padding: "2px 6px", fontSize: 13 }} disabled={have < 10} onClick={() => sell(r.id, 10)}>-10</button>
-                    <button className="btn btn-amber" style={{ padding: "2px 6px", fontSize: 13 }} disabled={have <= 0} onClick={() => sell(r.id, have)}>All</button>
+                    <button className="btn" style={{ padding: "2px 5px", fontSize: 12 }} onClick={() => buy(r.id, 1)}>+1</button>
+                    <button className="btn" style={{ padding: "2px 5px", fontSize: 12 }} onClick={() => buy(r.id, 10)}>+10</button>
+                    <button className="btn btn-amber" style={{ padding: "2px 5px", fontSize: 12 }} disabled={have <= 0} onClick={() => sell(r.id, 1)}>-1</button>
+                    <button className="btn btn-amber" style={{ padding: "2px 5px", fontSize: 12 }} disabled={have < 10} onClick={() => sell(r.id, 10)}>-10</button>
+                    <button className="btn btn-amber" style={{ padding: "2px 5px", fontSize: 12 }} disabled={have <= 0} onClick={() => sell(r.id, have)}>All</button>
                   </div>
                 </div>
               );
@@ -1195,7 +1218,8 @@ function MarketTab({ stationId }: { stationId: string }) {
           </div>
 
           <div className="mt-3 text-mute text-[13px] italic">
-            Tip: visit Iron Belt Refinery for cheap iron and lumenite. Resell quantum chips at Crimson stations for premium.
+            Prices fluctuate over time — watch the arrows for trends. Buy when low (green arrow down), sell when high.
+            The BEST SELL column shows potential profit if you sell at a different station.
           </div>
         </>
       )}
@@ -1260,46 +1284,7 @@ function MarketTab({ stationId }: { stationId: string }) {
         </div>
       </div>
 
-      {/* Weapon Modules Shop */}
-      <div className="mt-5">
-        <div className="text-cyan tracking-widest text-sm mb-2">▶ WEAPON MODULES</div>
-        <div className="space-y-1.5">
-          {marketWeaponModules.map((def) => {
-            const canAfford = player.credits >= def.price;
-            return (
-              <div key={def.id} className="panel p-2 flex items-start gap-2"
-                style={{ borderColor: RARITY_COLOR[def.rarity] }}>
-                <div className="flex items-center justify-center flex-shrink-0"
-                  style={{ width: 28, height: 28, background: `${def.color}22`, border: `1px solid ${def.color}`, color: def.color, fontSize: 14 }}>
-                  {def.glyph}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1.5">
-                    <div className="text-[13px] font-bold tracking-widest" style={{ color: RARITY_COLOR[def.rarity] }}>{def.name}</div>
-                    <span className="text-[13px] uppercase" style={{ color: RARITY_COLOR[def.rarity] }}>· {def.rarity}</span>
-                  </div>
-                  <div className="text-mute text-[12px] leading-tight">{def.description}</div>
-                  {modStatPills(def.stats)}
-                  {def.weaponKind === "rocket" && <RocketAmmoBadge />}
-                </div>
-                <button className="btn btn-primary"
-                  style={{ padding: "2px 8px", fontSize: 13 }}
-                  disabled={!canAfford}
-                  onClick={() => {
-                    if (!canAfford) return;
-                    state.player.credits -= def.price;
-                    addInventoryItem(def.id);
-                    pushNotification(`Bought ${def.name}`, "good");
-                    save(); bump();
-                  }}>
-                  {def.price.toLocaleString()}cr
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
+          </div>
   );
 }
 
@@ -1314,7 +1299,7 @@ function CargoTab() {
       <div className="flex items-center justify-between mb-3">
         <div>
           <div className="text-cyan tracking-widest text-sm">▶ CARGO BAY</div>
-          <div className="text-mute text-[13px]">Carrying {total}/{cls.cargoMax} units</div>
+          <div className="text-mute text-[13px]">Carrying {total}/{cargoCapacity()} units</div>
         </div>
       </div>
       {player.cargo.length === 0 && (
@@ -1348,6 +1333,166 @@ function CargoTab() {
 }
 
 // ── REPAIR / SERVICES ─────────────────────────────────────────────────────
+
+// ── REFINERY ──────────────────────────────────────────────────────────────
+function RefineryTab({ stationId }: { stationId: string }) {
+  const player = useGame((s) => s.player);
+  const jobs = useGame((s) => s.refiningJobs);
+  const factoryLevel = useGame((s) => s.factoryLevel);
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const iv = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(iv);
+  }, []);
+
+  const now = Date.now();
+  const maxSlots = factoryLevel + 1;
+  const speedMul = FACTORY_SPEED_BONUS[factoryLevel] ?? 1.0;
+  const nextCost = factoryLevel < 5 ? FACTORY_UPGRADE_COSTS[factoryLevel] : null;
+
+  function hasInputs(recipe: typeof REFINE_RECIPES[0]): boolean {
+    return recipe.inputs.every(inp => {
+      const c = player.cargo.find(ci => ci.resourceId === inp.resourceId);
+      return c && c.qty >= inp.qty;
+    });
+  }
+
+  function fmtTime(ms: number): string {
+    const s = Math.max(0, Math.ceil(ms / 1000));
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+  }
+
+  return (
+    <div className="p-4">
+      {/* Factory Level Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <div className="text-cyan tracking-widest text-sm font-bold">REFINERY — LEVEL {factoryLevel}</div>
+          <div className="text-mute text-[12px]">
+            {jobs.length}/{maxSlots} slots used · Processing speed: {Math.round((1 - speedMul) * 100)}% faster
+          </div>
+        </div>
+        {nextCost !== null && (
+          <button
+            className="btn btn-primary text-[12px] px-3 py-1.5"
+            style={{ opacity: player.credits >= nextCost ? 1 : 0.4 }}
+            onClick={() => { if (player.credits >= nextCost) upgradeFactory(); }}
+          >
+            UPGRADE LV{factoryLevel + 1} — {nextCost.toLocaleString()}cr
+          </button>
+        )}
+        {nextCost === null && (
+          <div className="text-amber text-[12px] tracking-widest">MAX LEVEL</div>
+        )}
+      </div>
+
+      {/* Active Jobs */}
+      {jobs.length > 0 && (
+        <div className="mb-4">
+          <div className="text-mute text-[11px] tracking-widest mb-2">ACTIVE JOBS</div>
+          {jobs.map((job, i) => {
+            const recipe = REFINE_RECIPES.find(r => r.id === job.recipeId);
+            if (!recipe) return null;
+            const outRes = (RESOURCES as any)[recipe.output.resourceId];
+            const done = now >= job.completesAt;
+            const elapsed = now - job.startedAt;
+            const total = job.completesAt - job.startedAt;
+            const pct = Math.min(100, (elapsed / total) * 100);
+            return (
+              <div key={i} className="flex items-center gap-3 p-3 mb-2 border" style={{ borderColor: done ? "#5cff8a44" : "var(--border-soft)", background: done ? "#5cff8a08" : "transparent" }}>
+                <div style={{ width: 32, height: 32, background: (outRes?.color ?? "#aaa") + "22", border: "1px solid " + (outRes?.color ?? "#aaa"), color: outRes?.color ?? "#aaa", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {outRes?.glyph ?? "?"}
+                </div>
+                <div className="flex-1">
+                  <div className="text-bright text-[13px] font-bold">{recipe.name}</div>
+                  <div className="text-mute text-[11px]">
+                    {done ? "READY TO COLLECT" : fmtTime(job.completesAt - now) + " remaining"}
+                  </div>
+                  {!done && (
+                    <div style={{ height: 3, background: "#1a2348", marginTop: 4, borderRadius: 2 }}>
+                      <div style={{ height: 3, background: "#4ee2ff", width: pct + "%", borderRadius: 2, transition: "width 1s linear" }} />
+                    </div>
+                  )}
+                </div>
+                <div className="text-right">
+                  <div className="text-[12px]" style={{ color: outRes?.color ?? "#aaa" }}>{recipe.output.qty}x {outRes?.name ?? recipe.output.resourceId}</div>
+                  {done && (
+                    <button
+                      className="btn btn-primary text-[11px] px-2 py-1 mt-1"
+                      onClick={() => collectRefineJob(i)}
+                    >COLLECT</button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Recipes */}
+      <div className="text-mute text-[11px] tracking-widest mb-2">RECIPES</div>
+      <div className="grid gap-2">
+        {REFINE_RECIPES.map((recipe) => {
+          const outRes = (RESOURCES as any)[recipe.output.resourceId];
+          const locked = factoryLevel < recipe.minFactoryLevel;
+          const canStart = !locked && hasInputs(recipe) && jobs.length < maxSlots;
+          const timeSec = Math.round(recipe.timeSeconds * speedMul);
+
+          return (
+            <div key={recipe.id} className="p-3 border" style={{ borderColor: locked ? "#333" : "var(--border-soft)", opacity: locked ? 0.5 : 1 }}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <div style={{ width: 28, height: 28, background: (outRes?.color ?? "#aaa") + "22", border: "1px solid " + (outRes?.color ?? "#aaa"), color: outRes?.color ?? "#aaa", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    {outRes?.glyph ?? "?"}
+                  </div>
+                  <div>
+                    <div className="text-bright text-[13px] font-bold">{recipe.name}</div>
+                    <div className="text-mute text-[11px]">
+                      {locked ? `Requires Factory Lv${recipe.minFactoryLevel}` : `${Math.floor(timeSec / 60)}m ${timeSec % 60}s`}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="text-right">
+                    <div className="text-[12px]" style={{ color: outRes?.color ?? "#aaa" }}>{recipe.output.qty}x {outRes?.name ?? "?"}</div>
+                    <div className="text-amber text-[11px]">~{(recipe.output.qty * (outRes?.basePrice ?? 0)).toLocaleString()}cr base</div>
+                  </div>
+                  <button
+                    className="btn btn-primary text-[11px] px-3 py-1.5"
+                    style={{ opacity: canStart ? 1 : 0.3 }}
+                    onClick={() => { if (canStart) startRefineJob(recipe.id); }}
+                    disabled={!canStart}
+                  >
+                    {locked ? "LOCKED" : "START"}
+                  </button>
+                </div>
+              </div>
+              {/* Inputs */}
+              <div className="flex flex-wrap gap-2">
+                {recipe.inputs.map((inp, j) => {
+                  const inRes = (RESOURCES as any)[inp.resourceId];
+                  const have = player.cargo.find(c => c.resourceId === inp.resourceId)?.qty ?? 0;
+                  const enough = have >= inp.qty;
+                  return (
+                    <div key={j} className="flex items-center gap-1 px-2 py-1" style={{ background: enough ? "#5cff8a11" : "#ff5c6c11", border: "1px solid " + (enough ? "#5cff8a33" : "#ff5c6c33"), fontSize: 11 }}>
+                      <span style={{ color: inRes?.color ?? "#aaa" }}>{inRes?.glyph ?? "?"}</span>
+                      <span className="text-bright">{inp.qty}x {inRes?.name ?? inp.resourceId}</span>
+                      <span style={{ color: enough ? "#5cff8a" : "#ff5c6c" }}>({have})</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function RepairTab({ stationId: _stationId }: { stationId: string }) {
   const player = useGame((s) => s.player);
   const stats = effectiveStats();
@@ -1356,6 +1501,7 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
   const repairCost = Math.ceil(hullDamage * 2);
   const refillShield = () => {
     player.shield = stats.shieldMax;
+    sendDockRepair(player.hull, stats.shieldMax);
     pushNotification("Shields recharged", "good");
     save(); bump();
   };
@@ -1364,6 +1510,7 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
     if (player.credits < repairCost) { pushNotification("Not enough credits", "bad"); return; }
     player.credits -= repairCost;
     player.hull = stats.hullMax;
+    sendDockRepair(stats.hullMax, player.shield);
     pushNotification(`Hull repaired · -${repairCost}cr`, "good");
     save(); bump();
   };
@@ -1625,80 +1772,143 @@ function SkillsTab() {
 // ── MISSIONS ──────────────────────────────────────────────────────────────
 function MissionsTab() {
   const player = useGame((s) => s.player);
+  const missionBoard = useGame((s) => s.missionBoard);
+  useGame((s) => s.tick);
+  const [activeTab, setActiveTab] = useState<"daily" | "combat" | "transport" | "gathering" | "delivery" | "exploration">("daily");
+
   const next = new Date(player.lastDailyReset + 24 * 3600 * 1000);
   const hrs = Math.max(0, Math.floor((next.getTime() - Date.now()) / 3600000));
   const mins = Math.max(0, Math.floor(((next.getTime() - Date.now()) % 3600000) / 60000));
 
-  return (
-    <div className="p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-cyan tracking-widest text-sm">▶ DAILY MISSIONS</div>
-          <div className="text-mute text-[13px] mt-1">Resets in {hrs}h {mins}m</div>
+  const tabs = [
+    { id: "daily" as const, label: "Daily", icon: "\u2605" },
+    { id: "transport" as const, label: "Transport", icon: "\u25B6" },
+    { id: "gathering" as const, label: "Gathering", icon: "\u25B0" },
+    { id: "delivery" as const, label: "Delivery", icon: "\u25C6" },
+    { id: "exploration" as const, label: "Exploration", icon: "\u2726" },
+  ];
+
+  const boardByCategory = (cat: string) => (missionBoard ?? []).filter((m: any) => m.category === cat);
+
+  const renderMission = (m: any) => {
+    const pct = Math.min(1, m.progress / m.target);
+    const claimed = m.claimed;
+    const ready = m.completed && !claimed;
+    return (
+      <div
+        key={m.id}
+        className="panel p-3"
+        style={{
+          opacity: claimed ? 0.5 : 1,
+          borderColor: ready ? "#5cff8a" : "var(--border-soft)",
+        }}
+      >
+        <div className="font-bold text-[13px] text-cyan mb-1">{m.title}</div>
+        <div className="text-dim text-[13px] mb-2">{m.description}</div>
+        {m.targetStationId && (
+          <div className="text-[12px] text-magenta mb-1">Target: {STATIONS.find((s: any) => s.id === m.targetStationId)?.name ?? m.targetStationId}</div>
+        )}
+        <div className="text-mute text-[13px] tabular-nums mb-1">
+          {m.progress}/{m.target}
+        </div>
+        <div className="w-full h-1 mb-2" style={{ background: "rgba(255,255,255,0.08)" }}>
+          <div
+            className="h-full"
+            style={{
+              width: `${pct * 100}%`,
+              background: ready ? "#5cff8a" : "var(--accent-cyan)",
+            }}
+          />
+        </div>
+        <div className="text-amber text-[13px] mb-2">
+          +{m.rewardCredits.toLocaleString()}cr +{m.rewardExp.toLocaleString()}xp +{m.rewardHonor}hr
         </div>
         <button
-          className="btn btn-amber"
-          style={{ padding: "6px 12px", fontSize: 13 }}
-          onClick={rerollDaily}
-          disabled={player.credits < 500}
+          className="btn btn-primary w-full"
+          style={{ padding: "4px 8px", fontSize: 13 }}
+          disabled={!ready}
+          onClick={() => claimMission(m.id)}
         >
-          REROLL · 500cr
+          {claimed ? "CLAIMED" : ready ? "CLAIM" : "IN PROGRESS"}
         </button>
       </div>
-      <div className="grid grid-cols-3 gap-3">
-        {player.dailyMissions.map((m) => {
-          const pct = Math.min(1, m.progress / m.target);
-          const claimed = m.claimed;
-          const ready = m.completed && !claimed;
-          return (
-            <div
-              key={m.id}
-              className="panel p-3"
-              style={{
-                opacity: claimed ? 0.5 : 1,
-                borderColor: ready ? "#5cff8a" : "var(--border-soft)",
-              }}
-            >
-              <div className="font-bold text-[13px] text-cyan mb-1">{m.title}</div>
-              <div className="text-dim text-[13px] mb-2">{m.description}</div>
-              <div className="text-mute text-[13px] tabular-nums mb-1">
-                {m.progress}/{m.target}
-              </div>
-              <div className="w-full h-1 mb-2" style={{ background: "rgba(255,255,255,0.08)" }}>
-                <div
-                  className="h-full"
-                  style={{
-                    width: `${pct * 100}%`,
-                    background: ready ? "#5cff8a" : "var(--accent-cyan)",
-                  }}
-                />
-              </div>
-              <div className="text-amber text-[13px] mb-2">
-                +{m.rewardCredits}cr · +{m.rewardExp}xp · +{m.rewardHonor}✪
-              </div>
-              <button
-                className="btn btn-primary w-full"
-                style={{ padding: "4px 8px", fontSize: 13 }}
-                disabled={!ready}
-                onClick={() => claimMission(m.id)}
-              >
-                {claimed ? "CLAIMED" : ready ? "CLAIM" : "IN PROGRESS"}
-              </button>
-            </div>
-          );
-        })}
-      </div>
+    );
+  };
 
-      {/* Milestones */}
-      <div className="text-cyan tracking-widest text-sm mt-4 mb-2">▶ LIFETIME MILESTONES</div>
-      <div className="grid grid-cols-3 gap-2">
-        {Object.entries(player.milestones).map(([k, v]) => (
-          <div key={k} className="panel p-2">
-            <div className="text-mute text-[12px] tracking-widest uppercase">{k}</div>
-            <div className="text-amber font-bold text-sm tabular-nums">{(v as number).toLocaleString()}</div>
-          </div>
+  return (
+    <div className="p-4 space-y-3">
+      {/* Sub-tabs */}
+      <div className="flex gap-1 flex-wrap border-b pb-2" style={{ borderColor: "var(--border-soft)" }}>
+        {tabs.map(t => (
+          <button
+            key={t.id}
+            className={"btn " + (activeTab === t.id ? "btn-primary" : "")}
+            style={{ padding: "5px 12px", fontSize: 12 }}
+            onClick={() => setActiveTab(t.id)}
+          >
+            {t.icon} {t.label}
+          </button>
         ))}
       </div>
+
+      {/* Daily tab */}
+      {activeTab === "daily" && (
+        <>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-cyan tracking-widest text-sm">DAILY MISSIONS</div>
+              <div className="text-mute text-[13px] mt-1">Resets in {hrs}h {mins}m</div>
+            </div>
+            <button
+              className="btn btn-amber"
+              style={{ padding: "6px 12px", fontSize: 13 }}
+              onClick={rerollDaily}
+              disabled={player.credits < 500}
+            >
+              REROLL 500cr
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            {player.dailyMissions.map((m: any) => renderMission(m))}
+          </div>
+          {/* Milestones */}
+          <div className="text-cyan tracking-widest text-sm mt-4 mb-2">LIFETIME MILESTONES</div>
+          <div className="grid grid-cols-3 gap-2">
+            {Object.entries(player.milestones).map(([k, v]) => (
+              <div key={k} className="panel p-2">
+                <div className="text-mute text-[12px] tracking-widest uppercase">{k}</div>
+                <div className="text-amber font-bold text-sm tabular-nums">{(v as number).toLocaleString()}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Category tabs */}
+      {activeTab !== "daily" && (
+        <>
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-cyan tracking-widest text-sm">{activeTab.toUpperCase()} MISSIONS</div>
+              <div className="text-mute text-[13px] mt-1">Complete missions to earn credits, XP, and honor.</div>
+            </div>
+            <button
+              className="btn btn-amber"
+              style={{ padding: "6px 12px", fontSize: 13 }}
+              onClick={rerollMissionBoard}
+              disabled={player.credits < 2000}
+            >
+              REFRESH 2,000cr
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            {boardByCategory(activeTab).map((m: any) => renderMission(m))}
+            {boardByCategory(activeTab).length === 0 && (
+              <div className="text-mute text-sm italic col-span-3">No missions available. Try refreshing the board.</div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

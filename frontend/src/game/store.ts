@@ -47,14 +47,15 @@ import {
   STATIONS,
   ShipClassId,
   SkillId,
-  ZONES,
+  ZONES, pickAsteroidYield, ASTEROID_BELTS, RefineJob, REFINE_RECIPES, FACTORY_SPEED_BONUS, FACTORY_UPGRADE_COSTS,
   ZoneId,
+  MISSION_BOARD_POOL, MissionCategory,
 } from "./types";
 import { sfx } from "./sound";
-import { sendWarp } from "../net/socket";
+import { sendWarp, sendStatsUpdate, sendDockRepair, sendDockLeave, sendInstanceEnter, sendInstanceLeave } from "../net/socket";
 
 export type HangarTab =
-  | "bounties" | "loadout" | "ships" | "drones" | "market" | "ammo" | "cargo" | "repair" | "skills" | "missions" | "dungeons";
+  | "bounties" | "loadout" | "ships" | "drones" | "market" | "ammo" | "cargo" | "repair" | "skills" | "missions" | "dungeons" | "refinery";
 // "ammo" kept as valid value for internal use by loadout popup
 
 export type DockServiceEntry = {
@@ -84,6 +85,9 @@ export type GameState = {
   showFactionPicker: boolean;
   showSkillTree: boolean;
   showMissions: boolean;
+  showCargo: boolean;
+  refiningJobs: RefineJob[];
+  factoryLevel: number;
   paused: boolean;
   notifications: { id: string; text: string; ttl: number; kind: "info" | "good" | "bad" }[];
   availableQuests: Quest[];
@@ -122,6 +126,9 @@ export type GameState = {
   showRocketAmmoSelector: boolean;
   minimapScale: number;
   showFullZoneMap: boolean;
+  showSettings: boolean;
+  showAdmin: boolean;
+  uiScale: number;
   cameraZoom: number;
 };
 
@@ -141,6 +148,22 @@ function rollDailyMissions(): ActiveMission[] {
   }
   return out;
 }
+
+function rollMissionBoard(): ActiveMission[] {
+  const pool = [...MISSION_BOARD_POOL];
+  const out: ActiveMission[] = [];
+  const categories: MissionCategory[] = ["transport", "gathering", "delivery", "exploration"];
+  for (const cat of categories) {
+    const catPool = pool.filter(m => m.category === cat);
+    const shuffled = catPool.sort(() => Math.random() - 0.5);
+    const picked = shuffled.slice(0, 3);
+    for (const m of picked) {
+      out.push({ ...m, progress: 0, completed: false, claimed: false });
+    }
+  }
+  return out;
+}
+
 
 let _instanceSeq = 1;
 export function newInstanceId(): string {
@@ -250,19 +273,21 @@ function makeOthers(zone: ZoneId): OtherPlayer[] {
 
 function makeAsteroids(zone: ZoneId): Asteroid[] {
   const countMap: Partial<Record<ZoneId, number>> = {
-    alpha: 80, nebula: 70, crimson: 60, void: 50, forge: 40,
-    corona: 80, fracture: 70, abyss: 60, marsdepth: 50, maelstrom: 40,
-    venus1: 80, venus2: 70, venus3: 60, venus4: 50, venus5: 40,
-    danger1: 30, danger2: 30, danger3: 30, danger4: 25, danger5: 20,
+    alpha: 100, nebula: 90, crimson: 80, void: 70, forge: 60,
+    corona: 100, fracture: 90, abyss: 80, marsdepth: 70, maelstrom: 60,
+    venus1: 100, venus2: 90, venus3: 80, venus4: 70, venus5: 60,
+    danger1: 45, danger2: 45, danger3: 45, danger4: 40, danger5: 35,
   };
-  const count = countMap[zone] ?? 20;
+  const count = countMap[zone] ?? 30;
   const out: Asteroid[] = [];
   const mapR = MAP_RADIUS * 0.8;
-  for (let i = 0; i < count; i++) {
+  const belts = ASTEROID_BELTS[zone] ?? [];
+  const beltCount = belts.length > 0 ? Math.floor(count * 0.4) : 0;
+  const scatterCount = count - beltCount;
+  for (let i = 0; i < scatterCount; i++) {
     const x = (Math.random() - 0.5) * 2 * mapR;
     const y = (Math.random() - 0.5) * 2 * mapR;
     const size = 14 + Math.random() * 22;
-    const yieldsLumenite = Math.random() < 0.18;
     out.push({
       id: `ast-${i}-${Math.random().toString(36).slice(2, 6)}`,
       pos: { x, y },
@@ -272,14 +297,34 @@ function makeAsteroids(zone: ZoneId): Asteroid[] {
       rotation: Math.random() * Math.PI * 2,
       rotSpeed: (Math.random() - 0.5) * 0.4,
       zone,
-      yields: yieldsLumenite ? "lumenite" : "iron",
+      yields: pickAsteroidYield(zone),
+    });
+  }
+  for (let i = 0; i < beltCount; i++) {
+    const belt = belts[i % belts.length];
+    const angle = Math.random() * Math.PI * 2;
+    const r1 = Math.random();
+    const r2 = Math.random();
+    const x = belt.cx + Math.cos(angle) * belt.rx * r1;
+    const y = belt.cy + Math.sin(angle) * belt.ry * r2;
+    const size = 16 + Math.random() * 26;
+    out.push({
+      id: `ast-b${i}-${Math.random().toString(36).slice(2, 6)}`,
+      pos: { x, y },
+      hp: size * 4,
+      hpMax: size * 4,
+      size,
+      rotation: Math.random() * Math.PI * 2,
+      rotSpeed: (Math.random() - 0.5) * 0.3,
+      zone,
+      yields: pickAsteroidYield(zone),
     });
   }
   return out;
 }
 
-function pickQuests(zone: ZoneId): Quest[] {
-  return QUEST_POOL.filter((q) => q.zone === zone);
+function pickQuests(_zone: ZoneId): Quest[] {
+  return [...QUEST_POOL];
 }
 
 const saved = loadSaved();
@@ -395,6 +440,7 @@ const dayMs = 24 * 60 * 60 * 1000;
 if (Date.now() - initialPlayer.lastDailyReset > dayMs) {
   initialPlayer.dailyMissions = rollDailyMissions();
   initialPlayer.lastDailyReset = Date.now();
+
 }
 
 const cls = SHIP_CLASSES[initialPlayer.shipClass];
@@ -424,6 +470,9 @@ export const state: GameState = {
   dockedAt: null,
   hangarTab: "bounties",
   showMap: false,
+  showCargo: false,
+  refiningJobs: [],
+  factoryLevel: 1,
   showClan: false,
   showSocial: false,
   showFactionPicker: initialPlayer.faction === null,
@@ -432,6 +481,7 @@ export const state: GameState = {
   paused: false,
   notifications: [],
   availableQuests: pickQuests(initialPlayer.zone),
+  missionBoard: rollMissionBoard(),
   tick: 0,
   recentHonor: [],
   levelUpFlash: 0,
@@ -440,6 +490,7 @@ export const state: GameState = {
   bossSpawnTimer: 240, // first boss event ~4 minutes in
   pendingIdleReward,
   dungeon: null,
+  instanceReturnPos: null,
   lastHitTick: 0,
   repairBotUntil: 0,
   afterburnUntil: 0,
@@ -461,7 +512,10 @@ export const state: GameState = {
   showRocketAmmoSelector: false,
   minimapScale: 1,
   showFullZoneMap: false,
-  cameraZoom: 1,
+  showSettings: false,
+  showAdmin: false,
+  uiScale: parseFloat(localStorage.getItem("sf-ui-scale") || "1"),
+  cameraZoom: Math.min(window.innerWidth, 1200) / 1200,
 };
 
 const listeners = new Set<() => void>();
@@ -493,6 +547,9 @@ export function useGame<T>(selector: (s: GameState) => T): T {
 export function save(): void {
   try {
     const p = state.player;
+    if (isNaN(p.credits)) p.credits = 0;
+    if (isNaN(p.exp)) p.exp = 0;
+    if (isNaN(p.honor)) p.honor = 0;
     p.lastSeen = Date.now();
     const toSave: Partial<Player> = {
       name: p.name,
@@ -516,6 +573,7 @@ export function save(): void {
       skillPoints: p.skillPoints,
       milestones: p.milestones,
       dailyMissions: p.dailyMissions,
+      missionBoard: state.missionBoard,
       lastDailyReset: p.lastDailyReset,
       lastSeen: p.lastSeen,
       ammo: p.ammo,
@@ -529,6 +587,17 @@ export function save(): void {
       dungeonBestTimes: p.dungeonBestTimes,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+    // Sync stats to server engine for authoritative computation
+    sendStatsUpdate({
+      level: p.level,
+      shipClass: p.shipClass,
+      honor: p.honor,
+      inventory: p.inventory,
+      equipped: p.equipped,
+      skills: p.skills,
+      drones: p.drones,
+      faction: p.faction ?? undefined,
+    });
     // Also save to server if logged in
     if (localStorage.getItem("cosmic-token")) {
       fetch("/api/player/save", {
@@ -551,7 +620,7 @@ export function loadServerPlayer(data: any): void {
   if (data.shipClass) p.shipClass = data.shipClass;
   if (data.level != null) p.level = data.level;
   if (data.exp != null) p.exp = data.exp;
-  if (data.credits != null) p.credits = data.credits;
+  if (data.credits != null && !isNaN(data.credits)) p.credits = data.credits;
   if (data.honor != null) p.honor = data.honor;
   if (data.hull != null) p.hull = data.hull;
   if (data.shield != null) p.shield = data.shield;
@@ -581,6 +650,7 @@ export function loadServerPlayer(data: any): void {
   if (data.autoShieldRecharge != null) p.autoShieldRecharge = data.autoShieldRecharge;
   if (data.activeQuests) p.activeQuests = data.activeQuests;
   if (data.completedQuests) p.completedQuests = data.completedQuests;
+  if (data.missionBoard) state.missionBoard = data.missionBoard;
   if (data.dailyMissions) p.dailyMissions = data.dailyMissions;
   if (data.lastDailyReset != null) p.lastDailyReset = data.lastDailyReset;
   if (data.milestones) p.milestones = data.milestones;
@@ -616,17 +686,29 @@ export function pushChat(channel: ChatMessage["channel"], from: string, text: st
 }
 
 export function pushFloater(opts: {
-  text: string; color: string; x: number; y: number; bold?: boolean; scale?: number; ttl?: number;
+  text: string; color: string; x: number; y: number; bold?: boolean; scale?: number; ttl?: number; trackPlayer?: boolean;
 }): void {
   const ttl = opts.ttl ?? 0.8;
+  // Count existing trackPlayer floaters to stack them vertically
+  let yOff = 0;
+  if (opts.trackPlayer) {
+    const trackCount = state.floaters.filter(f => f.trackPlayer).length;
+    yOff = -trackCount * 22;
+  } else {
+    for (const f of state.floaters) {
+      if (Math.abs(f.pos.x - opts.x) < 60 && Math.abs(f.pos.y - opts.y + yOff) < 16) yOff -= 18;
+    }
+  }
   state.floaters.push({
     id: `f-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
     text: opts.text, color: opts.color,
-    pos: { x: opts.x, y: opts.y },
-    vy: -40 - Math.random() * 30,
+    pos: { x: opts.x, y: opts.y + yOff },
+    vy: -30,
     ttl, maxTtl: ttl,
     scale: opts.scale ?? 1,
     bold: opts.bold,
+    trackPlayer: opts.trackPlayer,
+    trackYOff: opts.trackPlayer ? yOff : undefined,
   });
   if (state.floaters.length > 60) state.floaters.shift();
 }
@@ -641,19 +723,29 @@ export function pushEvent(ev: Omit<GameEvent, "id" | "startedAt">): void {
 }
 
 export function refreshOthers(zone: ZoneId): void {
-  state.others = makeOthers(zone);
+  // Skip fake placeholder players when server is authoritative — they cause offset/invisible bugs
+  if ((globalThis as any).__serverAuthoritative) {
+    state.others = [];
+  } else {
+    state.others = makeOthers(zone);
+  }
   state.availableQuests = pickQuests(zone);
   state.asteroids = makeAsteroids(zone);
   bump();
 }
 
-export function travelToZone(zoneId: ZoneId): void {
+let _onWarpCallback: (() => void) | null = null;
+export function registerWarpCallback(cb: () => void): void { _onWarpCallback = cb; }
+
+export function travelToZone(zoneId: ZoneId, spawnX?: number, spawnY?: number): void {
   if (state.player.zone !== zoneId) {
     state.player.milestones.totalWarps++;
     bumpMission("warp-zones", 1);
+    bumpMission("travel-gates", 1);
+    bumpMission("visit-zones", 1);
   }
   state.player.zone = zoneId;
-  state.player.pos = { x: 0, y: 80 };
+  state.player.pos = { x: spawnX ?? 0, y: spawnY ?? 80 };
   state.player.vel = { x: 0, y: 0 };
   state.cameraTarget = { ...state.player.pos };
   state.enemies = [];
@@ -661,8 +753,9 @@ export function travelToZone(zoneId: ZoneId): void {
   state.particles = [];
   state.cargoBoxes = [];
   state.npcShips = [];
+  _onWarpCallback?.();
   refreshOthers(zoneId);
-  sendWarp(zoneId, 0, 80);
+  sendWarp(zoneId, spawnX ?? 0, spawnY ?? 80);
   pushNotification(`Warped to ${ZONES[zoneId].name}`, "good");
   pushChat("system", "SYSTEM", `You entered ${ZONES[zoneId].name}.`);
   sfx.warp();
@@ -670,13 +763,41 @@ export function travelToZone(zoneId: ZoneId): void {
 }
 
 // ── ECONOMY HELPERS ────────────────────────────────────────────────────────
+function hashCode(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
 export function stationPrice(stationId: string, resourceId: ResourceId): number {
   const station = STATIONS.find((s) => s.id === stationId);
   if (!station) return RESOURCES[resourceId].basePrice;
   const mod = station.prices[resourceId];
   let price = RESOURCES[resourceId].basePrice * (mod ?? 1.0);
-  // Faction discounts disabled
+
+  // Dynamic price fluctuation (±15%, 8-minute cycles, unique per station+resource)
+  const seed = hashCode(stationId + resourceId);
+  const period = 480000 + (seed % 5) * 60000; // 8-13 min cycles
+  const phase = (seed % 1000) / 1000 * Math.PI * 2;
+  const now = Date.now();
+  const wave = Math.sin(now / period * Math.PI * 2 + phase);
+  const amplitude = 0.15;
+  price *= (1 + wave * amplitude);
+
   return Math.max(1, Math.round(price));
+}
+
+export function priceDirection(stationId: string, resourceId: ResourceId): "up" | "down" | "stable" {
+  const seed = hashCode(stationId + resourceId);
+  const period = 480000 + (seed % 5) * 60000;
+  const phase = (seed % 1000) / 1000 * Math.PI * 2;
+  const now = Date.now();
+  const wave = Math.cos(now / period * Math.PI * 2 + phase);
+  if (wave > 0.3) return "up";
+  if (wave < -0.3) return "down";
+  return "stable";
 }
 
 export function cargoUsed(): number {
@@ -728,10 +849,17 @@ export function tryCollectNearbyBoxes(): void {
     const cb = state.cargoBoxes[i];
     const dist = Math.hypot(cb.pos.x - p.pos.x, cb.pos.y - p.pos.y);
     if (dist < COLLECT_RANGE) {
-      if (cb.qty > 0) {
+      const box = cb as any;
+      if (box.ammoQty && box.ammoQty > 0) {
+        // Ammo box
+        state.player.ammo.x1 = (state.player.ammo.x1 ?? 0) + box.ammoQty;
+        pushFloater({ text: `+${box.ammoQty} Ammo`, color: "#6688ff", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.3, bold: true, ttl: 2.0, trackPlayer: true });
+        sfx.pickup();
+        state.cargoBoxes.splice(i, 1);
+      } else if (cb.qty > 0) {
         const got = addCargo(cb.resourceId, cb.qty);
         if (got > 0) {
-          pushFloater({ text: `+${got} ${RESOURCES[cb.resourceId].name}`, color: "#5cff8a", x: cb.pos.x, y: cb.pos.y - 12, scale: 1, bold: true });
+          pushFloater({ text: `+${got} ${RESOURCES[cb.resourceId]?.name ?? cb.resourceId}`, color: "#5cff8a", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.3, bold: true, ttl: 2.0, trackPlayer: true });
           sfx.pickup();
           state.cargoBoxes.splice(i, 1);
         }
@@ -757,10 +885,14 @@ export function collectCargoBox(boxId: string): void {
     pushNotification("Fly closer to collect", "bad");
     return;
   }
-  if (cb.qty > 0) {
+  const mbox = cb as any;
+  if (mbox.ammoQty && mbox.ammoQty > 0) {
+    state.player.ammo.x1 = (state.player.ammo.x1 ?? 0) + mbox.ammoQty;
+    pushFloater({ text: `+${mbox.ammoQty} Ammo`, color: "#6688ff", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.3, bold: true, ttl: 2.0, trackPlayer: true });
+  } else if (cb.qty > 0) {
     const got = addCargo(cb.resourceId, cb.qty);
     if (got > 0) {
-      pushFloater({ text: `+${got} ${RESOURCES[cb.resourceId].name}`, color: "#5cff8a", x: cb.pos.x, y: cb.pos.y - 12, scale: 1, bold: true });
+      pushFloater({ text: `+${got} ${RESOURCES[cb.resourceId]?.name ?? cb.resourceId}`, color: "#5cff8a", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.3, bold: true, ttl: 2.0, trackPlayer: true });
     } else {
       pushNotification("Cargo bay full", "bad");
       return;
@@ -786,7 +918,7 @@ export function maxDroneSlots(): number {
 }
 
 // ── AMMO ──────────────────────────────────────────────────────────────────
-export const ROCKET_AMMO_BASE = 999999;
+export const ROCKET_AMMO_BASE = 10000;
 export const ROCKET_AMMO_COST_PER = 8; // credits per rocket round when restocking
 
 export function rocketAmmoMax(): number {
@@ -914,6 +1046,7 @@ export function autoRepairIfEnabled(hullMax: number, collect?: DockServiceEntry[
   }
   p.credits -= cost;
   p.hull = hullMax;
+  sendDockRepair(hullMax, p.shield);
   bumpMission("spend-credits", cost);
   if (collect) collect.push({ kind: "repair", label: "Hull repaired to full", cost });
   else pushNotification(`Auto-Repair: hull restored · -${cost}cr`, "good");
@@ -925,6 +1058,7 @@ export function autoShieldIfEnabled(shieldMax: number, collect?: DockServiceEntr
   if (!p.autoShieldRecharge) return;
   if (p.shield >= shieldMax) return;
   p.shield = shieldMax;
+  sendDockRepair(p.hull, shieldMax);
   if (collect) collect.push({ kind: "shield", label: "Shields recharged to full", cost: 0 });
   else pushNotification("Auto-Shield: shields recharged", "good");
   save(); bump();
@@ -1070,7 +1204,7 @@ export function buySkillRank(skillId: SkillId): boolean {
   if (p.skillPoints < node.cost) { pushNotification("Not enough skill points", "bad"); return false; }
   p.skillPoints -= node.cost;
   p.skills[skillId] = cur + 1;
-  pushNotification(`${node.name} → rank ${cur + 1}`, "good");
+  pushNotification(`${node.name} → rank ${cur + 1} (check ACTIVE STATS in Loadout)`, "good");
   save(); bump();
   return true;
 }
@@ -1078,34 +1212,33 @@ export function buySkillRank(skillId: SkillId): boolean {
 export function resetSkills(): void {
   const p = state.player;
   if (p.credits < 2000) { pushNotification("Respec costs 2000cr", "bad"); return; }
-  let totalSpent = 0;
-  for (const node of SKILL_NODES) {
-    const r = p.skills[node.id] ?? 0;
-    totalSpent += r * node.cost;
-  }
   p.credits -= 2000;
   p.skills = {};
-  p.skillPoints += totalSpent;
-  pushNotification(`Skills reset · refunded ${totalSpent} pts`, "good");
+  p.skillPoints = Math.max(0, p.level - 1);
+  pushNotification(`Skills reset · ${p.skillPoints} pts available`, "good");
   save(); bump();
 }
 
 // ── MISSIONS / MILESTONES ─────────────────────────────────────────────────
-export function bumpMission(kind: ActiveMission["kind"], amount: number, zone?: ZoneId): void {
-  for (const m of state.player.dailyMissions) {
+export function bumpMission(kind: ActiveMission["kind"], amount: number, zone?: ZoneId, extra?: { resourceId?: string; stationId?: string }): void {
+  const allMissions = [...state.player.dailyMissions, ...state.missionBoard];
+  for (const m of allMissions) {
     if (m.completed) continue;
     if (m.kind !== kind) continue;
     if (m.zoneFilter && m.zoneFilter !== zone) continue;
+    if (m.targetResourceId && extra?.resourceId && m.targetResourceId !== extra.resourceId) continue;
+    if (m.targetStationId && extra?.stationId && m.targetStationId !== extra.stationId) continue;
     m.progress = Math.min(m.target, m.progress + amount);
     if (m.progress >= m.target) {
       m.completed = true;
-      pushNotification(`Daily complete: ${m.title}`, "good");
+      pushNotification(`Mission complete: ${m.title}`, "good");
     }
   }
 }
 
 export function claimMission(missionId: string): void {
-  const m = state.player.dailyMissions.find((x) => x.id === missionId);
+  const m = state.player.dailyMissions.find((x) => x.id === missionId)
+    ?? state.missionBoard.find((x) => x.id === missionId);
   if (!m || !m.completed || m.claimed) return;
   m.claimed = true;
   state.player.credits += m.rewardCredits;
@@ -1123,6 +1256,14 @@ export function rerollDaily(): void {
   pushNotification("Daily missions rerolled", "good");
   save(); bump();
 }
+export function rerollMissionBoard(): void {
+  if (state.player.credits < 2000) { pushNotification("Board reroll costs 2,000cr", "bad"); return; }
+  state.player.credits -= 2000;
+  state.missionBoard = rollMissionBoard();
+  pushNotification("Mission board refreshed", "good");
+  save(); bump();
+}
+
 
 export function checkMilestones(): void {
   const p = state.player;
@@ -1231,17 +1372,21 @@ export function enterDungeon(id: DungeonId): void {
   if (state.player.level < def.unlockLevel) {
     pushNotification(`Requires Lv ${def.unlockLevel}`, "bad"); return;
   }
-  // Travel to dungeon zone if needed
-  if (state.player.zone !== def.zone) travelToZone(def.zone);
+  // Save return position
+  state.instanceReturnPos = { zone: state.player.zone, x: state.player.pos.x, y: state.player.pos.y };
+  // Send to server
+  sendInstanceEnter(id);
   state.dungeon = {
     id, wave: 1, totalWaves: def.waves,
     enemiesLeft: def.enemiesPerWave, spawnedThisWave: false,
     startedAt: Date.now(),
     isFeatured: id === getDailyFeaturedDungeon(),
   };
-  // Clear ambient enemies for a clean instance feel
+  // Clear ambient enemies and move to instance center
   state.enemies = [];
   state.projectiles = [];
+  state.player.pos.x = 0;
+  state.player.pos.y = 0;
   pushEvent({ title: `▼ ${def.name.toUpperCase()}`, body: `Wave 1 / ${def.waves} incoming.`, ttl: 5, kind: "info", color: def.color });
   pushNotification(`Entered ${def.name}`, "good");
   state.dockedAt = null;
@@ -1266,7 +1411,7 @@ export function completeDungeon(): void {
   const isFeatured = run.isFeatured;
   const creditReward = isFeatured ? Math.round(def.rewardCredits * DAILY_DUNGEON_BONUS.creditsMul) : def.rewardCredits;
   // Rewards
-  p.credits += creditReward;
+  p.credits = (p.credits || 0) + creditReward;
   p.exp += def.rewardExp;
   p.milestones.totalCreditsEarned += creditReward;
   for (const m of def.rewardMaterials) {
@@ -1303,6 +1448,12 @@ export function completeDungeon(): void {
   }
   state.enemies = [];
   state.projectiles = [];
+  sendInstanceLeave();
+  if (state.instanceReturnPos) {
+    state.player.pos.x = state.instanceReturnPos.x;
+    state.player.pos.y = state.instanceReturnPos.y;
+    state.instanceReturnPos = null;
+  }
   save(); bump();
 }
 
@@ -1310,6 +1461,14 @@ export function abandonDungeon(): void {
   if (!state.dungeon) return;
   state.dungeon = null;
   state.enemies = [];
+  state.projectiles = [];
+  sendInstanceLeave();
+  // Return to saved position
+  if (state.instanceReturnPos) {
+    state.player.pos.x = state.instanceReturnPos.x;
+    state.player.pos.y = state.instanceReturnPos.y;
+    state.instanceReturnPos = null;
+  }
   pushNotification("Abandoned dungeon", "bad");
   bump();
 }
@@ -1397,4 +1556,55 @@ export { STATIONS, PORTALS };
 // Expose state for debugging in console
 if (typeof window !== 'undefined') {
   (window as any).debugGameState = state;
+}
+
+// ── REFINERY FUNCTIONS ────────────────────────────────────────────────────
+export function startRefineJob(recipeId: string): boolean {
+  const recipe = REFINE_RECIPES.find(r => r.id === recipeId);
+  if (!recipe) return false;
+  if (state.factoryLevel < recipe.minFactoryLevel) return false;
+  if (state.refiningJobs.length >= state.factoryLevel + 1) return false;
+  for (const inp of recipe.inputs) {
+    const cargo = state.player.cargo.find(c => c.resourceId === inp.resourceId);
+    if (!cargo || cargo.qty < inp.qty) return false;
+  }
+  for (const inp of recipe.inputs) {
+    removeCargo(inp.resourceId, inp.qty);
+  }
+  const speedMul = FACTORY_SPEED_BONUS[state.factoryLevel] ?? 1.0;
+  const duration = recipe.timeSeconds * speedMul * 1000;
+  const now = Date.now();
+  state.refiningJobs.push({
+    recipeId: recipe.id,
+    startedAt: now,
+    completesAt: now + duration,
+  });
+  save();
+  bump();
+  return true;
+}
+
+export function collectRefineJob(index: number): boolean {
+  const job = state.refiningJobs[index];
+  if (!job) return false;
+  if (Date.now() < job.completesAt) return false;
+  const recipe = REFINE_RECIPES.find(r => r.id === job.recipeId);
+  if (!recipe) return false;
+  addCargo(recipe.output.resourceId, recipe.output.qty);
+  state.refiningJobs.splice(index, 1);
+  save();
+  bump();
+  return true;
+}
+
+export function upgradeFactory(): boolean {
+  const nextLevel = state.factoryLevel + 1;
+  if (nextLevel > 5) return false;
+  const cost = FACTORY_UPGRADE_COSTS[nextLevel - 1] ?? 999999;
+  if (state.player.credits < cost) return false;
+  state.player.credits -= cost;
+  state.factoryLevel = nextLevel;
+  save();
+  bump();
+  return true;
 }

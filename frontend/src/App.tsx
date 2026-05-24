@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { state, bump, useGame, save, pushNotification, pushChat, abandonDungeon, useConsumable, runDockingServices, loadServerPlayer, collectCargoBox, enterDungeon } from "./game/store";
-import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats } from "./game/loop";
+import { state, bump, useGame, save, pushNotification, pushChat, abandonDungeon, useConsumable, runDockingServices, loadServerPlayer, collectCargoBox, enterDungeon, stationPrice, completeDungeon, pushEvent } from "./game/store";
+import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats, hasRocketWeapon, setEntityTarget, applyKill } from "./game/loop";
 import { render } from "./game/render";
+import { initPixiRenderer, destroyPixiRenderer, pixiRender } from "./game/pixi-renderer-v2-integrated";
+import { init3DLayer, destroy3DLayer, getLoadingProgress } from "./game/three-ship-layer";
+import { activeRenderer } from "./game/renderer-config";
 import { TopBar, WorldTargetHud } from "./components/TopBar";
 import { MiniMap } from "./components/MiniMap";
 import { Hangar } from "./components/Hangar";
@@ -11,12 +14,15 @@ import { IdleRewardModal } from "./components/IdleRewardModal";
 import { EventBanners } from "./components/EventBanners";
 import { Hotbar } from "./components/Hotbar";
 import { QuestTracker } from "./components/QuestTracker";
-import { DUNGEONS, STATIONS, PORTALS, ZONES, MODULE_DEFS } from "./game/types";
+import SettingsMenu from "./components/SettingsMenu";
+import { AdminPanel } from "./components/AdminPanel";
+import { DUNGEONS, STATIONS, PORTALS, ZONES, MODULE_DEFS, RESOURCES, SHIP_CLASSES, ENEMY_DEFS, type EnemyType, type DungeonId } from "./game/types";
 import { travelToZone, state as gameState } from "./game/store";
 import AuthScreen from "./components/AuthScreen";
 import { hasToken, getPlayer, clearToken } from "./net/api";
 import {
-  connectSocket, disconnectSocket, setSocketListeners, sendInput,
+  connectSocket, disconnectSocket, setSocketListeners, sendInput, sendDockEnter,
+  setInstanceCallbacks,
   type ServerEnemy, type ServerAsteroid, type ServerNpc, type ProjectileSpawnEvent,
   type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent,
 } from "./net/socket";
@@ -29,8 +35,14 @@ import {
   onLaserFireFromServer, onRocketFireFromServer, onProjectileSpawnFromServer,
 } from "./game/loop";
 
+let _riftConfirmDungeonId: string | null = null;
+let _riftConfirmSetState: ((id: string | null) => void) | null = null;
+
 function GameCanvas() {
+  const threeCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const pixiContainerRef = useRef<HTMLDivElement | null>(null);
+  const labelOverlayRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     startLoop();
@@ -38,32 +50,59 @@ function GameCanvas() {
   }, []);
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d", { alpha: false });
-    if (!ctx) return;
-    ctx.imageSmoothingEnabled = false;
+    if (activeRenderer === "pixi") {
+      // PixiJS renderer
+      const container = pixiContainerRef.current;
+      if (!container) return;
+      initPixiRenderer(container, labelOverlayRef.current ?? undefined);
 
-    let raf = 0;
-    const draw = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const w = canvas.clientWidth;
-      const h = canvas.clientHeight;
-      if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
-        canvas.width = w * dpr;
-        canvas.height = h * dpr;
+      // Initialize Three.js 3D layer on its own canvas
+      const threeCanvas = threeCanvasRef.current;
+      if (threeCanvas) {
+        init3DLayer(threeCanvas);
+        console.log("[App] Three.js canvas initialized");
       }
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.imageSmoothingEnabled = false;
-      render(ctx, w, h);
+
+      let raf = 0;
+      const draw = () => {
+        try { pixiRender(); } catch (err) { console.error("[PIXI] Render error:", err); }
+        raf = requestAnimationFrame(draw);
+      };
       raf = requestAnimationFrame(draw);
-    };
-    raf = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(raf);
+      return () => {
+        cancelAnimationFrame(raf);
+        destroy3DLayer();
+        destroyPixiRenderer();
+      };
+    } else {
+      // Canvas2D renderer
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d", { alpha: false });
+      if (!ctx) return;
+      ctx.imageSmoothingEnabled = false;
+
+      let raf = 0;
+      const draw = () => {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const w = canvas.clientWidth;
+        const h = canvas.clientHeight;
+        if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+          canvas.width = w * dpr;
+          canvas.height = h * dpr;
+        }
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.imageSmoothingEnabled = false;
+        render(ctx, w, h);
+        raf = requestAnimationFrame(draw);
+      };
+      raf = requestAnimationFrame(draw);
+      return () => cancelAnimationFrame(raf);
+    }
   }, []);
 
-  const screenToWorld = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+  const screenToWorld = (e: React.MouseEvent<HTMLCanvasElement | HTMLDivElement>) => {
+    const rect = (e.target as HTMLElement).getBoundingClientRect();
     const cx = e.clientX - rect.left;
     const cy = e.clientY - rect.top;
     const zoom = state.cameraZoom;
@@ -73,7 +112,7 @@ function GameCanvas() {
     };
   };
 
-  const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleClick = (e: React.MouseEvent<HTMLCanvasElement | HTMLDivElement>) => {
     if (state.dockedAt) return;
     const { x: wx, y: wy } = screenToWorld(e);
 
@@ -98,8 +137,8 @@ function GameCanvas() {
       state.selectedWorldTarget = {
         kind: "asteroid",
         id: asteroid.id,
-        name: asteroid.yields === "lumenite" ? "LUMENITE ROCK" : "ORE ROCK",
-        detail: `${asteroid.yields.toUpperCase()} · ${Math.round(asteroid.hp)}/${Math.round(asteroid.hpMax)} HP`,
+        name: `${(RESOURCES[asteroid.yields]?.name ?? "Ore").toUpperCase()} ROCK`,
+        detail: `${Math.round(asteroid.hp)}/${Math.round(asteroid.hpMax)} HP`,
       };
       state.miningTargetId = asteroid.id;
       bump();
@@ -120,7 +159,8 @@ function GameCanvas() {
       if (Math.hypot(d.pos.x - wx, d.pos.y - wy) < 50) {
         const playerDist = Math.hypot(d.pos.x - state.player.pos.x, d.pos.y - state.player.pos.y);
         if (playerDist < 120) {
-          enterDungeon(d.id);
+          _riftConfirmDungeonId = d.id;
+          _riftConfirmSetState?.(d.id);
         } else {
           state.cameraTarget = { x: d.pos.x, y: d.pos.y };
           pushNotification(`Fly closer to enter ${d.name}`, "info");
@@ -145,7 +185,7 @@ function GameCanvas() {
     bump();
   };
 
-  const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement | HTMLDivElement>) => {
     if (state.dockedAt) return;
     const { x: wx, y: wy } = screenToWorld(e);
     const enemy = state.enemies.find((en) => Math.hypot(en.pos.x - wx, en.pos.y - wy) < Math.max(24, en.size + 14));
@@ -158,17 +198,17 @@ function GameCanvas() {
       };
       state.attackTargetId = enemy.id;
       state.miningTargetId = null;
-      // Double-click starts both lasers and rockets
+      // Double-click starts lasers (and rockets only if equipped)
       state.isLaserFiring = true;
-      state.isRocketFiring = true;
+      state.isRocketFiring = hasRocketWeapon();
       state.isAttacking = true;
       bump();
     }
   };
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement | HTMLDivElement>) => {
     if (e.buttons !== 1 || state.dockedAt) return;
-    const rect = (e.target as HTMLCanvasElement).getBoundingClientRect();
+    const rect = (e.target as HTMLElement).getBoundingClientRect();
     const cx = e.clientX - rect.left;
     const cy = e.clientY - rect.top;
     state.cameraTarget = {
@@ -177,24 +217,98 @@ function GameCanvas() {
     };
   };
 
-  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
+  // ── Pinch-to-zoom for mobile ──
+  const lastPinchDist = useRef<number>(0);
+  const lastTouchPos = useRef<{ x: number; y: number } | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      lastPinchDist.current = Math.sqrt(dx * dx + dy * dy);
+    } else if (e.touches.length === 1) {
+      lastTouchPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    e.preventDefault();
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (lastPinchDist.current > 0) {
+        const scale = dist / lastPinchDist.current;
+        const minZoom = Math.min(window.innerWidth, 1200) / 1200;
+        state.cameraZoom = Math.max(minZoom * 0.7, Math.min(2.5, state.cameraZoom * scale));
+        bump();
+      }
+      lastPinchDist.current = dist;
+    } else if (e.touches.length === 1 && lastTouchPos.current) {
+      const rect = (e.target as HTMLElement).getBoundingClientRect();
+      const cx = e.touches[0].clientX - rect.left;
+      const cy = e.touches[0].clientY - rect.top;
+      state.cameraTarget = {
+        x: state.player.pos.x + (cx - rect.width / 2) / state.cameraZoom,
+        y: state.player.pos.y + (cy - rect.height / 2) / state.cameraZoom,
+      };
+      lastTouchPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      bump();
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (e.touches.length < 2) lastPinchDist.current = 0;
+    if (e.touches.length === 0) lastTouchPos.current = null;
+  };
+
+  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement | HTMLDivElement>) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? -0.1 : 0.1;
-    state.cameraZoom = Math.max(1.0, Math.min(2.5, state.cameraZoom + delta));
+    const minZoom = Math.min(window.innerWidth, 1200) / 1200;
+    state.cameraZoom = Math.max(minZoom * 0.7, Math.min(2.5, state.cameraZoom + delta));
     bump();
   };
 
   return (
-    <canvas
-      ref={canvasRef}
-      onClick={handleClick}
-      onDoubleClick={handleDoubleClick}
-      onMouseMove={handleMouseMove}
-      onWheel={handleWheel}
-      onContextMenu={(e) => e.preventDefault()}
-      className="absolute inset-0 w-full h-full"
-      style={{ cursor: "crosshair", display: "block" }}
-    />
+    activeRenderer === "pixi" ? (
+      <>
+        <div
+          ref={pixiContainerRef}
+          onClick={handleClick}
+          onDoubleClick={handleDoubleClick}
+          onMouseMove={handleMouseMove}
+          onWheel={handleWheel}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onContextMenu={(e) => e.preventDefault()}
+          className="absolute inset-0 w-full h-full"
+          style={{ cursor: "crosshair", touchAction: "none", zIndex: 0 }}
+        />
+        <canvas
+          ref={threeCanvasRef}
+          className="absolute inset-0 w-full h-full"
+          style={{ pointerEvents: "none", zIndex: 1 }}
+        />
+        <div
+          ref={labelOverlayRef}
+          className="absolute inset-0 w-full h-full"
+          style={{ pointerEvents: "none", zIndex: 2, overflow: "hidden" }}
+        />
+      </>
+    ) : (
+      <canvas
+        ref={canvasRef}
+        onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
+        onMouseMove={handleMouseMove}
+        onWheel={handleWheel}
+        onContextMenu={(e) => e.preventDefault()}
+        className="absolute inset-0 w-full h-full"
+        style={{ cursor: "crosshair", display: "block" }}
+      />
+    )
   );
 }
 
@@ -215,6 +329,32 @@ function Notifications() {
           {n.text}
         </div>
       ))}
+    </div>
+  );
+}
+
+
+function RiftConfirmDialog() {
+  const [dungeonId, setDungeonId] = useState<string | null>(null);
+  useEffect(() => {
+    _riftConfirmSetState = setDungeonId;
+    return () => { _riftConfirmSetState = null; };
+  }, []);
+  if (!dungeonId) return null;
+  const def = DUNGEONS[dungeonId as DungeonId];
+  if (!def) return null;
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
+      <div style={{ background: "#111827", border: "2px solid #555", borderRadius: 10, padding: 28, maxWidth: 360, textAlign: "center", boxShadow: "0 0 60px rgba(0,0,0,0.9)" }}>
+        <div style={{ fontSize: 20, fontWeight: "bold", marginBottom: 12, color: def.color }}>{def.name}</div>
+        <div style={{ fontSize: 14, color: "#aaa", marginBottom: 8 }}>SOLO MODE</div>
+        <div style={{ fontSize: 13, color: "#888", marginBottom: 6 }}>{def.waves} waves / {def.enemiesPerWave} enemies per wave</div>
+        <div style={{ fontSize: 13, color: "#ccc", marginBottom: 22 }}>Enter this rift?</div>
+        <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+          <button style={{ padding: "10px 28px", background: "#333", color: "#ccc", border: "1px solid #555", borderRadius: 6, cursor: "pointer", fontSize: 14 }} onClick={() => { setDungeonId(null); _riftConfirmDungeonId = null; }}>Cancel</button>
+          <button style={{ padding: "10px 28px", background: def.color, color: "#000", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 14, fontWeight: "bold" }} onClick={() => { setDungeonId(null); _riftConfirmDungeonId = null; enterDungeon(dungeonId as DungeonId); }}>Enter Rift</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -263,7 +403,8 @@ function DockPrompt() {
           className="btn btn-primary text-base px-8 py-3"
           style={{ animation: "pulse-glow 2s ease-in-out infinite", whiteSpace: "nowrap", minWidth: "fit-content" }}
           onClick={() => {
-            state.dockedAt = station.id;
+            state.dockedAt = station.id; sendDockEnter();
+            state.hangarTab = station.kind === "factory" ? "refinery" : "bounties";
             state.player.vel = { x: 0, y: 0 };
             pushNotification(`Docking with ${station.name}`, "good");
             save(); bump();
@@ -376,6 +517,147 @@ function DockingSummary() {
   );
 }
 
+function CargoOverlay() {
+  const showCargo = useGame((s) => s.showCargo);
+  const player = useGame((s) => s.player);
+  if (!showCargo) return null;
+
+  const used = player.cargo.reduce((a: number, c: any) => a + c.qty, 0);
+  const cls = SHIP_CLASSES[player.shipClass];
+  const maxCargo = cls.cargoMax;
+
+  return (
+    <div
+      className="fixed z-50"
+      style={{ top: 80, right: 16, width: 340, pointerEvents: "auto" }}
+    >
+      <div className="panel" style={{ maxHeight: "calc(100vh - 160px)", overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 0 30px rgba(78,226,255,0.15)" }}>
+        <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "var(--border-soft)" }}>
+          <div>
+            <div className="text-cyan tracking-widest text-sm font-bold">CARGO HOLD</div>
+            <div className="text-mute text-[12px]">{used}/{maxCargo} units</div>
+          </div>
+          <div className="text-right">
+            <div className="text-amber font-bold text-[14px]">{player.cargo.reduce((s: number, c: any) => s + ((RESOURCES as any)[c.resourceId]?.basePrice ?? 0) * c.qty, 0).toLocaleString()}cr</div>
+            <button
+              className="text-mute hover:text-bright text-[11px] tracking-widest"
+              onClick={() => { state.showCargo = false; bump(); }}
+            >[J] CLOSE</button>
+          </div>
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: 8 }}>
+          {player.cargo.length === 0 ? (
+            <div className="text-mute text-sm italic text-center py-6">
+              Cargo bay empty
+            </div>
+          ) : player.cargo.map((c: any) => {
+            const r = (RESOURCES as any)[c.resourceId];
+            if (!r) return null;
+            return (
+              <div key={c.resourceId} className="flex items-center gap-2 px-2 py-1.5 hover:bg-white/5 border-b" style={{ borderColor: "var(--border-soft)" }}>
+                <div
+                  className="flex items-center justify-center flex-shrink-0"
+                  style={{ width: 28, height: 28, background: r.color + "22", border: "1px solid " + r.color, color: r.color, fontSize: 14 }}
+                >{r.glyph}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-bright text-[12px] font-bold truncate">{r.name}</div>
+                </div>
+                <div className="text-cyan text-[13px] font-bold tabular-nums">x{c.qty}</div>
+                <div className="text-amber text-[12px] tabular-nums" style={{ minWidth: 50, textAlign: "right" }}>{(c.qty * r.basePrice).toLocaleString()}cr</div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="px-3 py-2 border-t text-mute text-[11px] tracking-widest" style={{ borderColor: "var(--border-soft)" }}>
+          {used > 0 ? "DOCK TO SELL" : "MINE OR TRADE"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+function LoadingScreen({ onReady }: { onReady: () => void }) {
+  const [progress, setProgress] = useState(0);
+  const [fadeOut, setFadeOut] = useState(false);
+
+  useEffect(() => {
+    let elapsed = 0;
+    const interval = setInterval(() => {
+      elapsed += 100;
+      const p = getLoadingProgress();
+      const fakePct = Math.min(95, Math.round((elapsed / 4000) * 95));
+      setProgress(p.playerReady ? 100 : fakePct);
+      if (p.playerReady) {
+        clearInterval(interval);
+        setFadeOut(true);
+        setTimeout(onReady, 800);
+      }
+    }, 100);
+    return () => clearInterval(interval);
+  }, [onReady]);
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 200,
+      background: "#020408",
+      display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center",
+      transition: "opacity 0.7s ease-out",
+      opacity: fadeOut ? 0 : 1,
+      pointerEvents: fadeOut ? "none" : "auto",
+    }}>
+      <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
+        {Array.from({ length: 60 }, (_, i) => (
+          <div key={i} style={{
+            position: "absolute",
+            width: Math.random() * 2 + 1,
+            height: Math.random() * 2 + 1,
+            background: "#fff",
+            borderRadius: "50%",
+            left: `${Math.random() * 100}%`,
+            top: `${Math.random() * 100}%`,
+            opacity: Math.random() * 0.6 + 0.2,
+            animation: `twinkle ${2 + Math.random() * 3}s ease-in-out infinite`,
+            animationDelay: `${Math.random() * 3}s`,
+          }} />
+        ))}
+      </div>
+      <style>{`
+        @keyframes twinkle { 0%, 100% { opacity: 0.2; } 50% { opacity: 0.8; } }
+        @keyframes pulse { 0%, 100% { text-shadow: 0 0 10px #4ee2ff44; } 50% { text-shadow: 0 0 25px #4ee2ff88, 0 0 50px #4ee2ff44; } }
+      `}</style>
+      <div style={{
+        fontSize: 32, letterSpacing: 12, color: "#4ee2ff",
+        fontFamily: "'Courier New', monospace", fontWeight: "bold",
+        animation: "pulse 3s ease-in-out infinite",
+        marginBottom: 40, textAlign: "center",
+      }}>
+        COSMIC REALM
+      </div>
+      <div style={{
+        width: 280, height: 4, background: "#0a1428",
+        borderRadius: 2, overflow: "hidden",
+        border: "1px solid #4ee2ff33",
+      }}>
+        <div style={{
+          width: `${progress}%`, height: "100%",
+          background: "linear-gradient(90deg, #4ee2ff, #44ffcc)",
+          borderRadius: 2,
+          transition: "width 0.3s ease-out",
+          boxShadow: "0 0 8px #4ee2ff88",
+        }} />
+      </div>
+      <div style={{
+        marginTop: 12, fontSize: 11, letterSpacing: 3,
+        color: "#4ee2ff88", fontFamily: "'Courier New', monospace",
+      }}>
+        LOADING SYSTEMS... {progress}%
+      </div>
+    </div>
+  );
+}
+
 function GameApp() {
   // Wire socket listeners to game state
   useEffect(() => {
@@ -391,6 +673,9 @@ function GameApp() {
           level: p.level, clan: null, zone: p.zone as any,
           pos: { x: 0, y: 0 }, vel: { x: 0, y: 0 }, angle: 0,
           inParty: false,
+          faction: (p as any).faction ?? null,
+          honor: (p as any).honor ?? 0,
+          miningTargetId: null,
         });
         bump();
       },
@@ -423,6 +708,94 @@ function GameApp() {
       onRocketFire: (event) => onRocketFireFromServer(event),
     });
     return () => setSocketListeners({});
+  }, []);
+
+  useEffect(() => {
+    setInstanceCallbacks({
+      onState: (data: any) => {
+        if (!state.dungeon) return;
+        const { enemies: serverEnemies, wave, totalWaves } = data;
+        if (!serverEnemies) return;
+        if (wave != null) state.dungeon.wave = wave;
+        if (totalWaves != null) state.dungeon.totalWaves = totalWaves;
+        for (const se of serverEnemies) {
+          const existing = state.enemies.find(e => e.id === se.id);
+          if (existing) {
+            setEntityTarget(existing.id, se.x, se.y, se.vx ?? 0, se.vy ?? 0);
+            existing.hull = se.hp;
+            existing.hullMax = se.hpMax;
+            existing.angle = se.angle ?? existing.angle;
+          } else {
+            const def = ENEMY_DEFS[se.type as EnemyType];
+            state.enemies.push({
+              id: se.id, type: se.type as EnemyType,
+              behavior: se.behavior ?? def?.behavior ?? "chase",
+              pos: { x: se.x, y: se.y },
+              vel: { x: se.vx ?? 0, y: se.vy ?? 0 },
+              angle: se.angle ?? 0,
+              hull: se.hp, hullMax: se.hpMax,
+              damage: se.damage ?? def?.damage ?? 10,
+              speed: se.speed ?? def?.speed ?? 60,
+              fireCd: 1,
+              exp: se.exp ?? def?.exp ?? 0,
+              credits: se.credits ?? def?.credits ?? 0,
+              honor: se.honor ?? def?.honor ?? 0,
+              color: se.color ?? def?.color ?? "#ff4444",
+              size: se.size ?? def?.size ?? 20,
+              loot: se.loot ?? def?.loot ?? null,
+              isBoss: false, bossPhase: 0,
+              aggro: true, hitFlash: 0,
+              combo: null, stunUntil: 0,
+              serverPos: { x: se.x, y: se.y },
+              spawnPos: { x: se.x, y: se.y },
+            });
+          }
+        }
+        const serverIds = new Set(serverEnemies.map((se: any) => se.id));
+        state.enemies = state.enemies.filter(e => serverIds.has(e.id));
+      },
+      onEvent: (data: any) => {
+        if (data.type === "wave:clear") {
+          pushNotification("Wave cleared!", "success");
+          if (data.data?.final) {
+            pushEvent({ title: "ALL WAVES CLEAR", body: "Rift subdued.", ttl: 4, kind: "global", color: "#4ee2ff" });
+          }
+        } else if (data.type === "wave:start") {
+          const w = data.data?.wave ?? "?";
+          const tw = data.data?.totalWaves ?? "?";
+          pushNotification("Wave " + w + " / " + tw + " incoming!", "warning");
+          pushEvent({ title: "WAVE " + w + " / " + tw, body: "Hostiles re-engaging.", ttl: 3.5, kind: "info", color: "#ff5c6c" });
+        } else if (data.type === "enemy:fire") {
+          const d = data.data;
+          if (d) {
+            state.projectiles.push({
+              id: "ip-" + Math.random().toString(36).slice(2, 8),
+              pos: { x: d.x, y: d.y },
+              vel: { x: Math.cos(d.angle) * 200, y: Math.sin(d.angle) * 200 },
+              damage: d.damage,
+              color: d.color ?? "#ff4444",
+              fromPlayer: false,
+              size: 3, ttl: 1.6,
+            });
+          }
+        }
+      },
+      onComplete: (_data: any) => {
+        console.warn("[INSTANCE] onComplete fired!", _data, "dungeon:", state.dungeon?.wave, "/", state.dungeon?.totalWaves);
+        completeDungeon();
+        pushNotification("Instance complete! Returning to world.", "success");
+      },
+      onEnemyHitAck: (data: any) => {
+        const e = state.enemies.find(en => en.id === data.enemyId);
+        if (!e) return;
+        e.hull = data.hp;
+        e.hullMax = data.hpMax;
+        if (data.killed) {
+          applyKill(e, data.crit);
+        }
+      },
+    });
+    return () => setInstanceCallbacks({});
   }, []);
 
   useEffect(() => {
@@ -475,13 +848,14 @@ function GameApp() {
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.target && (e.target as HTMLElement).tagName === "INPUT") return;
+      if (e.target && (e.target as HTMLCanvasElement).tagName === "INPUT") return;
       if (e.code === "Space") {
         e.preventDefault();
         if (state.dockedAt) return;
         const sid = checkStationDock();
         if (sid) {
-          state.dockedAt = sid;
+          state.dockedAt = sid; sendDockEnter();
+          { const _st = STATIONS.find(s => s.id === sid); if (_st?.kind === "factory") state.hangarTab = "refinery"; else state.hangarTab = "bounties"; }
           state.player.vel = { x: 0, y: 0 };
           pushNotification("Docking...", "good");
           save(); bump();
@@ -498,12 +872,69 @@ function GameApp() {
         state.showClan = !state.showClan; bump();
       } else if (e.key === "h" || e.key === "H") {
         state.showSocial = !state.showSocial; bump();
+      } else if (e.key === "j" || e.key === "J") {
+        state.showCargo = !state.showCargo; bump();
       } else if (e.key === "Escape") {
-        state.showMap = false;
-        state.showClan = false;
-        state.showAmmoSelector = false;
-        state.showRocketAmmoSelector = false;
-        state.showFullZoneMap = false;
+        if (state.showSettings) {
+          state.showSettings = false;
+        } else if (state.showMap || state.showClan || state.showAmmoSelector || state.showRocketAmmoSelector || state.showFullZoneMap) {
+          state.showMap = false;
+          state.showClan = false;
+          state.showAmmoSelector = false;
+          state.showRocketAmmoSelector = false;
+          state.showFullZoneMap = false;
+        } else {
+          state.showSettings = true;
+        }
+        bump();
+      } else if (e.key === "Tab") {
+        e.preventDefault();
+        if (!state.dockedAt) {
+          const p = state.player;
+          const enemies = state.enemies.filter(en => en.hull > 0);
+          if (enemies.length > 0) {
+            enemies.sort((a, b) => {
+              const da = Math.hypot(a.pos.x - p.pos.x, a.pos.y - p.pos.y);
+              const db = Math.hypot(b.pos.x - p.pos.x, b.pos.y - p.pos.y);
+              return da - db;
+            });
+            const currentIdx = state.attackTargetId
+              ? enemies.findIndex(en => en.id === state.attackTargetId)
+              : -1;
+            const nextIdx = (currentIdx + 1) % enemies.length;
+            const target = enemies[nextIdx];
+            state.attackTargetId = target.id;
+            state.selectedWorldTarget = {
+              kind: "enemy",
+              id: target.id,
+              name: target.type.toUpperCase() + (target.isBoss ? " (BOSS)" : ""),
+              detail: `HP ${Math.round(target.hull)}/${Math.round(target.hullMax)}`,
+            };
+            state.isLaserFiring = true;
+            state.isAttacking = true;
+            state.miningTargetId = null;
+          } else {
+            // No enemies - try targeting nearest asteroid
+            const asteroids = state.asteroids.filter((a: any) => a.zone === p.zone && a.hp > 0);
+            if (asteroids.length > 0) {
+              asteroids.sort((a: any, b: any) => {
+                const da = Math.hypot(a.pos.x - p.pos.x, a.pos.y - p.pos.y);
+                const db = Math.hypot(b.pos.x - p.pos.x, b.pos.y - p.pos.y);
+                return da - db;
+              });
+              const ast = asteroids[0];
+              state.miningTargetId = ast.id;
+              state.selectedWorldTarget = {
+                kind: "asteroid",
+                id: ast.id,
+                name: ast.yields === "lumenite" ? "LUMENITE ROCK" : "ORE ROCK",
+                detail: ast.yields.toUpperCase() + " · " + Math.round(ast.hp) + "/" + Math.round(ast.hpMax) + " HP",
+              };
+              state.isLaserFiring = false;
+              state.isAttacking = false;
+            }
+          }
+        }
         bump();
       } else if (e.key === "1") {
         if (!state.dockedAt) {
@@ -542,14 +973,33 @@ function GameApp() {
 
   const docked = useGame((s) => s.dockedAt);
   const showSocial = useGame((s) => s.showSocial);
+  const showAdmin = useGame((s) => s.showAdmin);
+  const showSettings = useGame((s) => s.showSettings);
+
+  const currentUiScale = useGame((s) => {
+    if (s.uiScale != null) return s.uiScale;
+    const saved = localStorage.getItem("sf-ui-scale");
+    if (saved) return parseFloat(saved);
+    const w = window.innerWidth;
+    if (w < 600) return 0.55;
+    if (w < 900) return 0.7;
+    return 1;
+  });
+
+  const [assetsReady, setAssetsReady] = useState(false);
+  const handleAssetsReady = useRef(() => setAssetsReady(true)).current;
 
   return (
     <div className="relative w-full h-full overflow-hidden" style={{ background: "#02040c" }}>
+      {!assetsReady && <LoadingScreen onReady={handleAssetsReady} />}
       <GameCanvas />
+      <div style={{ transform: `scale(${currentUiScale})`, transformOrigin: "top left", width: `${100 / (currentUiScale || 1)}%`, height: `${100 / (currentUiScale || 1)}%`, position: "absolute", top: 0, left: 0, pointerEvents: "none", zIndex: 10 }}>
+      <div style={{ pointerEvents: "auto" }}>
       <TopBar />
       <WorldTargetHud />
       <MiniMap />
       <Notifications />
+      <RiftConfirmDialog />
       <DungeonHud />
       <QuestTracker />
       <BattleLog />
@@ -573,8 +1023,24 @@ function GameApp() {
         <DockPrompt />
       </div>
       <Hotbar />
+      <CargoOverlay />
       <IdleRewardModal />
       <FactionPicker />
+      </div>
+      </div>
+      <button
+        onClick={() => { state.showSettings = !state.showSettings; bump(); }}
+        style={{
+          position: "fixed", top: 8, right: 52, zIndex: 60,
+          background: "rgba(68,238,204,0.08)", border: "1px solid rgba(68,238,204,0.2)",
+          color: "#44eecc", fontSize: "18px", cursor: "pointer",
+          padding: "4px 8px", borderRadius: "6px", fontFamily: "inherit",
+          lineHeight: 1,
+        }}
+        title="Settings"
+      >{"⚙"}</button>
+      {showSettings && <SettingsMenu onClose={() => { state.showSettings = false; bump(); }} />}
+      {showAdmin && <AdminPanel onClose={() => { state.showAdmin = false; bump(); }} />}
       <button
         onClick={() => { clearToken(); disconnectSocket(); window.location.reload(); }}
         style={{
