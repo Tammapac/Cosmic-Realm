@@ -301,7 +301,7 @@ function GameCanvas() {
           onTouchEnd={handleTouchEnd}
           onContextMenu={(e) => e.preventDefault()}
           className="absolute inset-0 w-full h-full"
-          style={{ cursor: "crosshair", touchAction: "none", zIndex: 0 }}
+          style={{ cursor: "crosshair", touchAction: "none", zIndex: 0, backgroundColor: "#020414" }}
         />
         <canvas
           ref={threeCanvasRef}

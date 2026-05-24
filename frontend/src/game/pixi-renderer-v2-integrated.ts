@@ -1212,6 +1212,7 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
   app = new PIXI.Application({
     resizeTo: container,
     backgroundColor: 0x020414,
+    backgroundAlpha: 0,
     antialias: false,
     resolution: Math.min(window.devicePixelRatio || 1, 2),
     autoDensity: true,
