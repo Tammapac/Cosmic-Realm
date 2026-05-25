@@ -42,11 +42,11 @@ export default function AuthScreen({ onAuth }: Props) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        background: "radial-gradient(ellipse at center, #0a0e1a 0%, #020408 100%)",
-        fontFamily: "'Inter', sans-serif",
+        background: "radial-gradient(ellipse at 50% 40%, #0c1228 0%, #020408 100%)",
+        fontFamily: "'Courier New', 'Lucida Console', monospace",
       }}
     >
-      {/* Animated stars background */}
+      {/* Star field */}
       <div
         style={{
           position: "absolute",
@@ -66,7 +66,7 @@ export default function AuthScreen({ onAuth }: Props) {
               borderRadius: "50%",
               left: `${Math.random() * 100}%`,
               top: `${Math.random() * 100}%`,
-              opacity: Math.random() * 0.6 + 0.2,
+              opacity: Math.random() * 0.5 + 0.15,
               animation: `pulse ${2 + Math.random() * 3}s ease-in-out infinite`,
               animationDelay: `${Math.random() * 3}s`,
             }}
@@ -74,81 +74,120 @@ export default function AuthScreen({ onAuth }: Props) {
         ))}
       </div>
 
+      {/* Decorative horizontal lines */}
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          top: "50%",
+          transform: "translateY(-50%)",
+          height: 1,
+          background: "linear-gradient(90deg, transparent 0%, rgba(78,226,255,0.08) 30%, rgba(78,226,255,0.15) 50%, rgba(78,226,255,0.08) 70%, transparent 100%)",
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* Auth card */}
       <div
         style={{
           position: "relative",
           width: 380,
-          padding: "32px 28px",
-          background: "rgba(10, 14, 26, 0.92)",
-          border: "1px solid rgba(78, 226, 255, 0.25)",
-          borderRadius: 12,
-          boxShadow: "0 0 40px rgba(78, 226, 255, 0.08), 0 0 80px rgba(78, 226, 255, 0.04)",
+          padding: "32px 28px 28px",
+          background: "rgba(8, 12, 26, 0.94)",
+          border: "1px solid rgba(78, 226, 255, 0.22)",
+          borderRadius: 6,
+          boxShadow:
+            "0 0 40px rgba(78, 226, 255, 0.07), 0 0 80px rgba(0,0,0,0.9), inset 0 1px 0 rgba(78, 226, 255, 0.08)",
         }}
       >
-        <h1
+        {/* Corner accents */}
+        <div style={cornerTL} />
+        <div style={cornerTR} />
+        <div style={cornerBL} />
+        <div style={cornerBR} />
+
+        {/* Title */}
+        <div style={{ textAlign: "center", marginBottom: 20 }}>
+          <h1
+            style={{
+              fontSize: 26,
+              fontWeight: 700,
+              color: "#4ee2ff",
+              margin: "0 0 4px",
+              letterSpacing: "0.2em",
+              textShadow: "0 0 24px rgba(78, 226, 255, 0.45)",
+            }}
+          >
+            COSMIC REALM
+          </h1>
+          <p
+            style={{
+              fontSize: 10,
+              color: "rgba(160, 176, 216, 0.7)",
+              margin: 0,
+              letterSpacing: "0.35em",
+            }}
+          >
+            {mode === "login" ? "PILOT LOGIN" : "NEW PILOT REGISTRATION"}
+          </p>
+        </div>
+
+        {/* Divider */}
+        <div
           style={{
-            textAlign: "center",
-            fontSize: 28,
-            fontWeight: 700,
-            color: "#4ee2ff",
-            marginBottom: 4,
-            letterSpacing: 2,
-            textShadow: "0 0 20px rgba(78, 226, 255, 0.4)",
+            height: 1,
+            background: "linear-gradient(90deg, transparent, rgba(78,226,255,0.18), transparent)",
+            marginBottom: 20,
           }}
-        >
-          COSMIC REALM
-        </h1>
-        <p
-          style={{
-            textAlign: "center",
-            fontSize: 12,
-            color: "rgba(210, 220, 240, 0.5)",
-            marginBottom: 24,
-            letterSpacing: 4,
-          }}
-        >
-          {mode === "login" ? "PILOT LOGIN" : "NEW PILOT REGISTRATION"}
-        </p>
+        />
 
         <form onSubmit={handleSubmit}>
-          <input
+          <AuthInput
             type="text"
             placeholder="Username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            style={inputStyle}
             autoComplete="username"
           />
           {mode === "register" && (
             <>
-              <input
+              <AuthInput
                 type="email"
                 placeholder="Email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                style={inputStyle}
                 autoComplete="email"
               />
-              <input
+              <AuthInput
                 type="text"
                 placeholder="Pilot Name (in-game)"
                 value={pilotName}
                 onChange={(e) => setPilotName(e.target.value)}
-                style={inputStyle}
               />
             </>
           )}
-          <input
+          <AuthInput
             type="password"
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            style={inputStyle}
             autoComplete={mode === "login" ? "current-password" : "new-password"}
           />
 
           {error && (
-            <p style={{ color: "#ff5c6c", fontSize: 13, marginBottom: 12, textAlign: "center" }}>
+            <p
+              style={{
+                color: "#ff5c6c",
+                fontSize: 12,
+                marginBottom: 12,
+                textAlign: "center",
+                background: "rgba(255,92,108,0.08)",
+                border: "1px solid rgba(255,92,108,0.2)",
+                padding: "6px 10px",
+                borderRadius: 3,
+              }}
+            >
               {error}
             </p>
           )}
@@ -158,39 +197,55 @@ export default function AuthScreen({ onAuth }: Props) {
             disabled={loading}
             style={{
               width: "100%",
-              padding: "12px 0",
+              padding: "11px 0",
               background: loading
-                ? "rgba(78, 226, 255, 0.15)"
-                : "linear-gradient(135deg, rgba(78, 226, 255, 0.2) 0%, rgba(78, 226, 255, 0.08) 100%)",
-              border: "1px solid rgba(78, 226, 255, 0.4)",
-              borderRadius: 8,
+                ? "rgba(78, 226, 255, 0.1)"
+                : "linear-gradient(135deg, rgba(78, 226, 255, 0.18) 0%, rgba(78, 226, 255, 0.07) 100%)",
+              border: "1px solid rgba(78, 226, 255, 0.38)",
+              borderRadius: 4,
               color: "#4ee2ff",
-              fontSize: 14,
-              fontWeight: 600,
-              letterSpacing: 2,
+              fontSize: 13,
+              fontWeight: 700,
+              letterSpacing: "0.2em",
               cursor: loading ? "not-allowed" : "pointer",
-              transition: "all 0.2s",
-              marginBottom: 16,
+              fontFamily: "inherit",
+              transition: "background 0.15s, border-color 0.15s, box-shadow 0.15s",
+              marginBottom: 14,
+              textShadow: "0 0 10px rgba(78,226,255,0.5)",
+            }}
+            onMouseEnter={(e) => {
+              if (!loading) {
+                (e.currentTarget as HTMLButtonElement).style.background =
+                  "linear-gradient(135deg, rgba(78, 226, 255, 0.28) 0%, rgba(78, 226, 255, 0.12) 100%)";
+                (e.currentTarget as HTMLButtonElement).style.boxShadow =
+                  "0 0 14px rgba(78,226,255,0.3)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!loading) {
+                (e.currentTarget as HTMLButtonElement).style.background =
+                  "linear-gradient(135deg, rgba(78, 226, 255, 0.18) 0%, rgba(78, 226, 255, 0.07) 100%)";
+                (e.currentTarget as HTMLButtonElement).style.boxShadow = "none";
+              }
             }}
           >
-            {loading ? "..." : mode === "login" ? "LAUNCH" : "CREATE PILOT"}
+            {loading ? "CONNECTING..." : mode === "login" ? "LAUNCH" : "CREATE PILOT"}
           </button>
         </form>
 
-        <p style={{ textAlign: "center", fontSize: 13, color: "rgba(210, 220, 240, 0.5)" }}>
+        <p style={{ textAlign: "center", fontSize: 12, color: "rgba(160, 176, 216, 0.55)", margin: 0 }}>
           {mode === "login" ? "No account? " : "Already a pilot? "}
           <button
-            onClick={() => {
-              setMode(mode === "login" ? "register" : "login");
-              setError("");
-            }}
+            onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }}
             style={{
               background: "none",
               border: "none",
               color: "#4ee2ff",
               cursor: "pointer",
-              fontSize: 13,
+              fontSize: 12,
+              fontFamily: "inherit",
               textDecoration: "underline",
+              textDecorationColor: "rgba(78,226,255,0.4)",
               padding: 0,
             }}
           >
@@ -201,23 +256,75 @@ export default function AuthScreen({ onAuth }: Props) {
 
       <style>{`
         @keyframes pulse {
-          0%, 100% { opacity: 0.2; }
-          50% { opacity: 0.8; }
+          0%, 100% { opacity: 0.15; }
+          50% { opacity: 0.7; }
         }
       `}</style>
     </div>
   );
 }
 
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "10px 14px",
-  marginBottom: 12,
-  background: "rgba(255, 255, 255, 0.04)",
-  border: "1px solid rgba(78, 226, 255, 0.15)",
-  borderRadius: 6,
-  color: "#d2dcf0",
-  fontSize: 14,
-  outline: "none",
-  boxSizing: "border-box",
+function AuthInput({
+  type, placeholder, value, onChange, autoComplete,
+}: {
+  type: string;
+  placeholder: string;
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  autoComplete?: string;
+}) {
+  return (
+    <input
+      type={type}
+      placeholder={placeholder}
+      value={value}
+      onChange={onChange}
+      autoComplete={autoComplete}
+      style={{
+        display: "block",
+        width: "100%",
+        padding: "9px 12px",
+        marginBottom: 10,
+        background: "rgba(255, 255, 255, 0.03)",
+        border: "1px solid rgba(78, 226, 255, 0.14)",
+        borderRadius: 4,
+        color: "#d2dcf0",
+        fontSize: 13,
+        fontFamily: "'Courier New', monospace",
+        outline: "none",
+        boxSizing: "border-box",
+        transition: "border-color 0.15s",
+      }}
+      onFocus={(e) => { e.currentTarget.style.borderColor = "rgba(78,226,255,0.4)"; }}
+      onBlur={(e) => { e.currentTarget.style.borderColor = "rgba(78,226,255,0.14)"; }}
+    />
+  );
+}
+
+/* Sci-fi corner accent styles */
+const cornerBase: React.CSSProperties = {
+  position: "absolute",
+  width: 10,
+  height: 10,
+  pointerEvents: "none",
+};
+const cornerTL: React.CSSProperties = {
+  ...cornerBase, top: 4, left: 4,
+  borderTop: "1px solid rgba(78,226,255,0.45)",
+  borderLeft: "1px solid rgba(78,226,255,0.45)",
+};
+const cornerTR: React.CSSProperties = {
+  ...cornerBase, top: 4, right: 4,
+  borderTop: "1px solid rgba(78,226,255,0.45)",
+  borderRight: "1px solid rgba(78,226,255,0.45)",
+};
+const cornerBL: React.CSSProperties = {
+  ...cornerBase, bottom: 4, left: 4,
+  borderBottom: "1px solid rgba(78,226,255,0.45)",
+  borderLeft: "1px solid rgba(78,226,255,0.45)",
+};
+const cornerBR: React.CSSProperties = {
+  ...cornerBase, bottom: 4, right: 4,
+  borderBottom: "1px solid rgba(78,226,255,0.45)",
+  borderRight: "1px solid rgba(78,226,255,0.45)",
 };

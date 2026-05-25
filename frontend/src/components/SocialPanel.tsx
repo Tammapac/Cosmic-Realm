@@ -9,15 +9,43 @@ export function SocialPanel() {
   const player = useGame((s) => s.player);
 
   return (
-    <div className="panel" style={{ position: "absolute", right: 12, top: 42, width: collapsed ? 40 : 280, height: collapsed ? 40 : 300, zIndex: 55 }}>
-      <div className="flex items-center justify-between p-2 border-b" style={{ borderColor: "var(--border-soft)" }}>
+    <div
+      className="panel"
+      style={{
+        position: "absolute",
+        right: 12,
+        top: 42,
+        width: collapsed ? 38 : 270,
+        height: collapsed ? 38 : 296,
+        zIndex: 55,
+        transition: "width 0.15s, height 0.15s",
+        overflow: "hidden",
+      }}
+    >
+      {/* Header */}
+      <div
+        className="flex items-center justify-between px-2 py-1.5"
+        style={{ borderBottom: "1px solid var(--border-soft)" }}
+      >
         {!collapsed && (
-          <div className="text-[10px] tracking-widest uppercase" style={{ color: "var(--accent-cyan)" }}>
-            ◉ Pilots ({others.length})
+          <div
+            className="tracking-widest"
+            style={{ color: "var(--accent-cyan)", fontSize: 10, letterSpacing: "0.18em" }}
+          >
+            ◉ PILOTS ({others.length})
           </div>
         )}
         <button
-          className="text-cyan text-xs px-2"
+          className="transition-colors duration-150"
+          style={{
+            background: "none",
+            border: "none",
+            color: "var(--accent-cyan)",
+            cursor: "pointer",
+            fontSize: 11,
+            padding: "0 2px",
+            marginLeft: collapsed ? "auto" : 0,
+          }}
           onClick={() => setCollapsed(!collapsed)}
         >
           {collapsed ? "◀" : "▶"}
@@ -25,24 +53,52 @@ export function SocialPanel() {
       </div>
 
       {!collapsed && (
-        <div className="overflow-y-auto" style={{ height: "calc(100% - 40px)" }}>
+        <div className="overflow-y-auto" style={{ height: "calc(100% - 34px)" }}>
+          {others.length === 0 && (
+            <div
+              className="px-3 py-3 italic"
+              style={{ color: "var(--text-mute)", fontSize: 10 }}
+            >
+              No other pilots in sector.
+            </div>
+          )}
           {others.map((o) => (
-            <div key={o.id} className="px-3 py-2 border-b flex items-center gap-2 hover:bg-white/5" style={{ borderColor: "var(--border-soft)" }}>
+            <div
+              key={o.id}
+              className="hover-row flex items-center gap-2 px-2.5 py-1.5"
+              style={{ borderBottom: "1px solid var(--border-soft)" }}
+            >
+              {/* Online dot */}
               <div
-                className="w-2 h-2 rounded-full"
-                style={{ background: o.inParty ? "#5cff8a" : "#4ee2ff", boxShadow: `0 0 4px ${o.inParty ? "#5cff8a" : "#4ee2ff"}` }}
+                className="shrink-0 rounded-full"
+                style={{
+                  width: 7, height: 7,
+                  background: o.inParty ? "#5cff8a" : "#4ee2ff",
+                  boxShadow: `0 0 5px ${o.inParty ? "#5cff8a" : "#4ee2ff"}`,
+                }}
               />
+
+              {/* Pilot info */}
               <div className="flex-1 min-w-0">
-                <div className="text-cyan text-xs font-bold truncate">{o.name}</div>
-                <div className="text-mute text-[9px] truncate">
-                  Lv {o.level} · {o.shipClass}
-                  {o.clan && ` · <${o.clan}>`}
+                <div
+                  className="truncate font-bold"
+                  style={{ color: "var(--accent-cyan)", fontSize: 11 }}
+                >
+                  {o.name}
+                </div>
+                <div
+                  className="truncate"
+                  style={{ color: "var(--text-mute)", fontSize: 9 }}
+                >
+                  Lv{o.level} · {o.shipClass}{o.clan ? ` · <${o.clan}>` : ""}
                 </div>
               </div>
+
+              {/* Action button */}
               {!o.inParty ? (
                 <button
-                  className="btn"
-                  style={{ padding: "2px 8px", fontSize: 9 }}
+                  className="btn shrink-0"
+                  style={{ padding: "2px 7px", fontSize: 9 }}
                   onClick={() => {
                     if (player.party.length >= 4) {
                       pushNotification("Party is full (5 max)", "bad");
@@ -59,8 +115,8 @@ export function SocialPanel() {
                 </button>
               ) : (
                 <button
-                  className="btn btn-danger"
-                  style={{ padding: "2px 8px", fontSize: 9 }}
+                  className="btn btn-danger shrink-0"
+                  style={{ padding: "2px 7px", fontSize: 9 }}
                   onClick={() => {
                     o.inParty = false;
                     player.party = player.party.filter((p) => p !== o.id);
@@ -72,7 +128,6 @@ export function SocialPanel() {
               )}
             </div>
           ))}
-        
         </div>
       )}
     </div>
@@ -109,37 +164,60 @@ export function BattleLog() {
   };
 
   return (
-    <div className="panel" style={{ position: "fixed", left: 12, bottom: 72, width: 320, height: 200, zIndex: 40, display: "flex", flexDirection: "column" }}>
-      <div className="overflow-y-auto flex-1 p-2 text-[10px] space-y-1">
-        {(channel === "log" ? chat.filter(c => c.channel === "system") : chat).map((c) => (
-
-          <div key={c.id}>
+    <div
+      className="panel"
+      style={{
+        position: "fixed",
+        left: 12,
+        bottom: 72,
+        width: 310,
+        height: 196,
+        zIndex: 40,
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      {/* Messages */}
+      <div className="overflow-y-auto flex-1 px-2 py-1.5 space-y-0.5" style={{ fontSize: 10 }}>
+        {(channel === "log" ? chat.filter((c) => c.channel === "system") : chat).map((c) => (
+          <div key={c.id} className="leading-snug">
             <span
               style={{
                 color:
-                  c.channel === "system"
-                    ? "var(--accent-amber)"
-                    : c.channel === "party"
-                    ? "var(--accent-green)"
-                    : c.channel === "clan"
-                    ? "var(--accent-magenta)"
-                    : "var(--text-dim)",
+                  c.channel === "system" ? "var(--accent-amber)"
+                  : c.channel === "party" ? "var(--accent-green)"
+                  : c.channel === "clan"  ? "var(--accent-magenta)"
+                  : "var(--text-mute)",
+                fontSize: 9,
+                letterSpacing: "0.08em",
               }}
             >
               [{c.channel.toUpperCase()}]
             </span>{" "}
-            <span className="text-cyan font-bold">{c.from}:</span>{" "}
-            <span className="text-bright">{c.text}</span>
+            <span style={{ color: "var(--accent-cyan)", fontWeight: "bold" }}>{c.from}:</span>{" "}
+            <span style={{ color: "var(--text-bright)" }}>{c.text}</span>
           </div>
         ))}
         <div ref={chatEndRef} />
       </div>
-      <div className="flex gap-1 p-2 border-t" style={{ borderColor: "var(--border-soft)" }}>
+
+      {/* Input row */}
+      <div
+        className="flex gap-1 px-2 py-1.5"
+        style={{ borderTop: "1px solid var(--border-soft)" }}
+      >
         <select
           value={channel}
           onChange={(e) => setChannel(e.target.value as any)}
-          className="bg-black/40 border text-[10px] px-1"
-          style={{ borderColor: "var(--border-glow)", color: "var(--accent-cyan)" }}
+          style={{
+            background: "rgba(0,0,0,0.5)",
+            border: "1px solid var(--border-glow)",
+            color: "var(--accent-cyan)",
+            fontSize: 9,
+            padding: "2px 3px",
+            outline: "none",
+            borderRadius: 2,
+          }}
         >
           <option value="local">Local</option>
           <option value="party">Party</option>
@@ -151,10 +229,23 @@ export function BattleLog() {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send()}
           placeholder="Hail the comms..."
-          className="flex-1 bg-black/40 border text-[10px] px-2"
-          style={{ borderColor: "var(--border-glow)", color: "var(--text-bright)" }}
+          style={{
+            flex: 1,
+            background: "rgba(0,0,0,0.5)",
+            border: "1px solid var(--border-glow)",
+            color: "var(--text-bright)",
+            fontSize: 10,
+            padding: "2px 6px",
+            outline: "none",
+            minWidth: 0,
+            borderRadius: 2,
+          }}
         />
-        <button className="btn" style={{ padding: "2px 8px", fontSize: 9 }} onClick={send}>
+        <button
+          className="btn shrink-0"
+          style={{ padding: "2px 8px", fontSize: 9 }}
+          onClick={send}
+        >
           Send
         </button>
       </div>
@@ -171,46 +262,80 @@ export function ClanPanel() {
   if (!showClan) return null;
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(2,4,12,0.85)" }}>
+    <div
+      className="absolute inset-0 z-50 flex items-center justify-center"
+      style={{ background: "rgba(2,4,12,0.88)" }}
+    >
       <div className="panel" style={{ width: 480 }}>
-        <div className="flex items-center justify-between p-3 border-b" style={{ borderColor: "var(--border-soft)" }}>
-          <div className="text-cyan glow-cyan tracking-widest font-bold">⚑ CLAN COMMAND</div>
+        {/* Header */}
+        <div
+          className="flex items-center justify-between px-4 py-3"
+          style={{ borderBottom: "1px solid var(--border-soft)" }}
+        >
+          <div
+            className="font-bold tracking-widest glow-cyan"
+            style={{ color: "var(--accent-cyan)", fontSize: 13 }}
+          >
+            ⚑ CLAN COMMAND
+          </div>
           <button
             className="btn btn-danger"
-            onClick={() => {
-              state.showClan = false;
-              bump();
-            }}
+            style={{ padding: "3px 8px", fontSize: 11 }}
+            onClick={() => { state.showClan = false; bump(); }}
           >
             ✕
           </button>
         </div>
+
         <div className="p-4">
           {player.clan ? (
             <div>
-              <div className="text-mute text-[10px] tracking-widest mb-1">YOUR CLAN</div>
-              <div className="text-magenta glow-cyan text-2xl font-bold mb-3">&lt;{player.clan}&gt;</div>
-              <div className="text-dim text-xs mb-4">
+              <div
+                className="hud-label mb-1"
+              >
+                YOUR CLAN
+              </div>
+              <div
+                className="font-bold glow-magenta mb-3"
+                style={{ color: "var(--accent-magenta)", fontSize: 20 }}
+              >
+                &lt;{player.clan}&gt;
+              </div>
+              <div
+                className="mb-4 leading-relaxed"
+                style={{ color: "var(--text-dim)", fontSize: 11 }}
+              >
                 Your clan controls outposts across known space. Coordinate with allies in clan chat to stage raids,
                 hunt dreads, and contest portal sectors.
               </div>
-              <div className="text-mute text-[10px] tracking-widest mb-1">CLAN MEMBERS ONLINE</div>
+
+              <div className="hud-label mb-2">CLAN MEMBERS ONLINE</div>
               <div className="space-y-1 mb-4">
                 {state.others
                   .filter((o) => o.clan === player.clan)
                   .map((o) => (
-                    <div key={o.id} className="flex justify-between text-xs">
-                      <span className="text-cyan">{o.name}</span>
-                      <span className="text-mute">Lv {o.level}</span>
+                    <div
+                      key={o.id}
+                      className="hover-row flex items-center justify-between px-2 py-1"
+                      style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}
+                    >
+                      <span className="text-cyan" style={{ fontSize: 12 }}>{o.name}</span>
+                      <span style={{ color: "var(--text-mute)", fontSize: 11 }}>Lv {o.level}</span>
                     </div>
                   ))}
-        <div ref={chatEndRef} />
                 {state.others.filter((o) => o.clan === player.clan).length === 0 && (
-                  <div className="text-mute italic text-xs">No clanmates in this sector.</div>
+                  <div
+                    className="italic px-2"
+                    style={{ color: "var(--text-mute)", fontSize: 11 }}
+                  >
+                    No clanmates in this sector.
+                  </div>
                 )}
               </div>
+
               <button
                 className="btn btn-danger w-full"
+                style={{ padding: "6px 0", fontSize: 11 }}
                 onClick={() => {
                   player.clan = null;
                   pushNotification("You left the clan", "info");
@@ -223,18 +348,28 @@ export function ClanPanel() {
             </div>
           ) : (
             <div>
-              <div className="text-mute text-[10px] tracking-widest mb-2">JOIN AN EXISTING CLAN</div>
+              <div className="hud-label mb-2">JOIN AN EXISTING CLAN</div>
               <div className="space-y-2 mb-4">
                 {FAKE_CLANS.map((c) => (
-                  <div key={c} className="panel p-3 flex items-center justify-between">
-                    <div>
-                      <div className="text-magenta font-bold">&lt;{c}&gt;</div>
-                      <div className="text-mute text-[10px]">
+                  <div
+                    key={c}
+                    className="panel hover-row flex items-center justify-between px-3 py-2.5"
+                    style={{ borderColor: "var(--border-soft)" }}
+                  >
+                    <div className="min-w-0">
+                      <div
+                        className="font-bold"
+                        style={{ color: "var(--accent-magenta)", fontSize: 13 }}
+                      >
+                        &lt;{c}&gt;
+                      </div>
+                      <div style={{ color: "var(--text-mute)", fontSize: 10 }}>
                         {state.others.filter((o) => o.clan === c).length} pilots in this sector
                       </div>
                     </div>
                     <button
-                      className="btn btn-primary"
+                      className="btn btn-primary shrink-0"
+                      style={{ padding: "4px 12px", fontSize: 11 }}
                       onClick={() => {
                         player.clan = c;
                         pushChat("clan", "RECRUITER", `Welcome to ${c}, ${player.name}.`);
@@ -247,20 +382,30 @@ export function ClanPanel() {
                     </button>
                   </div>
                 ))}
-        <div ref={chatEndRef} />
               </div>
-              <div className="text-mute text-[10px] tracking-widest mb-2">FOUND YOUR OWN</div>
+
+              <div className="hud-label mb-2">FOUND YOUR OWN</div>
               <div className="flex gap-2">
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Clan name"
                   maxLength={18}
-                  className="flex-1 bg-black/40 border text-xs px-2 py-2"
-                  style={{ borderColor: "var(--border-glow)", color: "var(--text-bright)" }}
+                  style={{
+                    flex: 1,
+                    background: "rgba(0,0,0,0.4)",
+                    border: "1px solid var(--border-glow)",
+                    color: "var(--text-bright)",
+                    fontSize: 12,
+                    padding: "6px 10px",
+                    outline: "none",
+                    minWidth: 0,
+                    borderRadius: 2,
+                  }}
                 />
                 <button
-                  className="btn btn-amber"
+                  className="btn btn-amber shrink-0"
+                  style={{ padding: "6px 12px", fontSize: 11, whiteSpace: "nowrap" }}
                   disabled={!name.trim() || player.credits < 5000}
                   onClick={() => {
                     if (player.credits < 5000) {
@@ -274,7 +419,7 @@ export function ClanPanel() {
                     bump();
                   }}
                 >
-                  Found · 5000cr
+                  Found · 5,000cr
                 </button>
               </div>
             </div>
@@ -333,7 +478,7 @@ const MAP_LINKS: [ZoneIdType, ZoneIdType][] = [
 
 const FACTION_LABELS: { text: string; x: number; y: number; color: string }[] = [
   { text: "EARTH [EIC]", x: 122, y: 50, color: "#4ee2ff" },
-  { text: "MARS [MMO]", x: 638, y: 50, color: "#ff8a4e" },
+  { text: "MARS [MMO]",  x: 638, y: 50, color: "#ff8a4e" },
   { text: "VENUS [VRU]", x: 380, y: 530, color: "#c86cff" },
   { text: "DANGER ZONES", x: 380, y: 225, color: "#ff3b3b" },
 ];
@@ -348,149 +493,182 @@ export function GalaxyMap() {
   const nodeMap = new Map(MAP_NODES.map((n) => [n.id, n]));
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(2,4,12,0.92)" }}>
-      <div className="panel" style={{ width: "min(96vw, 820px)", maxHeight: "92vh", display: "flex", flexDirection: "column" }}>
-        <div className="flex items-center justify-between p-3 border-b" style={{ borderColor: "var(--border-soft)", flexShrink: 0 }}>
-          <div className="text-cyan glow-cyan tracking-widest font-bold">★ GALAXY MAP</div>
-          <button className="btn btn-danger" onClick={() => { state.showMap = false; bump(); }}>✕</button>
+    <div
+      className="absolute inset-0 z-50 flex items-center justify-center"
+      style={{ background: "rgba(2,4,12,0.93)" }}
+    >
+      <div
+        className="panel"
+        style={{
+          width: "min(96vw, 820px)",
+          maxHeight: "92vh",
+          display: "flex",
+          flexDirection: "column",
+          boxShadow: "0 0 40px rgba(78,226,255,0.08)",
+        }}
+      >
+        {/* Header */}
+        <div
+          className="flex items-center justify-between px-4 py-3"
+          style={{ borderBottom: "1px solid var(--border-soft)", flexShrink: 0 }}
+        >
+          <div
+            className="font-bold tracking-widest glow-cyan"
+            style={{ color: "var(--accent-cyan)", fontSize: 13, letterSpacing: "0.25em" }}
+          >
+            ★ GALAXY MAP
+          </div>
+          <button
+            className="btn btn-danger"
+            style={{ padding: "3px 10px", fontSize: 11 }}
+            onClick={() => { state.showMap = false; bump(); }}
+          >
+            ✕
+          </button>
         </div>
 
         <div style={{ overflowY: "auto", flex: 1, padding: "12px" }}>
           <div style={{ position: "relative" }}>
-          <svg viewBox="0 0 760 530" style={{ width: "100%", height: "auto" }}>
-            {/* Faction territory backgrounds */}
-            <polygon points="10,40 300,40 310,350 180,350 10,260" fill="#4ee2ff06" stroke="#4ee2ff15" strokeWidth={1} />
-            <polygon points="460,40 750,40 750,260 580,350 450,350" fill="#ff8a4e06" stroke="#ff8a4e15" strokeWidth={1} />
-            <polygon points="180,360 580,360 580,530 180,530" fill="#c86cff06" stroke="#c86cff15" strokeWidth={1} />
-            <polygon points="320,235 440,235 440,370 320,370" fill="#ff3b3b0a" stroke="#ff3b3b22" strokeWidth={1} strokeDasharray="4 3" />
+            <svg viewBox="0 0 760 530" style={{ width: "100%", height: "auto" }}>
+              {/* Faction territory backgrounds */}
+              <polygon points="10,40 300,40 310,350 180,350 10,260" fill="#4ee2ff06" stroke="#4ee2ff15" strokeWidth={1} />
+              <polygon points="460,40 750,40 750,260 580,350 450,350" fill="#ff8a4e06" stroke="#ff8a4e15" strokeWidth={1} />
+              <polygon points="180,360 580,360 580,530 180,530" fill="#c86cff06" stroke="#c86cff15" strokeWidth={1} />
+              <polygon points="320,235 440,235 440,370 320,370" fill="#ff3b3b0a" stroke="#ff3b3b22" strokeWidth={1} strokeDasharray="4 3" />
 
-            {/* Faction labels */}
-            {FACTION_LABELS.map((f) => (
-              <text key={f.text} x={f.x} y={f.y} textAnchor="middle"
-                fill={f.color} fontSize={11} fontWeight="bold" fontFamily="'Courier New', monospace"
-                letterSpacing={2} opacity={0.8}
-              >{f.text}</text>
-            ))}
+              {/* Faction labels */}
+              {FACTION_LABELS.map((f) => (
+                <text key={f.text} x={f.x} y={f.y} textAnchor="middle"
+                  fill={f.color} fontSize={11} fontWeight="bold" fontFamily="'Courier New', monospace"
+                  letterSpacing={2} opacity={0.8}
+                >{f.text}</text>
+              ))}
 
-            {/* Connection lines */}
-            {MAP_LINKS.map(([a, b], i) => {
-              const na = nodeMap.get(a)!;
-              const nb = nodeMap.get(b)!;
-              const isCross = na.faction !== nb.faction;
-              const mx = (na.cx + nb.cx) / 2;
-              const my = (na.cy + nb.cy) / 2;
+              {/* Connection lines */}
+              {MAP_LINKS.map(([a, b], i) => {
+                const na = nodeMap.get(a)!;
+                const nb = nodeMap.get(b)!;
+                const isCross = na.faction !== nb.faction;
+                const mx = (na.cx + nb.cx) / 2;
+                const my = (na.cy + nb.cy) / 2;
+                return (
+                  <g key={i}>
+                    <line x1={na.cx} y1={na.cy} x2={nb.cx} y2={nb.cy}
+                      stroke={isCross ? "#ff5cf088" : na.color + "44"}
+                      strokeWidth={1.5}
+                      strokeDasharray={isCross ? "6 4" : "none"}
+                    />
+                    <circle cx={mx} cy={my} r={2.5}
+                      fill={isCross ? "#ff5cf0" : na.color}
+                      opacity={isCross ? 0.6 : 0.3}
+                    />
+                  </g>
+                );
+              })}
+
+              {/* Zone nodes */}
+              {MAP_NODES.map((n) => {
+                const z = ZONES_LOCAL[n.id];
+                const locked = player.level < z.unlockLevel;
+                const current = player.zone === n.id;
+                const isHov = hovered === n.id;
+                const w = current ? 68 : isHov ? 64 : 58;
+                const h = current ? 42 : isHov ? 40 : 36;
+
+                return (
+                  <g key={n.id}
+                    style={{ cursor: locked ? "not-allowed" : "pointer" }}
+                    onMouseEnter={() => setHovered(n.id)}
+                    onMouseLeave={() => setHovered(null)}
+                    onClick={() => {
+                      if (!locked && !current) {
+                        travelToZone(n.id);
+                        state.showMap = false;
+                        bump();
+                      }
+                    }}
+                  >
+                    {current && (
+                      <rect x={n.cx - w/2 - 4} y={n.cy - h/2 - 4} width={w + 8} height={h + 8} rx={4}
+                        fill="none" stroke={n.color} strokeWidth={1.5} opacity={0.5}
+                        strokeDasharray="4 3"
+                      />
+                    )}
+                    <rect x={n.cx - w/2} y={n.cy - h/2} width={w} height={h} rx={3}
+                      fill={locked ? "#0a0f24" : current ? n.color + "22" : isHov ? n.color + "15" : "#0c1228"}
+                      stroke={locked ? "#1a2348" : n.color}
+                      strokeWidth={current ? 2 : 1.2}
+                    />
+                    <text x={n.cx - w/2 + 5} y={n.cy - 4} textAnchor="start"
+                      fill={locked ? "#5a6a98" : "#e8f0ff"}
+                      fontSize={12} fontWeight="bold" fontFamily="'Courier New', monospace"
+                    >
+                      {z.label}
+                    </text>
+                    <text x={n.cx + w/2 - 5} y={n.cy - 4} textAnchor="end"
+                      fill={locked ? "#3a4a68" : n.color}
+                      fontSize={7} fontFamily="'Courier New', monospace"
+                    >
+                      T{z.enemyTier}
+                    </text>
+                    <text x={n.cx} y={n.cy + 12} textAnchor="middle"
+                      fill={locked ? "#3a4a68" : isHov ? "#e8f0ff" : "#7a8ab8"}
+                      fontSize={7} fontFamily="'Courier New', monospace"
+                    >
+                      {z.name.toUpperCase()}
+                    </text>
+                    {locked && (
+                      <text x={n.cx} y={n.cy + h/2 + 12} textAnchor="middle"
+                        fill="#ff5c6c" fontSize={7} fontFamily="'Courier New', monospace"
+                      >
+                        🔒 LV {z.unlockLevel}
+                      </text>
+                    )}
+                    {current && (
+                      <text x={n.cx} y={n.cy + h/2 + 12} textAnchor="middle"
+                        fill={n.color} fontSize={7} fontWeight="bold" fontFamily="'Courier New', monospace"
+                      >
+                        ▸ HERE
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
+            </svg>
+
+            {/* Hovered zone detail */}
+            {hovered && (() => {
+              const z = ZONES_LOCAL[hovered];
+              const n = nodeMap.get(hovered)!;
               return (
-                <g key={i}>
-                  <line x1={na.cx} y1={na.cy} x2={nb.cx} y2={nb.cy}
-                    stroke={isCross ? "#ff5cf088" : na.color + "44"}
-                    strokeWidth={isCross ? 1.5 : 1.5}
-                    strokeDasharray={isCross ? "6 4" : "none"}
-                  />
-                  {/* Junction dot at midpoint */}
-                  <circle cx={mx} cy={my} r={2.5}
-                    fill={isCross ? "#ff5cf0" : na.color}
-                    opacity={isCross ? 0.6 : 0.3}
-                  />
-                </g>
-              );
-            })}
-
-            {/* Zone nodes */}
-            {MAP_NODES.map((n) => {
-              const z = ZONES_LOCAL[n.id];
-              const locked = player.level < z.unlockLevel;
-              const current = player.zone === n.id;
-              const isHov = hovered === n.id;
-              const w = current ? 68 : isHov ? 64 : 58;
-              const h = current ? 42 : isHov ? 40 : 36;
-
-              return (
-                <g key={n.id}
-                  style={{ cursor: locked ? "not-allowed" : "pointer" }}
-                  onMouseEnter={() => setHovered(n.id)}
-                  onMouseLeave={() => setHovered(null)}
-                  onClick={() => {
-                    if (!locked && !current) {
-                      travelToZone(n.id);
-                      state.showMap = false;
-                      bump();
-                    }
+                <div
+                  className="panel px-3 py-2"
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    borderColor: n.color + "55",
+                    background: "rgba(4,6,20,0.97)",
+                    zIndex: 10,
                   }}
                 >
-                  {/* Outer glow for current */}
-                  {current && (
-                    <rect x={n.cx - w/2 - 4} y={n.cy - h/2 - 4} width={w + 8} height={h + 8} rx={4}
-                      fill="none" stroke={n.color} strokeWidth={1.5} opacity={0.5}
-                      strokeDasharray="4 3"
-                    />
-                  )}
-                  {/* Background fill */}
-                  <rect x={n.cx - w/2} y={n.cy - h/2} width={w} height={h} rx={3}
-                    fill={locked ? "#0a0f24" : current ? n.color + "22" : isHov ? n.color + "15" : "#0c1228"}
-                    stroke={locked ? "#1a2348" : n.color}
-                    strokeWidth={current ? 2 : 1.2}
-                  />
-                  {/* Label top-left */}
-                  <text x={n.cx - w/2 + 5} y={n.cy - 4} textAnchor="start"
-                    fill={locked ? "#5a6a98" : "#e8f0ff"}
-                    fontSize={12} fontWeight="bold" fontFamily="'Courier New', monospace"
-                  >
-                    {z.label}
-                  </text>
-                  {/* Tier badge */}
-                  <text x={n.cx + w/2 - 5} y={n.cy - 4} textAnchor="end"
-                    fill={locked ? "#3a4a68" : n.color}
-                    fontSize={7} fontFamily="'Courier New', monospace"
-                  >
-                    T{z.enemyTier}
-                  </text>
-                  {/* Zone name */}
-                  <text x={n.cx} y={n.cy + 12} textAnchor="middle"
-                    fill={locked ? "#3a4a68" : isHov ? "#e8f0ff" : "#7a8ab8"}
-                    fontSize={7} fontFamily="'Courier New', monospace"
-                  >
-                    {z.name.toUpperCase()}
-                  </text>
-                  {/* Lock indicator */}
-                  {locked && (
-                    <text x={n.cx} y={n.cy + h/2 + 12} textAnchor="middle"
-                      fill="#ff5c6c" fontSize={7} fontFamily="'Courier New', monospace"
-                    >
-                      🔒 LV {z.unlockLevel}
-                    </text>
-                  )}
-                  {/* Current marker */}
-                  {current && (
-                    <text x={n.cx} y={n.cy + h/2 + 12} textAnchor="middle"
-                      fill={n.color} fontSize={7} fontWeight="bold" fontFamily="'Courier New', monospace"
-                    >
-                      ▸ HERE
-                    </text>
-                  )}
-                </g>
-              );
-            })}
-          </svg>
-
-          {/* Hovered zone detail — absolute overlay */}
-          {hovered && (() => {
-            const z = ZONES_LOCAL[hovered];
-            const n = nodeMap.get(hovered)!;
-            return (
-              <div className="panel p-2" style={{ position: "absolute", left: 0, right: 0, bottom: 0, borderColor: n.color + "66", background: "rgba(6,10,28,0.95)", zIndex: 10 }}>
-                <div className="flex items-center gap-2">
-                  <span style={{ color: n.color, fontWeight: "bold", fontSize: 12 }}>{z.label}</span>
-                  <span style={{ color: "#e8f0ff", fontWeight: "bold", fontSize: 12 }}>{z.name.toUpperCase()}</span>
-                  <span style={{ color: "#5a6a98", fontSize: 10 }}>Tier {z.enemyTier} · Lv {z.unlockLevel}+</span>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span style={{ color: n.color, fontWeight: "bold", fontSize: 12 }}>{z.label}</span>
+                    <span style={{ color: "#e8f0ff", fontWeight: "bold", fontSize: 12 }}>{z.name.toUpperCase()}</span>
+                    <span style={{ color: "#5a6a98", fontSize: 10 }}>Tier {z.enemyTier} · Lv {z.unlockLevel}+</span>
+                  </div>
+                  <div style={{ color: "#8a9ac8", fontSize: 10, marginTop: 2 }}>{z.description}</div>
                 </div>
-                <div style={{ color: "#8a9ac8", fontSize: 10, marginTop: 2 }}>{z.description}</div>
-              </div>
-            );
-          })()}
+              );
+            })()}
           </div>
 
-          <div className="text-mute text-[9px] italic mt-2 text-center">
-            Click a zone to warp. Dashed lines = cross-faction portals. Faction zones on borders, high-tier zones bridge the center.
+          <div
+            className="italic text-center mt-2"
+            style={{ color: "var(--text-mute)", fontSize: 9 }}
+          >
+            Click a zone to warp · Dashed lines = cross-faction portals
           </div>
         </div>
       </div>

@@ -2,7 +2,7 @@
 
 :root {
   --bg-deep: #05060f;
-  --bg-panel: rgba(8, 12, 28, 0.85);
+  --bg-panel: rgba(8, 12, 28, 0.88);
   --bg-panel-solid: #0a0f24;
   --border-glow: #2a3a7a;
   --border-soft: #1a2348;
@@ -74,38 +74,56 @@ button {
   to   { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
+/* Sci-fi corner accent on panels */
 .panel {
   background: var(--bg-panel);
   border: 1px solid var(--border-glow);
-  backdrop-filter: blur(6px);
   position: relative;
+  box-shadow: inset 0 1px 0 rgba(78, 226, 255, 0.04), inset 0 0 20px rgba(0,0,0,0.3);
 }
 
+/* Subtle scanline texture */
 .panel::before {
   content: "";
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(180deg, transparent 0%, transparent 49%, rgba(78, 226, 255, 0.04) 50%, transparent 51%, transparent 100%);
+  background: linear-gradient(180deg, transparent 0%, transparent 49%, rgba(78, 226, 255, 0.03) 50%, transparent 51%, transparent 100%);
   background-size: 100% 4px;
+  border-radius: inherit;
 }
 
+/* Section label style used across HUD panels */
+.hud-label {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+}
+
+/* Standard button — polished sci-fi look */
 .btn {
-  background: linear-gradient(180deg, #1a2860 0%, #0c1638 100%);
+  background: linear-gradient(180deg, #1c2e6e 0%, #0d1a42 100%);
   color: var(--text-bright);
   border: 1px solid var(--border-glow);
   padding: 6px 12px;
   font-size: 11px;
   letter-spacing: 1px;
   text-transform: uppercase;
-  transition: all 0.15s;
-  text-shadow: 0 0 4px rgba(78, 226, 255, 0.4);
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  text-shadow: 0 0 6px rgba(78, 226, 255, 0.35);
+  white-space: nowrap;
 }
 
 .btn:hover:not(:disabled) {
-  background: linear-gradient(180deg, #2a3a90 0%, #1a2860 100%);
+  background: linear-gradient(180deg, #2d46a8 0%, #1c2e6e 100%);
   border-color: var(--accent-cyan);
-  box-shadow: 0 0 10px rgba(78, 226, 255, 0.5);
+  box-shadow: 0 0 10px rgba(78, 226, 255, 0.4), inset 0 0 8px rgba(78, 226, 255, 0.06);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: 0 0 6px rgba(78, 226, 255, 0.3);
 }
 
 .btn:disabled {
@@ -120,6 +138,7 @@ button {
 
 .btn-primary:hover:not(:disabled) {
   background: linear-gradient(180deg, #4ea4ff 0%, #1a6ed4 100%);
+  box-shadow: 0 0 12px rgba(78, 226, 255, 0.5);
 }
 
 .btn-danger {
@@ -127,46 +146,72 @@ button {
   border-color: var(--accent-red);
 }
 
+.btn-danger:hover:not(:disabled) {
+  background: linear-gradient(180deg, #e04060 0%, #901830 100%);
+  box-shadow: 0 0 10px rgba(255, 92, 108, 0.4);
+}
+
 .btn-amber {
   background: linear-gradient(180deg, #b08020 0%, #604010 100%);
   border-color: var(--accent-amber);
 }
 
+.btn-amber:hover:not(:disabled) {
+  background: linear-gradient(180deg, #d4a030 0%, #8a5818 100%);
+  box-shadow: 0 0 10px rgba(255, 210, 74, 0.35);
+}
+
+/* HP/stat bars */
 .bar {
   height: 8px;
-  background: #0a0f1f;
+  background: rgba(8, 12, 30, 0.9);
   border: 1px solid var(--border-soft);
   position: relative;
   overflow: hidden;
+  border-radius: 2px;
 }
 
 .bar-fill {
   height: 100%;
-  transition: width 0.2s;
+  transition: width 0.2s ease-out;
+  border-radius: 2px;
 }
 
-.text-cyan { color: var(--accent-cyan); }
+/* Utility color classes */
+.text-cyan    { color: var(--accent-cyan); }
 .text-magenta { color: var(--accent-magenta); }
-.text-amber { color: var(--accent-amber); }
-.text-green { color: var(--accent-green); }
-.text-red { color: var(--accent-red); }
-.text-dim { color: var(--text-dim); }
-.text-mute { color: var(--text-mute); }
+.text-amber   { color: var(--accent-amber); }
+.text-green   { color: var(--accent-green); }
+.text-red     { color: var(--accent-red); }
+.text-dim     { color: var(--text-dim); }
+.text-mute    { color: var(--text-mute); }
+.text-bright  { color: var(--text-bright); }
 
+/* Glow helpers */
+.glow-cyan    { text-shadow: 0 0 8px rgba(78, 226, 255, 0.7); }
+.glow-amber   { text-shadow: 0 0 8px rgba(255, 210, 74, 0.65); }
+.glow-green   { text-shadow: 0 0 8px rgba(92, 255, 138, 0.65); }
+.glow-red     { text-shadow: 0 0 8px rgba(255, 92, 108, 0.65); }
+.glow-magenta { text-shadow: 0 0 8px rgba(255, 92, 240, 0.65); }
+
+/* Scanline overlay for modals */
 .scanline {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(180deg, transparent 0%, rgba(255, 255, 255, 0.03) 50%, transparent 100%);
+  background: linear-gradient(180deg, transparent 0%, rgba(255, 255, 255, 0.025) 50%, transparent 100%);
   animation: scan 6s linear infinite;
+  border-radius: inherit;
+  z-index: 0;
 }
 
+/* Scrollbar styling */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
-  background: #0a0f24;
+  background: #060a18;
 }
 ::-webkit-scrollbar-thumb {
   background: #2a3a7a;
@@ -177,5 +222,39 @@ button {
 }
 * {
   scrollbar-width: thin;
-  scrollbar-color: #2a3a7a #0a0f24;
+  scrollbar-color: #2a3a7a #060a18;
+}
+
+/* Stat box used in TopBar numbers panel */
+.stat-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  padding: 0 8px;
+}
+
+.stat-box + .stat-box {
+  border-left: 1px solid rgba(255,255,255,0.06);
+}
+
+/* Section divider */
+.sci-divider {
+  border: none;
+  border-top: 1px solid rgba(78, 226, 255, 0.08);
+  margin: 8px 0;
+}
+
+/* Hover row highlight */
+.hover-row {
+  transition: background 0.12s;
+}
+.hover-row:hover {
+  background: rgba(78, 226, 255, 0.04);
+}
+
+/* Selected / active state */
+.selected-row {
+  background: rgba(78, 226, 255, 0.08);
+  box-shadow: inset 2px 0 0 var(--accent-cyan);
 }

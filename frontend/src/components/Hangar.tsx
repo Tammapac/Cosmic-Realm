@@ -38,18 +38,47 @@ export function Hangar({ stationId }: { stationId: string }) {
   if (!station) return null;
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(2, 4, 12, 0.85)" }}>
-      <div className="panel relative" style={{ width: "min(1080px, 96vw)", height: "min(680px, 92vh)" }}>
+    <div
+      className="absolute inset-0 z-50 flex items-center justify-center"
+      style={{ background: "rgba(2, 4, 12, 0.88)" }}
+    >
+      <div
+        className="panel relative"
+        style={{
+          width: "min(1080px, 96vw)",
+          height: "min(680px, 92vh)",
+          boxShadow: "0 0 40px rgba(78,226,255,0.06), 0 0 80px rgba(0,0,0,0.8)",
+        }}
+      >
         <div className="scanline" />
         {/* Header */}
-        <div className="flex items-center justify-between p-3 border-b" style={{ borderColor: "var(--border-soft)" }}>
-          <div>
-            <div className="text-mute text-[13px] tracking-widest">DOCKED AT · {station.kind.toUpperCase()}</div>
-            <div className="text-cyan glow-cyan text-xl font-bold tracking-widest">{station.name.toUpperCase()}</div>
-            <div className="text-dim text-[13px] mt-0.5">{station.description}</div>
+        <div
+          className="flex items-center justify-between gap-3 px-4 py-3"
+          style={{ borderBottom: "1px solid var(--border-soft)" }}
+        >
+          <div className="min-w-0">
+            <div
+              className="tracking-widest"
+              style={{ color: "var(--text-mute)", fontSize: 10, letterSpacing: "0.2em" }}
+            >
+              DOCKED AT · {station.kind.toUpperCase()}
+            </div>
+            <div
+              className="font-bold tracking-widest glow-cyan truncate"
+              style={{ color: "var(--accent-cyan)", fontSize: 18 }}
+            >
+              {station.name.toUpperCase()}
+            </div>
+            <div
+              className="mt-0.5 truncate"
+              style={{ color: "var(--text-dim)", fontSize: 12 }}
+            >
+              {station.description}
+            </div>
           </div>
           <button
-            className="btn btn-danger"
+            className="btn btn-danger shrink-0"
+            style={{ padding: "5px 12px", fontSize: 12 }}
             onClick={() => {
               state.dockedAt = null; sendDockLeave();
               state.player.pos.y += 200;
@@ -524,13 +553,34 @@ function LoadoutTab({ stationId }: { stationId: string }) {
     <div className="grid gap-3 p-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
       {/* LEFT — equipped slots + stats summary */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between"><div className="text-cyan tracking-widest text-sm">▶ LOADOUT · {cls.name.toUpperCase()}</div><div className="text-amber font-bold text-[14px]">{player.credits.toLocaleString()} CR</div></div>
+        <div className="flex items-center justify-between gap-2 min-w-0">
+          <div
+            className="tracking-widest truncate"
+            style={{ color: "var(--accent-cyan)", fontSize: 12 }}
+          >
+            ▶ LOADOUT · {cls.name.toUpperCase()}
+          </div>
+          <div
+            className="font-bold tabular-nums shrink-0 whitespace-nowrap"
+            style={{ color: "var(--accent-amber)", fontSize: 13 }}
+          >
+            {player.credits.toLocaleString()} CR
+          </div>
+        </div>
         {renderSlotRow("weapon",    "WEAPONS",    "#ff5c6c")}
         {renderSlotRow("generator", "GENERATORS", "#4ee2ff")}
         {renderSlotRow("module",    "MODULES",    "#ff5cf0")}
-        <div className="panel p-2">
-          <div className="text-[13px] tracking-widest text-cyan mb-1">▶ ACTIVE STATS</div>
-          <div className="grid grid-cols-3 gap-1 text-[13px]">
+        <div
+          className="panel p-2.5"
+          style={{ borderColor: "rgba(78,226,255,0.18)" }}
+        >
+          <div
+            className="tracking-widest mb-2"
+            style={{ color: "var(--accent-cyan)", fontSize: 10, letterSpacing: "0.2em" }}
+          >
+            ▶ ACTIVE STATS
+          </div>
+          <div className="grid grid-cols-3 gap-x-2 gap-y-1.5">
             <Stat label="DMG"  v={Math.round(stats.damage)} />
             <Stat label="RATE" v={+stats.fireRate.toFixed(2)} />
             <Stat label="CRIT" v={`${Math.round(stats.critChance * 100)}%`} />
@@ -904,9 +954,19 @@ function ShipsTab() {
 
 function Stat({ label, v }: { label: string; v: number | string }) {
   return (
-    <div>
-      <div className="text-mute">{label}</div>
-      <div className="text-cyan font-bold">{v}</div>
+    <div className="min-w-0">
+      <div
+        className="truncate"
+        style={{ color: "var(--text-mute)", fontSize: 10, letterSpacing: "0.12em" }}
+      >
+        {label}
+      </div>
+      <div
+        className="font-bold tabular-nums truncate"
+        style={{ color: "var(--accent-cyan)", fontSize: 12 }}
+      >
+        {v}
+      </div>
     </div>
   );
 }
@@ -1134,13 +1194,31 @@ save(); bump();
                 Buy low at one station, sell high at another. Different stations specialize in different resources.
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <button className="btn btn-amber" style={{ padding: "4px 10px", fontSize: 13 }} onClick={sellAll}>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                className="btn btn-amber"
+                style={{ padding: "4px 10px", fontSize: 11, whiteSpace: "nowrap" }}
+                onClick={sellAll}
+              >
                 SELL ALL CARGO
               </button>
-              <div className="text-right">
-                <div className="text-mute text-[13px]">CREDITS</div>
-                <div className="text-amber font-bold">{player.credits.toLocaleString()}cr</div>
+              <div
+                className="text-right"
+                style={{
+                  background: "rgba(255,210,74,0.07)",
+                  border: "1px solid rgba(255,210,74,0.2)",
+                  padding: "3px 8px",
+                  borderRadius: 2,
+                  minWidth: 90,
+                }}
+              >
+                <div className="hud-label">CREDITS</div>
+                <div
+                  className="font-bold tabular-nums whitespace-nowrap"
+                  style={{ color: "var(--accent-amber)", fontSize: 13 }}
+                >
+                  {player.credits.toLocaleString()}cr
+                </div>
               </div>
             </div>
           </div>
@@ -1811,21 +1889,29 @@ function MissionsTab() {
         <div className="text-mute text-[13px] tabular-nums mb-1">
           {m.progress}/{m.target}
         </div>
-        <div className="w-full h-1 mb-2" style={{ background: "rgba(255,255,255,0.08)" }}>
+        <div
+          className="w-full mb-2 overflow-hidden"
+          style={{ height: 5, background: "rgba(255,255,255,0.07)", borderRadius: 2 }}
+        >
           <div
-            className="h-full"
             style={{
+              height: "100%",
               width: `${pct * 100}%`,
               background: ready ? "#5cff8a" : "var(--accent-cyan)",
+              borderRadius: 2,
+              transition: "width 0.3s ease",
             }}
           />
         </div>
-        <div className="text-amber text-[13px] mb-2">
-          +{m.rewardCredits.toLocaleString()}cr +{m.rewardExp.toLocaleString()}xp +{m.rewardHonor}hr
+        <div
+          className="mb-2 whitespace-nowrap overflow-hidden"
+          style={{ color: "var(--accent-amber)", fontSize: 11, textOverflow: "ellipsis" }}
+        >
+          +{m.rewardCredits.toLocaleString()}cr · +{m.rewardExp.toLocaleString()}xp · +{m.rewardHonor}hr
         </div>
         <button
           className="btn btn-primary w-full"
-          style={{ padding: "4px 8px", fontSize: 13 }}
+          style={{ padding: "4px 8px", fontSize: 11 }}
           disabled={!ready}
           onClick={() => claimMission(m.id)}
         >
@@ -1875,9 +1961,19 @@ function MissionsTab() {
           <div className="text-cyan tracking-widest text-sm mt-4 mb-2">LIFETIME MILESTONES</div>
           <div className="grid grid-cols-3 gap-2">
             {Object.entries(player.milestones).map(([k, v]) => (
-              <div key={k} className="panel p-2">
-                <div className="text-mute text-[12px] tracking-widest uppercase">{k}</div>
-                <div className="text-amber font-bold text-sm tabular-nums">{(v as number).toLocaleString()}</div>
+              <div key={k} className="panel p-2 min-w-0">
+                <div
+                  className="uppercase truncate"
+                  style={{ color: "var(--text-mute)", fontSize: 10, letterSpacing: "0.15em" }}
+                >
+                  {k}
+                </div>
+                <div
+                  className="font-bold tabular-nums truncate"
+                  style={{ color: "var(--accent-amber)", fontSize: 13 }}
+                >
+                  {(v as number).toLocaleString()}
+                </div>
               </div>
             ))}
           </div>

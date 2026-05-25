@@ -82,9 +82,14 @@ export function Hotbar() {
         left: "50%",
         transform: "translateX(-50%)",
         display: "flex",
-        gap: 4,
+        gap: 5,
         zIndex: 50,
         pointerEvents: "auto",
+        background: "rgba(4,6,18,0.7)",
+        border: "1px solid rgba(78,226,255,0.1)",
+        borderRadius: 6,
+        padding: "4px 6px",
+        boxShadow: "0 2px 20px rgba(0,0,0,0.7), inset 0 1px 0 rgba(78,226,255,0.04)",
       }}
     >
       <button
@@ -101,6 +106,8 @@ export function Hotbar() {
           color: attackOnCooldown ? "#7a3a44" : "#ffb3bb",
           fontFamily: "'Courier New', monospace",
           fontWeight: "bold",
+          fontSize: 12,
+          letterSpacing: "0.1em",
           cursor: attackOnCooldown ? "not-allowed" : "pointer",
           boxShadow: isAttacking ? "0 0 14px #ff3b4d, 0 0 28px #ff3b4d44" : attackOnCooldown ? "none" : "0 0 10px #ff3b4d55",
           overflow: "hidden",
@@ -157,22 +164,22 @@ export function Hotbar() {
           <div
             style={{
               position: "absolute",
-              bottom: 58,
+              bottom: 62,
               left: "50%",
               transform: "translateX(-50%)",
-              background: "#0a0e1a",
-              border: "1px solid #334",
-              borderRadius: 6,
-              padding: 4,
+              background: "rgba(6,9,22,0.97)",
+              border: "1px solid rgba(78,226,255,0.2)",
+              borderRadius: 5,
+              padding: "4px 3px",
               display: "flex",
               flexDirection: "column",
               gap: 2,
-              minWidth: 160,
-              boxShadow: "0 0 20px rgba(0,0,0,0.8)",
+              minWidth: 168,
+              boxShadow: "0 0 24px rgba(0,0,0,0.9), 0 0 12px rgba(78,226,255,0.06)",
               zIndex: 60,
             }}
           >
-            <div style={{ fontSize: 8, color: "#667", letterSpacing: "0.15em", textAlign: "center", padding: "2px 0" }}>
+            <div style={{ fontSize: 8, color: "rgba(160,176,216,0.6)", letterSpacing: "0.18em", textAlign: "center", padding: "3px 0 2px" }}>
               SELECT AMMO TYPE
             </div>
             {LASER_AMMO_TYPE_ORDER.map((type) => {
@@ -251,22 +258,22 @@ export function Hotbar() {
           <div
             style={{
               position: "absolute",
-              bottom: 58,
+              bottom: 62,
               left: "50%",
               transform: "translateX(-50%)",
-              background: "#0a0e1a",
-              border: "1px solid #334",
-              borderRadius: 6,
-              padding: 4,
+              background: "rgba(6,9,22,0.97)",
+              border: "1px solid rgba(78,226,255,0.2)",
+              borderRadius: 5,
+              padding: "4px 3px",
               display: "flex",
               flexDirection: "column",
               gap: 2,
-              minWidth: 160,
-              boxShadow: "0 0 20px rgba(0,0,0,0.8)",
+              minWidth: 168,
+              boxShadow: "0 0 24px rgba(0,0,0,0.9), 0 0 12px rgba(78,226,255,0.06)",
               zIndex: 60,
             }}
           >
-            <div style={{ fontSize: 8, color: "#667", letterSpacing: "0.15em", textAlign: "center", padding: "2px 0" }}>
+            <div style={{ fontSize: 8, color: "rgba(160,176,216,0.6)", letterSpacing: "0.18em", textAlign: "center", padding: "3px 0 2px" }}>
               SELECT ROCKET TYPE
             </div>
             {ROCKET_MISSILE_TYPE_ORDER.map((type) => {

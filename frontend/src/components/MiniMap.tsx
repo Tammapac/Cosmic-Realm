@@ -64,18 +64,30 @@ export function MiniMap() {
         }}
         onClick={(e) => { if (e.target === e.currentTarget) { state.showFullZoneMap = false; bump(); }}}
       >
-        <div className="panel" style={{ padding: 8 }}>
-          <div className="flex items-center justify-between mb-1">
-            <div className="text-[11px] tracking-widest" style={{ color: "#4ee2ff" }}>
-              ◈ {zone?.name ?? player.zone.toUpperCase()} — FULL MAP
-            </div>
+        <div
+          className="panel"
+          style={{
+            padding: 10,
+            boxShadow: "0 0 30px rgba(78,226,255,0.12), inset 0 0 20px rgba(0,0,0,0.5)",
+          }}
+        >
+          <div
+            className="flex items-center justify-between mb-2"
+            style={{ borderBottom: "1px solid rgba(78,226,255,0.08)", paddingBottom: 6 }}
+          >
             <div
-              className="text-[10px] cursor-pointer"
-              style={{ color: "#667" }}
+              className="font-bold tracking-widest glow-cyan"
+              style={{ color: "#4ee2ff", fontSize: 12 }}
+            >
+              ◈ {zone?.name ?? player.zone.toUpperCase()} — ZONE MAP
+            </div>
+            <button
+              className="btn"
+              style={{ padding: "2px 8px", fontSize: 10 }}
               onClick={() => { state.showFullZoneMap = false; bump(); }}
             >
-              [ESC]
-            </div>
+              ESC ✕
+            </button>
           </div>
           <svg width={fullSize} height={fullSize} onClick={handleFullClick} style={{ cursor: "crosshair", display: "block" }}>
             <defs>
@@ -175,7 +187,12 @@ export function MiniMap() {
 
             <circle cx={fullSize / 2 + player.pos.x * fullScale} cy={fullSize / 2 + player.pos.y * fullScale} r={5} fill="#4ee2ff" stroke="#fff" strokeWidth={1} />
           </svg>
-          <div className="text-mute text-[8px] tracking-widest text-center mt-1">CLICK TO WARP · M TO CLOSE · +/- RESIZE MINIMAP</div>
+          <div
+            className="tracking-widest text-center mt-2"
+            style={{ color: "var(--text-mute)", fontSize: 9, letterSpacing: "0.18em" }}
+          >
+            CLICK MAP TO WARP · M TO CLOSE · +/− RESIZE MINIMAP
+          </div>
         </div>
       </div>
     );
@@ -186,17 +203,18 @@ export function MiniMap() {
       className="panel pointer-events-auto"
       style={{
         position: "absolute",
-        top: 60,
+        top: 62,
         right: 8,
-        width: SIZE + 4,
-        padding: 2,
+        width: SIZE + 8,
+        padding: 3,
+        boxShadow: "0 0 12px rgba(78,226,255,0.08), inset 0 0 10px rgba(0,0,0,0.4)",
       }}
     >
       <svg
         width={SIZE}
         height={SIZE}
         onClick={handleClick}
-        style={{ cursor: "crosshair", display: "block" }}
+        style={{ cursor: "crosshair", display: "block", borderRadius: 1 }}
       >
         <defs>
           <radialGradient id="mm-bg" cx="50%" cy="50%" r="50%">
@@ -291,16 +309,37 @@ export function MiniMap() {
 
         <circle cx={SIZE / 2} cy={SIZE / 2} r={3} fill="#4ee2ff" stroke="#fff" strokeWidth={0.5} />
       </svg>
-      <div className="flex items-center justify-center gap-2 mt-0.5">
+      <div className="flex items-center justify-between gap-1 mt-1 px-0.5">
         <button
-          className="text-[12px] px-1.5 py-0 leading-none"
-          style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", color: "#4ee2ff", cursor: "pointer", borderRadius: 2 }}
+          className="leading-none transition-colors duration-150"
+          style={{
+            background: "rgba(78,226,255,0.08)",
+            border: "1px solid rgba(78,226,255,0.2)",
+            color: "#4ee2ff",
+            cursor: "pointer",
+            borderRadius: 2,
+            fontSize: 11,
+            padding: "1px 6px",
+          }}
           onClick={(e) => { e.stopPropagation(); state.minimapScale = Math.max(0.5, state.minimapScale - 0.25); bump(); }}
-        >-</button>
-        <span className="text-mute text-[8px] tracking-widest">M MAP</span>
+        >−</button>
+        <span
+          className="tracking-widest select-none"
+          style={{ color: "var(--text-mute)", fontSize: 8, letterSpacing: "0.2em" }}
+        >
+          M · MAP
+        </span>
         <button
-          className="text-[12px] px-1.5 py-0 leading-none"
-          style={{ background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", color: "#4ee2ff", cursor: "pointer", borderRadius: 2 }}
+          className="leading-none transition-colors duration-150"
+          style={{
+            background: "rgba(78,226,255,0.08)",
+            border: "1px solid rgba(78,226,255,0.2)",
+            color: "#4ee2ff",
+            cursor: "pointer",
+            borderRadius: 2,
+            fontSize: 11,
+            padding: "1px 6px",
+          }}
           onClick={(e) => { e.stopPropagation(); state.minimapScale = Math.min(3, state.minimapScale + 0.25); bump(); }}
         >+</button>
       </div>
