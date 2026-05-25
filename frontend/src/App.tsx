@@ -40,7 +40,6 @@ let _riftConfirmSetState: ((id: string | null) => void) | null = null;
 
 function GameCanvas() {
   const threeCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const stationCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const pixiContainerRef = useRef<HTMLDivElement | null>(null);
   const labelOverlayRef = useRef<HTMLDivElement | null>(null);
@@ -57,14 +56,7 @@ function GameCanvas() {
       if (!container) return;
       initPixiRenderer(container, labelOverlayRef.current ?? undefined);
 
-      // Initialize Three.js station layer on background canvas (behind Pixi)
-      const stationCanvas = stationCanvasRef.current;
-      if (stationCanvas) {
-        initStationLayer(stationCanvas);
-        console.log("[App] Station canvas initialized");
-      }
-
-      // Initialize Three.js ship layer on foreground canvas (above Pixi)
+      // Single Three.js canvas for both ships and station
       const threeCanvas = threeCanvasRef.current;
       if (threeCanvas) {
         init3DLayer(threeCanvas);
@@ -73,16 +65,12 @@ function GameCanvas() {
 
       let raf = 0;
       const draw = () => {
-        try {
-          pixiRender();
-          renderStationLayer();
-        } catch (err) { console.error("[PIXI] Render error:", err); }
+        try { pixiRender(); } catch (err) { console.error("[PIXI] Render error:", err); }
         raf = requestAnimationFrame(draw);
       };
       raf = requestAnimationFrame(draw);
       return () => {
         cancelAnimationFrame(raf);
-        destroyStationLayer();
         destroy3DLayer();
         destroyPixiRenderer();
       };
@@ -285,11 +273,6 @@ function GameCanvas() {
   return (
     activeRenderer === "pixi" ? (
       <>
-        <canvas
-          ref={stationCanvasRef}
-          className="absolute inset-0 w-full h-full"
-          style={{ pointerEvents: "none", zIndex: -1 }}
-        />
         <div
           ref={pixiContainerRef}
           onClick={handleClick}
