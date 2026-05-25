@@ -74,8 +74,8 @@ function GameCanvas() {
       let raf = 0;
       const draw = () => {
         try {
-          renderStationLayer();
           pixiRender();
+          renderStationLayer();
         } catch (err) { console.error("[PIXI] Render error:", err); }
         raf = requestAnimationFrame(draw);
       };
