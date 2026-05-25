@@ -43,42 +43,49 @@ export function Hangar({ stationId }: { stationId: string }) {
       style={{ background: "rgba(2, 4, 12, 0.88)" }}
     >
       <div
-        className="panel relative"
+        className="panel relative flex flex-col"
         style={{
           width: "min(1080px, 96vw)",
-          height: "min(680px, 92vh)",
-          boxShadow: "0 0 40px rgba(78,226,255,0.06), 0 0 80px rgba(0,0,0,0.8)",
+          height: "min(700px, 92vh)",
+          boxShadow: "0 0 60px rgba(78,226,255,0.10), 0 0 120px rgba(0,0,0,0.9), inset 0 0 40px rgba(0,0,0,0.5)",
+          border: "1px solid rgba(78,226,255,0.22)",
         }}
       >
         <div className="scanline" />
         {/* Header */}
         <div
-          className="flex items-center justify-between gap-3 px-4 py-3"
-          style={{ borderBottom: "1px solid var(--border-soft)" }}
+          className="flex items-center justify-between gap-3 px-5 py-3 shrink-0"
+          style={{
+            borderBottom: "1px solid rgba(78,226,255,0.12)",
+            background: "linear-gradient(90deg, rgba(78,226,255,0.06) 0%, transparent 60%)",
+          }}
         >
-          <div className="min-w-0">
-            <div
-              className="tracking-widest"
-              style={{ color: "var(--text-mute)", fontSize: 10, letterSpacing: "0.2em" }}
-            >
-              DOCKED AT · {station.kind.toUpperCase()}
-            </div>
-            <div
-              className="font-bold tracking-widest glow-cyan truncate"
-              style={{ color: "var(--accent-cyan)", fontSize: 18 }}
-            >
-              {station.name.toUpperCase()}
-            </div>
-            <div
-              className="mt-0.5 truncate"
-              style={{ color: "var(--text-dim)", fontSize: 12 }}
-            >
-              {station.description}
+          <div className="min-w-0 flex items-center gap-4">
+            {/* Station icon */}
+            <div style={{
+              width: 42, height: 42, flexShrink: 0,
+              border: "1px solid rgba(78,226,255,0.3)",
+              background: "rgba(78,226,255,0.07)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 20, color: "var(--accent-cyan)",
+              boxShadow: "0 0 12px rgba(78,226,255,0.15)",
+            }}>⬡</div>
+            <div className="min-w-0">
+              <div className="hud-label">DOCKED AT · {station.kind.toUpperCase()}</div>
+              <div
+                className="font-bold tracking-widest glow-cyan truncate"
+                style={{ color: "var(--accent-cyan)", fontSize: 16, lineHeight: 1.2 }}
+              >
+                {station.name.toUpperCase()}
+              </div>
+              <div className="truncate mt-0.5" style={{ color: "var(--text-mute)", fontSize: 11 }}>
+                {station.description}
+              </div>
             </div>
           </div>
           <button
             className="btn btn-danger shrink-0"
-            style={{ padding: "5px 12px", fontSize: 12 }}
+            style={{ padding: "6px 16px", fontSize: 11 }}
             onClick={() => {
               state.dockedAt = null; sendDockLeave();
               state.player.pos.y += 200;
@@ -87,29 +94,37 @@ export function Hangar({ stationId }: { stationId: string }) {
               bump();
             }}
           >
-            ✕ Undock
+            ✕ UNDOCK
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b overflow-x-auto" style={{ borderColor: "var(--border-soft)" }}>
+        <div className="flex overflow-x-auto shrink-0" style={{ borderBottom: "1px solid rgba(78,226,255,0.12)", background: "rgba(2,4,14,0.6)" }}>
           {(station.kind === "factory" ? FACTORY_TABS : TABS).map((t) => (
             <button
               key={t.id}
-              className="px-4 py-2.5 text-[13px] tracking-widest uppercase whitespace-nowrap transition-colors"
+              className="relative px-4 py-2.5 whitespace-nowrap transition-colors duration-150 shrink-0"
               style={{
-                background: tab === t.id ? "rgba(78, 226, 255, 0.1)" : "transparent",
-                color: tab === t.id ? "var(--accent-cyan)" : "var(--text-dim)",
+                fontSize: 11,
+                letterSpacing: "0.15em",
+                textTransform: "uppercase",
+                background: tab === t.id
+                  ? "linear-gradient(180deg, rgba(78,226,255,0.12) 0%, rgba(78,226,255,0.04) 100%)"
+                  : "transparent",
+                color: tab === t.id ? "var(--accent-cyan)" : "var(--text-mute)",
                 borderBottom: tab === t.id ? "2px solid var(--accent-cyan)" : "2px solid transparent",
+                borderRight: "1px solid rgba(78,226,255,0.06)",
+                boxShadow: tab === t.id ? "inset 0 -1px 0 var(--accent-cyan), 0 0 12px rgba(78,226,255,0.08)" : "none",
+                textShadow: tab === t.id ? "0 0 8px rgba(78,226,255,0.6)" : "none",
               }}
               onClick={() => { state.hangarTab = t.id; bump(); }}
             >
-              {t.glyph} {t.label}
+              <span style={{ marginRight: 5, opacity: 0.7 }}>{t.glyph}</span>{t.label}
             </button>
           ))}
         </div>
 
-        <div className="overflow-y-auto" style={{ height: "calc(100% - 130px)" }}>
+        <div className="overflow-y-auto flex-1 min-h-0">
           {tab === "bounties" && <BountiesTab />}
           {tab === "missions" && <MissionsTab />}
           {tab === "skills" && <SkillsTab />}
@@ -173,11 +188,9 @@ function BountiesTab() {
 
   return (
     <div className="p-4 space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-cyan tracking-widest text-sm">BOUNTY BOARD</div>
-          <div className="text-mute text-[13px] mt-1">Kill contracts available across all sectors. Repeatable.</div>
-        </div>
+      <div>
+        <div className="section-header">★ BOUNTY BOARD</div>
+        <div className="text-mute mt-2 mb-1" style={{ fontSize: 11 }}>Kill contracts available across all sectors. Repeatable.</div>
       </div>
 
       {/* Tier filter */}
@@ -193,7 +206,7 @@ function BountiesTab() {
       <div className="grid grid-cols-2 gap-4">
         {/* Available bounties */}
         <div>
-          <div className="text-cyan tracking-widest text-sm mb-3">AVAILABLE ({filtered.length})</div>
+          <div className="section-header mb-3">AVAILABLE ({filtered.length})</div>
           <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
             {filtered.map((q) => {
               const has = player.activeQuests.find((x: any) => x.id === q.id);
@@ -226,7 +239,7 @@ function BountiesTab() {
 
         {/* Active quests */}
         <div>
-          <div className="text-cyan tracking-widest text-sm mb-3">ACTIVE QUESTS ({player.activeQuests.length}/5)</div>
+          <div className="section-header mb-3">ACTIVE QUESTS ({player.activeQuests.length}/5)</div>
           <div className="space-y-2">
             {player.activeQuests.length === 0 && (
               <div className="text-mute text-sm italic">No active quests. Take a contract from the board.</div>
@@ -554,11 +567,8 @@ function LoadoutTab({ stationId }: { stationId: string }) {
       {/* LEFT — equipped slots + stats summary */}
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-2 min-w-0">
-          <div
-            className="tracking-widest truncate"
-            style={{ color: "var(--accent-cyan)", fontSize: 12 }}
-          >
-            ▶ LOADOUT · {cls.name.toUpperCase()}
+          <div className="section-header truncate">
+            LOADOUT · {cls.name.toUpperCase()}
           </div>
           <div
             className="font-bold tabular-nums shrink-0 whitespace-nowrap"
@@ -598,7 +608,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="text-cyan tracking-widest text-sm">▶ {showShop ? "MODULE MARKET" : `INVENTORY (${player.inventory.length})`}</div>
+            <div className="section-header">▶ {showShop ? "MODULE MARKET" : `INVENTORY (${player.inventory.length})`}</div>
             {showShop && <span className="text-[13px] tracking-widest" style={{ color: "#ffd24a88" }}>hover to compare</span>}
             {!showShop && <span className="text-[13px] tracking-widest" style={{ color: "#ffd24a88" }}>hover unequipped to compare</span>}
           </div>

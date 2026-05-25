@@ -26,7 +26,7 @@ export function TopBar() {
   return (
     <div className="absolute top-2 left-2 right-2 z-30 flex items-center gap-2 pointer-events-none flex-wrap">
       {/* Player identity + rank */}
-      <div className="panel pointer-events-auto flex items-center gap-2.5 px-3 py-2" style={{ minWidth: 0 }}>
+      <div className="panel pointer-events-auto flex items-center gap-2.5 px-3 py-2" style={{ minWidth: 0, boxShadow: "0 0 16px rgba(78,226,255,0.08), inset 0 0 20px rgba(0,0,0,0.4)" }}>
         <RankBadge rank={rank} />
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 min-w-0">
