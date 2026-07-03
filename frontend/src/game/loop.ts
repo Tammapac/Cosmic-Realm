@@ -975,6 +975,7 @@ function tickWorld(dt: number): void {
       const lostCr = Math.floor(p2.credits * 0.1);
       p2.credits = Math.max(0, p2.credits - lostCr);
       for (const dr of p2.drones) { dr.hp = Math.max(1, Math.round(dr.hp * 0.99)); }
+      p2.drones = p2.drones.slice(0, SHIP_CLASSES[p2.shipClass].droneSlots);
       // Respawn at main station in current zone
       const homeStation = STATIONS.find((st) => st.zone === p2.zone && st.kind === "hub")
         || STATIONS.find((st) => st.zone === p2.zone)
@@ -2495,7 +2496,7 @@ export function checkPortal(): void {
 export function checkStationDock(): string | null {
   const p = state.player;
   const station = STATIONS.find(
-    (s) => s.zone === p.zone && distance(p.pos.x, p.pos.y, s.pos.x, s.pos.y) < 90
+    (s) => s.zone === p.zone && distance(p.pos.x, p.pos.y, s.pos.x, s.pos.y) < 300
   );
   return station ? station.id : null;
 }

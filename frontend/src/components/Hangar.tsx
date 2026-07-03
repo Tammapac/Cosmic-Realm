@@ -8,8 +8,89 @@ import {
 import type { HangarTab } from "../game/store";
 import { effectiveStats } from "../game/loop";
 import { buySkillRank, resetSkills } from "../game/store";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+
+const SHIP_PREVIEW_MODELS: Record<string, string> = {
+  apex: "/models/Apex_Destroyer.glb",
+  colossus: "/models/Colossus_MK_X.glb",
+  eclipse: "/models/Eclipse_Destroyer.glb",
+  harbinger: "/models/Harbinger_Class.glb",
+  leviathan: "/models/Leviathan_Dreadnought.glb",
+  marauder: "/models/Marauder.glb",
+  obsidian: "/models/Obsidian_Reaver.glb",
+  phalanx: "/models/Phallanx_Cruiser.glb",
+  reaver: "/models/reaver_mk2.glb",
+  skimmer: "/models/Skimmer_MK_1.glb",
+  sovereign: "/models/Sovereign_Flagship.glb",
+  specter: "/models/Specter_Phasefreame.glb",
+  titan: "/models/Titan_Bulwark.glb",
+  vanguard: "/models/Vanguard.glb",
+  wasp: "/models/Wasp_Interceptor.glb",
+};
+
+function ShipPreview({ shipId, color, size = 96 }: { shipId: string; color: string; size?: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const modelPath = SHIP_PREVIEW_MODELS[shipId];
+    if (!modelPath) return;
+
+    const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+    renderer.setSize(size, size);
+    renderer.setPixelRatio(window.devicePixelRatio);
+
+    const scene = new THREE.Scene();
+
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
+    camera.position.set(0, 3.5, 4.5);
+    camera.lookAt(0, 0, 0);
+
+    const ambient = new THREE.AmbientLight(0xffffff, 1.2);
+    scene.add(ambient);
+    const dir = new THREE.DirectionalLight(0xffffff, 2.0);
+    dir.position.set(2, 4, 2);
+    scene.add(dir);
+    const fill = new THREE.DirectionalLight(0x8888ff, 0.6);
+    fill.position.set(-2, 1, -2);
+    scene.add(fill);
+
+    let animId: number;
+    let modelGroup: THREE.Group | null = null;
+
+    const loader = new GLTFLoader();
+    loader.load(modelPath, (gltf) => {
+      modelGroup = gltf.scene;
+      // Center and scale the model to fit the view
+      const box = new THREE.Box3().setFromObject(modelGroup);
+      const center = box.getCenter(new THREE.Vector3());
+      const sizeVec = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(sizeVec.x, sizeVec.y, sizeVec.z);
+      const scale = 3.5 / maxDim;
+      modelGroup.scale.setScalar(scale);
+      modelGroup.position.sub(center.multiplyScalar(scale));
+      scene.add(modelGroup);
+    });
+
+    const animate = () => {
+      animId = requestAnimationFrame(animate);
+      if (modelGroup) modelGroup.rotation.y += 0.004;
+      renderer.render(scene, camera);
+    };
+    animate();
+
+    return () => {
+      cancelAnimationFrame(animId);
+      renderer.dispose();
+    };
+  }, [shipId, size]);
+
+  return <canvas ref={canvasRef} width={size} height={size} style={{ display: "block" }} />;
+}
 
 let _pendingRiftConfirm: string | null = null;
 let _riftConfirmBump: (() => void) | null = null;
@@ -45,8 +126,8 @@ export function Hangar({ stationId }: { stationId: string }) {
       <div
         className="panel relative flex flex-col"
         style={{
-          width: "min(1080px, 96vw)",
-          height: "min(700px, 92vh)",
+          width: "min(1280px, 96vw)",
+          height: "min(820px, 94vh)",
           boxShadow: "0 0 60px rgba(78,226,255,0.10), 0 0 120px rgba(0,0,0,0.9), inset 0 0 40px rgba(0,0,0,0.5)",
           border: "1px solid rgba(78,226,255,0.22)",
         }}
@@ -105,7 +186,7 @@ export function Hangar({ stationId }: { stationId: string }) {
               key={t.id}
               className="relative px-4 py-2.5 whitespace-nowrap transition-colors duration-150 shrink-0"
               style={{
-                fontSize: 11,
+                fontSize: 13,
                 letterSpacing: "0.15em",
                 textTransform: "uppercase",
                 background: tab === t.id
@@ -413,73 +494,69 @@ function SlotCell({
 
   return (
     <div
-      className="panel p-2 flex flex-col"
+      className="panel p-3 flex items-center gap-4"
       style={{
-        minHeight: 76,
+        minHeight: 64,
         borderColor,
         background: bgColor,
         outline: isComparing ? "1px solid #ffd24a33" : undefined,
         transition: "border-color 0.15s, outline 0.15s",
       }}
     >
-      <div className="flex items-center justify-between">
-        <div className="text-[12px] tracking-widest text-mute">{slot.toUpperCase()} #{index + 1}</div>
-        {isComparing && (
-          <span className="text-[13px] tracking-widest" style={{ color: "#ffd24a" }}>▶ COMPARE</span>
-        )}
+      {/* Slot label + icon */}
+      <div className="shrink-0 flex flex-col items-center justify-center" style={{ minWidth: 52 }}>
+        <div className="text-[11px] tracking-widest text-mute">{slot.toUpperCase()}</div>
+        <div className="text-[13px] font-bold tracking-widest" style={{ color: "var(--text-dim)" }}>#{index + 1}</div>
+        {isComparing && <div className="text-[11px] tracking-widest mt-0.5" style={{ color: "#ffd24a" }}>CMP</div>}
       </div>
+
       {def ? (
         <>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            <span style={{ color: def.color, fontSize: 14 }}>{def.glyph}</span>
-            <span className="text-[13px] font-bold tracking-widest" style={{ color }}>{def.name}</span>
+          {/* Glyph */}
+          <div className="shrink-0 flex items-center justify-center"
+            style={{ width: 36, height: 36, background: `${def.color}22`, border: `1px solid ${def.color}`, color: def.color, fontSize: 18 }}>
+            {def.glyph}
           </div>
-          <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5 text-[11px] tracking-wider">
-            {def.stats.damage != null && <span style={{color:"#ff5c6c"}}>DMG {def.stats.damage}</span>}
-            {def.stats.fireRate != null && def.stats.fireRate !== 1 && <span style={{color:"#ffaa44"}}>ROF {def.stats.fireRate}x</span>}
-            {def.stats.critChance != null && <span style={{color:"#ff5cf0"}}>CRIT {Math.round(def.stats.critChance*100)}%</span>}
-            {def.stats.aoeRadius != null && <span style={{color:"#ff8844"}}>AOE {def.stats.aoeRadius}</span>}
-            {def.stats.shieldMax != null && <span style={{color:"#4ee2ff"}}>SHD +{def.stats.shieldMax}</span>}
-            {def.stats.shieldRegen != null && <span style={{color:"#4ee2ff"}}>REG +{def.stats.shieldRegen}</span>}
-            {def.stats.hullMax != null && <span style={{color:"#5cff8a"}}>HUL +{def.stats.hullMax}</span>}
-            {def.stats.speed != null && <span style={{color:"#aaff5c"}}>SPD +{def.stats.speed}</span>}
-            {def.stats.damageReduction != null && <span style={{color:"#ffd24a"}}>DR {Math.round(def.stats.damageReduction*100)}%</span>}
-            {def.stats.ammoCapacity != null && <span style={{color:"#ffcc88"}}>AMMO +{def.stats.ammoCapacity}</span>}
-            {def.stats.lootBonus != null && <span style={{color:"#ffd24a"}}>LOOT +{def.stats.lootBonus}</span>}
-          </div>
-
-          {isComparing && diffs.length > 0 && (
-            <div className="mt-1.5 pt-1" style={{ borderTop: "1px dashed #ffd24a33" }}>
-              <div className="text-[13px] tracking-widest mb-0.5" style={{ color: "#ffd24a99" }}>IF REPLACED:</div>
-              <div className="flex flex-wrap gap-0.5">
+          {/* Name + stats */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-[14px] font-bold tracking-widest" style={{ color }}>{def.name}</span>
+              <span className="text-[12px] uppercase text-mute">· {def.rarity}</span>
+            </div>
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[13px] tracking-wider">
+              {def.stats.damage != null && <span style={{color:"#ff5c6c"}}>DMG {def.stats.damage}</span>}
+              {def.stats.fireRate != null && def.stats.fireRate !== 1 && <span style={{color:"#ffaa44"}}>ROF {def.stats.fireRate}x</span>}
+              {def.stats.critChance != null && <span style={{color:"#ff5cf0"}}>CRIT {Math.round(def.stats.critChance*100)}%</span>}
+              {def.stats.aoeRadius != null && <span style={{color:"#ff8844"}}>AOE {def.stats.aoeRadius}</span>}
+              {def.stats.shieldMax != null && <span style={{color:"#4ee2ff"}}>SHD +{def.stats.shieldMax}</span>}
+              {def.stats.shieldRegen != null && <span style={{color:"#4ee2ff"}}>REG +{def.stats.shieldRegen}</span>}
+              {def.stats.hullMax != null && <span style={{color:"#5cff8a"}}>HUL +{def.stats.hullMax}</span>}
+              {def.stats.speed != null && <span style={{color:"#aaff5c"}}>SPD +{def.stats.speed}</span>}
+              {def.stats.damageReduction != null && <span style={{color:"#ffd24a"}}>DR {Math.round(def.stats.damageReduction*100)}%</span>}
+              {def.stats.ammoCapacity != null && <span style={{color:"#ffcc88"}}>AMMO +{def.stats.ammoCapacity}</span>}
+              {def.stats.lootBonus != null && <span style={{color:"#ffd24a"}}>LOOT +{def.stats.lootBonus}</span>}
+            </div>
+            {isComparing && diffs.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                <span className="text-[12px] tracking-widest text-mute mr-1">IF REPLACED:</span>
                 {diffs.map((d, i) => (
-                  <span
-                    key={i}
-                    className="text-[13px] px-1 tracking-widest"
-                    style={{
-                      color: d.delta > 0 ? "#5cff8a" : "#ff5c6c",
-                      border: `1px solid ${d.delta > 0 ? "#5cff8a44" : "#ff5c6c44"}`,
-                    }}
-                  >
+                  <span key={i} className="text-[12px] px-1 tracking-widest"
+                    style={{ color: d.delta > 0 ? "#5cff8a" : "#ff5c6c", border: `1px solid ${d.delta > 0 ? "#5cff8a44" : "#ff5c6c44"}` }}>
                     {d.label} {d.formatted}
                   </span>
                 ))}
               </div>
-            </div>
-          )}
-          {isComparing && diffs.length === 0 && def && (
-            <div className="mt-1.5 pt-1" style={{ borderTop: "1px dashed #ffd24a33" }}>
-              <div className="text-[13px] tracking-widest" style={{ color: "#ffd24a99" }}>≈ SIMILAR STATS</div>
-            </div>
-          )}
-          <button
-            className="btn mt-auto self-start"
-            style={{ padding: "2px 6px", fontSize: 13 }}
-            onClick={() => unequipSlot(slot, index)}
-          >Unequip</button>
+            )}
+            {isComparing && diffs.length === 0 && def && (
+              <div className="text-[12px] tracking-widest mt-1" style={{ color: "#ffd24a99" }}>≈ SIMILAR STATS</div>
+            )}
+          </div>
+          {/* Action */}
+          <button className="btn shrink-0" style={{ padding: "4px 10px", fontSize: 13 }}
+            onClick={() => unequipSlot(slot, index)}>Unequip</button>
         </>
       ) : (
-        <div className="text-mute text-[12px] mt-1 italic">
+        <div className="text-mute text-[13px] italic flex-1">
           {isComparing ? "⬡ open slot — shop module fits here" : "— empty slot —"}
         </div>
       )}
@@ -552,8 +629,8 @@ function LoadoutTab({ stationId }: { stationId: string }) {
       : null;
     return (
       <div>
-        <div className="text-[13px] tracking-widest mb-1" style={{ color }}>▶ {label} ({player.equipped[slot].length})</div>
-        <div className="grid gap-2" style={{ gridTemplateColumns: `repeat(${player.equipped[slot].length}, minmax(0, 1fr))` }}>
+        <div className="text-[13px] tracking-widest mb-2" style={{ color }}>▶ {label} ({player.equipped[slot].length})</div>
+        <div className="space-y-2">
           {player.equipped[slot].map((id, i) => (
             <SlotCell key={`${slot}-${i}`} slot={slot} index={i} instanceId={id} compareWithDef={compareDef} />
           ))}
@@ -563,9 +640,9 @@ function LoadoutTab({ stationId }: { stationId: string }) {
   };
 
   return (
-    <div className="grid gap-3 p-4" style={{ gridTemplateColumns: "1fr 1fr" }}>
+    <div className="grid gap-4 p-5" style={{ gridTemplateColumns: "1fr 1fr" }}>
       {/* LEFT — equipped slots + stats summary */}
-      <div className="space-y-3">
+      <div className="space-y-4 overflow-y-auto" style={{ maxHeight: "calc(820px - 120px)" }}>
         <div className="flex items-center justify-between gap-2 min-w-0">
           <div className="section-header truncate">
             LOADOUT · {cls.name.toUpperCase()}
@@ -581,16 +658,16 @@ function LoadoutTab({ stationId }: { stationId: string }) {
         {renderSlotRow("generator", "GENERATORS", "#4ee2ff")}
         {renderSlotRow("module",    "MODULES",    "#ff5cf0")}
         <div
-          className="panel p-2.5"
-          style={{ borderColor: "rgba(78,226,255,0.18)" }}
+          className="panel p-4"
+          style={{ borderColor: "rgba(78,226,255,0.25)" }}
         >
           <div
-            className="tracking-widest mb-2"
-            style={{ color: "var(--accent-cyan)", fontSize: 10, letterSpacing: "0.2em" }}
+            className="tracking-widest mb-3"
+            style={{ color: "var(--accent-cyan)", fontSize: 11, letterSpacing: "0.2em" }}
           >
             ▶ ACTIVE STATS
           </div>
-          <div className="grid grid-cols-3 gap-x-2 gap-y-1.5">
+          <div className="grid grid-cols-4 gap-x-4 gap-y-3">
             <Stat label="DMG"  v={Math.round(stats.damage)} />
             <Stat label="RATE" v={+stats.fireRate.toFixed(2)} />
             <Stat label="CRIT" v={`${Math.round(stats.critChance * 100)}%`} />
@@ -605,35 +682,33 @@ function LoadoutTab({ stationId }: { stationId: string }) {
       </div>
 
       {/* RIGHT — inventory + shop toggle */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+      <div className="space-y-3 flex flex-col">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-3">
             <div className="section-header">▶ {showShop ? "MODULE MARKET" : `INVENTORY (${player.inventory.length})`}</div>
-            {showShop && <span className="text-[13px] tracking-widest" style={{ color: "#ffd24a88" }}>hover to compare</span>}
-            {!showShop && <span className="text-[13px] tracking-widest" style={{ color: "#ffd24a88" }}>hover unequipped to compare</span>}
+            {showShop && <span className="text-[12px] tracking-widest" style={{ color: "#ffd24a88" }}>hover to compare</span>}
+            {!showShop && <span className="text-[12px] tracking-widest" style={{ color: "#ffd24a88" }}>hover to compare</span>}
           </div>
-          <div className="flex gap-1">
-            <button className="btn" style={{ padding: "2px 6px", fontSize: 13 }} onClick={() => { setShowShop((v) => !v); setHoveredShopDefId(null); setHoveredInvInstanceId(null); }}>
-              {showShop ? "Show Inventory" : `Shop @ ${station.name}`}
+          <div className="flex gap-2 shrink-0">
+            <button className="btn" style={{ padding: "4px 10px", fontSize: 13 }} onClick={() => { setShowShop((v) => !v); setHoveredShopDefId(null); setHoveredInvInstanceId(null); }}>
+              {showShop ? "Inventory" : `Shop @ ${station.name}`}
             </button>
-            <button className="btn btn-amber" style={{ padding: "2px 6px", fontSize: 13 }} onClick={() => setShowAmmoPopup((v) => !v)}>
-              {showAmmoPopup ? "Close Ammo" : "Ammo"}
+            <button className="btn btn-amber" style={{ padding: "4px 10px", fontSize: 13 }} onClick={() => setShowAmmoPopup((v) => !v)}>
+              {showAmmoPopup ? "✕ Ammo" : "⟁ Ammo"}
             </button>
           </div>
         </div>
-        {(
-          <div className="flex gap-1">
-            {(["all", "weapon", "generator", "module"] as const).map((f) => (
-              <button key={f} className="btn"
-                style={{ padding: "2px 6px", fontSize: 13, background: filter === f ? "rgba(78,226,255,0.18)" : undefined }}
-                onClick={() => setFilter(f)}>{f.toUpperCase()}</button>
-            ))}
-          </div>
-        )}
+        <div className="flex gap-2">
+          {(["all", "weapon", "generator", "module"] as const).map((f) => (
+            <button key={f} className="btn"
+              style={{ padding: "4px 10px", fontSize: 13, background: filter === f ? "rgba(78,226,255,0.18)" : undefined, borderColor: filter === f ? "var(--accent-cyan)" : undefined }}
+              onClick={() => setFilter(f)}>{f.toUpperCase()}</button>
+          ))}
+        </div>
 
         <div
-          className="space-y-1.5 overflow-y-auto"
-          style={{ maxHeight: 460 }}
+          className="space-y-2 overflow-y-auto flex-1"
+          style={{ maxHeight: 580 }}
           onMouseLeave={() => { setHoveredShopDefId(null); setHoveredInvInstanceId(null); }}
         >
           {showShop ? (
@@ -900,7 +975,6 @@ function ShipsTab() {
       ensureAmmoInitialized();
       const stats = effectiveStats();
       player.hull = stats.hullMax; player.shield = stats.shieldMax;
-      player.drones = player.drones.slice(0, cls.droneSlots);
       pushNotification(`Boarded ${cls.name}`, "good");
       save(); bump();
       return;
@@ -913,47 +987,46 @@ function ShipsTab() {
     ensureAmmoInitialized();
     const stats = effectiveStats();
     player.hull = stats.hullMax; player.shield = stats.shieldMax;
-    player.drones = player.drones.slice(0, cls.droneSlots);
     pushNotification(`Acquired ${cls.name}!`, "good");
     save(); bump();
   };
 
   return (
-    <div className="grid grid-cols-2 gap-3 p-4">
+    <div className="grid grid-cols-2 gap-4 p-5">
       {(Object.values(SHIP_CLASSES) as { id: ShipClassId; [k: string]: any }[]).map((cls) => {
         const owned = player.ownedShips.includes(cls.id);
         const active = player.shipClass === cls.id;
         return (
-          <div key={cls.id} className="panel p-3" style={{ borderColor: active ? cls.color : "var(--border-glow)" }}>
-            <div className="flex items-center gap-3 mb-2">
+          <div key={cls.id} className="panel p-4" style={{ borderColor: active ? cls.color : "var(--border-glow)" }}>
+            <div className="flex items-center gap-4 mb-4">
               <div
-                className="flex items-center justify-center text-xl font-bold"
-                style={{ width: 44, height: 44, background: `${cls.color}22`, border: `1px solid ${cls.color}`, color: cls.color }}
+                className="shrink-0 overflow-hidden"
+                style={{ width: 96, height: 96, border: `1px solid ${cls.color}`, background: "transparent" }}
               >
-                ▲
+                <ShipPreview shipId={cls.id} color={cls.color} size={96} />
               </div>
-              <div className="flex-1">
-                <div className="font-bold tracking-widest text-sm" style={{ color: cls.color }}>
+              <div className="flex-1 min-w-0">
+                <div className="font-bold tracking-widest text-base" style={{ color: cls.color }}>
                   {cls.name.toUpperCase()}
                 </div>
-                <div className="text-dim text-[13px]">{cls.description}</div>
+                <div className="text-dim text-[13px] mt-0.5">{cls.description}</div>
               </div>
-              {active && <div className="text-cyan text-[12px] tracking-widest">[ACTIVE]</div>}
+              {active && <div className="text-cyan text-[13px] tracking-widest shrink-0">[ACTIVE]</div>}
             </div>
-            <div className="grid grid-cols-4 gap-1 text-[13px] mb-1">
-              <Stat label="HUL" v={cls.hullMax} />
-              <Stat label="SHD" v={cls.shieldMax} />
-              <Stat label="SPD" v={cls.baseSpeed} />
-              <Stat label="DMG" v={cls.baseDamage} />
-              <Stat label="DRN" v={cls.droneSlots} />
+            <div className="grid grid-cols-4 gap-3 mb-3">
+              <Stat label="HULL" v={cls.hullMax} />
+              <Stat label="SHIELD" v={cls.shieldMax} />
+              <Stat label="SPEED" v={cls.baseSpeed} />
+              <Stat label="DAMAGE" v={cls.baseDamage} />
             </div>
-            <div className="grid grid-cols-3 gap-1 text-[13px] mb-2">
-              <Stat label="WPN" v={cls.slots.weapon} />
-              <Stat label="GEN" v={cls.slots.generator} />
-              <Stat label="MOD" v={cls.slots.module} />
+            <div className="grid grid-cols-4 gap-3 mb-4">
+              <Stat label="DRONES" v={cls.droneSlots} />
+              <Stat label="WEAPONS" v={cls.slots.weapon} />
+              <Stat label="GENS" v={cls.slots.generator} />
+              <Stat label="MODULES" v={cls.slots.module} />
             </div>
-            <button className="btn btn-primary w-full" disabled={active || (!owned && player.credits < cls.price)} onClick={() => buy(cls.id)}>
-              {active ? "Currently flying" : owned ? "Switch" : `Buy · ${cls.price.toLocaleString()}cr`}
+            <button className="btn btn-primary w-full" style={{ padding: "8px", fontSize: 14 }} disabled={active || (!owned && player.credits < cls.price)} onClick={() => buy(cls.id)}>
+              {active ? "Currently flying" : owned ? "⬡ Switch to this ship" : `Buy · ${cls.price.toLocaleString()}cr`}
             </button>
           </div>
         );
@@ -967,13 +1040,13 @@ function Stat({ label, v }: { label: string; v: number | string }) {
     <div className="min-w-0">
       <div
         className="truncate"
-        style={{ color: "var(--text-mute)", fontSize: 10, letterSpacing: "0.12em" }}
+        style={{ color: "var(--text-mute)", fontSize: 11, letterSpacing: "0.14em" }}
       >
         {label}
       </div>
       <div
         className="font-bold tabular-nums truncate"
-        style={{ color: "var(--accent-cyan)", fontSize: 12 }}
+        style={{ color: "var(--accent-cyan)", fontSize: 15 }}
       >
         {v}
       </div>
@@ -1033,9 +1106,9 @@ function DronesTab() {
   };
 
   return (
-    <div className="p-4 grid grid-cols-2 gap-4">
+    <div className="p-5 grid grid-cols-2 gap-5">
       <div>
-        <div className="text-cyan tracking-widest text-sm mb-3">
+        <div className="text-cyan tracking-widest mb-4" style={{ fontSize: 14 }}>
           ▶ DRONE BAY — {player.drones.length}/{totalSlots} SLOTS
         </div>
         <div className="space-y-2">
@@ -1045,29 +1118,29 @@ function DronesTab() {
           {player.drones.map((d) => {
             const def = DRONE_DEFS[d.kind];
             return (
-              <div key={d.id} className="panel p-3 flex items-center gap-3">
+              <div key={d.id} className="panel p-4 flex items-center gap-4">
                 <div
-                  className="flex items-center justify-center text-lg"
-                  style={{ width: 40, height: 40, background: `${def.color}22`, border: `1px solid ${def.color}`, color: def.color }}
+                  className="flex items-center justify-center text-xl shrink-0"
+                  style={{ width: 48, height: 48, background: `${def.color}22`, border: `1px solid ${def.color}`, color: def.color }}
                 >
                   ✦
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-bold text-sm" style={{ color: def.color }}>{def.name}</div>
-                  <div className="text-dim text-[13px]">
-                    {def.damageBonus > 0 && `+${def.damageBonus} dmg `}
-                    {def.shieldBonus > 0 && `+${def.shieldBonus} shd `}
-                    {def.hullBonus > 0 && `+${def.hullBonus} hp`}
+                  <div className="font-bold tracking-widest mb-1" style={{ color: def.color, fontSize: 14 }}>{def.name}</div>
+                  <div className="text-dim text-[13px] flex gap-3">
+                    {def.damageBonus > 0 && <span style={{ color: "#ff5c6c" }}>+{def.damageBonus} dmg</span>}
+                    {def.shieldBonus > 0 && <span style={{ color: "#4ee2ff" }}>+{def.shieldBonus} shd</span>}
+                    {def.hullBonus > 0 && <span style={{ color: "#5cff8a" }}>+{def.hullBonus} hp</span>}
                   </div>
                 </div>
-                <div className="flex flex-col gap-1">
-                  <div className="flex gap-1">
+                <div className="flex flex-col gap-2 items-end">
+                  <div className="flex gap-1.5">
                     {(["orbit", "forward", "defensive"] as DroneMode[]).map((m) => (
                       <button
                         key={m}
                         className="btn"
                         style={{
-                          padding: "2px 6px", fontSize: 12,
+                          padding: "4px 8px", fontSize: 13,
                           background: d.mode === m ? `${def.color}33` : "transparent",
                           borderColor: d.mode === m ? def.color : "var(--border-glow)",
                           color: d.mode === m ? def.color : "var(--text-dim)",
@@ -1078,8 +1151,8 @@ function DronesTab() {
                       </button>
                     ))}
                   </div>
-                  <button className="btn btn-danger" style={{ padding: "2px 6px", fontSize: 13 }} onClick={() => scrap(d.id)}>
-                    Scrap
+                  <button className="btn btn-danger" style={{ padding: "4px 10px", fontSize: 13 }} onClick={() => scrap(d.id)}>
+                    ✕ Scrap
                   </button>
                 </div>
               </div>
@@ -1092,7 +1165,7 @@ function DronesTab() {
       </div>
 
       <div>
-        <div className="text-cyan tracking-widest text-sm mb-3">▶ DRONE CATALOG</div>
+        <div className="text-cyan tracking-widest mb-4" style={{ fontSize: 14 }}>▶ DRONE CATALOG</div>
         <div className="space-y-2">
           {Object.values(DRONE_DEFS).map((def) => {
             const price = dronePrice(def.id);
@@ -1774,23 +1847,23 @@ function SkillsTab() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3" style={{ gridTemplateColumns: "repeat(4,1fr)" }}>
+      <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(4,1fr)" }}>
         {branches.map((b) => (
-          <div key={b.id} className="panel p-3" style={{ position: "relative", overflow: "hidden" }}>
+          <div key={b.id} className="panel p-4" style={{ position: "relative", overflow: "hidden" }}>
             <div
               style={{
                 position: "absolute",
-                left: 18,
-                top: 44,
-                bottom: 14,
+                left: 20,
+                top: 52,
+                bottom: 16,
                 width: 2,
-                background: `linear-gradient(to bottom, ${b.color}55, ${b.color}11)`,
+                background: `linear-gradient(to bottom, ${b.color}66, ${b.color}11)`,
               }}
             />
-            <div className="font-bold tracking-widest text-sm mb-2" style={{ color: b.color }}>
+            <div className="font-bold tracking-widest text-sm mb-3" style={{ color: b.color, fontSize: 14 }}>
               ◆ {b.name}
             </div>
-            <div className="space-y-4">
+            <div className="space-y-3">
               {branchNodes[b.id].map((n, idx) => {
                 const cur = player.skills[n.id] ?? 0;
                 const reqMet = !n.requires || (player.skills[n.requires] ?? 0) > 0;
@@ -1798,9 +1871,9 @@ function SkillsTab() {
                 return (
                   <div
                     key={n.id}
-                    className="p-2"
+                    className="p-3"
                     style={{
-                      marginLeft: idx === 0 ? 0 : idx % 2 === 0 ? 20 : 10,
+                      marginLeft: idx === 0 ? 0 : 12,
                       background: cur > 0 ? `${b.color}11` : "rgba(255,255,255,0.02)",
                       border: `1px solid ${cur > 0 ? b.color + "66" : "rgba(255,255,255,0.08)"}`,
                       borderRadius: 6,
@@ -1812,31 +1885,31 @@ function SkillsTab() {
                         style={{
                           position: "absolute",
                           left: -12,
-                          top: 16,
+                          top: 18,
                           width: 12,
                           height: 2,
                           background: `${b.color}55`,
                         }}
                       />
                     )}
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="font-bold text-[13px]" style={{ color: cur > 0 ? b.color : "var(--text-dim)" }}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="font-bold text-[14px]" style={{ color: cur > 0 ? b.color : "var(--text-dim)" }}>
                         {n.name}
                       </div>
-                      <div className="text-[13px] tabular-nums" style={{ color: b.color }}>
+                      <div className="text-[13px] tabular-nums font-bold" style={{ color: b.color }}>
                         {cur}/{n.maxRank}
                       </div>
                     </div>
-                    <div className="text-dim text-[13px] mb-1">{n.description}</div>
+                    <div className="text-dim text-[13px] mb-2 leading-snug">{n.description}</div>
                     {n.requires && (
-                      <div className="text-mute text-[12px] mb-1">
-                        Requires: {SKILL_NODES.find((x) => x.id === n.requires)?.name}
+                      <div className="text-mute text-[12px] mb-1.5">
+                        Req: {SKILL_NODES.find((x) => x.id === n.requires)?.name}
                       </div>
                     )}
                     <button
                       className="btn"
                       style={{
-                        padding: "3px 8px", fontSize: 13, width: "100%",
+                        padding: "4px 10px", fontSize: 13, width: "100%",
                         borderColor: canBuy ? b.color : "var(--border-glow)",
                         color: canBuy ? b.color : "var(--text-mute)",
                         background: canBuy ? `${b.color}15` : "transparent",
@@ -1844,7 +1917,7 @@ function SkillsTab() {
                       disabled={!canBuy}
                       onClick={() => buySkillRank(n.id as SkillId)}
                     >
-                      {cur >= n.maxRank ? "MAX" : !reqMet ? "LOCKED" : `Buy · ${n.cost} pt${n.cost > 1 ? "s" : ""}`}
+                      {cur >= n.maxRank ? "✓ MAX" : !reqMet ? "🔒 LOCKED" : `Buy · ${n.cost} pt${n.cost > 1 ? "s" : ""}`}
                     </button>
                   </div>
                 );
@@ -1914,14 +1987,16 @@ function MissionsTab() {
           />
         </div>
         <div
-          className="mb-2 whitespace-nowrap overflow-hidden"
-          style={{ color: "var(--accent-amber)", fontSize: 11, textOverflow: "ellipsis" }}
+          className="mb-2 flex flex-wrap gap-2"
+          style={{ fontSize: 13 }}
         >
-          +{m.rewardCredits.toLocaleString()}cr · +{m.rewardExp.toLocaleString()}xp · +{m.rewardHonor}hr
+          <span style={{ color: "var(--accent-amber)" }}>+{m.rewardCredits.toLocaleString()}cr</span>
+          <span style={{ color: "#ff5cf0" }}>+{m.rewardExp.toLocaleString()}xp</span>
+          <span style={{ color: "#5cff8a" }}>+{m.rewardHonor} honor</span>
         </div>
         <button
           className="btn btn-primary w-full"
-          style={{ padding: "4px 8px", fontSize: 11 }}
+          style={{ padding: "6px 8px", fontSize: 13 }}
           disabled={!ready}
           onClick={() => claimMission(m.id)}
         >
@@ -1934,12 +2009,12 @@ function MissionsTab() {
   return (
     <div className="p-4 space-y-3">
       {/* Sub-tabs */}
-      <div className="flex gap-1 flex-wrap border-b pb-2" style={{ borderColor: "var(--border-soft)" }}>
+      <div className="flex gap-2 flex-wrap border-b pb-3" style={{ borderColor: "var(--border-soft)" }}>
         {tabs.map(t => (
           <button
             key={t.id}
             className={"btn " + (activeTab === t.id ? "btn-primary" : "")}
-            style={{ padding: "5px 12px", fontSize: 12 }}
+            style={{ padding: "6px 16px", fontSize: 13 }}
             onClick={() => setActiveTab(t.id)}
           >
             {t.icon} {t.label}

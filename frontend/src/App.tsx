@@ -388,7 +388,7 @@ function DockPrompt() {
   useGame((s) => s.tick);
 
   const station = STATIONS.find(
-    (s) => s.zone === player.zone && Math.hypot(s.pos.x - player.pos.x, s.pos.y - player.pos.y) < 90
+    (s) => s.zone === player.zone && Math.hypot(s.pos.x - player.pos.x, s.pos.y - player.pos.y) < 300
   );
   const portal = PORTALS.find(
     (po) => po.fromZone === player.zone && Math.hypot(po.pos.x - player.pos.x, po.pos.y - player.pos.y) < 70

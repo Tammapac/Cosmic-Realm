@@ -331,14 +331,14 @@ export function updateShipVisual(
     const eg = vs.engineGlows[i];
     const ef = vs.engineFlames[i];
     if (thrustIntensity > 0.02) {
-      eg.alpha = thrustIntensity * flicker * 0.4;
-      eg.scale.set(0.8 + thrustIntensity * 0.4);
+      eg.alpha = thrustIntensity * flicker * 0.3;
+      eg.scale.set(0.6 + thrustIntensity * 0.3);
       eg.tint = 0x4488ff;
-      ef.alpha = thrustIntensity * 0.5 * flicker;
-      ef.scale.set(0.5 + thrustIntensity * 0.4, 0.7 + thrustIntensity * 0.6 + Math.sin(tick * 30 + i) * 0.12);
+      ef.alpha = thrustIntensity * 0.375 * flicker;
+      ef.scale.set(0.375 + thrustIntensity * 0.3, 0.525 + thrustIntensity * 0.45 + Math.sin(tick * 30 + i) * 0.09);
     } else {
       eg.alpha = 0.03;
-      eg.scale.set(0.4);
+      eg.scale.set(0.3);
       eg.tint = 0x224488;
       ef.alpha = 0;
     }
