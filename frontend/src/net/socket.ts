@@ -29,6 +29,14 @@ export type RemotePlayer = {
   shield: number;
   shieldMax: number;
   honor: number;
+  // Equipment / visual sync — optional so we tolerate servers that don't send them
+  activeAmmoType?: string;
+  activeRocketAmmoType?: string;
+  equipped?: {
+    weapon?: (string | null)[];
+    generator?: (string | null)[];
+    module?: (string | null)[];
+  };
 };
 
 export type WelcomePayload = {
@@ -53,6 +61,14 @@ export type DeltaEntity = {
   level?: number;
   faction?: string | null;
   honor?: number;
+  // Player equipment / visual sync — optional so we tolerate servers that don't send them
+  activeAmmoType?: string;
+  activeRocketAmmoType?: string;
+  equipped?: {
+    weapon?: (string | null)[];
+    generator?: (string | null)[];
+    module?: (string | null)[];
+  };
   // Enemy-specific
   type?: string;
   behavior?: string;
@@ -176,13 +192,17 @@ export type ProjectileSpawnEvent = {
   homing: boolean;
   fromPlayer: boolean;
   fromPlayerId?: number;
+  // Ammo type sent by server so remote clients can resolve the correct color/visual.
+  // For lasers: "x1"/"x2"/"x3"/"x4". For rockets: "cl1"/"cl2"/"bm3"/"drock".
+  ammoType?: string;
+  ttl?: number;
 };
 
 type SocketEvents = {
   onWelcome: (payload: WelcomePayload) => void;
   onDelta: (payload: DeltaPayload) => void;
   onSnapshot: (payload: SnapshotPayload) => void;
-  onPlayerJoin: (player: { id: number; name: string; shipClass: string; level: number; faction: string | null; honor: number; zone: string }) => void;
+  onPlayerJoin: (player: { id: number; name: string; shipClass: string; level: number; faction: string | null; honor: number; zone: string; hull: number; hullMax: number; shield: number; shieldMax: number; activeAmmoType?: string; activeRocketAmmoType?: string; equipped?: { weapon?: (string | null)[]; generator?: (string | null)[]; module?: (string | null)[] } | null }) => void;
   onPlayerLeave: (data: { playerId: number }) => void;
   onCombatAttack: (event: CombatEvent) => void;
   onChatMessage: (msg: { from: string; text: string; channel: string; time: number }) => void;
@@ -274,9 +294,14 @@ export function connectSocket(token: string) {
   let _deltaCount = 0;
   let _snapshotCount = 0;
 
+  // Diagnostic logs on the socket hot path can stall the main thread
+  // when DevTools is open (each log serializes objects and updates DevTools UI).
+  // Gate behind window.__DEBUG_SOCKET so gameplay stays hitch-free by default.
+  const _debugSocket = () => (window as any).__DEBUG_SOCKET === true;
+
   socket.on("delta", (payload: DeltaPayload) => {
     _deltaCount++;
-    if (_deltaCount % 60 === 0) {
+    if (_debugSocket() && _deltaCount % 60 === 0) {
       console.log("[socket] delta #" + _deltaCount, {
         tick: payload.tick,
         updates: payload.addOrUpdate.length,
@@ -289,11 +314,13 @@ export function connectSocket(token: string) {
 
   socket.on("snapshot", (payload: SnapshotPayload) => {
     _snapshotCount++;
-    console.log("[socket] snapshot #" + _snapshotCount, {
-      tick: payload.tick,
-      entities: payload.entities.length,
-      selfPos: { x: Math.round(payload.self.x), y: Math.round(payload.self.y) },
-    });
+    if (_debugSocket()) {
+      console.log("[socket] snapshot #" + _snapshotCount, {
+        tick: payload.tick,
+        entities: payload.entities.length,
+        selfPos: { x: Math.round(payload.self.x), y: Math.round(payload.self.y) },
+      });
+    }
     listeners.onSnapshot?.(payload);
   });
 
@@ -333,12 +360,12 @@ export function connectSocket(token: string) {
 
   // Game events
   socket.on("enemy:spawn", (enemy: ServerEnemy) => {
-    console.log("[socket] enemy:spawn", { id: enemy.id, type: enemy.type, name: enemy.name });
+    if (_debugSocket()) console.log("[socket] enemy:spawn", { id: enemy.id, type: enemy.type, name: enemy.name });
     listeners.onEnemySpawn?.(enemy);
   });
 
   socket.on("enemy:die", (event: EnemyDieEvent) => {
-    console.log("[socket] enemy:die", { id: event.enemyId, killer: event.killerId });
+    if (_debugSocket()) console.log("[socket] enemy:die", { id: event.enemyId, killer: event.killerId });
     listeners.onEnemyDie?.(event);
   });
 
@@ -411,7 +438,7 @@ export function connectSocket(token: string) {
 
   socket.on("projectile:spawn", (event: ProjectileSpawnEvent) => {
     _projectileCount++;
-    if (_projectileCount % 20 === 0) {
+    if (_debugSocket() && _projectileCount % 20 === 0) {
       console.log("[socket] projectile:spawn #" + _projectileCount, {
         weaponKind: event.weaponKind,
         fromPlayer: event.fromPlayer,

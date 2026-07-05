@@ -1,5 +1,5 @@
 import {
-  bump, pushChat, pushNotification, pushHonor, save, addCargo, pushFloater,
+  bump, scheduleBump, pushChat, pushNotification, pushHonor, save, addCargo, pushFloater,
   pushEvent, bumpMission, state, travelToZone, completeDungeon, registerWarpCallback,
   tickHotbarCooldowns,
   ensureAmmoInitialized, getAmmoWeaponIds, rocketAmmoMax,
@@ -11,67 +11,13 @@ import {
   MAP_RADIUS, NpcShip, PORTALS, ROCKET_AMMO_TYPE_DEFS, ROCKET_MISSILE_TYPE_DEFS, WeaponKind,
   SHIP_CLASSES, STATIONS, ZONES, ZoneId,
   rankFor,
-RESOURCES, pickAsteroidYield, SHIP_SIZE_SCALE, SHIP_WEAPON_MOUNTS, } from "./types";
+RESOURCES, pickAsteroidYield, SHIP_SIZE_SCALE, } from "./types";
 import { sfx } from "./sound";
-import { DIRECTIONS_32 } from "./debug/hardpointTypes";
-import { type ServerEnemy, type ServerAsteroid, type ServerNpc, type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent, type DeltaPayload, type SnapshotPayload, type WelcomePayload, type DeltaEntity, type LaserFireEvent, type RocketFireEvent, type ProjectileSpawnEvent } from "../net/socket";
+import { type ServerEnemy, type ServerAsteroid, type ServerNpc, type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent, type DeltaPayload, type SnapshotPayload, type WelcomePayload, type DeltaEntity, type ProjectileSpawnEvent } from "../net/socket";
 import { sendInstanceEnemyHit } from "../net/socket";
 import { MOVEMENT, NETCODE } from "../../../lib/game-constants";
 
 
-// ── Editor hardpoint lookup for projectile positioning ──
-const _hpCache: Map<string, any> = new Map();
-let _hpCacheTime = 0;
-const SHIP_ROTATION_CFG: Record<string, { frame0DirDeg: number; clockwise: boolean }> = {
-  skimmer: { frame0DirDeg: 180, clockwise: false },
-  wasp: { frame0DirDeg: 0, clockwise: true },
-  vanguard: { frame0DirDeg: 0, clockwise: true },
-  reaver: { frame0DirDeg: 0, clockwise: true },
-  obsidian: { frame0DirDeg: 0, clockwise: true },
-  marauder: { frame0DirDeg: 0, clockwise: true },
-  phalanx: { frame0DirDeg: 0, clockwise: true },
-  titan: { frame0DirDeg: 0, clockwise: true },
-  leviathan: { frame0DirDeg: 0, clockwise: true },
-  specter: { frame0DirDeg: 0, clockwise: true },
-  colossus: { frame0DirDeg: 0, clockwise: true },
-  harbinger: { frame0DirDeg: 0, clockwise: true },
-  eclipse: { frame0DirDeg: 0, clockwise: true },
-  sovereign: { frame0DirDeg: 0, clockwise: true },
-  apex: { frame0DirDeg: 0, clockwise: true },
-};
-
-let weaponMountIdx = 0;
-
-function getEditorWeaponPositions(ship: string, angle: number): { x: number; y: number }[] | null {
-  const now = Date.now();
-  if (now - _hpCacheTime > 5000) { _hpCache.clear(); _hpCacheTime = now; }
-  let data = _hpCache.get(ship);
-  if (data === undefined) {
-    try {
-      const raw = localStorage.getItem(`hardpoint-editor:${ship}`);
-      data = raw ? JSON.parse(raw) : null;
-    } catch { data = null; }
-    _hpCache.set(ship, data);
-  }
-  if (!data || !data.directions) return null;
-  // Convert angle to frame index - matches renderer angleToDirectionFrame exactly
-  const screenDeg = (angle * 180) / Math.PI;
-  let compassDeg = ((screenDeg + 90) % 360 + 360) % 360;
-  const rotCfg = SHIP_ROTATION_CFG[ship] || { frame0DirDeg: 0, clockwise: true };
-  let frameDeg = compassDeg - rotCfg.frame0DirDeg;
-  if (!rotCfg.clockwise) frameDeg = -frameDeg;
-  frameDeg = ((frameDeg % 360) + 360) % 360;
-  const step = 360 / 32;
-  const frameIdx = Math.round(frameDeg / step) % 32;
-  const dirKey = DIRECTIONS_32[frameIdx];
-  const dir = data.directions[dirKey];
-  if (!dir || !dir.hardpoints) return null;
-  const weapons = dir.hardpoints.filter((hp: any) => hp.type === "laser" || hp.type === "rocket" || hp.type === "muzzle");
-  if (weapons.length === 0) return null;
-  const sizeScale = SHIP_SIZE_SCALE[ship as keyof typeof SHIP_SIZE_SCALE] ?? 1;
-  const scaleFactor = Math.ceil(85 * sizeScale * 1.6) / 256;
-  return weapons.map((hp: any) => ({ x: hp.x * scaleFactor, y: (hp.y - (hp.z || 0)) * scaleFactor }));
-}
 
 // Returns the equipped weapon's color (used for laser projectiles)
 function equippedWeaponColor(): string {
@@ -708,7 +654,10 @@ function fireProjectile(
     weaponKind: opts?.weaponKind,
     renderOnly: opts?.renderOnly,
   });
-  bump(); // Trigger React re-render to show projectile
+  // Projectile visuals are driven by the Pixi renderer's own RAF loop, so we
+  // only need to schedule a React re-render (for e.g. ammo counters) — no
+  // need to sync the entire component tree on every shot.
+  scheduleBump();
 }
 
 export function hasRocketWeapon(): boolean {
@@ -1677,10 +1626,6 @@ function tickWorld(dt: number): void {
         else laserIds.push(wid);
       }
       const perpAng = ang + Math.PI / 2;
-      const shipScale = SHIP_SIZE_SCALE[p.shipClass] ?? 1;
-      const gunMount = SHIP_WEAPON_MOUNTS[p.shipClass] ?? { spread: 14, forward: 8 };
-      const gunSpread = gunMount.spread;
-      const gunFwd = gunMount.forward;
 
       // Fire lasers on laser cooldown (uses laser ammo) - only when laser firing is active
       const laserAmmo = p.ammo[laserAmmoType] ?? 0;
@@ -1697,10 +1642,10 @@ function tickWorld(dt: number): void {
         const pattern = firstDef?.firingPattern || "standard";
 
         if (pattern === "sniper") {
-          // Single powerful beam from center
+          // Single powerful beam — offset matches server: forward 10px
           const dmg = Math.round(laserDmg);
-          const ox = p.pos.x + Math.cos(ang) * gunFwd;
-          const oy = p.pos.y + Math.sin(ang) * gunFwd;
+          const ox = p.pos.x + Math.cos(ang) * 10;
+          const oy = p.pos.y + Math.sin(ang) * 10;
           fireProjectile("player", ox, oy, ang, dmg, laserColor, 6, {
             weaponKind: "laser", speedMul: 3.2,
           });
@@ -1709,31 +1654,29 @@ function tickWorld(dt: number): void {
           emitSpark(ox, oy, "#ffffff", 8, 160, 3);
           emitSpark(ox, oy, laserColor, 4, 100, 2);
         } else if (pattern === "scatter") {
-          // Shotgun: 3 heavy pellets in a tight cone
+          // Shotgun: 3 heavy pellets — offsets match server: perpendicular ±5px
           const pellets = 3;
           const perPellet = Math.round(laserDmg * 2.5 / pellets);
-          const spread = 0.1;
+          const spread = 0.06;
           for (let si = 0; si < pellets; si++) {
-            const spreadAng = ang + (si - 1) * spread;
             const side = si === 0 ? -1 : si === 2 ? 1 : 0;
-            const ox = p.pos.x + Math.cos(ang) * gunFwd + Math.cos(perpAng) * gunSpread * side;
-            const oy = p.pos.y + Math.sin(ang) * gunFwd + Math.sin(perpAng) * gunSpread * side;
+            const ox = p.pos.x + Math.cos(perpAng) * 5 * side;
+            const oy = p.pos.y + Math.sin(perpAng) * 5 * side;
+            const spreadAng = ang + (si - 1) * spread;
             fireProjectile("player", ox, oy, spreadAng, perPellet, laserColor, 4, {
               weaponKind: "laser", speedMul: 1.8,
             });
           }
-          const cx = p.pos.x + Math.cos(ang) * gunFwd;
-          const cy = p.pos.y + Math.sin(ang) * gunFwd;
-          state.particles.push({ id: `mf-${Math.random().toString(36).slice(2, 8)}`, pos: { x: cx, y: cy }, vel: { x: 0, y: 0 }, ttl: 0.15, maxTtl: 0.15, color: laserColor, size: 80, kind: "flash" });
-          emitSpark(cx, cy, laserColor, 8, 100, 2);
-          emitSpark(cx, cy, "#ffffff", 4, 70, 2);
+          state.particles.push({ id: `mf-${Math.random().toString(36).slice(2, 8)}`, pos: { x: p.pos.x, y: p.pos.y }, vel: { x: 0, y: 0 }, ttl: 0.15, maxTtl: 0.15, color: laserColor, size: 80, kind: "flash" });
+          emitSpark(p.pos.x, p.pos.y, laserColor, 8, 100, 2);
+          emitSpark(p.pos.x, p.pos.y, "#ffffff", 4, 70, 2);
         } else if (pattern === "rail") {
-          // Burst: 3 rapid shots
+          // Burst: 3 rapid shots — offsets match server: perpendicular ±5px
           const perBurst = Math.round(laserDmg * 1.3 / 3);
           for (let bi = 0; bi < 3; bi++) {
             const side = bi === 0 ? -1 : bi === 1 ? 1 : 0;
-            const ox = p.pos.x + Math.cos(ang) * gunFwd + Math.cos(perpAng) * gunSpread * side;
-            const oy = p.pos.y + Math.sin(ang) * gunFwd + Math.sin(perpAng) * gunSpread * side;
+            const ox = p.pos.x + Math.cos(perpAng) * 5 * side;
+            const oy = p.pos.y + Math.sin(perpAng) * 5 * side;
             const burstAng = ang + (Math.random() - 0.5) * 0.04;
             fireProjectile("player", ox, oy, burstAng, perBurst, laserColor, 4, {
               weaponKind: "laser", speedMul: 2.5,
@@ -1743,33 +1686,13 @@ function tickWorld(dt: number): void {
           }
           emitSpark(p.pos.x, p.pos.y, "#ffffff", 3, 60, 2);
         } else {
-          // Alternating pairs: fire 2 guns at a time, cycle through pairs
+          // Standard dual-gun — offsets match server: perpendicular ±4px
           const perShot = Math.round(laserDmg / 2);
-          const editorWpns = getEditorWeaponPositions(p.shipClass, ang);
-          const useEditor = editorWpns && editorWpns.length >= 2;
-          const totalGuns = useEditor ? editorWpns!.length : 2;
-          const numPairs = Math.ceil(totalGuns / 2);
-          const pairIdx = useEditor && totalGuns > 2 ? weaponMountIdx % numPairs : 0;
-          if (useEditor && totalGuns > 2) weaponMountIdx++;
           for (let si = 0; si < 2; si++) {
-            const hpIdx = pairIdx * 2 + si;
-            if (useEditor && hpIdx >= totalGuns) break;
             const side = si === 0 ? -1 : 1;
-            let ox: number, oy: number;
-            let convergeSide: number;
-            if (useEditor) {
-              ox = p.pos.x + editorWpns![hpIdx].x;
-              oy = p.pos.y + editorWpns![hpIdx].y;
-              const perpX = Math.cos(ang + Math.PI / 2);
-              const perpY = Math.sin(ang + Math.PI / 2);
-              const dot = editorWpns![hpIdx].x * perpX + editorWpns![hpIdx].y * perpY;
-              convergeSide = dot >= 0 ? 1 : -1;
-            } else {
-              convergeSide = side;
-              ox = p.pos.x + Math.cos(ang) * gunFwd + Math.cos(perpAng) * gunSpread * side;
-              oy = p.pos.y + Math.sin(ang) * gunFwd + Math.sin(perpAng) * gunSpread * side;
-            }
-            fireProjectile("player", ox, oy, ang - convergeSide * 0.03, perShot, laserColor, 4, {
+            const ox = p.pos.x + Math.cos(perpAng) * 4 * side;
+            const oy = p.pos.y + Math.sin(perpAng) * 4 * side;
+            fireProjectile("player", ox, oy, ang - side * 0.03, perShot, laserColor, 4, {
               weaponKind: "laser", speedMul: 2.14,
             });
             state.particles.push({ id: `mf-${Math.random().toString(36).slice(2, 8)}`, pos: { x: ox, y: oy }, vel: { x: 0, y: 0 }, ttl: 0.18, maxTtl: 0.18, color: laserColor, size: 70, kind: "flash" });
@@ -1929,18 +1852,28 @@ function tickWorld(dt: number): void {
   // ── Projectiles update + collisions
   state.projectiles = state.projectiles.filter((pr) => {
     // Redirect fresh player laser projectiles toward the on-screen attack target
-    // so the visual matches the enemy sprite position (not the server-side position)
-    if (pr.fromPlayer && !pr.homing && pr.ttl > 1.2 && state.attackTargetId) {
+    // so the visual matches the enemy sprite position (not the server-side position).
+    // renderOnly projectiles are remote/server-authoritative — never redirect them.
+    if (pr.fromPlayer && !pr.renderOnly && !pr.homing && pr.ttl > 1.2 && state.attackTargetId) {
       const visTarget = state.enemies.find(e => e.id === state.attackTargetId);
       if (visTarget) {
         const spd = Math.sqrt(pr.vel.x * pr.vel.x + pr.vel.y * pr.vel.y);
+        if ((window as any).__DEBUG_PROJ) {
+          console.log("[ProjRedirect] LOCAL laser redirected", { id: pr.id, spd: spd.toFixed(1), renderOnly: pr.renderOnly });
+        }
         const toAng = Math.atan2(visTarget.pos.y - pr.pos.y, visTarget.pos.x - pr.pos.x);
         pr.vel.x = Math.cos(toAng) * spd;
         pr.vel.y = Math.sin(toAng) * spd;
       }
+    } else if (pr.fromPlayer && pr.renderOnly && !pr.homing && pr.ttl > 1.2 && state.attackTargetId) {
+      // DEBUG: confirm remote projectiles are NOT redirected after fix
+      if ((window as any).__DEBUG_PROJ) {
+        const spd = Math.sqrt(pr.vel.x * pr.vel.x + pr.vel.y * pr.vel.y);
+        console.log("[ProjRedirect] REMOTE laser skipped (renderOnly=true)", { id: pr.id, spd: spd.toFixed(1), vx: pr.vel.x.toFixed(1), vy: pr.vel.y.toFixed(1) });
+      }
     }
-    // Homing steering (rockets)
-    if (pr.homing && pr.fromPlayer && state.enemies.length > 0) {
+    // Homing steering (rockets) — renderOnly rockets must not home toward local targets
+    if (pr.homing && pr.fromPlayer && !pr.renderOnly && state.enemies.length > 0) {
       let target: Enemy | null = null;
       let bestD = 9999;
       for (const e of state.enemies) {
@@ -2319,8 +2252,13 @@ function tickWorld(dt: number): void {
     pa.ttl -= dt;
   }
   state.particles = state.particles.filter((pa) => pa.ttl > 0);
-  if (state.particles.length > 600) {
-    state.particles.splice(0, state.particles.length - 600);
+  // The pixi renderer's syncTrailParticles/syncEffectParticles paths are
+  // disabled (EffectManager handles all VFX now), so state.particles is
+  // simulated but never drawn. Keep the array (something may still read it)
+  // but tighten the cap so physics load stays negligible during combat.
+  // Was 600 — cost ~36k pointless updates per second on the main thread.
+  if (state.particles.length > 50) {
+    state.particles.splice(0, state.particles.length - 50);
   }
 
   // ── Cargo box TTL + proximity pickup
@@ -2435,7 +2373,9 @@ function tickWorld(dt: number): void {
     saveTimer = 6;
   }
 
-  bump();
+  // Coalesce with animation frame. The world tick runs at up to 60 Hz; React
+  // does not need to re-render more than once per visible frame.
+  scheduleBump();
 }
 
 function destroyAsteroid(id: string): void {
@@ -2512,7 +2452,7 @@ export function onServerZoneEnemies(enemies: ServerEnemy[]): void {
   if (state.dungeon) return; // Dont overwrite client-side dungeon enemies
   serverEnemiesReceived = true;
   state.enemies = enemies.map(serverEnemyToLocal);
-  bump();
+  scheduleBump();
 }
 
 export function onServerZoneAsteroids(asteroids: ServerAsteroid[]): void {
@@ -2524,7 +2464,7 @@ export function onServerZoneAsteroids(asteroids: ServerAsteroid[]): void {
     zone: state.player.zone,
     yields: a.yields as any,
   }));
-  bump();
+  scheduleBump();
 }
 
 export function onServerZoneNpcs(npcs: ServerNpc[]): void {
@@ -2539,7 +2479,7 @@ export function onServerZoneNpcs(npcs: ServerNpc[]): void {
     targetEnemyId: null,
     zone: state.player.zone,
   }));
-  bump();
+  scheduleBump();
 }
 
 export function onEnemySpawn(data: ServerEnemy): void {
@@ -2854,61 +2794,77 @@ export function onNpcDie(data: { npcId: string }): void {
   state.npcShips = state.npcShips.filter((ns) => ns.id !== data.npcId);
 }
 
-export function onLaserFireFromServer(data: LaserFireEvent): void {
-  if (data.attackerId === serverPlayerId) return;
-  const attacker = state.others.find(o => o.id === String(data.attackerId));
-  const target = state.enemies.find(e => e.id === data.targetId);
-  if (!attacker || !target) return;
-  const angle = Math.atan2(target.pos.y - attacker.pos.y, target.pos.x - attacker.pos.x);
-  fireProjectile("player", attacker.pos.x, attacker.pos.y, angle, data.damage, "#4ee2ff", 3);
-  if (data.crit) {
-    emitSpark(target.pos.x, target.pos.y, "#ffee00", 6, 120, 3);
-  }
-}
-
-export function onRocketFireFromServer(data: RocketFireEvent): void {
-  if (data.attackerId === serverPlayerId) return;
-  const angle = Math.atan2(data.targetPos.y - data.pos.y, data.targetPos.x - data.pos.x);
-  fireProjectile("player", data.pos.x, data.pos.y, angle, data.damage, "#ff8844", 4, { speedMul: 0.7 });
-  if (data.crit) {
-    emitSpark(data.targetPos.x, data.targetPos.y, "#ffee00", 6, 120, 3);
-  }
-}
 
 export function onProjectileSpawnFromServer(data: ProjectileSpawnEvent): void {
-  console.log("[ProjectileSpawn] fromPlayer:", data.fromPlayer, "fromPlayerId:", data.fromPlayerId, "weaponKind:", data.weaponKind, "isLocal:", data.fromPlayerId === serverPlayerId);
-  const angle = Math.atan2(data.vy, data.vx);
-  const speed = Math.sqrt(data.vx * data.vx + data.vy * data.vy);
-  
   // Determine if this projectile is from the local player, a remote player, or an enemy/NPC
   const isLocalPlayer = data.fromPlayerId !== undefined && data.fromPlayerId === serverPlayerId;
   const isRemotePlayer = data.fromPlayer && !isLocalPlayer;
-  
+
+  // Debug log for visual sync diagnosis — compare local vs remote projectile data
+  if (typeof window !== "undefined" && (window as any).__DEBUG_PROJ_SYNC) {
+    console.log("[ProjSpawn]", {
+      isLocal: isLocalPlayer,
+      isRemote: isRemotePlayer,
+      fromPlayerId: data.fromPlayerId,
+      weaponKind: data.weaponKind,
+      ammoType: data.ammoType,
+      rocketAmmoType: data.rocketAmmoType,
+      color: data.color,
+      size: data.size,
+      serverSpeed: Math.sqrt(data.vx * data.vx + data.vy * data.vy).toFixed(1),
+    });
+  }
+
   // CRITICAL: Do NOT render projectiles for the local player - those are client-predicted
   // Only render projectiles from remote players and enemies
   if (isLocalPlayer) {
     return; // Skip - local player projectiles are already client-predicted
   }
-  
-  // Normalize remote projectile speed to match local visual speed
-  const serverSpeed = Math.sqrt(data.vx * data.vx + data.vy * data.vy);
-  const clientVisualSpeed = data.fromPlayer ? 230 : 200;
-  const speedScale = serverSpeed > 0 ? clientVisualSpeed / serverSpeed : 1;
+
+  const isRocket = data.weaponKind === "rocket";
+
+  // Resolve projectile color from the ammo type sent by the server (same lookup the local player uses).
+  // Falls back to server-provided color if ammoType is absent or unknown.
+  let resolvedColor = data.color;
+  if (data.ammoType) {
+    if (isRocket) {
+      const missileDef = ROCKET_MISSILE_TYPE_DEFS[data.ammoType as any];
+      if (missileDef?.color) resolvedColor = missileDef.color;
+    } else {
+      const ammoDef = ROCKET_AMMO_TYPE_DEFS[data.ammoType as any];
+      if (ammoDef?.color) resolvedColor = ammoDef.color;
+    }
+  }
+
+  const _remoteSpd = Math.sqrt(data.vx * data.vx + data.vy * data.vy);
+  if ((window as any).__DEBUG_PROJ) {
+    console.log("[RemoteProj] spawn", {
+      from: isRemotePlayer ? "remotePlayer" : "enemy",
+      fromPlayerId: data.fromPlayerId,
+      weaponKind: data.weaponKind,
+      ammoType: data.ammoType,
+      color: resolvedColor,
+      spawnPos: { x: data.x.toFixed(1), y: data.y.toFixed(1) },
+      speed: _remoteSpd.toFixed(1),
+      ttl: data.ttl,
+      renderOnly: true,
+    });
+  }
   state.projectiles.push({
     id: `pr-${Math.random().toString(36).slice(2, 8)}`,
     pos: { x: data.x, y: data.y },
-    vel: { x: data.vx * speedScale, y: data.vy * speedScale },
+    vel: { x: data.vx, y: data.vy },
     damage: data.damage,
-    ttl: data.homing ? 4.0 : 1.6,
+    ttl: data.ttl ?? (data.homing ? 4.0 : 1.6),
     fromPlayer: data.fromPlayer,
-    color: data.color,
+    color: resolvedColor,
     size: data.size,
     crit: data.crit,
     homing: data.homing,
     weaponKind: data.weaponKind,
     renderOnly: true,
   });
-  bump();
+  scheduleBump();
 
   // Spawn visual effects for remote player projectiles
   if (isRemotePlayer) {
@@ -2945,12 +2901,12 @@ export function onProjectileSpawnFromServer(data: ProjectileSpawnEvent): void {
         id: `lf-${Math.random().toString(36).slice(2, 8)}`,
         pos: { x: data.x, y: data.y }, vel: { x: 0, y: 0 },
         ttl: 0.12, maxTtl: 0.12,
-        color: data.color || "#4ee2ff", size: 35, kind: "flash",
+        color: resolvedColor, size: 35, kind: "flash",
       });
     }
-    
+
     // Sparks
-    emitSpark(data.x, data.y, data.color || "#4ee2ff", data.crit ? 6 : 3, 80, 2);
+    emitSpark(data.x, data.y, resolvedColor, data.crit ? 6 : 3, 80, 2);
 
     // Play shoot sound for remote players (distance-attenuated)
     const shootDist = Math.hypot(data.x - state.player.pos.x, data.y - state.player.pos.y);
@@ -2989,6 +2945,10 @@ function serverEnemyToLocal(se: ServerEnemy): Enemy {
 
 let serverConfig = { tickRate: 25, friction: 0.96, frictionRefFps: 60 };
 export let serverAuthoritative = false;
+
+// Reusable Set for onSnapshot to avoid a per-packet allocation. Snapshots
+// arrive at 10-20 Hz — allocating a new Set each time contributed to GC pauses.
+const _reuseSnapshotIds = new Set<string>();
 export let serverPlayerId = 0;
 let _deltaCount = 0;
 
@@ -3192,7 +3152,10 @@ export function onDelta(data: DeltaPayload): void {
     _entityTargets.delete(id);
   }
 
-  bump(); // Trigger React re-render
+  // Coalesce with animation frame — network deltas arrive 10-20 Hz, but React
+  // does not need to re-render more than once per visible frame. Prevents
+  // stutter from useSyncExternalStore fanning out across all subscribers.
+  scheduleBump();
 }
 
 export function onSnapshot(data: SnapshotPayload): void {
@@ -3207,8 +3170,9 @@ export function onSnapshot(data: SnapshotPayload): void {
     p.shield = self.shield;
   }
 
-  // Track which entities are in this snapshot
-  const snapshotIds = new Set<string>();
+  // Track which entities are in this snapshot (reused Set — no per-packet alloc)
+  _reuseSnapshotIds.clear();
+  const snapshotIds = _reuseSnapshotIds;
   for (const entity of data.entities) {
     snapshotIds.add(entity.id);
     applyEntityUpdate(entity);
@@ -3225,7 +3189,7 @@ export function onSnapshot(data: SnapshotPayload): void {
     }
   }
 
-  bump();
+  scheduleBump();
 }
 
 export function onPlayerHitFromServer(data: { damage: number; hp: number; shield: number }): void {
@@ -3305,6 +3269,10 @@ function applyEntityUpdate(entity: DeltaEntity): void {
         if (entity.shipClass) o.shipClass = entity.shipClass as any;
         if (entity.level) o.level = entity.level;
         if (entity.miningTargetId !== undefined) o.miningTargetId = entity.miningTargetId ?? null;
+        // Equipment / visual sync — accept whatever the server sends
+        if (entity.activeAmmoType !== undefined) o.activeAmmoType = entity.activeAmmoType;
+        if (entity.activeRocketAmmoType !== undefined) o.activeRocketAmmoType = entity.activeRocketAmmoType;
+        if (entity.equipped !== undefined) o.equipped = entity.equipped;
       } else {
         setEntityTarget(entity.id, entity.x, entity.y, entity.vx ?? 0, entity.vy ?? 0, entity.angle ?? undefined);
         state.others.push({
@@ -3324,6 +3292,9 @@ function applyEntityUpdate(entity: DeltaEntity): void {
           hull: entity.hp ?? 100,
           hullMax: entity.hpMax ?? 100,
           shield: entity.shield ?? 0,
+          activeAmmoType: entity.activeAmmoType,
+          activeRocketAmmoType: entity.activeRocketAmmoType,
+          equipped: entity.equipped,
         });
       }
       break;

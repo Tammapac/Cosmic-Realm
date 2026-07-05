@@ -4,6 +4,7 @@ import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats, has
 import { render } from "./game/render";
 import { initPixiRenderer, destroyPixiRenderer, pixiRender } from "./game/pixi-renderer-v2-integrated";
 import { init3DLayer, destroy3DLayer, getLoadingProgress, initStationLayer, renderStationLayer, destroyStationLayer } from "./game/three-ship-layer";
+import { destroyStation3DLayer } from "./game/three-station-layer";
 import { activeRenderer } from "./game/renderer-config";
 import { TopBar, WorldTargetHud } from "./components/TopBar";
 import { MiniMap } from "./components/MiniMap";
@@ -32,7 +33,7 @@ import {
   onServerZoneEnemies, onServerZoneAsteroids, onServerZoneNpcs,
   onNpcSpawn, onNpcDie,
   onWelcome, onDelta, onSnapshot, onPlayerHitFromServer, onPlayerDieFromServer,
-  onLaserFireFromServer, onRocketFireFromServer, onProjectileSpawnFromServer,
+  onProjectileSpawnFromServer,
 } from "./game/loop";
 
 let _riftConfirmDungeonId: string | null = null;
@@ -56,11 +57,14 @@ function GameCanvas() {
       if (!container) return;
       initPixiRenderer(container, labelOverlayRef.current ?? undefined);
 
-      // Single Three.js canvas for both ships and station
+      // Station 3D layer is now bootstrapped inside initPixiRenderer as an
+      // offscreen canvas wrapped as a Pixi sprite; no DOM canvas here.
+
+      // Ships Three.js canvas at z=2 (above Pixi)
       const threeCanvas = threeCanvasRef.current;
       if (threeCanvas) {
         init3DLayer(threeCanvas);
-        console.log("[App] Three.js canvas initialized");
+        console.log("[App] Three.js ship canvas initialized");
       }
 
       let raf = 0;
@@ -72,6 +76,7 @@ function GameCanvas() {
       return () => {
         cancelAnimationFrame(raf);
         destroy3DLayer();
+        destroyStation3DLayer();
         destroyPixiRenderer();
       };
     } else {
@@ -669,13 +674,25 @@ function GameApp() {
         const sid = String(p.id);
         if (state.others.find((o) => o.id === sid)) return;
         state.others.push({
-          id: sid, name: p.name, shipClass: p.shipClass as any,
-          level: p.level, clan: null, zone: p.zone as any,
-          pos: { x: 0, y: 0 }, vel: { x: 0, y: 0 }, angle: 0,
+          id: sid,
+          name: p.name,
+          shipClass: p.shipClass as any,
+          level: p.level,
+          clan: null,
+          zone: p.zone as any,
+          pos: { x: 0, y: 0 },
+          vel: { x: 0, y: 0 },
+          angle: 0,
           inParty: false,
-          faction: (p as any).faction ?? null,
-          honor: (p as any).honor ?? 0,
+          faction: p.faction ?? null,
+          honor: p.honor ?? 0,
           miningTargetId: null,
+          hull: p.hull ?? 100,
+          hullMax: p.hullMax ?? 100,
+          shield: p.shield ?? 0,
+          activeAmmoType: p.activeAmmoType,
+          activeRocketAmmoType: p.activeRocketAmmoType,
+          equipped: p.equipped ?? undefined,
         });
         bump();
       },
@@ -704,8 +721,6 @@ function GameApp() {
       onNpcSpawn: (npc: ServerNpc) => onNpcSpawn(npc),
       onNpcDie: (data) => onNpcDie(data),
       onProjectileSpawn: (event: ProjectileSpawnEvent) => onProjectileSpawnFromServer(event),
-      onLaserFire: (event) => onLaserFireFromServer(event),
-      onRocketFire: (event) => onRocketFireFromServer(event),
     });
     return () => setSocketListeners({});
   }, []);
@@ -1028,31 +1043,8 @@ function GameApp() {
       <FactionPicker />
       </div>
       </div>
-      <button
-        onClick={() => { state.showSettings = !state.showSettings; bump(); }}
-        style={{
-          position: "fixed", top: 8, right: 52, zIndex: 60,
-          background: "rgba(68,238,204,0.08)", border: "1px solid rgba(68,238,204,0.2)",
-          color: "#44eecc", fontSize: "18px", cursor: "pointer",
-          padding: "4px 8px", borderRadius: "6px", fontFamily: "inherit",
-          lineHeight: 1,
-        }}
-        title="Settings"
-      >{"⚙"}</button>
       {showSettings && <SettingsMenu onClose={() => { state.showSettings = false; bump(); }} />}
       {showAdmin && <AdminPanel onClose={() => { state.showAdmin = false; bump(); }} />}
-      <button
-        onClick={() => { clearToken(); disconnectSocket(); window.location.reload(); }}
-        style={{
-          position: "fixed", top: 8, right: 8, zIndex: 60,
-          background: "rgba(255,60,80,0.12)", border: "1px solid #ff3b4d55",
-          color: "#ff8a9a", fontSize: 10, letterSpacing: "0.12em",
-          padding: "3px 10px", borderRadius: 4, cursor: "pointer",
-          fontFamily: "'Courier New', monospace",
-        }}
-      >
-        LOGOUT
-      </button>
       <div className="crt-overlay" />
     </div>
   );

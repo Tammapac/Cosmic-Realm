@@ -12,7 +12,8 @@
 import * as PIXI from "pixi.js";
 import { initHardpointEditor, toggleHardpointEditor, isEditorActive } from "./debug/HardpointEditor";
 import { DIRECTIONS_32 } from "./debug/hardpointTypes";
-import { has3DModel, is3DReady, updateShip3D, setCameraZoom, beginFrame, markActive, endFrame, render3DLayer, getShipHardpointPositions, updateEngineGlow, updateNebulaBackground, removeShip3D, preload3DModels, getLoadingProgress, updateStation3D, removeStation3D } from "./three-ship-layer";
+import { has3DModel, is3DReady, updateShip3D, setCameraZoom, beginFrame, markActive, endFrame, render3DLayer, getShipHardpointPositions, updateEngineGlow, updateNebulaBackground, removeShip3D, preload3DModels, getLoadingProgress } from "./three-ship-layer";
+import { setStationCameraZoom, beginStationFrame, updateStationOnly, endStationFrame, renderStation3DLayer, removeStation3D, initStation3DLayer } from "./three-station-layer";
 import { state } from "./store";
 import { effectiveStats } from "./loop";
 import {
@@ -60,6 +61,10 @@ let effectsFrontLayer: PIXI.Container;
 let floaterLayer: PIXI.Container;
 let uiLayer: PIXI.Container;
 
+let stationSprite: PIXI.Sprite | null = null;
+let stationTexture: PIXI.Texture | null = null;
+let stationBaseTexture: PIXI.BaseTexture | null = null;
+
 let effectManager: EffectManager | null = null;
 let lastRenderTime = 0;
 let prevEnemyIds = new Set<string>();
@@ -70,6 +75,47 @@ let prevAsteroidData = new Map<string, { x: number; y: number; size: number }>()
 let prevPlayerHull = -1;
 let projectileGlowGraphics: PIXI.Graphics | null = null;
 let projectileBehindGlowGraphics: PIXI.Graphics | null = null;
+
+// Star field render cache — see renderBackground(). Redraw only when the
+// camera moves or a few ticks pass (so twinkle keeps animating).
+let _lastStarCamX = -1e9;
+let _lastStarCamY = -1e9;
+let _lastStarTick = -1;
+
+// Projectile glow cache — see syncProjectiles(). Cheaper WebGL cost by
+// redrawing only every other frame.
+let _projGlowFrameParity = 0;
+
+// Enemy weapon-glow throttle — see syncEnemies(). Redraws every 4th frame
+// (~15 Hz). The glow is a purely cosmetic sine pulse; at 4-frame cadence
+// it's indistinguishable from 60 Hz but cuts per-frame WebGL cost roughly
+// by 6× enemyCount draw ops.
+let _enemyGlowFrameCounter = 0;
+
+// Projectile trail throttle — spawn one trail particle every ~50ms per
+// projectile (rocket) / ~100ms (laser) instead of every frame. Previously
+// spawned 45–100% chance PER FRAME PER PROJECTILE — with 10 projectiles
+// on screen that was 300–600 pooled particle acquisitions per second.
+const _lastProjTrailAt = new Map<string, number>();
+const PROJ_TRAIL_INTERVAL_ROCKET_MS = 40;
+const PROJ_TRAIL_INTERVAL_LASER_MS = 100;
+const PROJ_ROCKET_SMOKE_INTERVAL_MS = 150;
+
+// Reusable Sets — cleared at the start of each per-frame sync to avoid
+// allocating on every RAF. Each function owns its own Set so nested loops
+// remain safe.
+const _reuseEnemySyncIds = new Set<string>();
+const _reuseProjSyncIds = new Set<string>();
+const _reuseProjDeathIds = new Set<string>();
+const _reuseAsteroidSyncIds = new Set<string>();
+const _reuseOtherPlayerSyncIds = new Set<string>();
+const _reuseNpcSyncIds = new Set<string>();
+const _reuseCargoSyncIds = new Set<string>();
+const _reuseParticleAllIds = new Set<string>();
+const _reuseDroneSyncIds = new Set<string>();
+const _reuseFloaterSyncIds = new Set<string>();
+const _reusePortalSyncIds = new Set<string>();
+const _reuseDungeonSyncIds = new Set<string>();
 
 // Offscreen canvas for texture baking
 let bakeCanvas: HTMLCanvasElement;
@@ -1259,6 +1305,21 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
   app.stage.addChild(worldLayer);
   app.stage.addChild(uiLayer);
 
+  // Bootstrap the Three.js station renderer to its own offscreen canvas, then
+  // insert a Pixi sprite between bgLayer and worldLayer so the station renders
+  // above the bg parallax but below enemies/player/projectiles/effects.
+  const stationCanvas = initStation3DLayer(app.screen.width, app.screen.height);
+  stationBaseTexture = new PIXI.BaseTexture(stationCanvas, {
+    scaleMode: PIXI.SCALE_MODES.NEAREST,
+    alphaMode: PIXI.ALPHA_MODES.UNPACK, // Three.js emits straight alpha; Pixi premultiplies on upload
+  });
+  stationTexture = new PIXI.Texture(stationBaseTexture);
+  stationSprite = new PIXI.Sprite(stationTexture);
+  stationSprite.width = app.screen.width;
+  stationSprite.height = app.screen.height;
+  // Insert between bgLayer (index 0) and worldLayer (index 1)
+  app.stage.addChildAt(stationSprite, 1);
+
   // Initialize hardpoint editor (F9 to toggle)
   initHardpointEditor(app, state.player?.shipClass || "skimmer");
 
@@ -1287,6 +1348,18 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
 
 export function destroyPixiRenderer(): void {
   if (!app) return;
+
+  // Tear down the station sprite + texture (the Three.js layer keeps its own lifecycle)
+  if (stationSprite) {
+    stationSprite.parent?.removeChild(stationSprite);
+    stationSprite.destroy();
+    stationSprite = null;
+  }
+  if (stationTexture) {
+    stationTexture.destroy(true); // also disposes base texture
+    stationTexture = null;
+  }
+  stationBaseTexture = null;
 
   // Clean up sprite pools
   enemySprites.clear();
@@ -1336,6 +1409,12 @@ export function triggerPlayerMuzzleFlash(): void {
 // MAIN RENDER LOOP
 // ══════════════════════════════════════════════════════════════════════════
 
+// Frame profiling (opt-in via window.__DEBUG_PERF = true). Tracks a rolling
+// FPS + logs any frame that spends >20ms in pixiRender. Zero cost when off.
+let _perfFrameCount = 0;
+let _perfLastReport = 0;
+let _perfWorstFrame = 0;
+
 export function pixiRender(): void {
   if (!app) return;
   // Skip heavy game render when hardpoint editor is active
@@ -1344,6 +1423,9 @@ export function pixiRender(): void {
   const now = performance.now();
   const dt = Math.min(0.1, (now - lastRenderTime) / 1000);
   lastRenderTime = now;
+
+  const _perfEnabled = typeof window !== "undefined" && (window as any).__DEBUG_PERF;
+  const _perfFrameStart = _perfEnabled ? now : 0;
 
   const w = app.screen.width;
   const h = app.screen.height;
@@ -1374,7 +1456,9 @@ export function pixiRender(): void {
 
   // ── 3D Layer frame start ──
   setCameraZoom(zoom);
+  setStationCameraZoom(zoom);
   beginFrame();
+  beginStationFrame();
 
   // ── Background ──────────────────────────────────────────────────────
   renderBackground(w, h, cam);
@@ -1440,7 +1524,16 @@ export function pixiRender(): void {
 
   // ── 3D Layer cleanup + render ──
   endFrame();
+  endStationFrame();
   // updateNebulaBackground(cam.x, cam.y); — disabled, using sprite layers
+  renderStation3DLayer();
+  // Push updated Three.js station pixels into the Pixi sprite texture
+  if (stationBaseTexture) stationBaseTexture.update();
+  // Keep the sprite matched to the Pixi viewport size
+  if (stationSprite && stationSprite.width !== app!.screen.width) {
+    stationSprite.width = app!.screen.width;
+    stationSprite.height = app!.screen.height;
+  }
   render3DLayer();
 
   // ── Effect Manager Update ──────────────────────────────────────────
@@ -1448,6 +1541,8 @@ export function pixiRender(): void {
     effectManager.update(dt);
 
     // Detect enemy deaths -> spawn scaled explosion with debris + hull fragments
+    // Note: currentEnemyIds is stored across frames as `prevEnemyIds`, so a
+    // fresh Set is required here (do not reuse a module-level Set).
     const currentEnemyIds = new Set<string>();
     for (const e of state.enemies) currentEnemyIds.add(e.id);
     for (const id of prevEnemyIds) {
@@ -1474,6 +1569,8 @@ export function pixiRender(): void {
     }
 
     // Detect asteroid deaths -> spawn heavy debris + smoke + sparks
+    // Note: currentAsteroidIds is stored across frames as `prevAsteroidIds`,
+    // so a fresh Set is required (do not reuse a module-level Set).
     const currentAsteroidIds = new Set<string>();
     for (const a of state.asteroids) {
       if (a.zone === state.player.zone) currentAsteroidIds.add(a.id);
@@ -1536,6 +1633,21 @@ export function pixiRender(): void {
     ].join("\n");
   }
 
+  // ── Perf profiling (opt-in via window.__DEBUG_PERF) ───────────────────
+  if (_perfEnabled) {
+    const frameTime = performance.now() - _perfFrameStart;
+    if (frameTime > _perfWorstFrame) _perfWorstFrame = frameTime;
+    if (frameTime > 20) {
+      console.warn(`[Perf] slow frame: ${frameTime.toFixed(1)}ms — enemies:${state.enemies.length} proj:${state.projectiles.length} particles:${state.particles.length} others:${state.others.length}`);
+    }
+    _perfFrameCount++;
+    if (now - _perfLastReport > 1000) {
+      console.log(`[Perf] ${_perfFrameCount} fps, worstFrame:${_perfWorstFrame.toFixed(1)}ms — enemies:${state.enemies.length} proj:${state.projectiles.length} particles:${state.particles.length} others:${state.others.length}`);
+      _perfFrameCount = 0;
+      _perfWorstFrame = 0;
+      _perfLastReport = now;
+    }
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1704,26 +1816,20 @@ function renderBackground(w: number, h: number, cam: { x: number; y: number }): 
     _bgStarsTile.width = w; _bgStarsTile.height = h;
     _bgStarsTile.tilePosition.x = Math.round((-cam.x * 0.05 + _bgDriftX * 0.5) * res) / res;
     _bgStarsTile.tilePosition.y = Math.round((-cam.y * 0.05 + _bgDriftY * 0.5) * res) / res;
-    _bgStarsTile.alpha = 0.2 + 0.8 * Math.sin(t * 10.0);
-    const sf = _bgStarsTile.filters?.[0] as PIXI.ColorMatrixFilter;
-    if (sf) sf.brightness(1.0 + 0.6 * Math.sin(t * 10.0), false);
+    _bgStarsTile.alpha = 1.0;
   }
 
   if (_bgNebulaTile) {
     _bgNebulaTile.width = w; _bgNebulaTile.height = h;
     _bgNebulaTile.tilePosition.x = Math.round((-cam.x * 0.12 + _bgDriftX * 0.3) * res) / res;
     _bgNebulaTile.tilePosition.y = Math.round((-cam.y * 0.12 + _bgDriftY * 0.3) * res) / res;
-    const nf = _bgNebulaTile.filters?.[0] as PIXI.ColorMatrixFilter;
-    if (nf) nf.brightness(0.9 + 0.3 * Math.sin(t * 0.6 + 0.5), false);
   }
 
   if (_bgNebulaTopTile) {
     _bgNebulaTopTile.width = w; _bgNebulaTopTile.height = h;
     _bgNebulaTopTile.tilePosition.x = Math.round((-cam.x * 0.08 + _bgDriftX * 0.2) * res) / res;
     _bgNebulaTopTile.tilePosition.y = Math.round((-cam.y * 0.08 + _bgDriftY * 0.2) * res) / res;
-    _bgNebulaTopTile.alpha = 0.08 + 0.12 * Math.sin(t * 0.4 + 1.0);
-    const ntf = _bgNebulaTopTile.filters?.[0] as PIXI.ColorMatrixFilter;
-    if (ntf) ntf.brightness(0.8 + 0.5 * Math.sin(t * 0.4 + 1.0), false);
+    _bgNebulaTopTile.alpha = 0.2;
   }
 
   if (_bgPlanetSprite) {
@@ -1738,7 +1844,18 @@ function renderBackground(w: number, h: number, cam: { x: number; y: number }): 
   }
 
   if (enhancedStars.length === 0) initStars(w, h);
-  renderEnhancedStars(starGraphics, enhancedStars, cam, w, h, state.tick);
+  // Star field is 860 draw calls per frame — cache and only re-render when
+  // camera moves meaningfully or every ~4 frames for the twinkle animation.
+  // This trims a stable 30–50% off frame time.
+  const camDx = cam.x - _lastStarCamX;
+  const camDy = cam.y - _lastStarCamY;
+  const tickDelta = state.tick - _lastStarTick;
+  if (Math.abs(camDx) > 1.5 || Math.abs(camDy) > 1.5 || tickDelta >= 4) {
+    renderEnhancedStars(starGraphics, enhancedStars, cam, w, h, state.tick);
+    _lastStarCamX = cam.x;
+    _lastStarCamY = cam.y;
+    _lastStarTick = state.tick;
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1746,7 +1863,10 @@ function renderBackground(w: number, h: number, cam: { x: number; y: number }): 
 // ══════════════════════════════════════════════════════════════════════════
 
 function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number): void {
-  const activeIds = new Set<string>();
+  _reuseEnemySyncIds.clear();
+  const activeIds = _reuseEnemySyncIds;
+  _enemyGlowFrameCounter = (_enemyGlowFrameCounter + 1) & 3; // 0-3 cycle
+  const drawWeaponGlowThisFrame = _enemyGlowFrameCounter === 0;
 
   for (const e of state.enemies) {
     // Viewport culling
@@ -1831,8 +1951,8 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
       data.coreGlow.scale.set(scale);
     }
 
-    // Animate weapon glow
-    if (data.weaponGlow) {
+    // Animate weapon glow — throttled to every 4th frame (see _enemyGlowFrameCounter)
+    if (data.weaponGlow && drawWeaponGlowThisFrame) {
       data.weaponGlow.clear();
       const wColor = PIXI.utils.string2hex(e.color);
       const wPulse = 0.4 + 0.4 * Math.sin(state.tick * 5 + e.pos.x * 0.01);
@@ -1956,7 +2076,8 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
 const muzzleFlashes = new Map<string, { g: PIXI.Graphics; ttl: number }>();
 
 function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: number): void {
-  const activeIds = new Set<string>();
+  _reuseProjSyncIds.clear();
+  const activeIds = _reuseProjSyncIds;
 
   for (const pr of state.projectiles) {
     if (Math.abs(pr.pos.x - cam.x) > halfW + 30 || Math.abs(pr.pos.y - cam.y) > halfH + 30) {
@@ -2093,22 +2214,33 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
       targetLayer.addChild(data.sprite);
     }
 
-    // Projectile trail particles — rockets get heavy smoke+fire, lasers get glow trail
+    // Projectile trail particles — throttled per-projectile timers instead of
+    // per-frame random chance. Prevents burst allocations when many projectiles
+    // are on screen.
     if (effectManager) {
       const isRocket = pr.weaponKind === "rocket";
-      const trailChance = isRocket ? 1.0 : 0.45;
-      if (Math.random() < trailChance) {
+      const nowMs = performance.now();
+      const last = _lastProjTrailAt.get(pr.id) ?? 0;
+      const interval = isRocket ? PROJ_TRAIL_INTERVAL_ROCKET_MS : PROJ_TRAIL_INTERVAL_LASER_MS;
+      if (nowMs - last >= interval) {
         const weaponType = isRocket ? "rocket" : "laser";
         effectManager.spawnProjectileTrail(pr.pos.x, pr.pos.y, PIXI.utils.string2hex(pr.color), weaponType);
+        _lastProjTrailAt.set(pr.id, nowMs);
       }
-      // Occasional light smoke wisp for rockets
-      if (isRocket && Math.random() < 0.15) {
-        effectManager.spawnSmokePuff(pr.pos.x, pr.pos.y, 3);
+      // Occasional light smoke wisp for rockets — also throttled
+      if (isRocket) {
+        const smokeKey = pr.id + "s";
+        const lastSmoke = _lastProjTrailAt.get(smokeKey) ?? 0;
+        if (nowMs - lastSmoke >= PROJ_ROCKET_SMOKE_INTERVAL_MS) {
+          effectManager.spawnSmokePuff(pr.pos.x, pr.pos.y, 3);
+          _lastProjTrailAt.set(smokeKey, nowMs);
+        }
       }
     }
   }
 
-  // Projectile glow overlay (drawn each frame)
+  // Projectile glow overlay — redraw every other frame to halve WebGL cost.
+  // At 60fps, a 2-frame refresh (~33ms) is imperceptible for a soft glow.
   if (!projectileGlowGraphics) {
     projectileGlowGraphics = new PIXI.Graphics();
     projectileLayer.addChildAt(projectileGlowGraphics, 0);
@@ -2117,26 +2249,30 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
     projectileBehindGlowGraphics = new PIXI.Graphics();
     projectileBehindLayer.addChildAt(projectileBehindGlowGraphics, 0);
   }
-  projectileGlowGraphics.clear();
-  projectileBehindGlowGraphics.clear();
-  for (const pr of state.projectiles) {
-    if (Math.abs(pr.pos.x - cam.x) > halfW + 30 || Math.abs(pr.pos.y - cam.y) > halfH + 30) continue;
-    const color = PIXI.utils.string2hex(pr.color);
-    const isRocket = pr.weaponKind === "rocket";
-    if (isRocket) continue;
-    const glowR = 3 + pr.size * 0.5;
-    const glowTarget = pr.vel.y < 0 ? projectileGlowGraphics : projectileBehindGlowGraphics;
-    glowTarget.beginFill(color, 0.06);
-    glowTarget.drawCircle(pr.pos.x, pr.pos.y, glowR * 1.5);
-    glowTarget.endFill();
-    glowTarget.beginFill(color, 0.15);
-    glowTarget.drawCircle(pr.pos.x, pr.pos.y, glowR * 0.6);
-    glowTarget.endFill();
+  _projGlowFrameParity = (_projGlowFrameParity + 1) & 1;
+  if (_projGlowFrameParity === 0) {
+    projectileGlowGraphics.clear();
+    projectileBehindGlowGraphics.clear();
+    for (const pr of state.projectiles) {
+      if (Math.abs(pr.pos.x - cam.x) > halfW + 30 || Math.abs(pr.pos.y - cam.y) > halfH + 30) continue;
+      const color = PIXI.utils.string2hex(pr.color);
+      const isRocket = pr.weaponKind === "rocket";
+      if (isRocket) continue;
+      const glowR = 3 + pr.size * 0.5;
+      const glowTarget = pr.vel.y < 0 ? projectileGlowGraphics : projectileBehindGlowGraphics;
+      glowTarget.beginFill(color, 0.06);
+      glowTarget.drawCircle(pr.pos.x, pr.pos.y, glowR * 1.5);
+      glowTarget.endFill();
+      glowTarget.beginFill(color, 0.15);
+      glowTarget.drawCircle(pr.pos.x, pr.pos.y, glowR * 0.6);
+      glowTarget.endFill();
+    }
   }
 
   // Detect projectile deaths — spawn differentiated effects
   if (effectManager) {
-    const currentProjIds = new Set<string>();
+    _reuseProjDeathIds.clear();
+    const currentProjIds = _reuseProjDeathIds;
     for (const pr of state.projectiles) currentProjIds.add(pr.id);
     for (const [id, prev] of prevProjectileData) {
       if (!currentProjIds.has(id)) {
@@ -2166,12 +2302,14 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
     }
   }
 
-  // Remove dead projectile sprites
+  // Remove dead projectile sprites and their trail-throttle timers
   for (const [id, data] of projectileSprites) {
     if (!activeIds.has(id)) {
       if (data.sprite.parent) data.sprite.parent.removeChild(data.sprite);
       data.sprite.destroy();
       projectileSprites.delete(id);
+      _lastProjTrailAt.delete(id);
+      _lastProjTrailAt.delete(id + "s");
     }
   }
 
@@ -2588,7 +2726,8 @@ function syncPlayer(): void {
 // ══════════════════════════════════════════════════════════════════════════
 
 function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: number): void {
-  const activeIds = new Set<string>();
+  _reuseOtherPlayerSyncIds.clear();
+  const activeIds = _reuseOtherPlayerSyncIds;
 
   for (const o of state.others) {
     if (Math.abs(o.pos.x - cam.x) > halfW + 30 || Math.abs(o.pos.y - cam.y) > halfH + 30) {
@@ -2794,7 +2933,8 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
 // ══════════════════════════════════════════════════════════════════════════
 
 function syncNpcs(cam: { x: number; y: number }, halfW: number, halfH: number): void {
-  const activeIds = new Set<string>();
+  _reuseNpcSyncIds.clear();
+  const activeIds = _reuseNpcSyncIds;
 
   for (const npc of state.npcShips) {
     if (Math.abs(npc.pos.x - cam.x) > halfW + 30 || Math.abs(npc.pos.y - cam.y) > halfH + 30) {
@@ -2878,7 +3018,8 @@ function syncNpcs(cam: { x: number; y: number }, halfW: number, halfH: number): 
 const asteroidSprites = new Map<string, PIXI.Container>();
 
 function syncAsteroids(cam: { x: number; y: number }, halfW: number, halfH: number): void {
-  const activeIds = new Set<string>();
+  _reuseAsteroidSyncIds.clear();
+  const activeIds = _reuseAsteroidSyncIds;
 
   for (const a of state.asteroids) {
     if (a.zone !== state.player.zone) continue;
@@ -2930,10 +3071,12 @@ function syncAsteroids(cam: { x: number; y: number }, halfW: number, halfH: numb
 // ═════════════════════════════════════════════════════════════════════════���
 
 const stationActiveIds = new Set<string>();
+const _reuseStationCurrentIds = new Set<string>();
 
 function syncStations(): void {
   const zone = state.player.zone;
-  const currentIds = new Set<string>();
+  _reuseStationCurrentIds.clear();
+  const currentIds = _reuseStationCurrentIds;
 
   const cam = state.player.pos;
 
@@ -2941,7 +3084,7 @@ function syncStations(): void {
     if (st.zone !== zone) continue;
     currentIds.add(st.id);
     stationActiveIds.add(st.id);
-    updateStation3D(st.id, st.pos.x, st.pos.y, cam.x, cam.y, state.tick);
+    updateStationOnly(st.id, st.pos.x, st.pos.y, cam.x, cam.y);
   }
 
   for (const id of stationActiveIds) {
@@ -2960,7 +3103,8 @@ const portalSpritesMap = new Map<string, PIXI.Container>();
 
 function syncPortals(): void {
   const zone = state.player.zone;
-  const activeIds = new Set<string>();
+  _reusePortalSyncIds.clear();
+  const activeIds = _reusePortalSyncIds;
 
   for (const po of PORTALS) {
     if (po.fromZone !== zone) continue;
@@ -2994,7 +3138,8 @@ function syncPortals(): void {
 const floaterTexts = new Map<string, PIXI.Text>();
 
 function syncFloaters(cam: { x: number; y: number }, halfW: number, halfH: number): void {
-  const activeIds = new Set<string>();
+  _reuseFloaterSyncIds.clear();
+  const activeIds = _reuseFloaterSyncIds;
 
   for (const f of state.floaters) {
     if (Math.abs(f.pos.x - cam.x) > halfW + 50 || Math.abs(f.pos.y - cam.y) > halfH + 50) continue;
@@ -3245,7 +3390,8 @@ function syncMoveTarget(): void {
 const cargoBoxSprites = new Map<string, PIXI.Graphics>();
 
 function syncCargoBoxes(cam: { x: number; y: number }, halfW: number, halfH: number): void {
-  const activeIds = new Set<string>();
+  _reuseCargoSyncIds.clear();
+  const activeIds = _reuseCargoSyncIds;
 
   for (const cb of state.cargoBoxes) {
     if (Math.abs(cb.pos.x - cam.x) > halfW + 20 || Math.abs(cb.pos.y - cam.y) > halfH + 20) continue;
@@ -3315,7 +3461,8 @@ const riftSprites = new Map<string, PIXI.Container>();
 
 function syncDungeonRifts(): void {
   const zone = state.player.zone;
-  const activeIds = new Set<string>();
+  _reuseDungeonSyncIds.clear();
+  const activeIds = _reuseDungeonSyncIds;
 
   for (const d of Object.values(DUNGEONS)) {
     if (d.zone !== zone) continue;

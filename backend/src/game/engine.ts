@@ -163,7 +163,7 @@ export type GameEvent =
   | { type: "npc:spawn"; zone: string; npc: ClientNpc }
   | { type: "npc:die"; zone: string; npcId: string }
   | { type: "player:hit"; playerId: number; damage: number; zone: string }
-  | { type: "projectile:spawn"; zone: string; fromPlayerId: number; x: number; y: number; vx: number; vy: number; damage: number; color: string; size: number; crit: boolean; weaponKind: "laser" | "rocket" | "energy" | "plasma"; homing: boolean };
+  | { type: "projectile:spawn"; zone: string; fromPlayerId: number; x: number; y: number; vx: number; vy: number; damage: number; color: string; size: number; crit: boolean; weaponKind: "laser" | "rocket" | "energy" | "plasma"; homing: boolean; ammoType?: string; ttl: number };
 
 export type ClientEnemy = {
   id: string;
@@ -722,14 +722,16 @@ export class GameEngine {
             x: proj.pos.x, y: proj.pos.y, vx: proj.vel.x, vy: proj.vel.y,
             damage: proj.damage, color: proj.color, size: proj.size,
             crit: proj.crit, weaponKind: proj.weaponKind, homing: proj.homing,
+            ammoType: p.laserAmmoType, ttl: proj.ttl,
           });
         };
 
+        // Speeds match frontend fireProjectile() speedBase=230 * speedMul per pattern
         if (firingPattern === "sniper") {
           const dmg = Math.round(laserDmg);
           const ox = p.posX + Math.cos(ang) * 10;
           const oy = p.posY + Math.sin(ang) * 10;
-          fireProj(ox, oy, ang, dmg, 6, 900);
+          fireProj(ox, oy, ang, dmg, 6, 736); // 230 * 3.2
         } else if (firingPattern === "scatter") {
           const pellets = 3;
           const perPellet = Math.round(laserDmg * 2.5 / pellets);
@@ -740,7 +742,7 @@ export class GameEngine {
             const oy = p.posY + Math.sin(perpAng) * 5 * side;
             const baseAng = angleFromTo({ x: ox, y: oy }, target.pos);
             const spreadAng = baseAng + (si - 1) * spread;
-            fireProj(ox, oy, spreadAng, perPellet, 4, 500);
+            fireProj(ox, oy, spreadAng, perPellet, 4, 414); // 230 * 1.8
           }
         } else if (firingPattern === "rail") {
           const perBurst = Math.round(laserDmg * 1.3 / 3);
@@ -750,11 +752,11 @@ export class GameEngine {
             const oy = p.posY + Math.sin(perpAng) * 5 * side;
             const baseAng = angleFromTo({ x: ox, y: oy }, target.pos);
             const burstAng = baseAng + (Math.random() - 0.5) * 0.04;
-            fireProj(ox, oy, burstAng, perBurst, 4, 700);
+            fireProj(ox, oy, burstAng, perBurst, 4, 575); // 230 * 2.5
           }
         } else {
           const perShot = Math.round(laserDmg / 2);
-          const projSpeed = 600;
+          const projSpeed = 492; // 230 * 2.14 — matches frontend standard pattern
           for (let si = 0; si < 2; si++) {
             const side = si === 0 ? -1 : 1;
             const ox = p.posX + Math.cos(perpAng) * 4 * side;
@@ -785,7 +787,7 @@ export class GameEngine {
         const rocketDmg = Math.round(stats.damage * mul * 0.4 * 2.5);
         const crit = Math.random() < stats.critChance;
         const rocketColor = "#ff8a4e";
-        const projSpeed = 330;
+        const projSpeed = 272; // 230 * 1.18 — matches frontend rocket speedMul
 
         const proj: ServerProjectile = {
           id: eid("proj"),
@@ -796,7 +798,7 @@ export class GameEngine {
           pos: { x: p.posX, y: p.posY },
           vel: { x: Math.cos(ang) * projSpeed, y: Math.sin(ang) * projSpeed },
           damage: rocketDmg,
-          ttl: 3.0,
+          ttl: 4.0, // matches frontend homing ttl
           color: rocketColor,
           size: 5,
           crit,
@@ -813,6 +815,7 @@ export class GameEngine {
           x: proj.pos.x, y: proj.pos.y, vx: proj.vel.x, vy: proj.vel.y,
           damage: proj.damage, color: proj.color, size: proj.size,
           crit: proj.crit, weaponKind: proj.weaponKind, homing: proj.homing,
+          ammoType: p.rocketAmmoType, ttl: proj.ttl,
         });
 
         const rCd = 1.5 / (stats.fireRate * 0.5);

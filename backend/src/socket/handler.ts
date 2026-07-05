@@ -121,7 +121,7 @@ export function setupSocket(io: Server) {
       frictionRefFps: 60,
     });
 
-    socket.to(`zone:${online.zone}`).emit("player:join", toClientPlayer(online));
+    socket.to(`zone:${online.zone}`).emit("player:join", toClientPlayer(online, engine.playerDataCache.get(online.playerId)?.equipped ?? null));
     io.emit("online:count", getOnlineCount());
 
     // Send initial zone asteroids (static, not in per-tick state)
@@ -599,6 +599,8 @@ export function setupSocket(io: Server) {
                 vx: other.velX, vy: other.velY,
                 a: other.angle,
                 hp: other.hull, hpMax: other.hullMax, sp: other.shield,
+                laserAmmoType: other.laserAmmoType,
+                rocketAmmoType: other.rocketAmmoType,
               });
             }
           }
@@ -609,11 +611,15 @@ export function setupSocket(io: Server) {
           // Build current entity list
           const entities: any[] = [];
           for (const o of nearbyPlayers) {
+            const oCached = engine.playerDataCache.get(o.id);
             entities.push({
               id: `p-${o.id}`, entityType: "player",
               x: o.x, y: o.y, vx: o.vx, vy: o.vy, angle: o.a,
               hp: o.hp, hpMax: o.hpMax, shield: o.sp, version: tickCounter,
               name: o.name, shipClass: o.shipClass, level: o.level, faction: o.faction, honor: o.honor, miningTargetId: o.miningTargetId,
+              activeAmmoType: o.laserAmmoType,
+              activeRocketAmmoType: o.rocketAmmoType,
+              equipped: oCached?.equipped ?? null,
             });
           }
           for (const e of culled.enemies as any[]) {
@@ -812,6 +818,8 @@ function broadcastEvents(io: Server, events: GameEvent[]): void {
               crit: ev.crit, weaponKind: ev.weaponKind, homing: ev.homing,
               fromPlayer: true,
               fromPlayerId: ev.fromPlayerId,
+              ammoType: ev.ammoType,
+              ttl: ev.ttl,
             });
           }
         } else {
@@ -833,7 +841,7 @@ function broadcastEvents(io: Server, events: GameEvent[]): void {
   }
 }
 
-function toClientPlayer(p: OnlinePlayer) {
+function toClientPlayer(p: OnlinePlayer, equipped: any = null) {
   return {
     id: p.playerId,
     name: p.name,
@@ -852,6 +860,9 @@ function toClientPlayer(p: OnlinePlayer) {
     shield: p.shield,
     shieldMax: p.shieldMax,
     honor: p.honor,
+    activeAmmoType: p.laserAmmoType,
+    activeRocketAmmoType: p.rocketAmmoType,
+    equipped,
   };
 }
 
