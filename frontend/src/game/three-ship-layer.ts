@@ -44,6 +44,10 @@ interface Ship3D {
   model: THREE.Group;
   hardpoints: ShipHardpoints;
   engineGlows: THREE.Sprite[];
+  lastCamX: number;
+  lastCamY: number;
+  lastWorldX: number;
+  lastWorldY: number;
 }
 
 let renderer: THREE.WebGLRenderer | null = null;
@@ -62,92 +66,10 @@ let renderFrameCount = 0;
 let lastFrameTime = 0;
 let frameDt = 1 / 60;
 
-// ── Station — rendered in the main scene with low renderOrder (behind ships) ──
-interface Station3D { wrapper: THREE.Group; model: THREE.Group; }
-const activeStations = new Map<string, Station3D>();
-let stationTemplate: THREE.Group | null = null;
-let stationMaxDim = 1;
-let stationLoading = false;
-
-function loadStationGLB(): void {
-  if (stationTemplate || stationLoading) return;
-  stationLoading = true;
-  const loader = new GLTFLoader();
-  loader.load(
-    "/models/Station.glb",
-    (gltf) => {
-      const model = gltf.scene;
-      const box = new THREE.Box3().setFromObject(model);
-      const size = box.getSize(new THREE.Vector3());
-      stationMaxDim = Math.max(size.x, size.y, size.z);
-      // Set renderOrder on every mesh so station draws before ships
-      model.traverse((child) => {
-        child.renderOrder = -1;
-      });
-      stationTemplate = model;
-      stationLoading = false;
-      console.log("[Three.js] Station GLB loaded, maxDim:", stationMaxDim.toFixed(2));
-    },
-    undefined,
-    (err) => {
-      console.error("[Three.js] Station GLB failed:", err);
-      stationLoading = false;
-    }
-  );
-}
-
-// No-ops kept so App.tsx imports don't break — station now uses the main layer
+// Station rendering moved to three-station-layer.ts (own canvas at zIndex 0)
 export function initStationLayer(_canvas: HTMLCanvasElement): void {}
 export function renderStationLayer(): void {}
-export function destroyStationLayer(): void {
-  activeStations.clear();
-  stationTemplate = null;
-  stationLoading = false;
-}
-
-export function updateStation3D(
-  id: string,
-  worldX: number,
-  worldY: number,
-  camX: number,
-  camY: number,
-  tick: number,
-): void {
-  if (!scene) return;
-  if (!stationTemplate) { loadStationGLB(); return; }
-
-  let st = activeStations.get(id);
-  if (!st) {
-    const model = stationTemplate.clone();
-    model.traverse((child) => { child.renderOrder = -1; });
-    const wrapper = new THREE.Group();
-    wrapper.renderOrder = -1;
-    wrapper.rotation.x = -0.6;
-    wrapper.add(model);
-    scene.add(wrapper);
-    st = { wrapper, model };
-    activeStations.set(id, st);
-  }
-
-  const screenX = (worldX - camX) * cameraZoom;
-  const screenY = (worldY - camY) * cameraZoom;
-  st.wrapper.position.set(screenX, 0, screenY);
-
-  const targetPixels = 2048;
-  const finalScale = (targetPixels * cameraZoom) / stationMaxDim;
-  st.wrapper.scale.setScalar(finalScale);
-
-  // Clockwise rotation (negative Y), one full turn every 300 seconds
-  st.model.rotation.y = -(performance.now() / 1000 / 300) * Math.PI * 2;
-}
-
-export function removeStation3D(id: string): void {
-  const st = activeStations.get(id);
-  if (st && scene) {
-    scene.remove(st.wrapper);
-    activeStations.delete(id);
-  }
-}
+export function destroyStationLayer(): void {}
 
 // Nebula background
 let nebulaBackground: ThreeNebulaBackground | null = null;
@@ -400,7 +322,6 @@ export function getShipHardpointPositions(
     weapons: [] as { x: number; y: number }[],
   };
 
-  // Convert thruster hardpoints to game world coordinates
   for (const hp of ship.hardpoints.thrusters) {
     hp.getWorldPosition(tempVec3);
     result.thrusters.push({
@@ -408,8 +329,6 @@ export function getShipHardpointPositions(
       y: tempVec3.z / cameraZoom + camY,
     });
   }
-
-  // Convert muzzle hardpoints
   for (const hp of ship.hardpoints.muzzles) {
     hp.getWorldPosition(tempVec3);
     result.muzzles.push({
@@ -417,8 +336,6 @@ export function getShipHardpointPositions(
       y: tempVec3.z / cameraZoom + camY,
     });
   }
-
-  // Convert weapon hardpoints
   for (const hp of ship.hardpoints.weapons) {
     hp.getWorldPosition(tempVec3);
     result.weapons.push({
@@ -428,6 +345,32 @@ export function getShipHardpointPositions(
   }
 
   return result;
+}
+
+// Returns muzzle/weapon hardpoint world positions using the cam values from the
+// last render frame — safe to call from the game tick without passing cam.
+export function getShipMuzzleWorldPositions(entityId: string): {
+  muzzles: { x: number; y: number }[];
+  weapons: { x: number; y: number }[];
+} | null {
+  const ship = activeShips.get(entityId);
+  if (!ship || !ship.hardpoints) return null;
+
+  const muzzles: { x: number; y: number }[] = [];
+  const weapons: { x: number; y: number }[] = [];
+  const cx = ship.lastCamX;
+  const cy = ship.lastCamY;
+
+  for (const hp of ship.hardpoints.muzzles) {
+    hp.getWorldPosition(tempVec3);
+    muzzles.push({ x: tempVec3.x / cameraZoom + cx, y: tempVec3.z / cameraZoom + cy });
+  }
+  for (const hp of ship.hardpoints.weapons) {
+    hp.getWorldPosition(tempVec3);
+    weapons.push({ x: tempVec3.x / cameraZoom + cx, y: tempVec3.z / cameraZoom + cy });
+  }
+
+  return { muzzles, weapons };
 }
 
 export function updateShip3D(
@@ -505,7 +448,7 @@ export function updateShip3D(
     wrapper.add(model);
     scene.add(wrapper);
 
-    ship = { wrapper, model, hardpoints, engineGlows, lastYRot: -angle + Math.PI };
+    ship = { wrapper, model, hardpoints, engineGlows, lastYRot: -angle + Math.PI, lastCamX: camX, lastCamY: camY, lastWorldX: worldX, lastWorldY: worldY };
     activeShips.set(entityId, ship);
     console.log("[Three.js] SHIP CREATED:", entityId, shipClass,
                 `(${hardpoints.thrusters.length}T/${hardpoints.muzzles.length}M/${hardpoints.weapons.length}W + ${engineGlows.length}G)`);
@@ -539,6 +482,10 @@ export function updateShip3D(
     ship.lastYRot += rotDiff * rotLerp;
   }
   ship.model.rotation.set(0, ship.lastYRot, 0);
+  ship.lastCamX = camX;
+  ship.lastCamY = camY;
+  ship.lastWorldX = worldX;
+  ship.lastWorldY = worldY;
 
   if (renderFrameCount % 180 === 1) {
     console.log("[Three.js] Ship update:", entityId, "pos:", screenX.toFixed(0), screenY.toFixed(0), "scale:", finalScale.toFixed(1), "angle:", (angle * 180 / Math.PI).toFixed(0) + "deg");

@@ -15,7 +15,7 @@ RESOURCES, pickAsteroidYield, SHIP_SIZE_SCALE, } from "./types";
 import { sfx } from "./sound";
 import { type ServerEnemy, type ServerAsteroid, type ServerNpc, type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent, type DeltaPayload, type SnapshotPayload, type WelcomePayload, type DeltaEntity, type ProjectileSpawnEvent } from "../net/socket";
 import { sendInstanceEnemyHit } from "../net/socket";
-import { getShipHardpointPositions } from "./three-ship-layer";
+import { getShipMuzzleWorldPositions } from "./three-ship-layer";
 import { MOVEMENT, NETCODE } from "../../../lib/game-constants";
 
 
@@ -1642,9 +1642,8 @@ function tickWorld(dt: number): void {
         const firstDef = firstLaser ? MODULE_DEFS[firstLaser.defId] : null;
         const pattern = firstDef?.firingPattern || "standard";
 
-        // Resolve GLB muzzle positions for the local player ship.
-        // camera center ≈ player world position (Three.js renders relative to player).
-        const _localGlbHp = getShipHardpointPositions("player", p.pos.x, p.pos.y);
+        // Resolve GLB muzzle positions for the local player ship using last-frame cam.
+        const _localGlbHp = getShipMuzzleWorldPositions("player");
         const _localMuzzles = _localGlbHp?.muzzles ?? [];
         const _dbgHp = (window as any).__DEBUG_HARDPOINTS;
 
@@ -1741,7 +1740,7 @@ function tickWorld(dt: number): void {
       if (state.isRocketFiring && rocketFireCd.value <= 0 && rocketIds.length > 0 && rocketAmmo >= 1) {
         p.rocketAmmo[rocketAmmoType] = rocketAmmo - 1;
         // Use GLB weapon hardpoints for rocket spawn; fall back to ship center
-        const _rocketGlbHp = getShipHardpointPositions("player", p.pos.x, p.pos.y);
+        const _rocketGlbHp = getShipMuzzleWorldPositions("player");
         const _rocketWeapons = _rocketGlbHp?.weapons ?? [];
         const _rocketMuzzles = _rocketGlbHp?.muzzles ?? [];
         const _rocketHpList = _rocketWeapons.length > 0 ? _rocketWeapons : _rocketMuzzles;
@@ -2876,8 +2875,8 @@ export function onProjectileSpawnFromServer(data: ProjectileSpawnEvent): void {
 
   if (isRemotePlayer && data.fromPlayerId !== undefined) {
     const entityId = String(data.fromPlayerId);
-    // Camera center for this call: use local player position (Three.js renders relative to it)
-    const glbHp = getShipHardpointPositions(entityId, state.player.pos.x, state.player.pos.y);
+    // Use last-frame cam values stored in the ship — no cam arg needed
+    const glbHp = getShipMuzzleWorldPositions(entityId);
     const candidates = isRocket
       ? [...(glbHp?.weapons ?? []), ...(glbHp?.muzzles ?? [])]
       : (glbHp?.muzzles ?? []);
