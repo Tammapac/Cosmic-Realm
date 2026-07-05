@@ -15,6 +15,7 @@ RESOURCES, pickAsteroidYield, SHIP_SIZE_SCALE, } from "./types";
 import { sfx } from "./sound";
 import { type ServerEnemy, type ServerAsteroid, type ServerNpc, type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent, type DeltaPayload, type SnapshotPayload, type WelcomePayload, type DeltaEntity, type ProjectileSpawnEvent } from "../net/socket";
 import { sendInstanceEnemyHit } from "../net/socket";
+import { getShipHardpointPositions } from "./three-ship-layer";
 import { MOVEMENT, NETCODE } from "../../../lib/game-constants";
 
 
@@ -642,7 +643,7 @@ function fireProjectile(
     pos: { x, y },
     vel: { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed },
     damage,
-    ttl: opts?.homing ? 4.0 : 1.6,
+    ttl: opts?.homing ? 4.0 : 1.5, // 1.5 matches server laser TTL
     fromPlayer: from !== "enemy",
     color,
     size: opts?.crit ? size + 2 : size,
@@ -1641,11 +1642,28 @@ function tickWorld(dt: number): void {
         const firstDef = firstLaser ? MODULE_DEFS[firstLaser.defId] : null;
         const pattern = firstDef?.firingPattern || "standard";
 
+        // Resolve GLB muzzle positions for the local player ship.
+        // camera center ≈ player world position (Three.js renders relative to player).
+        const _localGlbHp = getShipHardpointPositions("player", p.pos.x, p.pos.y);
+        const _localMuzzles = _localGlbHp?.muzzles ?? [];
+        const _dbgHp = (window as any).__DEBUG_HARDPOINTS;
+
+        // Helper: pick the i-th muzzle world pos, falling back to provided default.
+        const muzzlePos = (idx: number, fallbackX: number, fallbackY: number): { x: number; y: number } => {
+          const hp = _localMuzzles[idx % (_localMuzzles.length || 1)];
+          if (hp && _localMuzzles.length > 0) {
+            if (_dbgHp) console.log(`[HP:local] muzzle[${idx}] GLB=(${hp.x.toFixed(1)},${hp.y.toFixed(1)}) fallback=(${fallbackX.toFixed(1)},${fallbackY.toFixed(1)})`);
+            return hp;
+          }
+          if (_dbgHp) console.log(`[HP:local] muzzle[${idx}] no GLB hardpoints, using fallback=(${fallbackX.toFixed(1)},${fallbackY.toFixed(1)})`);
+          return { x: fallbackX, y: fallbackY };
+        };
+
         if (pattern === "sniper") {
-          // Single powerful beam — offset matches server: forward 10px
+          // Single beam — GLB muzzle[0], fallback: forward 10px
           const dmg = Math.round(laserDmg);
-          const ox = p.pos.x + Math.cos(ang) * 10;
-          const oy = p.pos.y + Math.sin(ang) * 10;
+          const fb = { x: p.pos.x + Math.cos(ang) * 10, y: p.pos.y + Math.sin(ang) * 10 };
+          const { x: ox, y: oy } = muzzlePos(0, fb.x, fb.y);
           fireProjectile("player", ox, oy, ang, dmg, laserColor, 6, {
             weaponKind: "laser", speedMul: 3.2,
           });
@@ -1654,29 +1672,33 @@ function tickWorld(dt: number): void {
           emitSpark(ox, oy, "#ffffff", 8, 160, 3);
           emitSpark(ox, oy, laserColor, 4, 100, 2);
         } else if (pattern === "scatter") {
-          // Shotgun: 3 heavy pellets — offsets match server: perpendicular ±5px
+          // Shotgun: 3 pellets — GLB muzzles[0..2], fallback: perpendicular ±5px
           const pellets = 3;
           const perPellet = Math.round(laserDmg * 2.5 / pellets);
           const spread = 0.06;
           for (let si = 0; si < pellets; si++) {
             const side = si === 0 ? -1 : si === 2 ? 1 : 0;
-            const ox = p.pos.x + Math.cos(perpAng) * 5 * side;
-            const oy = p.pos.y + Math.sin(perpAng) * 5 * side;
+            const fbX = p.pos.x + Math.cos(perpAng) * 5 * side;
+            const fbY = p.pos.y + Math.sin(perpAng) * 5 * side;
+            const { x: ox, y: oy } = muzzlePos(si, fbX, fbY);
             const spreadAng = ang + (si - 1) * spread;
             fireProjectile("player", ox, oy, spreadAng, perPellet, laserColor, 4, {
               weaponKind: "laser", speedMul: 1.8,
             });
           }
-          state.particles.push({ id: `mf-${Math.random().toString(36).slice(2, 8)}`, pos: { x: p.pos.x, y: p.pos.y }, vel: { x: 0, y: 0 }, ttl: 0.15, maxTtl: 0.15, color: laserColor, size: 80, kind: "flash" });
-          emitSpark(p.pos.x, p.pos.y, laserColor, 8, 100, 2);
-          emitSpark(p.pos.x, p.pos.y, "#ffffff", 4, 70, 2);
+          const cx = _localMuzzles[1]?.x ?? p.pos.x;
+          const cy = _localMuzzles[1]?.y ?? p.pos.y;
+          state.particles.push({ id: `mf-${Math.random().toString(36).slice(2, 8)}`, pos: { x: cx, y: cy }, vel: { x: 0, y: 0 }, ttl: 0.15, maxTtl: 0.15, color: laserColor, size: 80, kind: "flash" });
+          emitSpark(cx, cy, laserColor, 8, 100, 2);
+          emitSpark(cx, cy, "#ffffff", 4, 70, 2);
         } else if (pattern === "rail") {
-          // Burst: 3 rapid shots — offsets match server: perpendicular ±5px
+          // Burst: 3 shots — GLB muzzles[0..2], fallback: perpendicular ±5px
           const perBurst = Math.round(laserDmg * 1.3 / 3);
           for (let bi = 0; bi < 3; bi++) {
             const side = bi === 0 ? -1 : bi === 1 ? 1 : 0;
-            const ox = p.pos.x + Math.cos(perpAng) * 5 * side;
-            const oy = p.pos.y + Math.sin(perpAng) * 5 * side;
+            const fbX = p.pos.x + Math.cos(perpAng) * 5 * side;
+            const fbY = p.pos.y + Math.sin(perpAng) * 5 * side;
+            const { x: ox, y: oy } = muzzlePos(bi, fbX, fbY);
             const burstAng = ang + (Math.random() - 0.5) * 0.04;
             fireProjectile("player", ox, oy, burstAng, perBurst, laserColor, 4, {
               weaponKind: "laser", speedMul: 2.5,
@@ -1686,12 +1708,13 @@ function tickWorld(dt: number): void {
           }
           emitSpark(p.pos.x, p.pos.y, "#ffffff", 3, 60, 2);
         } else {
-          // Standard dual-gun — offsets match server: perpendicular ±4px
+          // Standard dual-gun — GLB muzzles[0,1], fallback: perpendicular ±4px
           const perShot = Math.round(laserDmg / 2);
           for (let si = 0; si < 2; si++) {
             const side = si === 0 ? -1 : 1;
-            const ox = p.pos.x + Math.cos(perpAng) * 4 * side;
-            const oy = p.pos.y + Math.sin(perpAng) * 4 * side;
+            const fbX = p.pos.x + Math.cos(perpAng) * 4 * side;
+            const fbY = p.pos.y + Math.sin(perpAng) * 4 * side;
+            const { x: ox, y: oy } = muzzlePos(si, fbX, fbY);
             fireProjectile("player", ox, oy, ang - side * 0.03, perShot, laserColor, 4, {
               weaponKind: "laser", speedMul: 2.14,
             });
@@ -1717,12 +1740,20 @@ function tickWorld(dt: number): void {
       }
       if (state.isRocketFiring && rocketFireCd.value <= 0 && rocketIds.length > 0 && rocketAmmo >= 1) {
         p.rocketAmmo[rocketAmmoType] = rocketAmmo - 1;
-        for (const rId of rocketIds) {
-          const ri = p.inventory.find((m) => m.instanceId === rId);
-          const rd = ri ? MODULE_DEFS[ri.defId] : null;
+        // Use GLB weapon hardpoints for rocket spawn; fall back to ship center
+        const _rocketGlbHp = getShipHardpointPositions("player", p.pos.x, p.pos.y);
+        const _rocketWeapons = _rocketGlbHp?.weapons ?? [];
+        const _rocketMuzzles = _rocketGlbHp?.muzzles ?? [];
+        const _rocketHpList = _rocketWeapons.length > 0 ? _rocketWeapons : _rocketMuzzles;
+        const _dbgHpR = (window as any).__DEBUG_HARDPOINTS;
+        for (let ri = 0; ri < rocketIds.length; ri++) {
+          const rocketHp = _rocketHpList[ri % (_rocketHpList.length || 1)];
+          const rox = (rocketHp && _rocketHpList.length > 0) ? rocketHp.x : p.pos.x;
+          const roy = (rocketHp && _rocketHpList.length > 0) ? rocketHp.y : p.pos.y;
+          if (_dbgHpR) console.log(`[HP:local] rocket[${ri}] GLB=(${rox.toFixed(1)},${roy.toFixed(1)}) hpCount=${_rocketHpList.length}`);
           const rocketBaseDmg = stats.damage * rocketDmgMul * 2.5;
           const rDmg = Math.round(rocketBaseDmg);
-          fireProjectile("player", p.pos.x, p.pos.y, ang, rDmg, rocketColor, 5, {
+          fireProjectile("player", rox, roy, ang, rDmg, rocketColor, 5, {
             weaponKind: "rocket",
             homing: true,
             speedMul: 1.18,
@@ -2836,26 +2867,75 @@ export function onProjectileSpawnFromServer(data: ProjectileSpawnEvent): void {
     }
   }
 
+  // Resolve visual spawn position from GLB muzzle hardpoints when available.
+  // vx/vy are kept server-authoritative; only the visual origin shifts to the GLB muzzle.
+  let spawnX = data.x;
+  let spawnY = data.y;
+  const _dbgHp = (window as any).__DEBUG_HARDPOINTS;
   const _remoteSpd = Math.sqrt(data.vx * data.vx + data.vy * data.vy);
+
+  if (isRemotePlayer && data.fromPlayerId !== undefined) {
+    const entityId = String(data.fromPlayerId);
+    // Camera center for this call: use local player position (Three.js renders relative to it)
+    const glbHp = getShipHardpointPositions(entityId, state.player.pos.x, state.player.pos.y);
+    const candidates = isRocket
+      ? [...(glbHp?.weapons ?? []), ...(glbHp?.muzzles ?? [])]
+      : (glbHp?.muzzles ?? []);
+
+    if (candidates.length > 0) {
+      // Pick nearest muzzle to the server-broadcast origin
+      let bestDist = Infinity;
+      let bestMuzzle = candidates[0];
+      for (const m of candidates) {
+        const d = Math.hypot(m.x - data.x, m.y - data.y);
+        if (d < bestDist) { bestDist = d; bestMuzzle = m; }
+      }
+      if (_dbgHp) {
+        console.log("[HP:remote] entityId=" + entityId, {
+          weaponKind: data.weaponKind,
+          serverXY: { x: data.x.toFixed(1), y: data.y.toFixed(1) },
+          selectedMuzzle: { x: bestMuzzle.x.toFixed(1), y: bestMuzzle.y.toFixed(1) },
+          distToServer: bestDist.toFixed(1),
+          candidateCount: candidates.length,
+          speed: _remoteSpd.toFixed(1),
+          ttl: data.ttl,
+        });
+      }
+      spawnX = bestMuzzle.x;
+      spawnY = bestMuzzle.y;
+    } else {
+      if (_dbgHp) {
+        console.log("[HP:remote] entityId=" + entityId + " — no GLB hardpoints loaded, using server pos", {
+          serverXY: { x: data.x.toFixed(1), y: data.y.toFixed(1) },
+          speed: _remoteSpd.toFixed(1),
+          ttl: data.ttl,
+        });
+      }
+    }
+  }
+
   if ((window as any).__DEBUG_PROJ) {
     console.log("[RemoteProj] spawn", {
       from: isRemotePlayer ? "remotePlayer" : "enemy",
       fromPlayerId: data.fromPlayerId,
+      entityId: isRemotePlayer ? String(data.fromPlayerId) : null,
       weaponKind: data.weaponKind,
       ammoType: data.ammoType,
       color: resolvedColor,
-      spawnPos: { x: data.x.toFixed(1), y: data.y.toFixed(1) },
+      serverPos: { x: data.x.toFixed(1), y: data.y.toFixed(1) },
+      visualPos: { x: spawnX.toFixed(1), y: spawnY.toFixed(1) },
       speed: _remoteSpd.toFixed(1),
       ttl: data.ttl,
       renderOnly: true,
     });
   }
+
   state.projectiles.push({
     id: `pr-${Math.random().toString(36).slice(2, 8)}`,
-    pos: { x: data.x, y: data.y },
+    pos: { x: spawnX, y: spawnY },
     vel: { x: data.vx, y: data.vy },
     damage: data.damage,
-    ttl: data.ttl ?? (data.homing ? 4.0 : 1.6),
+    ttl: data.ttl ?? (data.homing ? 4.0 : 1.5),
     fromPlayer: data.fromPlayer,
     color: resolvedColor,
     size: data.size,
@@ -2868,54 +2948,45 @@ export function onProjectileSpawnFromServer(data: ProjectileSpawnEvent): void {
 
   // Spawn visual effects for remote player projectiles
   if (isRemotePlayer) {
-    const isRocket = data.weaponKind === "rocket";
     if (isRocket) {
-      // Rocket flash effects
       state.particles.push({
         id: `rf-${Math.random().toString(36).slice(2, 8)}`,
-        pos: { x: data.x, y: data.y }, vel: { x: 0, y: 0 },
+        pos: { x: spawnX, y: spawnY }, vel: { x: 0, y: 0 },
         ttl: 0.2, maxTtl: 0.2,
         color: "#ff8a4e", size: 55, kind: "flash",
       });
       state.particles.push({
         id: `rf2-${Math.random().toString(36).slice(2, 8)}`,
-        pos: { x: data.x, y: data.y }, vel: { x: 0, y: 0 },
+        pos: { x: spawnX, y: spawnY }, vel: { x: 0, y: 0 },
         ttl: 0.1, maxTtl: 0.1,
         color: "#ffffff", size: 30, kind: "flash",
       });
-      // Smoke particles
       for (let si = 0; si < 4; si++) {
         const sa = Math.random() * Math.PI * 2;
         const ss = 20 + Math.random() * 35;
         state.particles.push({
           id: `rfs-${Math.random().toString(36).slice(2, 8)}`,
-          pos: { x: data.x, y: data.y },
+          pos: { x: spawnX, y: spawnY },
           vel: { x: Math.cos(sa) * ss, y: Math.sin(sa) * ss },
           ttl: 0.4 + Math.random() * 0.2, maxTtl: 0.6,
           color: "#888888", size: 3 + Math.random() * 2, kind: "smoke",
         });
       }
     } else {
-      // Laser flash effect
       state.particles.push({
         id: `lf-${Math.random().toString(36).slice(2, 8)}`,
-        pos: { x: data.x, y: data.y }, vel: { x: 0, y: 0 },
+        pos: { x: spawnX, y: spawnY }, vel: { x: 0, y: 0 },
         ttl: 0.12, maxTtl: 0.12,
         color: resolvedColor, size: 35, kind: "flash",
       });
     }
 
-    // Sparks
-    emitSpark(data.x, data.y, resolvedColor, data.crit ? 6 : 3, 80, 2);
+    emitSpark(spawnX, spawnY, resolvedColor, data.crit ? 6 : 3, 80, 2);
 
-    // Play shoot sound for remote players (distance-attenuated)
-    const shootDist = Math.hypot(data.x - state.player.pos.x, data.y - state.player.pos.y);
+    const shootDist = Math.hypot(spawnX - state.player.pos.x, spawnY - state.player.pos.y);
     if (shootDist < 800) {
-      if (isRocket) {
-        sfx.rocketShoot();
-      } else {
-        sfx.laserShoot();
-      }
+      if (isRocket) sfx.rocketShoot();
+      else sfx.laserShoot();
     }
   }
 }
