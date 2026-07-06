@@ -412,38 +412,42 @@ export function getShipHardpointPositions(
   return result;
 }
 
-// Analytic muzzle/weapon world positions computed from the authoritative ship
-// state (worldX, worldY, angle), independent of the Three.js render pipeline.
+// Analytic muzzle/weapon world positions computed to match exactly what the
+// user sees on screen — the "visible weapon position" rather than the raw
+// authoritative game state.
 //
-// This is the correct entry point for projectile spawn logic. The alternative,
-// getShipMuzzleWorldPositions(), reads the live Three.js wrapper transform,
-// which is set on each pixiRender() from the (possibly stale) render-loop view
-// of ship position/camera and rotates via a lerped ship.lastYRot. When a
-// projectile:spawn socket event arrives between renders, the wrapper transform
-// is one frame behind and the muzzle world position drifts, producing a
-// visible offset that grows with local player camera motion and with the
-// angular gap between authoritative angle and the on-screen rotation.
+// The passed (worldX, worldY, angle) are the caller's intent (typically the
+// authoritative game-state values), but the ship's on-screen position and
+// rotation LAG both because of:
+//   1. applyServerSmoothing() lerps o.pos, o.angle toward server delta at
+//      rate NETCODE.INTERPOLATION_FACTOR (~8 for angle).
+//   2. updateShip3D() further lerps ship.lastYRot toward (-angle + π) at
+//      rate 4.5, and it snapshots wrapper.position from the last render's
+//      (worldX, worldY, camX, camY) combination.
 //
-// Here we compute the muzzle position purely from:
-//   - worldX/worldY: the ship's authoritative world position at fire time
-//   - angle:         the ship's authoritative heading at fire time
-//   - the model-local hardpoint offsets captured once at GLB load
-//   - worldUnitsPerModelUnit: cached from the last updateShip3D() call, which
-//     is stable per (shipClass, sizeScale) — so even a one-frame-old value is
-//     correct as long as ship class hasn't changed.
+// When a projectile:spawn socket event arrives between renders, using the
+// current authoritative angle to compute the muzzle would place the
+// projectile at a spot slightly ahead of the visible weapon in the direction
+// of rotation. The offset appears as sideways drift that rotates with the
+// ship — the exact symptom the user reports.
 //
-// Rotation math mirrors updateShip3D()'s Three.js Y rotation of (-angle + π):
-//   cos(-angle + π) = -cos(angle)
-//   sin(-angle + π) =  sin(angle)
-// so a model-local hardpoint at (mx, mz) rotates to:
-//   mx_rot = -mx·cos(angle) + mz·sin(angle)
-//   mz_rot = -mx·sin(angle) - mz·cos(angle)
-// scaled by worldUnitsPerModelUnit and offset by (worldX, worldY).
+// Fix: read the ship's last-rendered state directly from the Ship3D record.
+// This guarantees the muzzle world position coincides with the visible
+// weapon on the ship model at the last frame Three.js drew. The projectile
+// spawn matches the visible ship pixel-for-pixel; any subsequent divergence
+// as the ship keeps interpolating is handled by the per-frame convergence
+// redirect (Phase 2.1) which curves the shot toward the enemy.
+//
+// The lastYRot rotation math (standard Y-axis rotation):
+//   x' =  x·cos(θ) + z·sin(θ)
+//   z' = -x·sin(θ) + z·cos(θ)
+// where θ = ship.lastYRot. This is exactly what Three.js applies to the
+// ship model, so the result places the muzzle on the visible weapon.
 export function getShipMuzzleWorldPositionsAt(
   entityId: string,
-  worldX: number,
-  worldY: number,
-  angle: number,
+  _worldX: number,
+  _worldY: number,
+  _angle: number,
 ): {
   muzzles: { x: number; y: number }[];
   weapons: { x: number; y: number }[];
@@ -453,17 +457,23 @@ export function getShipMuzzleWorldPositionsAt(
   const localHp = ship.model.userData.localHardpoints as ModelLocalHardpoints | undefined;
   if (!localHp) return null;
   const s = ship.worldUnitsPerModelUnit;
-  const ca = Math.cos(angle);
-  const sa = Math.sin(angle);
+  // Use the ship's last-rendered rotation and position — the state Three.js
+  // last drew — so the muzzle world position coincides with the visible
+  // weapon exactly. See comment block above.
+  const theta = ship.lastYRot;
+  const ca = Math.cos(theta);
+  const sa = Math.sin(theta);
+  const originX = ship.lastWorldX;
+  const originY = ship.lastWorldY;
   const dbg = (window as any).__DEBUG_HARDPOINTS;
 
   const project = (mx: number, mz: number, label: string, idx: number): { x: number; y: number } => {
-    const dx = (-mx * ca + mz * sa) * s;
-    const dy = (-mx * sa - mz * ca) * s;
-    const wx = worldX + dx;
-    const wy = worldY + dy;
+    const dx = ( mx * ca + mz * sa) * s;
+    const dy = (-mx * sa + mz * ca) * s;
+    const wx = originX + dx;
+    const wy = originY + dy;
     if (dbg) {
-      console.log(`[HP:analytic] entityId=${entityId} ${label}[${idx}] modelLocal=(${mx.toFixed(2)},${mz.toFixed(2)}) angle=${angle.toFixed(3)} scale=${s.toFixed(3)} shipWorld=(${worldX.toFixed(1)},${worldY.toFixed(1)}) muzzleWorld=(${wx.toFixed(1)},${wy.toFixed(1)}) delta=(${dx.toFixed(1)},${dy.toFixed(1)})`);
+      console.log(`[HP:analytic] entityId=${entityId} ${label}[${idx}] modelLocal=(${mx.toFixed(2)},${mz.toFixed(2)}) lastYRot=${theta.toFixed(3)} scale=${s.toFixed(3)} shipWorld=(${originX.toFixed(1)},${originY.toFixed(1)}) muzzleWorld=(${wx.toFixed(1)},${wy.toFixed(1)}) delta=(${dx.toFixed(1)},${dy.toFixed(1)})`);
     }
     return { x: wx, y: wy };
   };
