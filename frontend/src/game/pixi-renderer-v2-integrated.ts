@@ -12,7 +12,7 @@
 import * as PIXI from "pixi.js";
 import { initHardpointEditor, toggleHardpointEditor, isEditorActive } from "./debug/HardpointEditor";
 import { DIRECTIONS_32 } from "./debug/hardpointTypes";
-import { has3DModel, is3DReady, updateShip3D, setCameraZoom, beginFrame, markActive, endFrame, render3DLayer, getShipHardpointPositions, updateEngineGlow, updateNebulaBackground, removeShip3D, preload3DModels, getLoadingProgress, debugEnumerateAllMuzzles } from "./three-ship-layer";
+import { has3DModel, is3DReady, updateShip3D, setCameraZoom, beginFrame, markActive, endFrame, render3DLayer, getShipHardpointPositions, getShipMuzzleWorldPositionsAt, updateEngineGlow, updateNebulaBackground, removeShip3D, preload3DModels, getLoadingProgress, debugEnumerateAllMuzzles } from "./three-ship-layer";
 import { setStationCameraZoom, beginStationFrame, updateStationOnly, endStationFrame, renderStation3DLayer, removeStation3D, initStation3DLayer } from "./three-station-layer";
 import { state } from "./store";
 import { effectiveStats, getDebugSpawnBuffer } from "./loop";
@@ -2120,102 +2120,21 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
       data = { sprite };
       projectileSprites.set(pr.id, data);
 
-      // EffectManager muzzle flash — only for freshly fired projectiles (ttl > 1.2s means just spawned)
-      // Skips projectiles that were already in-flight before the renderer was reset
+      // EffectManager muzzle flash at the projectile's own spawn position.
+      // The projectile is already anchored at the correct GLB hardpoint
+      // (Phase 2.2/2.6 tilt-corrected math), so we just fire the flash there
+      // instead of recomputing / re-cycling muzzle indices. This eliminates
+      // the double-flash offset and drops the legacy weaponMountIndex logic.
+      // Only for freshly fired projectiles (ttl > 1.2s = just spawned) so
+      // resumed-flight projectiles don't emit spurious flashes.
       if (effectManager && pr.ttl > 1.2) {
         const angle = Math.atan2(pr.vel.y, pr.vel.x);
         const weaponType = pr.weaponKind === "rocket" ? "rocket" : "laser";
         const color = PIXI.utils.string2hex(pr.color);
-        const shooterId = pr.fromPlayer ? "player" : pr.id;
-        const shooterClass = pr.fromPlayer ? state.player.shipClass : undefined;
-        const hp = shooterClass ? SHIP_HARDPOINTS[shooterClass] : undefined;
-
-        // Try 3D GLB hardpoints first for player
-        if (pr.fromPlayer) {
-          const cam = state.player.pos;
-          const glbHardpoints = getShipHardpointPositions("player", cam.x, cam.y);
-
-          if (glbHardpoints && glbHardpoints.muzzles.length > 0) {
-            // Cycle through muzzle hardpoints one per projectile
-            const idx = weaponMountIndex.get(shooterId) ?? 0;
-            const step = shooterClass === "sovereign" ? 2 : 1;
-            const list = glbHardpoints.muzzles;
-            const muzzlesToFire = shooterClass === "sovereign"
-              ? [list[idx % list.length], list[(idx + 1) % list.length]]
-              : [list[idx % list.length]];
-            for (const muzzle of muzzlesToFire) {
-              if (weaponType === "rocket") {
-                effectManager.spawnRocketLaunch(muzzle.x, muzzle.y, angle);
-              } else {
-                effectManager.spawnMuzzleFlash(muzzle.x, muzzle.y, angle, weaponType, color);
-              }
-            }
-            weaponMountIndex.set(shooterId, idx + step);
-          } else if (glbHardpoints && glbHardpoints.weapons.length > 0) {
-            // Fallback to weapon hardpoints — same cycling logic
-            const idx = weaponMountIndex.get(shooterId) ?? 0;
-            const step = shooterClass === "sovereign" ? 2 : 1;
-            const list = glbHardpoints.weapons;
-            const weaponsToFire = shooterClass === "sovereign"
-              ? [list[idx % list.length], list[(idx + 1) % list.length]]
-              : [list[idx % list.length]];
-            for (const weapon of weaponsToFire) {
-              if (weaponType === "rocket") {
-                effectManager.spawnRocketLaunch(weapon.x, weapon.y, angle);
-              } else {
-                effectManager.spawnMuzzleFlash(weapon.x, weapon.y, angle, weaponType, color);
-              }
-            }
-            weaponMountIndex.set(shooterId, idx + step);
-          } else {
-            // Fallback to 2D hardpoint system (existing code)
-            let mx = pr.pos.x;
-            let my = pr.pos.y;
-            if (shooterClass) {
-              const frameIdx = getPlayerFrameIndex(shooterClass, state.player.angle);
-              const editorWeapons = [
-                ...getEditorHardpointsByType(shooterClass, frameIdx, "laser"),
-                ...getEditorHardpointsByType(shooterClass, frameIdx, "rocket"),
-                ...getEditorHardpointsByType(shooterClass, frameIdx, "muzzle"),
-              ];
-              if (editorWeapons.length > 0) {
-                const idx = weaponMountIndex.get(shooterId) ?? 0;
-                const w = editorWeapons[idx % editorWeapons.length];
-                mx = state.player.pos.x + w.x;
-                my = state.player.pos.y + w.y;
-                weaponMountIndex.set(shooterId, idx + 1);
-              } else if (hp && hp.weapons.length > 0) {
-                const idx = weaponMountIndex.get(shooterId) ?? 0;
-                const w = hp.weapons[idx % hp.weapons.length];
-                const wp = localToWorldHardpoint(state.player.pos.x, state.player.pos.y, w.x, w.y, state.player.angle);
-                mx = wp.x;
-                my = wp.y;
-                weaponMountIndex.set(shooterId, idx + 1);
-              }
-            }
-            if (weaponType === "rocket") {
-              effectManager.spawnRocketLaunch(mx, my, angle);
-            } else {
-              effectManager.spawnMuzzleFlash(mx, my, angle, weaponType, color);
-            }
-          }
+        if (weaponType === "rocket") {
+          effectManager.spawnRocketLaunch(pr.pos.x, pr.pos.y, angle);
         } else {
-          // Non-player projectiles use existing system
-          let mx = pr.pos.x;
-          let my = pr.pos.y;
-          if (hp && hp.weapons.length > 0) {
-            const idx = weaponMountIndex.get(shooterId) ?? 0;
-            const w = hp.weapons[idx % hp.weapons.length];
-            const wp = localToWorldHardpoint(state.player.pos.x, state.player.pos.y, w.x, w.y, state.player.angle);
-            mx = wp.x;
-            my = wp.y;
-            weaponMountIndex.set(shooterId, idx + 1);
-          }
-          if (weaponType === "rocket") {
-            effectManager.spawnRocketLaunch(mx, my, angle);
-          } else {
-            effectManager.spawnMuzzleFlash(mx, my, angle, weaponType, color);
-          }
+          effectManager.spawnMuzzleFlash(pr.pos.x, pr.pos.y, angle, weaponType, color);
         }
       }
     }
@@ -2642,13 +2561,13 @@ function syncPlayer(): void {
   if (speed > 0.5 && effectManager) {
     const cls = SHIP_CLASSES[p.shipClass];
     const trailScale = cls ? Math.max(0.5, Math.min(1.2, cls.hullMax / 200)) : 1;
-    const cam = state.player.pos;
 
-    // Try to get 3D GLB hardpoints first
-    const glbHardpoints = getShipHardpointPositions("player", cam.x, cam.y);
+    // Tilt-corrected analytic hardpoints: same math the projectile spawn uses,
+    // so trails come out of the visible thruster nozzles at every rotation.
+    const glbHardpoints = getShipMuzzleWorldPositionsAt("player", p.pos.x, p.pos.y, p.angle);
 
     if (glbHardpoints && glbHardpoints.thrusters.length > 0) {
-      // Use GLB thruster hardpoints
+      // One trail per GLB thruster hardpoint. All hp_thruster_* nodes emit.
       for (const t of glbHardpoints.thrusters) {
         effectManager.spawnThrusterTrail(t.x, t.y, p.angle, speed, localThrustColor, 1, trailScale);
       }
@@ -2907,11 +2826,12 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
       const thrustColor = PIXI.utils.string2hex(factionColor);
 
       if (spd > 0.5) {
-        // Try GLB hardpoints first (for 3D ships)
-        const glbHardpoints = getShipHardpointPositions(o.id, cam.x, cam.y);
+        // Tilt-corrected analytic hardpoints (same math as the projectile
+        // spawn) so remote trails come out of the visible thruster nozzles.
+        const glbHardpoints = getShipMuzzleWorldPositionsAt(o.id, o.pos.x, o.pos.y, o.angle);
 
         if (glbHardpoints && glbHardpoints.thrusters.length > 0) {
-          // Use GLB thruster hardpoints
+          // One trail per GLB thruster hardpoint — all hp_thruster_* emit.
           for (const t of glbHardpoints.thrusters) {
             effectManager.spawnThrusterTrail(t.x, t.y, o.angle, spd, thrustColor);
           }
@@ -3632,7 +3552,7 @@ function syncDebugMuzzleMarkers(): void {
   }
 
   // Recent spawn dots + connector lines to analytic muzzle.
-  const muzzleKey = (entityId: string, ring: "muzzle" | "weapon", index: number) =>
+  const muzzleKey = (entityId: string, ring: "muzzle" | "weapon" | "thruster", index: number) =>
     `${entityId}:${ring}:${index}`;
   const muzzleByKey = new Map<string, typeof muzzles[number]>();
   for (const m of muzzles) muzzleByKey.set(muzzleKey(m.entityId, m.ring, m.index), m);

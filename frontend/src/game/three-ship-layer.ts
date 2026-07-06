@@ -57,10 +57,12 @@ const SIN_TILT = Math.sin(SHIP_WRAPPER_TILT_X);
 interface ModelLocalHardpoints {
   muzzles: { x: number; y: number; z: number }[];
   weapons: { x: number; y: number; z: number }[];
+  thrusters: { x: number; y: number; z: number }[];
   // Hardpoint node names, kept parallel to the coords arrays, so debug tools
   // can identify which GLB node each analytic muzzle corresponds to.
   muzzleNames: string[];
   weaponNames: string[];
+  thrusterNames: string[];
 }
 
 interface Ship3D {
@@ -318,7 +320,8 @@ function loadModel(shipClass: string): void {
       model.updateMatrixWorld(true);
       const _localTmp = new THREE.Vector3();
       const localHardpoints: ModelLocalHardpoints = {
-        muzzles: [], weapons: [], muzzleNames: [], weaponNames: [],
+        muzzles: [], weapons: [], thrusters: [],
+        muzzleNames: [], weaponNames: [], thrusterNames: [],
       };
       for (const hp of hardpoints.muzzles) {
         hp.getWorldPosition(_localTmp);
@@ -329,6 +332,11 @@ function loadModel(shipClass: string): void {
         hp.getWorldPosition(_localTmp);
         localHardpoints.weapons.push({ x: _localTmp.x, y: _localTmp.y, z: _localTmp.z });
         localHardpoints.weaponNames.push(hp.name || "(unnamed)");
+      }
+      for (const hp of hardpoints.thrusters) {
+        hp.getWorldPosition(_localTmp);
+        localHardpoints.thrusters.push({ x: _localTmp.x, y: _localTmp.y, z: _localTmp.z });
+        localHardpoints.thrusterNames.push(hp.name || "(unnamed)");
       }
       model.userData.localHardpoints = localHardpoints;
 
@@ -472,6 +480,7 @@ export function getShipMuzzleWorldPositionsAt(
 ): {
   muzzles: { x: number; y: number }[];
   weapons: { x: number; y: number }[];
+  thrusters: { x: number; y: number }[];
 } | null {
   const ship = activeShips.get(entityId);
   if (!ship) return null;
@@ -506,7 +515,8 @@ export function getShipMuzzleWorldPositionsAt(
 
   const muzzles = localHp.muzzles.map((m, i) => project(m.x, m.y, m.z, "muzzle", i, localHp.muzzleNames[i] ?? ""));
   const weapons = localHp.weapons.map((w, i) => project(w.x, w.y, w.z, "weapon", i, localHp.weaponNames[i] ?? ""));
-  return { muzzles, weapons };
+  const thrusters = localHp.thrusters.map((t, i) => project(t.x, t.y, t.z, "thruster", i, localHp.thrusterNames[i] ?? ""));
+  return { muzzles, weapons, thrusters };
 }
 
 // Debug-only: enumerate every active ship's analytic muzzle and weapon world
@@ -516,7 +526,7 @@ export function getShipMuzzleWorldPositionsAt(
 // so allocation is intentional and harmless.
 export interface DebugMuzzleRecord {
   entityId: string;
-  ring: "muzzle" | "weapon";
+  ring: "muzzle" | "weapon" | "thruster";
   index: number;
   nodeName: string;
   worldX: number;
@@ -540,7 +550,7 @@ export function debugEnumerateAllMuzzles(): DebugMuzzleRecord[] {
 
     const emit = (
       mx: number, my: number, mz: number,
-      ring: "muzzle" | "weapon", index: number, nodeName: string,
+      ring: "muzzle" | "weapon" | "thruster", index: number, nodeName: string,
     ) => {
       const x1 =  mx * ca + mz * sa;
       const y1 =  my;
@@ -563,6 +573,10 @@ export function debugEnumerateAllMuzzles(): DebugMuzzleRecord[] {
     for (let i = 0; i < localHp.weapons.length; i++) {
       const w = localHp.weapons[i];
       emit(w.x, w.y, w.z, "weapon", i, localHp.weaponNames[i] ?? "");
+    }
+    for (let i = 0; i < localHp.thrusters.length; i++) {
+      const t = localHp.thrusters[i];
+      emit(t.x, t.y, t.z, "thruster", i, localHp.thrusterNames[i] ?? "");
     }
   }
   return out;
