@@ -170,6 +170,36 @@ function onResize(): void {
   }
 }
 
+// Classify hardpoint nodes by name. Accepts a wide set of naming conventions
+// authored across different GLB export tools and Blender workflows:
+//   - hp_muzzle_*         (original convention)
+//   - hp_weapon_*
+//   - hp_thruster_*
+//   - muzzle_hp[_*]       (reversed convention added later)
+//   - weapon_hp[_*]
+//   - thruster_hp[_*]
+//   - hp_muzzle / muzzle_hp (no trailing token, single node)
+//   - Blender duplicates:  foo.001, foo.002, ...
+//   - dot-separated:       hp.muzzle.left, muzzle.hp.left
+// The name must include an `hp` token to be a hardpoint — we don't classify
+// a raw mesh named just "Weapon" as a weapon hardpoint.
+//
+// Returns the category ("muzzle" | "weapon" | "thruster") or null.
+function classifyHardpointName(raw: string): "muzzle" | "weapon" | "thruster" | null {
+  if (!raw) return null;
+  // Normalize: lowercase, strip Blender duplicate suffix (.001), collapse
+  // dots/dashes to underscores so we can match either separator style.
+  const lower = raw.toLowerCase().replace(/\.\d+$/, "");
+  const norm = lower.replace(/[.\-]/g, "_");
+  const isHp = /(^|_)hp(_|$)/.test(norm);
+  if (!isHp) return null;
+  if (/(^|_)muzzle(_|$)/.test(norm)) return "muzzle";
+  if (/(^|_)weapon(_|$)/.test(norm)) return "weapon";
+  if (/(^|_)thruster(_|$)/.test(norm)) return "thruster";
+  if (/(^|_)engine(_|$)/.test(norm)) return "thruster";
+  return null;
+}
+
 function collectHardpoints(model: THREE.Group, shipClass: string): ShipHardpoints {
   const thrusters: THREE.Object3D[] = [];
   const muzzles: THREE.Object3D[] = [];
@@ -179,17 +209,12 @@ function collectHardpoints(model: THREE.Group, shipClass: string): ShipHardpoint
 
   // Traverse and collect hardpoints
   model.traverse((child) => {
-    allObjects.push(child.name || "(unnamed)");
-
-    const name = child.name.toLowerCase();
-
-    if (name.startsWith("hp_thruster_")) {
-      thrusters.push(child);
-    } else if (name.startsWith("hp_muzzle_")) {
-      muzzles.push(child);
-    } else if (name.startsWith("hp_weapon_")) {
-      weapons.push(child);
-    }
+    const name = child.name || "(unnamed)";
+    allObjects.push(name);
+    const kind = classifyHardpointName(name);
+    if (kind === "muzzle") muzzles.push(child);
+    else if (kind === "weapon") weapons.push(child);
+    else if (kind === "thruster") thrusters.push(child);
   });
 
   // Canonical order: sort by name so hardpointIndex maps stably across all clients.
@@ -198,7 +223,8 @@ function collectHardpoints(model: THREE.Group, shipClass: string): ShipHardpoint
   muzzles.sort(byName);
   weapons.sort(byName);
 
-  // Debug logging
+  // Debug logging (shown at model load only, keep this until the alignment
+  // fix is verified on all ships)
   console.log(`[Three.js] ${shipClass} - All objects in GLB:`, allObjects);
   console.log(`[Three.js] ${shipClass} - Hardpoints found:`);
   console.log(`  Thrusters (${thrusters.length}):`, thrusters.map(t => t.name));
@@ -208,8 +234,8 @@ function collectHardpoints(model: THREE.Group, shipClass: string): ShipHardpoint
   if (thrusters.length === 0) {
     console.warn(`[Three.js] ${shipClass} - NO thruster hardpoints found!`);
   }
-  if (muzzles.length === 0) {
-    console.warn(`[Three.js] ${shipClass} - NO muzzle hardpoints found!`);
+  if (muzzles.length === 0 && weapons.length === 0) {
+    console.warn(`[Three.js] ${shipClass} - NO muzzle/weapon hardpoints found! Projectiles will use center-of-ship fallback.`);
   }
 
   return { thrusters, muzzles, weapons };
@@ -523,13 +549,14 @@ export function updateShip3D(
       weapons: [],
     };
 
-    // Find cloned hardpoints by name matching
+    // Find cloned hardpoints using the same classifier as the template so the
+    // per-instance list matches the canonical model-local hardpoint list.
     if (templateHardpoints) {
       model.traverse((child) => {
-        const name = child.name.toLowerCase();
-        if (name.startsWith("hp_thruster_")) hardpoints.thrusters.push(child);
-        else if (name.startsWith("hp_muzzle_")) hardpoints.muzzles.push(child);
-        else if (name.startsWith("hp_weapon_")) hardpoints.weapons.push(child);
+        const kind = classifyHardpointName(child.name || "");
+        if (kind === "thruster") hardpoints.thrusters.push(child);
+        else if (kind === "muzzle") hardpoints.muzzles.push(child);
+        else if (kind === "weapon") hardpoints.weapons.push(child);
       });
       // Canonical order must match template so hardpointIndex resolves consistently.
       const byName = (a: THREE.Object3D, b: THREE.Object3D) => a.name.localeCompare(b.name);

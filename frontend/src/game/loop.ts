@@ -1659,12 +1659,20 @@ function tickWorld(dt: number): void {
           return { x: fallbackX, y: fallbackY };
         };
 
+        // Per-shot aim direction is computed from the selected muzzle world
+        // position toward the target's current position (not from ship center).
+        // This is rule 6/7 of the phase spec — direction is muzzle→target so
+        // beams originate exactly at the visible muzzle and travel to the NPC.
+        const aimFromMuzzle = (ox: number, oy: number): number =>
+          Math.atan2(atkTarget.pos.y - oy, atkTarget.pos.x - ox);
+
         if (pattern === "sniper") {
           // Single beam — GLB muzzle[0], fallback: forward 10px
           const dmg = Math.round(laserDmg);
           const fb = { x: p.pos.x + Math.cos(ang) * 10, y: p.pos.y + Math.sin(ang) * 10 };
           const { x: ox, y: oy } = muzzlePos(0, fb.x, fb.y);
-          fireProjectile("player", ox, oy, ang, dmg, laserColor, 6, {
+          const shotAng = aimFromMuzzle(ox, oy);
+          fireProjectile("player", ox, oy, shotAng, dmg, laserColor, 6, {
             weaponKind: "laser", speedMul: 3.2,
           });
           state.particles.push({ id: `mf-${Math.random().toString(36).slice(2, 8)}`, pos: { x: ox, y: oy }, vel: { x: 0, y: 0 }, ttl: 0.25, maxTtl: 0.25, color: "#ffffff", size: 90, kind: "flash" });
@@ -1681,7 +1689,7 @@ function tickWorld(dt: number): void {
             const fbX = p.pos.x + Math.cos(perpAng) * 5 * side;
             const fbY = p.pos.y + Math.sin(perpAng) * 5 * side;
             const { x: ox, y: oy } = muzzlePos(si, fbX, fbY);
-            const spreadAng = ang + (si - 1) * spread;
+            const spreadAng = aimFromMuzzle(ox, oy) + (si - 1) * spread;
             fireProjectile("player", ox, oy, spreadAng, perPellet, laserColor, 4, {
               weaponKind: "laser", speedMul: 1.8,
             });
@@ -1699,7 +1707,7 @@ function tickWorld(dt: number): void {
             const fbX = p.pos.x + Math.cos(perpAng) * 5 * side;
             const fbY = p.pos.y + Math.sin(perpAng) * 5 * side;
             const { x: ox, y: oy } = muzzlePos(bi, fbX, fbY);
-            const burstAng = ang + (Math.random() - 0.5) * 0.04;
+            const burstAng = aimFromMuzzle(ox, oy) + (Math.random() - 0.5) * 0.04;
             fireProjectile("player", ox, oy, burstAng, perBurst, laserColor, 4, {
               weaponKind: "laser", speedMul: 2.5,
             });
@@ -1715,7 +1723,8 @@ function tickWorld(dt: number): void {
             const fbX = p.pos.x + Math.cos(perpAng) * 4 * side;
             const fbY = p.pos.y + Math.sin(perpAng) * 4 * side;
             const { x: ox, y: oy } = muzzlePos(si, fbX, fbY);
-            fireProjectile("player", ox, oy, ang - side * 0.03, perShot, laserColor, 4, {
+            const shotAng = aimFromMuzzle(ox, oy) - side * 0.03;
+            fireProjectile("player", ox, oy, shotAng, perShot, laserColor, 4, {
               weaponKind: "laser", speedMul: 2.14,
             });
             state.particles.push({ id: `mf-${Math.random().toString(36).slice(2, 8)}`, pos: { x: ox, y: oy }, vel: { x: 0, y: 0 }, ttl: 0.18, maxTtl: 0.18, color: laserColor, size: 70, kind: "flash" });
