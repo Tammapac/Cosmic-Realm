@@ -927,6 +927,15 @@ export function getDebugSpawnBuffer(): DebugSpawnRecord[] {
 }
 const rocketFireCd = { value: 0 };
 
+// Local mirror of the server's per-player muzzle-pair cursor for the standard
+// laser pattern. Both sides start at 0 and advance identically on each fire
+// (see LASER_PAIR_COUNT in backend/src/game/engine.ts), so the local muzzle
+// flash particles land on the same GLB muzzles as the server-emitted
+// projectiles. If the two sides ever desync (e.g., server restart), the visual
+// mismatch is bounded to one cycle before they realign.
+const LASER_PAIR_COUNT = 8;
+let localNextMuzzlePair = 0;
+
 function tickWorld(dt: number): void {
   state.tick += dt;
   if (state.levelUpFlash > 0) state.levelUpFlash = Math.max(0, state.levelUpFlash - dt);
@@ -1745,23 +1754,30 @@ function tickWorld(dt: number): void {
           }
           emitSpark(p.pos.x, p.pos.y, "#ffffff", 3, 60, 2);
         } else {
-          // Standard dual-gun — GLB muzzles[0,1], fallback: perpendicular ±4px
+          // Standard dual-gun — 2 shots per trigger pull, cycling through
+          // muzzle pairs on ships with more than 2 muzzles. Cursor advances
+          // once per fire; muzzlePos()'s idx % ring.length handles ships with
+          // fewer muzzles than the cursor implies (e.g. 2-muzzle ships stay
+          // on (0,1)). Fallback: perpendicular ±4px.
           const perShot = Math.round(laserDmg / 2);
+          const pair = localNextMuzzlePair % LASER_PAIR_COUNT;
+          const hpBase = pair * 2;
           for (let si = 0; si < 2; si++) {
             const side = si === 0 ? -1 : 1;
             const fbX = p.pos.x + Math.cos(perpAng) * 4 * side;
             const fbY = p.pos.y + Math.sin(perpAng) * 4 * side;
-            const { x: ox, y: oy } = muzzlePos(si, fbX, fbY);
+            const { x: ox, y: oy } = muzzlePos(hpBase + si, fbX, fbY);
             const shotAng = aimFromMuzzle(ox, oy) - side * 0.03;
             fireProjectile("player", ox, oy, shotAng, perShot, laserColor, 4, {
               weaponKind: "laser", speedMul: 2.14,
             });
-            recordDebugSpawn({ spawnX: ox, spawnY: oy, entityId: "player", ring: "muzzle", index: si, source: "local" });
+            recordDebugSpawn({ spawnX: ox, spawnY: oy, entityId: "player", ring: "muzzle", index: hpBase + si, source: "local" });
             state.particles.push({ id: `mf-${Math.random().toString(36).slice(2, 8)}`, pos: { x: ox, y: oy }, vel: { x: 0, y: 0 }, ttl: 0.18, maxTtl: 0.18, color: laserColor, size: 70, kind: "flash" });
             state.particles.push({ id: `mf2-${Math.random().toString(36).slice(2, 8)}`, pos: { x: ox, y: oy }, vel: { x: 0, y: 0 }, ttl: 0.1, maxTtl: 0.1, color: "#ffffff", size: 45, kind: "flash" });
             emitSpark(ox, oy, laserColor, 6, 120, 3);
             emitSpark(ox, oy, "#ffffff", 3, 70, 2);
           }
+          localNextMuzzlePair = (localNextMuzzlePair + 1) % LASER_PAIR_COUNT;
         }
         sfx.laserShoot();
         atkTarget.aggro = true;

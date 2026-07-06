@@ -54,6 +54,11 @@ export type OnlinePlayer = {
   lastHitTick: number;
   isDocked: boolean;
   drones: WireDrone[];
+  // Cursor into the standard-laser muzzle pair schedule. Advances by 1 per
+  // trigger pull; the two shots that pull emits use hardpointIndex
+  // (2·nextMuzzlePair) and (2·nextMuzzlePair + 1). Wraps every LASER_PAIR_COUNT
+  // fires so ships with more muzzles cycle across all of them.
+  nextMuzzlePair: number;
 };
 
 const zones = new Map<string, Map<number, OnlinePlayer>>();

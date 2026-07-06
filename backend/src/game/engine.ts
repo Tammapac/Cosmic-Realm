@@ -758,8 +758,18 @@ export class GameEngine {
             fireProj(ox, oy, burstAng, perBurst, 4, 575, bi); // 230 * 2.5
           }
         } else {
+          // Standard: 2 shots per trigger pull, cycling through muzzle pairs.
+          // Cursor advances every fire so ships with more than 2 muzzles use
+          // all of them: pair 0 → (0,1), pair 1 → (2,3), pair 2 → (4,5), …
+          // The client resolves each hardpointIndex against its own GLB muzzle
+          // ring modulo ring.length, so a 9-muzzle ship naturally overlaps:
+          // pair 4 → (8,9) → muzzles (8, 0) on a 9-muzzle ship. Ships with
+          // only 2 muzzles collapse every pair to (0,1) — no visible change.
           const perShot = Math.round(laserDmg / 2);
           const projSpeed = 492; // 230 * 2.14 — matches frontend standard pattern
+          const LASER_PAIR_COUNT = 8; // supports ships up to 16 muzzles cleanly
+          const pair = p.nextMuzzlePair % LASER_PAIR_COUNT;
+          const hpBase = pair * 2;
           for (let si = 0; si < 2; si++) {
             const side = si === 0 ? -1 : 1;
             const ox = p.posX + Math.cos(perpAng) * 4 * side;
@@ -769,8 +779,9 @@ export class GameEngine {
             const predictedX = target.pos.x + (target.vel?.x ?? 0) * travelTime;
             const predictedY = target.pos.y + (target.vel?.y ?? 0) * travelTime;
             const fireAng = angleFromTo({ x: ox, y: oy }, { x: predictedX, y: predictedY });
-            fireProj(ox, oy, fireAng, perShot, 4, projSpeed, si);
+            fireProj(ox, oy, fireAng, perShot, 4, projSpeed, hpBase + si);
           }
+          p.nextMuzzlePair = (p.nextMuzzlePair + 1) % LASER_PAIR_COUNT;
         }
 
         const cd = Math.max(0.2, 0.85 / stats.fireRate);

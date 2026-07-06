@@ -114,6 +114,7 @@ export function setupSocket(io: Server) {
         kind: String(d.kind),
         hp: Number(d.hp ?? d.hpMax ?? 100),
       })),
+      nextMuzzlePair: 0,
     };
 
     socket.join(`zone:${online.zone}`);
