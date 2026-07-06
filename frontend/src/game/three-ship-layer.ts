@@ -38,6 +38,19 @@ interface ShipHardpoints {
   debugMarkers?: THREE.Mesh[];
 }
 
+// Model-local (canonical, un-rotated, un-scaled) hardpoint offsets. These are
+// captured once at template load and never change. The projectile spawn code
+// uses these plus the authoritative (worldX, worldY, angle) to compute the
+// muzzle world position analytically — decoupled from the Three.js render
+// pipeline's per-frame lerp/interpolation state.
+//
+// x/z are in **model space** (Three.js convention): model +X = sideways,
+// model +Z = forward. Y is discarded (top-down projection).
+interface ModelLocalHardpoints {
+  muzzles: { x: number; z: number }[];
+  weapons: { x: number; z: number }[];
+}
+
 interface Ship3D {
   lastYRot: number;
   wrapper: THREE.Group;
@@ -48,6 +61,10 @@ interface Ship3D {
   lastCamY: number;
   lastWorldX: number;
   lastWorldY: number;
+  // World units per model unit for this ship class + sizeScale. Cached at
+  // updateShip3D() time so getShipMuzzleWorldPositionsAt() can compute the
+  // world offset from model-local hardpoint coords without a Three.js query.
+  worldUnitsPerModelUnit: number;
 }
 
 let renderer: THREE.WebGLRenderer | null = null;
@@ -254,6 +271,24 @@ function loadModel(shipClass: string): void {
       const hardpoints = collectHardpoints(model, shipClass);
       model.userData.hardpoints = hardpoints;
 
+      // Snapshot model-local hardpoint positions with the template at the origin
+      // and no rotation/scale applied. These are the canonical offsets used by
+      // getShipMuzzleWorldPositionsAt() to compute the world position of each
+      // muzzle analytically from (worldX, worldY, angle) — bypassing the render
+      // pipeline's per-frame transform lerp.
+      model.updateMatrixWorld(true);
+      const _localTmp = new THREE.Vector3();
+      const localHardpoints: ModelLocalHardpoints = { muzzles: [], weapons: [] };
+      for (const hp of hardpoints.muzzles) {
+        hp.getWorldPosition(_localTmp);
+        localHardpoints.muzzles.push({ x: _localTmp.x, z: _localTmp.z });
+      }
+      for (const hp of hardpoints.weapons) {
+        hp.getWorldPosition(_localTmp);
+        localHardpoints.weapons.push({ x: _localTmp.x, z: _localTmp.z });
+      }
+      model.userData.localHardpoints = localHardpoints;
+
       // Store raw size for scaling later
       model.userData.maxDim = maxDim;
       loadedModels.set(shipClass, model);
@@ -351,8 +386,71 @@ export function getShipHardpointPositions(
   return result;
 }
 
-// Returns muzzle/weapon hardpoint world positions using the cam values from the
-// last render frame — safe to call from the game tick without passing cam.
+// Analytic muzzle/weapon world positions computed from the authoritative ship
+// state (worldX, worldY, angle), independent of the Three.js render pipeline.
+//
+// This is the correct entry point for projectile spawn logic. The alternative,
+// getShipMuzzleWorldPositions(), reads the live Three.js wrapper transform,
+// which is set on each pixiRender() from the (possibly stale) render-loop view
+// of ship position/camera and rotates via a lerped ship.lastYRot. When a
+// projectile:spawn socket event arrives between renders, the wrapper transform
+// is one frame behind and the muzzle world position drifts, producing a
+// visible offset that grows with local player camera motion and with the
+// angular gap between authoritative angle and the on-screen rotation.
+//
+// Here we compute the muzzle position purely from:
+//   - worldX/worldY: the ship's authoritative world position at fire time
+//   - angle:         the ship's authoritative heading at fire time
+//   - the model-local hardpoint offsets captured once at GLB load
+//   - worldUnitsPerModelUnit: cached from the last updateShip3D() call, which
+//     is stable per (shipClass, sizeScale) — so even a one-frame-old value is
+//     correct as long as ship class hasn't changed.
+//
+// Rotation math mirrors updateShip3D()'s Three.js Y rotation of (-angle + π):
+//   cos(-angle + π) = -cos(angle)
+//   sin(-angle + π) =  sin(angle)
+// so a model-local hardpoint at (mx, mz) rotates to:
+//   mx_rot = -mx·cos(angle) + mz·sin(angle)
+//   mz_rot = -mx·sin(angle) - mz·cos(angle)
+// scaled by worldUnitsPerModelUnit and offset by (worldX, worldY).
+export function getShipMuzzleWorldPositionsAt(
+  entityId: string,
+  worldX: number,
+  worldY: number,
+  angle: number,
+): {
+  muzzles: { x: number; y: number }[];
+  weapons: { x: number; y: number }[];
+} | null {
+  const ship = activeShips.get(entityId);
+  if (!ship) return null;
+  const localHp = ship.model.userData.localHardpoints as ModelLocalHardpoints | undefined;
+  if (!localHp) return null;
+  const s = ship.worldUnitsPerModelUnit;
+  const ca = Math.cos(angle);
+  const sa = Math.sin(angle);
+  const dbg = (window as any).__DEBUG_HARDPOINTS;
+
+  const project = (mx: number, mz: number, label: string, idx: number): { x: number; y: number } => {
+    const dx = (-mx * ca + mz * sa) * s;
+    const dy = (-mx * sa - mz * ca) * s;
+    const wx = worldX + dx;
+    const wy = worldY + dy;
+    if (dbg) {
+      console.log(`[HP:analytic] entityId=${entityId} ${label}[${idx}] modelLocal=(${mx.toFixed(2)},${mz.toFixed(2)}) angle=${angle.toFixed(3)} scale=${s.toFixed(3)} shipWorld=(${worldX.toFixed(1)},${worldY.toFixed(1)}) muzzleWorld=(${wx.toFixed(1)},${wy.toFixed(1)}) delta=(${dx.toFixed(1)},${dy.toFixed(1)})`);
+    }
+    return { x: wx, y: wy };
+  };
+
+  const muzzles = localHp.muzzles.map((m, i) => project(m.x, m.z, "muzzle", i));
+  const weapons = localHp.weapons.map((w, i) => project(w.x, w.z, "weapon", i));
+  return { muzzles, weapons };
+}
+
+// Legacy: returns muzzle/weapon hardpoint world positions using the cam values
+// from the last render frame — safe to call from the game tick without passing
+// cam. Prefer getShipMuzzleWorldPositionsAt() for projectile spawn logic; this
+// function is retained for callers that need the live rendered position.
 //
 // The wrapper has rotation.x = -0.85 for depth. A naive inverse of
 //   getWorldPosition().z / zoom + camY
@@ -480,7 +578,13 @@ export function updateShip3D(
     wrapper.add(model);
     scene.add(wrapper);
 
-    ship = { wrapper, model, hardpoints, engineGlows, lastYRot: -angle + Math.PI, lastCamX: camX, lastCamY: camY, lastWorldX: worldX, lastWorldY: worldY };
+    ship = {
+      wrapper, model, hardpoints, engineGlows,
+      lastYRot: -angle + Math.PI,
+      lastCamX: camX, lastCamY: camY,
+      lastWorldX: worldX, lastWorldY: worldY,
+      worldUnitsPerModelUnit: 1,
+    };
     activeShips.set(entityId, ship);
     console.log("[Three.js] SHIP CREATED:", entityId, shipClass,
                 `(${hardpoints.thrusters.length}T/${hardpoints.muzzles.length}M/${hardpoints.weapons.length}W + ${engineGlows.length}G)`);
@@ -498,6 +602,11 @@ export function updateShip3D(
   // Scale model so its longest dimension = targetPixels in world units
   const finalScale = (targetPixels * cameraZoom) / maxDim;
   ship.wrapper.scale.setScalar(finalScale);
+  // Cache the model→world scale so analytic hardpoint lookup doesn't need the
+  // Three.js wrapper. worldUnits/modelUnit = targetPixels / maxDim (a world
+  // unit and a screen pixel are 1:1 at zoom=1, and the ship renders at
+  // targetPixels wide regardless of zoom).
+  ship.worldUnitsPerModelUnit = targetPixels / maxDim;
 
   // Rotation: game angle 0=east(+X), PI/2=south(+Z), PI=west(-X)
   // Three.js Y-rotation: 0=facing+Z, PI/2=facing-X, PI=facing-Z
