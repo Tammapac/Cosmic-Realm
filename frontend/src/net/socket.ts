@@ -208,6 +208,9 @@ export type ProjectileSpawnEvent = {
   hardpointIndex?: number;
   hardpointRing?: "muzzle" | "weapon";
   shipClass?: string;
+  // Enemy the shooter is targeting. Remote clients use this to reproduce the
+  // local player's muzzle→target convergence for renderOnly projectiles.
+  targetId?: string;
 };
 
 type SocketEvents = {

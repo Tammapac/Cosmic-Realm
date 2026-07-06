@@ -641,6 +641,11 @@ export type Projectile = {
   armorPiercing?: boolean;  // AP ammo marker
   weaponKind?: WeaponKind;
   renderOnly?: boolean;
+  // For remote (renderOnly) laser projectiles: id of the enemy the remote
+  // shooter is aiming at. The projectile-tick redirects velocity toward this
+  // enemy for the first ~0.3s of flight so remote lasers converge from the
+  // shooter's muzzles onto the enemy sprite, matching local behavior.
+  remoteTargetId?: string;
 };
 
 export type Floater = {

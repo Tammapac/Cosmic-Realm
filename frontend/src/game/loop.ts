@@ -1886,7 +1886,6 @@ function tickWorld(dt: number): void {
   state.projectiles = state.projectiles.filter((pr) => {
     // Redirect fresh player laser projectiles toward the on-screen attack target
     // so the visual matches the enemy sprite position (not the server-side position).
-    // renderOnly projectiles are remote/server-authoritative — never redirect them.
     if (pr.fromPlayer && !pr.renderOnly && !pr.homing && pr.ttl > 1.2 && state.attackTargetId) {
       const visTarget = state.enemies.find(e => e.id === state.attackTargetId);
       if (visTarget) {
@@ -1898,11 +1897,33 @@ function tickWorld(dt: number): void {
         pr.vel.x = Math.cos(toAng) * spd;
         pr.vel.y = Math.sin(toAng) * spd;
       }
-    } else if (pr.fromPlayer && pr.renderOnly && !pr.homing && pr.ttl > 1.2 && state.attackTargetId) {
-      // DEBUG: confirm remote projectiles are NOT redirected after fix
-      if ((window as any).__DEBUG_PROJ) {
+    } else if (pr.fromPlayer && pr.renderOnly && !pr.homing && pr.ttl > 1.2 && pr.remoteTargetId) {
+      // Remote laser convergence: steer the remote player's shots toward the
+      // enemy they told us about in the projectile:spawn payload. Same math as
+      // local, using per-projectile remoteTargetId instead of state.attackTargetId.
+      // This produces the outer-muzzle-to-target convergence the local player sees.
+      const visTarget = state.enemies.find(e => e.id === pr.remoteTargetId);
+      if (visTarget) {
         const spd = Math.sqrt(pr.vel.x * pr.vel.x + pr.vel.y * pr.vel.y);
-        console.log("[ProjRedirect] REMOTE laser skipped (renderOnly=true)", { id: pr.id, spd: spd.toFixed(1), vx: pr.vel.x.toFixed(1), vy: pr.vel.y.toFixed(1) });
+        const toAng = Math.atan2(visTarget.pos.y - pr.pos.y, visTarget.pos.x - pr.pos.x);
+        pr.vel.x = Math.cos(toAng) * spd;
+        pr.vel.y = Math.sin(toAng) * spd;
+        if ((window as any).__DEBUG_PROJ) {
+          console.log("[ProjRedirect] REMOTE laser redirected", {
+            id: pr.id,
+            targetId: pr.remoteTargetId,
+            spd: spd.toFixed(1),
+            pos: { x: pr.pos.x.toFixed(1), y: pr.pos.y.toFixed(1) },
+            target: { x: visTarget.pos.x.toFixed(1), y: visTarget.pos.y.toFixed(1) },
+            vel: { vx: pr.vel.x.toFixed(1), vy: pr.vel.y.toFixed(1) },
+            renderOnly: true,
+          });
+        }
+      } else if ((window as any).__DEBUG_PROJ) {
+        console.log("[ProjRedirect] REMOTE laser has targetId but target missing from state.enemies", {
+          id: pr.id,
+          targetId: pr.remoteTargetId,
+        });
       }
     }
     // Homing steering (rockets) — renderOnly rockets must not home toward local targets
@@ -2936,10 +2957,56 @@ export function onProjectileSpawnFromServer(data: ProjectileSpawnEvent): void {
     });
   }
 
+  // Compute the projectile's initial velocity. Because we relocated the visual
+  // spawn from the server's synthetic offset to the actual GLB muzzle, the
+  // server's (vx, vy) points where the *server-offset* shot would fly, not
+  // where the muzzle-anchored shot should fly. If we know the target enemy,
+  // re-aim from the (corrected) muzzle at the target's live position while
+  // preserving the server-authoritative speed magnitude.
+  let vx = data.vx;
+  let vy = data.vy;
+  const serverSpeed = Math.hypot(data.vx, data.vy);
+
+  if (
+    isRemotePlayer &&
+    !isRocket &&
+    !data.homing &&
+    data.targetId &&
+    serverSpeed > 0
+  ) {
+    const tgt = state.enemies.find((e) => e.id === data.targetId);
+    if (tgt) {
+      const toAng = Math.atan2(tgt.pos.y - spawnY, tgt.pos.x - spawnX);
+      vx = Math.cos(toAng) * serverSpeed;
+      vy = Math.sin(toAng) * serverSpeed;
+      if ((window as any).__DEBUG_PROJ) {
+        console.log("[RemoteAim] initial re-aim from muzzle→target", {
+          ownerPlayerId: data.fromPlayerId,
+          targetId: data.targetId,
+          hardpointIndex: data.hardpointIndex,
+          hardpointRing: data.hardpointRing,
+          serverXY: { x: data.x.toFixed(1), y: data.y.toFixed(1) },
+          serverVel: { vx: data.vx.toFixed(1), vy: data.vy.toFixed(1) },
+          spawnXY: { x: spawnX.toFixed(1), y: spawnY.toFixed(1) },
+          targetXY: { x: tgt.pos.x.toFixed(1), y: tgt.pos.y.toFixed(1) },
+          newVel: { vx: vx.toFixed(1), vy: vy.toFixed(1) },
+          serverSpeed: serverSpeed.toFixed(1),
+          renderOnly: true,
+        });
+      }
+    } else if ((window as any).__DEBUG_PROJ) {
+      console.log("[RemoteAim] targetId set but enemy not in state.enemies — keeping server vel", {
+        ownerPlayerId: data.fromPlayerId,
+        targetId: data.targetId,
+        enemyCount: state.enemies.length,
+      });
+    }
+  }
+
   state.projectiles.push({
     id: `pr-${Math.random().toString(36).slice(2, 8)}`,
     pos: { x: spawnX, y: spawnY },
-    vel: { x: data.vx, y: data.vy },
+    vel: { x: vx, y: vy },
     damage: data.damage,
     ttl: data.ttl ?? (data.homing ? 4.0 : 1.5),
     fromPlayer: data.fromPlayer,
@@ -2949,6 +3016,7 @@ export function onProjectileSpawnFromServer(data: ProjectileSpawnEvent): void {
     homing: data.homing,
     weaponKind: data.weaponKind,
     renderOnly: true,
+    remoteTargetId: isRemotePlayer && !isRocket && !data.homing ? data.targetId : undefined,
   });
   scheduleBump();
 

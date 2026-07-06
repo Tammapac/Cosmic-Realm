@@ -859,6 +859,7 @@ function broadcastEvents(io: Server, events: GameEvent[]): void {
               hardpointIndex: ev.hardpointIndex,
               hardpointRing: ev.hardpointRing,
               shipClass: ev.shipClass,
+              targetId: ev.targetId,
             });
           }
         } else {

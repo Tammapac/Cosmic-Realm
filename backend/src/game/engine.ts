@@ -163,7 +163,7 @@ export type GameEvent =
   | { type: "npc:spawn"; zone: string; npc: ClientNpc }
   | { type: "npc:die"; zone: string; npcId: string }
   | { type: "player:hit"; playerId: number; damage: number; zone: string }
-  | { type: "projectile:spawn"; zone: string; fromPlayerId: number; x: number; y: number; vx: number; vy: number; damage: number; color: string; size: number; crit: boolean; weaponKind: "laser" | "rocket" | "energy" | "plasma"; homing: boolean; ammoType?: string; ttl: number; hardpointIndex?: number; hardpointRing?: "muzzle" | "weapon"; shipClass?: string };
+  | { type: "projectile:spawn"; zone: string; fromPlayerId: number; x: number; y: number; vx: number; vy: number; damage: number; color: string; size: number; crit: boolean; weaponKind: "laser" | "rocket" | "energy" | "plasma"; homing: boolean; ammoType?: string; ttl: number; hardpointIndex?: number; hardpointRing?: "muzzle" | "weapon"; shipClass?: string; targetId?: string };
 
 export type ClientEnemy = {
   id: string;
@@ -724,6 +724,7 @@ export class GameEngine {
             crit: proj.crit, weaponKind: proj.weaponKind, homing: proj.homing,
             ammoType: p.laserAmmoType, ttl: proj.ttl,
             hardpointIndex: hpIdx, hardpointRing: "muzzle", shipClass: p.shipClass,
+            targetId: target.id,
           });
         };
 
