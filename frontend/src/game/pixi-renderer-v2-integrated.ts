@@ -12,10 +12,10 @@
 import * as PIXI from "pixi.js";
 import { initHardpointEditor, toggleHardpointEditor, isEditorActive } from "./debug/HardpointEditor";
 import { DIRECTIONS_32 } from "./debug/hardpointTypes";
-import { has3DModel, is3DReady, updateShip3D, setCameraZoom, beginFrame, markActive, endFrame, render3DLayer, getShipHardpointPositions, updateEngineGlow, updateNebulaBackground, removeShip3D, preload3DModels, getLoadingProgress } from "./three-ship-layer";
+import { has3DModel, is3DReady, updateShip3D, setCameraZoom, beginFrame, markActive, endFrame, render3DLayer, getShipHardpointPositions, updateEngineGlow, updateNebulaBackground, removeShip3D, preload3DModels, getLoadingProgress, debugEnumerateAllMuzzles } from "./three-ship-layer";
 import { setStationCameraZoom, beginStationFrame, updateStationOnly, endStationFrame, renderStation3DLayer, removeStation3D, initStation3DLayer } from "./three-station-layer";
 import { state } from "./store";
-import { effectiveStats } from "./loop";
+import { effectiveStats, getDebugSpawnBuffer } from "./loop";
 import {
   Enemy, Projectile, Particle, Floater, NpcShip, OtherPlayer, Asteroid, RESOURCES,
   CargoBox, Drone, DRONE_DEFS, ZONES, STATIONS, PORTALS, DUNGEONS, SHIP_CLASSES,
@@ -60,6 +60,12 @@ let effectsBehindLayer: PIXI.Container;
 let effectsFrontLayer: PIXI.Container;
 let floaterLayer: PIXI.Container;
 let uiLayer: PIXI.Container;
+
+// Debug overlay for muzzle/spawn alignment verification. Rendered as a single
+// PIXI.Graphics inside worldLayer so it inherits camera transform automatically.
+// Populated only when window.__DEBUG_MUZZLE_MARKERS is truthy.
+let debugMuzzleGfx: PIXI.Graphics | null = null;
+let debugMuzzleLabels: PIXI.Container | null = null;
 
 let stationSprite: PIXI.Sprite | null = null;
 let stationTexture: PIXI.Texture | null = null;
@@ -1297,6 +1303,13 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
   worldLayer.addChild(effectsFrontLayer);
   worldLayer.addChild(floaterLayer);
 
+  // Debug muzzle marker overlay — always the topmost child of worldLayer so
+  // dots draw above sprites but under UI. Empty until __DEBUG_MUZZLE_MARKERS.
+  debugMuzzleGfx = new PIXI.Graphics();
+  debugMuzzleLabels = new PIXI.Container();
+  worldLayer.addChild(debugMuzzleGfx);
+  worldLayer.addChild(debugMuzzleLabels);
+
   effectManager = new EffectManager(effectsBehindLayer, effectsFrontLayer);
 
   lastRenderTime = performance.now();
@@ -1490,6 +1503,9 @@ export function pixiRender(): void {
 
   // ── Projectiles ─────────────────────────────────────────────────────
   syncProjectiles(cam, halfW, halfH);
+
+  // ── Debug: muzzle & spawn alignment markers ────────────────────────
+  syncDebugMuzzleMarkers();
 
   // ── Effect particles ────────────────────────────────────────────────
   // syncEffectParticles disabled — EffectManager handles all VFX
@@ -3574,6 +3590,91 @@ function drawDroneSprite(g: PIXI.Graphics, kind: string, indexHash: number): voi
   g.beginFill(0xffffff, dPulse * 0.7);
   g.drawCircle(0, 0, 1.5);
   g.endFill();
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// DEBUG MUZZLE / SPAWN ALIGNMENT MARKERS
+// ══════════════════════════════════════════════════════════════════════════
+//
+// Toggled at runtime via `window.__DEBUG_MUZZLE_MARKERS = true`. Draws:
+//   * cyan hollow circle at each analytic muzzle world position (per ship)
+//   * magenta filled dot at each recent projectile spawn (fading over 1.5s)
+//   * white line connecting each recent spawn to its corresponding analytic
+//     muzzle, so you can visually read the delta/offset in world units
+//   * small text label under each spawn showing:
+//       entityId  ring:index  Δ=<distance in world units>  angle=<deg>
+//
+// Gameplay code untouched. The graphics container is cleared each frame and
+// costs zero when the flag is off.
+function syncDebugMuzzleMarkers(): void {
+  if (!debugMuzzleGfx || !debugMuzzleLabels) return;
+  const flagOn = typeof window !== "undefined" && !!(window as any).__DEBUG_MUZZLE_MARKERS;
+  debugMuzzleGfx.clear();
+  if (!flagOn) {
+    if (debugMuzzleLabels.children.length) debugMuzzleLabels.removeChildren();
+    return;
+  }
+
+  const muzzles = debugEnumerateAllMuzzles();
+  const spawns = getDebugSpawnBuffer();
+  const now = performance.now();
+
+  // Muzzle rings — cyan hollow circle sized so a stroke is visible even at
+  // small zooms; we rely on worldLayer.scale for auto-zoom of the ring size.
+  debugMuzzleGfx.lineStyle(1.5, 0x00ffff, 0.9);
+  for (const m of muzzles) {
+    debugMuzzleGfx.drawCircle(m.worldX, m.worldY, 4);
+    // Small cross at the exact center pixel
+    debugMuzzleGfx.moveTo(m.worldX - 1.5, m.worldY);
+    debugMuzzleGfx.lineTo(m.worldX + 1.5, m.worldY);
+    debugMuzzleGfx.moveTo(m.worldX, m.worldY - 1.5);
+    debugMuzzleGfx.lineTo(m.worldX, m.worldY + 1.5);
+  }
+
+  // Recent spawn dots + connector lines to analytic muzzle.
+  const muzzleKey = (entityId: string, ring: "muzzle" | "weapon", index: number) =>
+    `${entityId}:${ring}:${index}`;
+  const muzzleByKey = new Map<string, typeof muzzles[number]>();
+  for (const m of muzzles) muzzleByKey.set(muzzleKey(m.entityId, m.ring, m.index), m);
+
+  // Rebuild labels each frame (cheap for < 200 spawns)
+  debugMuzzleLabels.removeChildren();
+
+  for (const s of spawns) {
+    const alpha = Math.max(0, Math.min(1, (s.expiresAt - now) / 1500));
+    // Spawn dot
+    debugMuzzleGfx.beginFill(0xff00ff, alpha);
+    debugMuzzleGfx.drawCircle(s.spawnX, s.spawnY, 2.5);
+    debugMuzzleGfx.endFill();
+
+    // Line from spawn to analytic muzzle if we can identify it
+    const m = muzzleByKey.get(muzzleKey(s.entityId, s.ring, s.index));
+    if (m) {
+      debugMuzzleGfx.lineStyle(0.8, 0xffffff, alpha * 0.7);
+      debugMuzzleGfx.moveTo(s.spawnX, s.spawnY);
+      debugMuzzleGfx.lineTo(m.worldX, m.worldY);
+      // Reset lineStyle so subsequent circles don't inherit
+      debugMuzzleGfx.lineStyle(1.5, 0x00ffff, 0.9);
+    }
+
+    // Label — small text just below the spawn.
+    const delta = m ? Math.hypot(s.spawnX - m.worldX, s.spawnY - m.worldY) : NaN;
+    const angleDeg = m ? (m.lastYRot * 180 / Math.PI).toFixed(0) : "?";
+    const labelText = m
+      ? `${s.entityId} ${s.ring}[${s.index}] ${m.nodeName} Δ=${delta.toFixed(1)} yaw=${angleDeg}°`
+      : `${s.entityId} ${s.ring}[${s.index}] (${s.source}) no-hp-match`;
+    const label = new PIXI.Text(labelText, {
+      fontFamily: "monospace",
+      fontSize: 8,
+      fill: 0xffff00,
+      stroke: 0x000000,
+      strokeThickness: 2,
+    });
+    label.resolution = 2;
+    label.position.set(s.spawnX + 4, s.spawnY + 4);
+    label.alpha = alpha;
+    debugMuzzleLabels.addChild(label);
+  }
 }
 
 function syncDrones(): void {

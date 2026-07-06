@@ -899,6 +899,32 @@ export function stopLoop(): void {
 }
 
 const playerFireCd = { value: 0 };
+
+// Debug-only spawn buffer for the __DEBUG_MUZZLE_MARKERS overlay. Each entry
+// stays visible for a fixed TTL so the overlay can render a persistent dot at
+// each recent projectile spawn plus a delta line to the analytic muzzle at
+// (entityId, ring, index). Not read by gameplay code.
+export interface DebugSpawnRecord {
+  spawnX: number;
+  spawnY: number;
+  entityId: string;
+  ring: "muzzle" | "weapon";
+  index: number;
+  source: "local" | "remote";
+  expiresAt: number; // performance.now() ms
+}
+const _debugSpawnBuf: DebugSpawnRecord[] = [];
+const _DEBUG_SPAWN_TTL_MS = 1500;
+export function recordDebugSpawn(rec: Omit<DebugSpawnRecord, "expiresAt">): void {
+  if (typeof window === "undefined" || !(window as any).__DEBUG_MUZZLE_MARKERS) return;
+  _debugSpawnBuf.push({ ...rec, expiresAt: performance.now() + _DEBUG_SPAWN_TTL_MS });
+  if (_debugSpawnBuf.length > 200) _debugSpawnBuf.splice(0, _debugSpawnBuf.length - 200);
+}
+export function getDebugSpawnBuffer(): DebugSpawnRecord[] {
+  const now = performance.now();
+  while (_debugSpawnBuf.length && _debugSpawnBuf[0].expiresAt < now) _debugSpawnBuf.shift();
+  return _debugSpawnBuf;
+}
 const rocketFireCd = { value: 0 };
 
 function tickWorld(dt: number): void {
@@ -1675,6 +1701,7 @@ function tickWorld(dt: number): void {
           fireProjectile("player", ox, oy, shotAng, dmg, laserColor, 6, {
             weaponKind: "laser", speedMul: 3.2,
           });
+          recordDebugSpawn({ spawnX: ox, spawnY: oy, entityId: "player", ring: "muzzle", index: 0, source: "local" });
           state.particles.push({ id: `mf-${Math.random().toString(36).slice(2, 8)}`, pos: { x: ox, y: oy }, vel: { x: 0, y: 0 }, ttl: 0.25, maxTtl: 0.25, color: "#ffffff", size: 90, kind: "flash" });
           state.particles.push({ id: `mf2-${Math.random().toString(36).slice(2, 8)}`, pos: { x: ox, y: oy }, vel: { x: 0, y: 0 }, ttl: 0.15, maxTtl: 0.15, color: laserColor, size: 60, kind: "flash" });
           emitSpark(ox, oy, "#ffffff", 8, 160, 3);
@@ -1693,6 +1720,7 @@ function tickWorld(dt: number): void {
             fireProjectile("player", ox, oy, spreadAng, perPellet, laserColor, 4, {
               weaponKind: "laser", speedMul: 1.8,
             });
+            recordDebugSpawn({ spawnX: ox, spawnY: oy, entityId: "player", ring: "muzzle", index: si, source: "local" });
           }
           const cx = _localMuzzles[1]?.x ?? p.pos.x;
           const cy = _localMuzzles[1]?.y ?? p.pos.y;
@@ -1711,6 +1739,7 @@ function tickWorld(dt: number): void {
             fireProjectile("player", ox, oy, burstAng, perBurst, laserColor, 4, {
               weaponKind: "laser", speedMul: 2.5,
             });
+            recordDebugSpawn({ spawnX: ox, spawnY: oy, entityId: "player", ring: "muzzle", index: bi, source: "local" });
             state.particles.push({ id: `mf-${Math.random().toString(36).slice(2, 8)}`, pos: { x: ox, y: oy }, vel: { x: 0, y: 0 }, ttl: 0.12, maxTtl: 0.12, color: laserColor, size: 55, kind: "flash" });
             emitSpark(ox, oy, laserColor, 4, 90, 2);
           }
@@ -1727,6 +1756,7 @@ function tickWorld(dt: number): void {
             fireProjectile("player", ox, oy, shotAng, perShot, laserColor, 4, {
               weaponKind: "laser", speedMul: 2.14,
             });
+            recordDebugSpawn({ spawnX: ox, spawnY: oy, entityId: "player", ring: "muzzle", index: si, source: "local" });
             state.particles.push({ id: `mf-${Math.random().toString(36).slice(2, 8)}`, pos: { x: ox, y: oy }, vel: { x: 0, y: 0 }, ttl: 0.18, maxTtl: 0.18, color: laserColor, size: 70, kind: "flash" });
             state.particles.push({ id: `mf2-${Math.random().toString(36).slice(2, 8)}`, pos: { x: ox, y: oy }, vel: { x: 0, y: 0 }, ttl: 0.1, maxTtl: 0.1, color: "#ffffff", size: 45, kind: "flash" });
             emitSpark(ox, oy, laserColor, 6, 120, 3);
@@ -3036,6 +3066,17 @@ export function onProjectileSpawnFromServer(data: ProjectileSpawnEvent): void {
     remoteTargetId: isRemotePlayer && !isRocket && !data.homing ? data.targetId : undefined,
   });
   scheduleBump();
+
+  // Debug spawn capture — feeds the __DEBUG_MUZZLE_MARKERS overlay.
+  if (isRemotePlayer && data.fromPlayerId !== undefined) {
+    recordDebugSpawn({
+      spawnX, spawnY,
+      entityId: String(data.fromPlayerId),
+      ring: (data.hardpointRing ?? "muzzle") as "muzzle" | "weapon",
+      index: data.hardpointIndex ?? -1,
+      source: "remote",
+    });
+  }
 
   // Spawn visual effects for remote player projectiles
   if (isRemotePlayer) {

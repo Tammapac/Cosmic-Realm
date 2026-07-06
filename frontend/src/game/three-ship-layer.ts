@@ -38,17 +38,29 @@ interface ShipHardpoints {
   debugMarkers?: THREE.Mesh[];
 }
 
-// Model-local (canonical, un-rotated, un-scaled) hardpoint offsets. These are
-// captured once at template load and never change. The projectile spawn code
-// uses these plus the authoritative (worldX, worldY, angle) to compute the
-// muzzle world position analytically — decoupled from the Three.js render
-// pipeline's per-frame lerp/interpolation state.
+// Wrapper tilt applied to every ship for the pseudo-3D depth feel. Kept as a
+// module-scope constant so the render code and the analytic hardpoint transform
+// stay in sync — changing this in one place must not silently misalign the
+// other. If the tilt is ever tuned, update both wrapper.rotation.x and this.
+export const SHIP_WRAPPER_TILT_X = -0.85;
+const COS_TILT = Math.cos(SHIP_WRAPPER_TILT_X);
+const SIN_TILT = Math.sin(SHIP_WRAPPER_TILT_X);
+
+// Model-local (canonical, un-rotated, un-scaled) hardpoint offsets. Captured
+// once at template load and never change. Projectile spawn uses these plus the
+// ship's last-rendered (worldX, worldY, lastYRot) to compute muzzle world
+// positions that coincide with the visible weapon on the tilted 3D model.
 //
-// x/z are in **model space** (Three.js convention): model +X = sideways,
-// model +Z = forward. Y is discarded (top-down projection).
+// Coordinates are in model-local space (Three.js convention): +X sideways,
+// +Y up, +Z forward-back. All three axes are stored — Y is needed because the
+// wrapper tilt bleeds model-Y into screen-Y.
 interface ModelLocalHardpoints {
-  muzzles: { x: number; z: number }[];
-  weapons: { x: number; z: number }[];
+  muzzles: { x: number; y: number; z: number }[];
+  weapons: { x: number; y: number; z: number }[];
+  // Hardpoint node names, kept parallel to the coords arrays, so debug tools
+  // can identify which GLB node each analytic muzzle corresponds to.
+  muzzleNames: string[];
+  weaponNames: string[];
 }
 
 interface Ship3D {
@@ -298,20 +310,25 @@ function loadModel(shipClass: string): void {
       model.userData.hardpoints = hardpoints;
 
       // Snapshot model-local hardpoint positions with the template at the origin
-      // and no rotation/scale applied. These are the canonical offsets used by
-      // getShipMuzzleWorldPositionsAt() to compute the world position of each
-      // muzzle analytically from (worldX, worldY, angle) — bypassing the render
-      // pipeline's per-frame transform lerp.
+      // and no rotation/scale applied. Store (x, y, z) — model-Y is needed by
+      // getShipMuzzleWorldPositionsAt() because the wrapper's -0.85 tilt around
+      // X mixes model-Y into screen-Z. Node names are kept parallel to the
+      // coord arrays so debug tools can identify which GLB node produced each
+      // muzzle.
       model.updateMatrixWorld(true);
       const _localTmp = new THREE.Vector3();
-      const localHardpoints: ModelLocalHardpoints = { muzzles: [], weapons: [] };
+      const localHardpoints: ModelLocalHardpoints = {
+        muzzles: [], weapons: [], muzzleNames: [], weaponNames: [],
+      };
       for (const hp of hardpoints.muzzles) {
         hp.getWorldPosition(_localTmp);
-        localHardpoints.muzzles.push({ x: _localTmp.x, z: _localTmp.z });
+        localHardpoints.muzzles.push({ x: _localTmp.x, y: _localTmp.y, z: _localTmp.z });
+        localHardpoints.muzzleNames.push(hp.name || "(unnamed)");
       }
       for (const hp of hardpoints.weapons) {
         hp.getWorldPosition(_localTmp);
-        localHardpoints.weapons.push({ x: _localTmp.x, z: _localTmp.z });
+        localHardpoints.weapons.push({ x: _localTmp.x, y: _localTmp.y, z: _localTmp.z });
+        localHardpoints.weaponNames.push(hp.name || "(unnamed)");
       }
       model.userData.localHardpoints = localHardpoints;
 
@@ -412,37 +429,41 @@ export function getShipHardpointPositions(
   return result;
 }
 
-// Analytic muzzle/weapon world positions computed to match exactly what the
-// user sees on screen — the "visible weapon position" rather than the raw
-// authoritative game state.
+// Analytic muzzle/weapon world positions that match exactly where the user
+// sees the weapon on the visible tilted 3D ship model.
 //
-// The passed (worldX, worldY, angle) are the caller's intent (typically the
-// authoritative game-state values), but the ship's on-screen position and
-// rotation LAG both because of:
-//   1. applyServerSmoothing() lerps o.pos, o.angle toward server delta at
-//      rate NETCODE.INTERPOLATION_FACTOR (~8 for angle).
-//   2. updateShip3D() further lerps ship.lastYRot toward (-angle + π) at
-//      rate 4.5, and it snapshots wrapper.position from the last render's
-//      (worldX, worldY, camX, camY) combination.
+// The Three.js render pipeline applies two rotations to each hardpoint:
+//   (1) model.rotation.y = ship.lastYRot     — Y-axis (heading)
+//   (2) wrapper.rotation.x = SHIP_WRAPPER_TILT_X (-0.85)   — X-axis (depth tilt)
+// then scales by ship.worldUnitsPerModelUnit and translates to ship world pos.
+// The orthographic camera looks straight down, so the on-screen (X, Y) offset
+// equals the (x, z) of the doubly-rotated point.
 //
-// When a projectile:spawn socket event arrives between renders, using the
-// current authoritative angle to compute the muzzle would place the
-// projectile at a spot slightly ahead of the visible weapon in the direction
-// of rotation. The offset appears as sideways drift that rotates with the
-// ship — the exact symptom the user reports.
+// Previous versions of this function ignored the X tilt, treating the ship as
+// a flat top-down billboard. That produced a rotation-dependent offset:
+//   * hardpoints with non-zero model-Y projected to the wrong screen-Y
+//     (bleed of my through sin(tilt))
+//   * hardpoints with non-zero forward/back (model-Z) had their screen-Y
+//     offset over-scaled by 1/cos(tilt) ≈ 1.52×
+// Both symptoms are visible as the projectile spawning next to the weapon,
+// with the mismatch rotating with the ship.
 //
-// Fix: read the ship's last-rendered state directly from the Ship3D record.
-// This guarantees the muzzle world position coincides with the visible
-// weapon on the ship model at the last frame Three.js drew. The projectile
-// spawn matches the visible ship pixel-for-pixel; any subsequent divergence
-// as the ship keeps interpolating is handled by the per-frame convergence
-// redirect (Phase 2.1) which curves the shot toward the enemy.
+// Correct math:
+//   Step 1 — Y-axis (heading) rotation:
+//     x1 =  mx·cos(θ) + mz·sin(θ)
+//     y1 =  my
+//     z1 = -mx·sin(θ) + mz·cos(θ)
+//   Step 2 — X-axis (tilt) rotation with tilt = SHIP_WRAPPER_TILT_X:
+//     x2 = x1
+//     y2 = y1·cos(tilt) - z1·sin(tilt)       (depth; camera drops this)
+//     z2 = y1·sin(tilt) + z1·cos(tilt)       (this is the on-screen Y offset)
+//   Step 3 — scale and translate:
+//     worldX = shipWorldX + x2 · s
+//     worldY = shipWorldY + z2 · s
 //
-// The lastYRot rotation math (standard Y-axis rotation):
-//   x' =  x·cos(θ) + z·sin(θ)
-//   z' = -x·sin(θ) + z·cos(θ)
-// where θ = ship.lastYRot. This is exactly what Three.js applies to the
-// ship model, so the result places the muzzle on the visible weapon.
+// Uses ship.lastYRot / lastWorldX / lastWorldY — the exact state Three.js
+// drew on its last render — so the analytic muzzle position coincides with
+// the visible weapon regardless of interpolation lag.
 export function getShipMuzzleWorldPositionsAt(
   entityId: string,
   _worldX: number,
@@ -457,9 +478,6 @@ export function getShipMuzzleWorldPositionsAt(
   const localHp = ship.model.userData.localHardpoints as ModelLocalHardpoints | undefined;
   if (!localHp) return null;
   const s = ship.worldUnitsPerModelUnit;
-  // Use the ship's last-rendered rotation and position — the state Three.js
-  // last drew — so the muzzle world position coincides with the visible
-  // weapon exactly. See comment block above.
   const theta = ship.lastYRot;
   const ca = Math.cos(theta);
   const sa = Math.sin(theta);
@@ -467,20 +485,87 @@ export function getShipMuzzleWorldPositionsAt(
   const originY = ship.lastWorldY;
   const dbg = (window as any).__DEBUG_HARDPOINTS;
 
-  const project = (mx: number, mz: number, label: string, idx: number): { x: number; y: number } => {
-    const dx = ( mx * ca + mz * sa) * s;
-    const dy = (-mx * sa + mz * ca) * s;
+  const project = (mx: number, my: number, mz: number, label: string, idx: number, nodeName: string): { x: number; y: number } => {
+    // Step 1: Y-axis (heading) rotation.
+    const x1 =  mx * ca + mz * sa;
+    const y1 =  my;
+    const z1 = -mx * sa + mz * ca;
+    // Step 2: X-axis (tilt) rotation. Only z2 is needed (camera drops y2).
+    const x2 = x1;
+    const z2 = y1 * SIN_TILT + z1 * COS_TILT;
+    // Step 3: scale to world units and translate to ship world position.
+    const dx = x2 * s;
+    const dy = z2 * s;
     const wx = originX + dx;
     const wy = originY + dy;
     if (dbg) {
-      console.log(`[HP:analytic] entityId=${entityId} ${label}[${idx}] modelLocal=(${mx.toFixed(2)},${mz.toFixed(2)}) lastYRot=${theta.toFixed(3)} scale=${s.toFixed(3)} shipWorld=(${originX.toFixed(1)},${originY.toFixed(1)}) muzzleWorld=(${wx.toFixed(1)},${wy.toFixed(1)}) delta=(${dx.toFixed(1)},${dy.toFixed(1)})`);
+      console.log(`[HP:analytic] entityId=${entityId} ${label}[${idx}] name=${nodeName} modelLocal=(${mx.toFixed(3)},${my.toFixed(3)},${mz.toFixed(3)}) lastYRot=${theta.toFixed(3)} tilt=${SHIP_WRAPPER_TILT_X.toFixed(3)} scale=${s.toFixed(3)} shipWorld=(${originX.toFixed(1)},${originY.toFixed(1)}) muzzleWorld=(${wx.toFixed(1)},${wy.toFixed(1)}) delta=(${dx.toFixed(1)},${dy.toFixed(1)})`);
     }
     return { x: wx, y: wy };
   };
 
-  const muzzles = localHp.muzzles.map((m, i) => project(m.x, m.z, "muzzle", i));
-  const weapons = localHp.weapons.map((w, i) => project(w.x, w.z, "weapon", i));
+  const muzzles = localHp.muzzles.map((m, i) => project(m.x, m.y, m.z, "muzzle", i, localHp.muzzleNames[i] ?? ""));
+  const weapons = localHp.weapons.map((w, i) => project(w.x, w.y, w.z, "weapon", i, localHp.weaponNames[i] ?? ""));
   return { muzzles, weapons };
+}
+
+// Debug-only: enumerate every active ship's analytic muzzle and weapon world
+// positions plus context. Used by the PixiJS debug marker overlay to render
+// dots at the current muzzle locations for visual verification of alignment.
+// Called at most once per render frame under a __DEBUG_MUZZLE_MARKERS gate,
+// so allocation is intentional and harmless.
+export interface DebugMuzzleRecord {
+  entityId: string;
+  ring: "muzzle" | "weapon";
+  index: number;
+  nodeName: string;
+  worldX: number;
+  worldY: number;
+  shipWorldX: number;
+  shipWorldY: number;
+  lastYRot: number;
+}
+
+export function debugEnumerateAllMuzzles(): DebugMuzzleRecord[] {
+  const out: DebugMuzzleRecord[] = [];
+  for (const [entityId, ship] of activeShips) {
+    const localHp = ship.model.userData.localHardpoints as ModelLocalHardpoints | undefined;
+    if (!localHp) continue;
+    const s = ship.worldUnitsPerModelUnit;
+    const theta = ship.lastYRot;
+    const ca = Math.cos(theta);
+    const sa = Math.sin(theta);
+    const originX = ship.lastWorldX;
+    const originY = ship.lastWorldY;
+
+    const emit = (
+      mx: number, my: number, mz: number,
+      ring: "muzzle" | "weapon", index: number, nodeName: string,
+    ) => {
+      const x1 =  mx * ca + mz * sa;
+      const y1 =  my;
+      const z1 = -mx * sa + mz * ca;
+      const z2 = y1 * SIN_TILT + z1 * COS_TILT;
+      out.push({
+        entityId, ring, index, nodeName,
+        worldX: originX + x1 * s,
+        worldY: originY + z2 * s,
+        shipWorldX: originX,
+        shipWorldY: originY,
+        lastYRot: theta,
+      });
+    };
+
+    for (let i = 0; i < localHp.muzzles.length; i++) {
+      const m = localHp.muzzles[i];
+      emit(m.x, m.y, m.z, "muzzle", i, localHp.muzzleNames[i] ?? "");
+    }
+    for (let i = 0; i < localHp.weapons.length; i++) {
+      const w = localHp.weapons[i];
+      emit(w.x, w.y, w.z, "weapon", i, localHp.weaponNames[i] ?? "");
+    }
+  }
+  return out;
 }
 
 // Legacy: returns muzzle/weapon hardpoint world positions using the cam values
@@ -609,9 +694,11 @@ export function updateShip3D(
       engineGlows.push(sprite);
     }
 
-    // Tilt the model slightly toward camera for 3D depth feel
+    // Tilt the model slightly toward camera for 3D depth feel. Same constant
+    // is consumed by the analytic hardpoint transform so muzzle positions stay
+    // aligned with the visible tilted weapon.
     const wrapper = new THREE.Group();
-    wrapper.rotation.x = -0.85;
+    wrapper.rotation.x = SHIP_WRAPPER_TILT_X;
     wrapper.add(model);
     scene.add(wrapper);
 
