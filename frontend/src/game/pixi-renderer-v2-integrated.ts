@@ -2614,6 +2614,14 @@ function syncPlayer(): void {
     }
   }
 
+  // Resolve local player's thruster color from their faction so local and remote
+  // views of the same faction look identical. Factionless players fall back to
+  // cyan (matches the pre-Phase-4 hardcoded behavior).
+  const localFactionColorStr = p.faction
+    ? (FACTIONS[p.faction as keyof typeof FACTIONS]?.color ?? "#4ee2ff")
+    : "#4ee2ff";
+  const localThrustColor = PIXI.utils.string2hex(localFactionColorStr);
+
   // EffectManager thruster trail particles from hardpoints (GLB first, then editor data fallback)
   if (speed > 0.5 && effectManager) {
     const cls = SHIP_CLASSES[p.shipClass];
@@ -2626,13 +2634,13 @@ function syncPlayer(): void {
     if (glbHardpoints && glbHardpoints.thrusters.length > 0) {
       // Use GLB thruster hardpoints
       for (const t of glbHardpoints.thrusters) {
-        effectManager.spawnThrusterTrail(t.x, t.y, p.angle, speed, 0x4ee2ff, 1, trailScale);
+        effectManager.spawnThrusterTrail(t.x, t.y, p.angle, speed, localThrustColor, 1, trailScale);
       }
     } else if (PLASMA_WAKE_SHIPS.has(p.shipClass)) {
       // Fallback: Plasma wake for special ships
       const sizeScale = SHIP_SIZE_SCALE[p.shipClass] ?? 1;
       const shipWidth = 85 * sizeScale * 0.7;
-      effectManager.spawnPlasmaWake(p.pos.x, p.pos.y, p.angle, speed, shipWidth, 0x4ee2ff);
+      effectManager.spawnPlasmaWake(p.pos.x, p.pos.y, p.angle, speed, shipWidth, localThrustColor);
     } else {
       // Fallback: 2D hardpoints from editor/static data
       let allThrusters = [
@@ -2644,13 +2652,15 @@ function syncPlayer(): void {
       }
       if (allThrusters.length > 0) {
         for (const t of allThrusters) {
-          effectManager.spawnThrusterTrail(p.pos.x + t.x, p.pos.y + t.y, p.angle, speed, 0x4ee2ff, 1, trailScale);
+          effectManager.spawnThrusterTrail(p.pos.x + t.x, p.pos.y + t.y, p.angle, speed, localThrustColor, 1, trailScale);
         }
       }
     }
   }
 
-  // Engine glow at thruster hardpoint positions
+  // Engine glow at thruster hardpoint positions.
+  // Updated every frame regardless of speed so the glow can fully turn off
+  // when the ship is standing still (no sticky opacity carried over).
   if (effectManager) {
     const cam = state.player.pos;
     const glbHardpoints = getShipHardpointPositions("player", cam.x, cam.y);
@@ -2660,7 +2670,7 @@ function syncPlayer(): void {
       updateEngineGlow("player", speed);
     } else {
       // Fallback to 2D PixiJS engine glow for non-3D ships
-      const thrustI = Math.max(0.15, Math.min(1, speed / 80));
+      const thrustI = Math.min(1, speed / 80);
       const glowInFront = Math.sin(p.angle) < 0;
       let glowThrusters2 = [
         ...getInterpolatedHardpoints(p.shipClass, p.angle, "thruster"),
@@ -2669,7 +2679,7 @@ function syncPlayer(): void {
       if (glowThrusters2.length === 0) {
         glowThrusters2 = getInterpolatedAutoThrusters(p.shipClass, p.angle);
       }
-      if (glowThrusters2.length > 0) {
+      if (glowThrusters2.length > 0 && thrustI > 0) {
         for (const t of glowThrusters2) {
           effectManager.spawnEngineGlow(p.pos.x + t.x, p.pos.y + t.y, thrustI, 0x4488ff, glowInFront);
         }
@@ -2872,15 +2882,18 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
       data.body.visible = true;
     }
 
-    // Thruster trail for other players from hardpoints
+    // Thruster trail + engine glow for other players.
+    // Trail spawning is gated by speed (no trail when standing still), but the
+    // engine-glow opacity must be updated every frame regardless — otherwise the
+    // glow sticks at its last opacity when the ship stops.
     if (effectManager) {
       const spd = Math.sqrt(o.vel.x * o.vel.x + o.vel.y * o.vel.y);
+      const thrustColor = PIXI.utils.string2hex(factionColor);
+
       if (spd > 0.5) {
-        const thrustColor = PIXI.utils.string2hex(factionColor);
-        
         // Try GLB hardpoints first (for 3D ships)
         const glbHardpoints = getShipHardpointPositions(o.id, cam.x, cam.y);
-        
+
         if (glbHardpoints && glbHardpoints.thrusters.length > 0) {
           // Use GLB thruster hardpoints
           for (const t of glbHardpoints.thrusters) {
@@ -2906,11 +2919,11 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
             }
           }
         }
-        
-        // Update engine glow for 3D ships
-        if (use3D) {
-          updateEngineGlow(o.id, spd);
-        }
+      }
+
+      // Always drive the engine glow opacity — passing spd=0 turns it fully off.
+      if (use3D) {
+        updateEngineGlow(o.id, spd);
       }
     }
 
@@ -3542,57 +3555,75 @@ function syncDungeonRifts(): void {
 // PLAYER DRONES
 // ══════════════════════════════════════════════════════════════════════════
 
-const droneSprites = new Map<number, PIXI.Graphics>();
+const droneSprites = new Map<string, PIXI.Graphics>();
+
+function drawDroneSprite(g: PIXI.Graphics, kind: string, indexHash: number): void {
+  const def = (DRONE_DEFS as any)[kind];
+  const color = def ? PIXI.utils.string2hex(def.color) : 0x4ee2ff;
+  const t = state.tick;
+  const dPulse = 0.7 + 0.3 * Math.sin(t * 4 + indexHash * 2);
+  g.clear();
+  g.lineStyle(0.5, color, dPulse * 0.3);
+  g.drawCircle(0, 0, 9);
+  g.beginFill(color, dPulse * 0.15);
+  g.drawCircle(0, 0, 6);
+  g.endFill();
+  g.beginFill(color, 0.8);
+  g.drawCircle(0, 0, 3.5);
+  g.endFill();
+  g.beginFill(0xffffff, dPulse * 0.7);
+  g.drawCircle(0, 0, 1.5);
+  g.endFill();
+}
 
 function syncDrones(): void {
-  const activeIds = new Set<number>();
-  if (!state.player.drones) return;
+  const activeIds = new Set<string>();
 
-  for (let i = 0; i < state.player.drones.length; i++) {
-    const d = state.player.drones[i];
-    // Drone position is stored as runtime 'anchor' property, not 'pos'
-    const anchor = (d as any).anchor as { x: number; y: number } | undefined;
-    if (!anchor) continue;
-
-    activeIds.add(i);
-
-    let g = droneSprites.get(i);
-    if (!g) {
-      g = new PIXI.Graphics();
-      playerLayer.addChild(g);
-      droneSprites.set(i, g);
+  // Local player drones — key: "player:<index>"
+  if (state.player.drones) {
+    for (let i = 0; i < state.player.drones.length; i++) {
+      const d = state.player.drones[i];
+      const anchor = (d as any).anchor as { x: number; y: number } | undefined;
+      if (!anchor) continue;
+      const key = `player:${i}`;
+      activeIds.add(key);
+      let g = droneSprites.get(key);
+      if (!g) {
+        g = new PIXI.Graphics();
+        playerLayer.addChild(g);
+        droneSprites.set(key, g);
+      }
+      g.visible = true;
+      g.position.set(anchor.x, anchor.y);
+      drawDroneSprite(g, (d as any).kind, i);
     }
-
-    g.clear();
-    g.visible = true;
-    g.position.set(anchor.x, anchor.y);
-
-    const def = (DRONE_DEFS as any)[(d as any).kind];
-    const color = def ? PIXI.utils.string2hex(def.color) : 0x4ee2ff;
-    const t = state.tick;
-    const dPulse = 0.7 + 0.3 * Math.sin(t * 4 + i * 2);
-    // Outer orbit ring
-    g.lineStyle(0.5, color, dPulse * 0.3);
-    g.drawCircle(0, 0, 9);
-    // Core glow
-    g.beginFill(color, dPulse * 0.15);
-    g.drawCircle(0, 0, 6);
-    g.endFill();
-    // Body
-    g.beginFill(color, 0.8);
-    g.drawCircle(0, 0, 3.5);
-    g.endFill();
-    // Bright center
-    g.beginFill(0xffffff, dPulse * 0.7);
-    g.drawCircle(0, 0, 1.5);
-    g.endFill();
   }
 
-  for (const [i, g] of droneSprites) {
-    if (!activeIds.has(i)) {
+  // Remote player drones — key: "<remoteId>:<index>"
+  for (const o of state.others) {
+    if (!o.drones || o.drones.length === 0) continue;
+    for (let i = 0; i < o.drones.length; i++) {
+      const d = o.drones[i];
+      if (!d.anchor) continue;
+      const key = `${o.id}:${i}`;
+      activeIds.add(key);
+      let g = droneSprites.get(key);
+      if (!g) {
+        g = new PIXI.Graphics();
+        playerLayer.addChild(g);
+        droneSprites.set(key, g);
+      }
+      g.visible = true;
+      g.position.set(d.anchor.x, d.anchor.y);
+      drawDroneSprite(g, d.kind, i);
+    }
+  }
+
+  for (const [key, g] of droneSprites) {
+    if (!activeIds.has(key)) {
       playerLayer.removeChild(g);
       g.destroy();
-      droneSprites.delete(i);
+      droneSprites.delete(key);
     }
   }
 }

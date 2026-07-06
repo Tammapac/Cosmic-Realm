@@ -1879,6 +1879,9 @@ function tickWorld(dt: number): void {
     }
   }
 
+  // ── Update remote-player drones (same formation math as local drones)
+  updateRemoteDroneFormations(dt);
+
   // ── Projectiles update + collisions
   state.projectiles = state.projectiles.filter((pr) => {
     // Redirect fresh player laser projectiles toward the on-screen attack target
@@ -2868,6 +2871,12 @@ export function onProjectileSpawnFromServer(data: ProjectileSpawnEvent): void {
 
   // Resolve visual spawn position from GLB muzzle hardpoints when available.
   // vx/vy are kept server-authoritative; only the visual origin shifts to the GLB muzzle.
+  //
+  // The server tells us which hardpoint slot fired via (hardpointIndex, hardpointRing).
+  // We look up that slot in the canonical GLB muzzle/weapon list (sorted by name in
+  // three-ship-layer.ts so all clients agree on ordering). If the ship's GLB isn't
+  // loaded yet, we fall back to the server's synthetic (x, y) — this is a load-window
+  // fallback only, not a heuristic guess.
   let spawnX = data.x;
   let spawnY = data.y;
   const _dbgHp = (window as any).__DEBUG_HARDPOINTS;
@@ -2875,41 +2884,39 @@ export function onProjectileSpawnFromServer(data: ProjectileSpawnEvent): void {
 
   if (isRemotePlayer && data.fromPlayerId !== undefined) {
     const entityId = String(data.fromPlayerId);
-    // Use last-frame cam values stored in the ship — no cam arg needed
     const glbHp = getShipMuzzleWorldPositions(entityId);
-    const candidates = isRocket
-      ? [...(glbHp?.weapons ?? []), ...(glbHp?.muzzles ?? [])]
+    const ring = data.hardpointRing === "weapon"
+      ? (glbHp?.weapons ?? [])
       : (glbHp?.muzzles ?? []);
 
-    if (candidates.length > 0) {
-      // Pick nearest muzzle to the server-broadcast origin
-      let bestDist = Infinity;
-      let bestMuzzle = candidates[0];
-      for (const m of candidates) {
-        const d = Math.hypot(m.x - data.x, m.y - data.y);
-        if (d < bestDist) { bestDist = d; bestMuzzle = m; }
-      }
+    if (ring.length > 0 && data.hardpointIndex !== undefined) {
+      const idx = ((data.hardpointIndex % ring.length) + ring.length) % ring.length;
+      const hp = ring[idx];
       if (_dbgHp) {
         console.log("[HP:remote] entityId=" + entityId, {
           weaponKind: data.weaponKind,
+          ring: data.hardpointRing,
+          serverIdx: data.hardpointIndex,
+          resolvedIdx: idx,
+          ringSize: ring.length,
           serverXY: { x: data.x.toFixed(1), y: data.y.toFixed(1) },
-          selectedMuzzle: { x: bestMuzzle.x.toFixed(1), y: bestMuzzle.y.toFixed(1) },
-          distToServer: bestDist.toFixed(1),
-          candidateCount: candidates.length,
+          hardpoint: { x: hp.x.toFixed(1), y: hp.y.toFixed(1) },
           speed: _remoteSpd.toFixed(1),
           ttl: data.ttl,
         });
       }
-      spawnX = bestMuzzle.x;
-      spawnY = bestMuzzle.y;
-    } else {
-      if (_dbgHp) {
-        console.log("[HP:remote] entityId=" + entityId + " — no GLB hardpoints loaded, using server pos", {
-          serverXY: { x: data.x.toFixed(1), y: data.y.toFixed(1) },
-          speed: _remoteSpd.toFixed(1),
-          ttl: data.ttl,
-        });
-      }
+      spawnX = hp.x;
+      spawnY = hp.y;
+    } else if (_dbgHp) {
+      const reason = data.hardpointIndex === undefined
+        ? "server sent no hardpointIndex"
+        : "GLB ring empty (model not loaded yet)";
+      console.log("[HP:remote] entityId=" + entityId + " — falling back to server pos: " + reason, {
+        serverXY: { x: data.x.toFixed(1), y: data.y.toFixed(1) },
+        ringSize: ring.length,
+        speed: _remoteSpd.toFixed(1),
+        ttl: data.ttl,
+      });
     }
   }
 
@@ -3291,6 +3298,56 @@ export function onPlayerDieFromServer(data: { playerId: number; pos: { x: number
   pushNotification("Ship destroyed. Respawning...", "bad");
 }
 
+// Reconcile a remote player's client-side drone list with the authoritative
+// wire form. Preserves runtime state (anchor, orbitPhase) for drones that
+// still exist so they don't teleport when a delta arrives.
+function syncRemoteDronesFromWire(
+  o: OtherPlayer,
+  wire: Array<{ id: string; kind: string; hp: number }>,
+): void {
+  const prev = o.drones ?? [];
+  const next = wire.map((w) => {
+    const existing = prev.find((d) => d.id === w.id);
+    return {
+      id: w.id,
+      kind: w.kind as any,
+      hp: w.hp,
+      orbitPhase: existing?.orbitPhase ?? 0,
+      anchor: existing?.anchor,
+    };
+  });
+  o.drones = next;
+}
+
+// Runs the same formation logic used for the local player, per remote player.
+// Called from the game tick after all state updates.
+function updateRemoteDroneFormations(dt: number): void {
+  for (const o of state.others) {
+    if (!o.drones || o.drones.length === 0) continue;
+    const droneCount = o.drones.length;
+    for (let i = 0; i < droneCount; i++) {
+      const d = o.drones[i];
+      d.orbitPhase = (d.orbitPhase ?? 0) + dt * 1.5;
+
+      const behindAngle = o.angle + Math.PI;
+      const cols = Math.min(4, droneCount);
+      const row = Math.floor(i / cols);
+      const col = i % cols;
+      const spacing = 55;
+      const rowOffset = (row + 1) * spacing;
+      const colOffset = (col - (Math.min(cols, droneCount - row * cols) - 1) / 2) * spacing;
+      const perpAngle = behindAngle + Math.PI / 2;
+      const targetX = o.pos.x + Math.cos(behindAngle) * rowOffset + Math.cos(perpAngle) * colOffset;
+      const targetY = o.pos.y + Math.sin(behindAngle) * rowOffset + Math.sin(perpAngle) * colOffset;
+      const prev = d.anchor;
+      const lerpFactor = Math.min(1, dt * 5);
+      const anchorX = prev ? prev.x + (targetX - prev.x) * lerpFactor : targetX;
+      const anchorY = prev ? prev.y + (targetY - prev.y) * lerpFactor : targetY;
+      d.anchor = { x: anchorX, y: anchorY };
+    }
+  }
+}
+
 function applyEntityUpdate(entity: DeltaEntity): void {
   switch (entity.entityType) {
     case "enemy": {
@@ -3333,6 +3390,7 @@ function applyEntityUpdate(entity: DeltaEntity): void {
         if (entity.hp != null) o.hull = entity.hp;
         if (entity.hpMax != null) o.hullMax = entity.hpMax;
         if (entity.shield != null) o.shield = entity.shield;
+        if (entity.shieldMax != null) o.shieldMax = entity.shieldMax;
         if (entity.faction !== undefined) o.faction = entity.faction ?? null;
         if (entity.honor != null) o.honor = entity.honor;
         if (entity.name) o.name = entity.name;
@@ -3343,6 +3401,7 @@ function applyEntityUpdate(entity: DeltaEntity): void {
         if (entity.activeAmmoType !== undefined) o.activeAmmoType = entity.activeAmmoType;
         if (entity.activeRocketAmmoType !== undefined) o.activeRocketAmmoType = entity.activeRocketAmmoType;
         if (entity.equipped !== undefined) o.equipped = entity.equipped;
+        if (entity.drones !== undefined) syncRemoteDronesFromWire(o, entity.drones);
       } else {
         setEntityTarget(entity.id, entity.x, entity.y, entity.vx ?? 0, entity.vy ?? 0, entity.angle ?? undefined);
         state.others.push({
@@ -3362,9 +3421,16 @@ function applyEntityUpdate(entity: DeltaEntity): void {
           hull: entity.hp ?? 100,
           hullMax: entity.hpMax ?? 100,
           shield: entity.shield ?? 0,
+          shieldMax: entity.shieldMax ?? 100,
           activeAmmoType: entity.activeAmmoType,
           activeRocketAmmoType: entity.activeRocketAmmoType,
           equipped: entity.equipped,
+          drones: (entity.drones ?? []).map((d) => ({
+            id: d.id,
+            kind: d.kind as any,
+            hp: d.hp,
+            orbitPhase: 0,
+          })),
         });
       }
       break;

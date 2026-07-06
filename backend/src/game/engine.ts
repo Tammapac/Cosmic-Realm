@@ -163,7 +163,7 @@ export type GameEvent =
   | { type: "npc:spawn"; zone: string; npc: ClientNpc }
   | { type: "npc:die"; zone: string; npcId: string }
   | { type: "player:hit"; playerId: number; damage: number; zone: string }
-  | { type: "projectile:spawn"; zone: string; fromPlayerId: number; x: number; y: number; vx: number; vy: number; damage: number; color: string; size: number; crit: boolean; weaponKind: "laser" | "rocket" | "energy" | "plasma"; homing: boolean; ammoType?: string; ttl: number };
+  | { type: "projectile:spawn"; zone: string; fromPlayerId: number; x: number; y: number; vx: number; vy: number; damage: number; color: string; size: number; crit: boolean; weaponKind: "laser" | "rocket" | "energy" | "plasma"; homing: boolean; ammoType?: string; ttl: number; hardpointIndex?: number; hardpointRing?: "muzzle" | "weapon"; shipClass?: string };
 
 export type ClientEnemy = {
   id: string;
@@ -706,7 +706,7 @@ export class GameEngine {
           }
         }
 
-        const fireProj = (ox: number, oy: number, fireAng: number, dmg: number, sz: number, spd: number) => {
+        const fireProj = (ox: number, oy: number, fireAng: number, dmg: number, sz: number, spd: number, hpIdx: number) => {
           const proj: ServerProjectile = {
             id: eid("proj"), zone: zoneId, fromPlayerId: p.playerId,
             fromEnemyId: null, fromNpcId: null,
@@ -723,15 +723,17 @@ export class GameEngine {
             damage: proj.damage, color: proj.color, size: proj.size,
             crit: proj.crit, weaponKind: proj.weaponKind, homing: proj.homing,
             ammoType: p.laserAmmoType, ttl: proj.ttl,
+            hardpointIndex: hpIdx, hardpointRing: "muzzle", shipClass: p.shipClass,
           });
         };
 
         // Speeds match frontend fireProjectile() speedBase=230 * speedMul per pattern
+        // hardpointIndex assigns each shot to a canonical GLB muzzle slot on the client.
         if (firingPattern === "sniper") {
           const dmg = Math.round(laserDmg);
           const ox = p.posX + Math.cos(ang) * 10;
           const oy = p.posY + Math.sin(ang) * 10;
-          fireProj(ox, oy, ang, dmg, 6, 736); // 230 * 3.2
+          fireProj(ox, oy, ang, dmg, 6, 736, 0); // 230 * 3.2
         } else if (firingPattern === "scatter") {
           const pellets = 3;
           const perPellet = Math.round(laserDmg * 2.5 / pellets);
@@ -742,7 +744,7 @@ export class GameEngine {
             const oy = p.posY + Math.sin(perpAng) * 5 * side;
             const baseAng = angleFromTo({ x: ox, y: oy }, target.pos);
             const spreadAng = baseAng + (si - 1) * spread;
-            fireProj(ox, oy, spreadAng, perPellet, 4, 414); // 230 * 1.8
+            fireProj(ox, oy, spreadAng, perPellet, 4, 414, si); // 230 * 1.8
           }
         } else if (firingPattern === "rail") {
           const perBurst = Math.round(laserDmg * 1.3 / 3);
@@ -752,7 +754,7 @@ export class GameEngine {
             const oy = p.posY + Math.sin(perpAng) * 5 * side;
             const baseAng = angleFromTo({ x: ox, y: oy }, target.pos);
             const burstAng = baseAng + (Math.random() - 0.5) * 0.04;
-            fireProj(ox, oy, burstAng, perBurst, 4, 575); // 230 * 2.5
+            fireProj(ox, oy, burstAng, perBurst, 4, 575, bi); // 230 * 2.5
           }
         } else {
           const perShot = Math.round(laserDmg / 2);
@@ -766,7 +768,7 @@ export class GameEngine {
             const predictedX = target.pos.x + (target.vel?.x ?? 0) * travelTime;
             const predictedY = target.pos.y + (target.vel?.y ?? 0) * travelTime;
             const fireAng = angleFromTo({ x: ox, y: oy }, { x: predictedX, y: predictedY });
-            fireProj(ox, oy, fireAng, perShot, 4, projSpeed);
+            fireProj(ox, oy, fireAng, perShot, 4, projSpeed, si);
           }
         }
 
@@ -816,6 +818,7 @@ export class GameEngine {
           damage: proj.damage, color: proj.color, size: proj.size,
           crit: proj.crit, weaponKind: proj.weaponKind, homing: proj.homing,
           ammoType: p.rocketAmmoType, ttl: proj.ttl,
+          hardpointIndex: 0, hardpointRing: "weapon", shipClass: p.shipClass,
         });
 
         const rCd = 1.5 / (stats.fireRate * 0.5);
@@ -2061,6 +2064,7 @@ export class GameEngine {
             vx: npcProj.vel.x, vy: npcProj.vel.y,
             damage: npcProj.damage, color: npcProj.color, size: npcProj.size,
             crit: false, weaponKind: "laser" as const, homing: false,
+            ttl: npcProj.ttl,
           });
         }
 

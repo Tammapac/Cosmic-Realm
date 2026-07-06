@@ -109,6 +109,11 @@ export function setupSocket(io: Server) {
       shieldRegen: stats.shieldRegen,
       afterburnUntil: 0,
       isDocked: false,
+      drones: (Array.isArray(dbPlayer.drones) ? dbPlayer.drones : []).map((d: any) => ({
+        id: String(d.id),
+        kind: String(d.kind),
+        hp: Number(d.hp ?? d.hpMax ?? 100),
+      })),
     };
 
     socket.join(`zone:${online.zone}`);
@@ -343,6 +348,13 @@ export function setupSocket(io: Server) {
         if (data.drones) cached.drones = data.drones;
         if (data.faction) cached.faction = data.faction;
         if (data.level) cached.level = data.level;
+      }
+      if (data.drones) {
+        p.drones = data.drones.map((d: any) => ({
+          id: String(d.id),
+          kind: String(d.kind),
+          hp: Number(d.hp ?? d.hpMax ?? 100),
+        }));
       }
 
       const newStats = engine.refreshPlayerStats(user.playerId) ?? computeStats(cached || data);
@@ -612,14 +624,20 @@ export function setupSocket(io: Server) {
           const entities: any[] = [];
           for (const o of nearbyPlayers) {
             const oCached = engine.playerDataCache.get(o.id);
+            const oOnline = getPlayer(o.id);
             entities.push({
               id: `p-${o.id}`, entityType: "player",
               x: o.x, y: o.y, vx: o.vx, vy: o.vy, angle: o.a,
-              hp: o.hp, hpMax: o.hpMax, shield: o.sp, version: tickCounter,
+              hp: o.hp, hpMax: o.hpMax, shield: o.sp,
+              shieldMax: oOnline?.shieldMax ?? o.hpMax,
+              version: tickCounter,
               name: o.name, shipClass: o.shipClass, level: o.level, faction: o.faction, honor: o.honor, miningTargetId: o.miningTargetId,
               activeAmmoType: o.laserAmmoType,
               activeRocketAmmoType: o.rocketAmmoType,
+              // Pass the same reference each tick so the change-detector's
+              // reference-equality check doesn't false-positive on stable state.
               equipped: oCached?.equipped ?? null,
+              drones: oOnline?.drones,
             });
           }
           for (const e of culled.enemies as any[]) {
@@ -683,14 +701,32 @@ export function setupSocket(io: Server) {
                 // New entity
                 addOrUpdate.push(entity);
               } else {
-                // Check if entity changed (position moved >1 unit or health changed)
+                // Physical changes.
                 const dx = entity.x - prev.x;
                 const dy = entity.y - prev.y;
                 const moved = dx * dx + dy * dy > 0.5;
-                const healthChanged = entity.hp !== prev.hp || entity.shield !== prev.shield;
+                const healthChanged = entity.hp !== prev.hp || entity.shield !== prev.shield || entity.shieldMax !== prev.shieldMax || entity.hpMax !== prev.hpMax;
                 const angleChanged = Math.abs(entity.angle - prev.angle) > 0.02;
 
-                if (moved || healthChanged || angleChanged) {
+                // Visual-only changes must also trigger a delta so remote clients
+                // observe faction/name/ship/ammo/loadout/drone changes without
+                // waiting for the next 1s snapshot.
+                let visualChanged = false;
+                if (entity.entityType === "player") {
+                  visualChanged =
+                    entity.name !== prev.name ||
+                    entity.shipClass !== prev.shipClass ||
+                    entity.faction !== prev.faction ||
+                    entity.level !== prev.level ||
+                    entity.honor !== prev.honor ||
+                    entity.miningTargetId !== prev.miningTargetId ||
+                    entity.activeAmmoType !== prev.activeAmmoType ||
+                    entity.activeRocketAmmoType !== prev.activeRocketAmmoType ||
+                    entity.equipped !== prev.equipped ||
+                    entity.drones !== prev.drones;
+                }
+
+                if (moved || healthChanged || angleChanged || visualChanged) {
                   addOrUpdate.push(entity);
                 }
               }
@@ -820,6 +856,9 @@ function broadcastEvents(io: Server, events: GameEvent[]): void {
               fromPlayerId: ev.fromPlayerId,
               ammoType: ev.ammoType,
               ttl: ev.ttl,
+              hardpointIndex: ev.hardpointIndex,
+              hardpointRing: ev.hardpointRing,
+              shipClass: ev.shipClass,
             });
           }
         } else {
@@ -863,6 +902,7 @@ function toClientPlayer(p: OnlinePlayer, equipped: any = null) {
     activeAmmoType: p.laserAmmoType,
     activeRocketAmmoType: p.rocketAmmoType,
     equipped,
+    drones: p.drones,
   };
 }
 

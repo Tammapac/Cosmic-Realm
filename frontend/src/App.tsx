@@ -690,9 +690,16 @@ function GameApp() {
           hull: p.hull ?? 100,
           hullMax: p.hullMax ?? 100,
           shield: p.shield ?? 0,
+          shieldMax: p.shieldMax ?? 100,
           activeAmmoType: p.activeAmmoType,
           activeRocketAmmoType: p.activeRocketAmmoType,
           equipped: p.equipped ?? undefined,
+          drones: (p.drones ?? []).map((d) => ({
+            id: d.id,
+            kind: d.kind as any,
+            hp: d.hp,
+            orbitPhase: 0,
+          })),
         });
         bump();
       },

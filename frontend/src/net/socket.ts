@@ -11,6 +11,12 @@ let onInstanceEnemyHitAck: ((data: any) => void) | null = null;
 
 // ── TYPES ────────────────────────────────────────────────────────────────
 
+export type WireDrone = {
+  id: string;
+  kind: string;
+  hp: number;
+};
+
 export type RemotePlayer = {
   id: number;
   name: string;
@@ -37,6 +43,7 @@ export type RemotePlayer = {
     generator?: (string | null)[];
     module?: (string | null)[];
   };
+  drones?: WireDrone[];
 };
 
 export type WelcomePayload = {
@@ -69,6 +76,7 @@ export type DeltaEntity = {
     generator?: (string | null)[];
     module?: (string | null)[];
   };
+  drones?: WireDrone[];
   // Enemy-specific
   type?: string;
   behavior?: string;
@@ -188,7 +196,7 @@ export type ProjectileSpawnEvent = {
   color: string;
   size: number;
   crit: boolean;
-  weaponKind: "laser" | "rocket";
+  weaponKind: "laser" | "rocket" | "energy" | "plasma";
   homing: boolean;
   fromPlayer: boolean;
   fromPlayerId?: number;
@@ -196,13 +204,17 @@ export type ProjectileSpawnEvent = {
   // For lasers: "x1"/"x2"/"x3"/"x4". For rockets: "cl1"/"cl2"/"bm3"/"drock".
   ammoType?: string;
   ttl?: number;
+  // Authoritative hardpoint selector so remote clients don't guess which muzzle fired.
+  hardpointIndex?: number;
+  hardpointRing?: "muzzle" | "weapon";
+  shipClass?: string;
 };
 
 type SocketEvents = {
   onWelcome: (payload: WelcomePayload) => void;
   onDelta: (payload: DeltaPayload) => void;
   onSnapshot: (payload: SnapshotPayload) => void;
-  onPlayerJoin: (player: { id: number; name: string; shipClass: string; level: number; faction: string | null; honor: number; zone: string; hull: number; hullMax: number; shield: number; shieldMax: number; activeAmmoType?: string; activeRocketAmmoType?: string; equipped?: { weapon?: (string | null)[]; generator?: (string | null)[]; module?: (string | null)[] } | null }) => void;
+  onPlayerJoin: (player: { id: number; name: string; shipClass: string; level: number; faction: string | null; honor: number; zone: string; hull: number; hullMax: number; shield: number; shieldMax: number; activeAmmoType?: string; activeRocketAmmoType?: string; equipped?: { weapon?: (string | null)[]; generator?: (string | null)[]; module?: (string | null)[] } | null; drones?: WireDrone[] }) => void;
   onPlayerLeave: (data: { playerId: number }) => void;
   onCombatAttack: (event: CombatEvent) => void;
   onChatMessage: (msg: { from: string; text: string; channel: string; time: number }) => void;

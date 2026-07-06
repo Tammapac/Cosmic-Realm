@@ -753,6 +753,25 @@ export type OtherPlayer = {
   hull: number;
   hullMax: number;
   shield: number;
+  shieldMax: number;
+  // Equipment / visual sync — populated from server delta when available
+  activeAmmoType?: string;
+  activeRocketAmmoType?: string;
+  equipped?: {
+    weapon?: (string | null)[];
+    generator?: (string | null)[];
+    module?: (string | null)[];
+  };
+  // Remote drones. Server sends { id, kind, hp } per drone. The client owns
+  // position: each drone gets a runtime `anchor` computed by the same formation
+  // math used for the local player. `orbitPhase` is client-local visual only.
+  drones?: Array<{
+    id: string;
+    kind: DroneKind;
+    hp: number;
+    orbitPhase?: number;
+    anchor?: Vec2;
+  }>;
 };
 
 export type ChatMessage = {

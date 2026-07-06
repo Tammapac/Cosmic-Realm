@@ -175,6 +175,12 @@ function collectHardpoints(model: THREE.Group, shipClass: string): ShipHardpoint
     }
   });
 
+  // Canonical order: sort by name so hardpointIndex maps stably across all clients.
+  const byName = (a: THREE.Object3D, b: THREE.Object3D) => a.name.localeCompare(b.name);
+  thrusters.sort(byName);
+  muzzles.sort(byName);
+  weapons.sort(byName);
+
   // Debug logging
   console.log(`[Three.js] ${shipClass} - All objects in GLB:`, allObjects);
   console.log(`[Three.js] ${shipClass} - Hardpoints found:`);
@@ -322,33 +328,38 @@ export function getShipHardpointPositions(
     weapons: [] as { x: number; y: number }[],
   };
 
-  for (const hp of ship.hardpoints.thrusters) {
+  const wrapperPos = ship.wrapper.position;
+  const wrapperScale = ship.wrapper.scale;
+
+  // Top-down projection that bypasses the wrapper tilt (rotation.x = -0.85).
+  // See getShipMuzzleWorldPositions for the rationale.
+  const project = (hp: THREE.Object3D): { x: number; y: number } => {
     hp.getWorldPosition(tempVec3);
-    result.thrusters.push({
-      x: tempVec3.x / cameraZoom + camX,
-      y: tempVec3.z / cameraZoom + camY,
-    });
-  }
-  for (const hp of ship.hardpoints.muzzles) {
-    hp.getWorldPosition(tempVec3);
-    result.muzzles.push({
-      x: tempVec3.x / cameraZoom + camX,
-      y: tempVec3.z / cameraZoom + camY,
-    });
-  }
-  for (const hp of ship.hardpoints.weapons) {
-    hp.getWorldPosition(tempVec3);
-    result.weapons.push({
-      x: tempVec3.x / cameraZoom + camX,
-      y: tempVec3.z / cameraZoom + camY,
-    });
-  }
+    ship.wrapper.worldToLocal(tempVec3);
+    const screenX = wrapperPos.x + tempVec3.x * wrapperScale.x;
+    const screenZ = wrapperPos.z + tempVec3.z * wrapperScale.z;
+    return {
+      x: screenX / cameraZoom + camX,
+      y: screenZ / cameraZoom + camY,
+    };
+  };
+
+  for (const hp of ship.hardpoints.thrusters) result.thrusters.push(project(hp));
+  for (const hp of ship.hardpoints.muzzles) result.muzzles.push(project(hp));
+  for (const hp of ship.hardpoints.weapons) result.weapons.push(project(hp));
 
   return result;
 }
 
 // Returns muzzle/weapon hardpoint world positions using the cam values from the
 // last render frame — safe to call from the game tick without passing cam.
+//
+// The wrapper has rotation.x = -0.85 for depth. A naive inverse of
+//   getWorldPosition().z / zoom + camY
+// is wrong for hardpoints with non-zero model-space Y: the tilt bleeds model-Y
+// into world-Z. To recover a true top-down projection we resolve the hardpoint
+// in wrapper-local space (pre-tilt), then apply only the wrapper's scale and
+// position on the top-down plane — ignoring the tilt entirely.
 export function getShipMuzzleWorldPositions(entityId: string): {
   muzzles: { x: number; y: number }[];
   weapons: { x: number; y: number }[];
@@ -360,15 +371,31 @@ export function getShipMuzzleWorldPositions(entityId: string): {
   const weapons: { x: number; y: number }[] = [];
   const cx = ship.lastCamX;
   const cy = ship.lastCamY;
+  const dbg = (window as any).__DEBUG_HARDPOINTS;
 
-  for (const hp of ship.hardpoints.muzzles) {
+  const wrapperPos = ship.wrapper.position;
+  const wrapperScale = ship.wrapper.scale;
+
+  const project = (hp: THREE.Object3D, label: string): { x: number; y: number } => {
+    // World-space position via the full tilted transform.
     hp.getWorldPosition(tempVec3);
-    muzzles.push({ x: tempVec3.x / cameraZoom + cx, y: tempVec3.z / cameraZoom + cy });
-  }
-  for (const hp of ship.hardpoints.weapons) {
-    hp.getWorldPosition(tempVec3);
-    weapons.push({ x: tempVec3.x / cameraZoom + cx, y: tempVec3.z / cameraZoom + cy });
-  }
+    // Undo the wrapper's transform to get wrapper-local (pre-tilt) coordinates.
+    // worldToLocal mutates tempVec3 in place.
+    ship.wrapper.worldToLocal(tempVec3);
+    // Re-project on the top-down plane: apply only scale + position (no tilt).
+    // Wrapper-local coords have the ship's heading rotation already baked in
+    // (model.rotation.y), so local.x and local.z are the sideways and forward
+    // offsets in the ship's frame — exactly what we want for top-down.
+    const screenX = wrapperPos.x + tempVec3.x * wrapperScale.x;
+    const screenZ = wrapperPos.z + tempVec3.z * wrapperScale.z;
+    const wx = screenX / cameraZoom + cx;
+    const wy = screenZ / cameraZoom + cy;
+    if (dbg) console.log(`[HP:raw] ${label} "${hp.name}" local=(${tempVec3.x.toFixed(1)},${tempVec3.y.toFixed(1)},${tempVec3.z.toFixed(1)}) wrapperPos=(${wrapperPos.x.toFixed(1)},${wrapperPos.z.toFixed(1)}) scale=${wrapperScale.x.toFixed(2)} zoom=${cameraZoom.toFixed(2)} => world=(${wx.toFixed(1)},${wy.toFixed(1)}) shipWorld=(${ship.lastWorldX.toFixed(1)},${ship.lastWorldY.toFixed(1)})`);
+    return { x: wx, y: wy };
+  };
+
+  for (const hp of ship.hardpoints.muzzles) muzzles.push(project(hp, "muzzle"));
+  for (const hp of ship.hardpoints.weapons) weapons.push(project(hp, "weapon"));
 
   return { muzzles, weapons };
 }
@@ -406,6 +433,11 @@ export function updateShip3D(
         else if (name.startsWith("hp_muzzle_")) hardpoints.muzzles.push(child);
         else if (name.startsWith("hp_weapon_")) hardpoints.weapons.push(child);
       });
+      // Canonical order must match template so hardpointIndex resolves consistently.
+      const byName = (a: THREE.Object3D, b: THREE.Object3D) => a.name.localeCompare(b.name);
+      hardpoints.thrusters.sort(byName);
+      hardpoints.muzzles.sort(byName);
+      hardpoints.weapons.sort(byName);
     }
 
     // Create engine glow sprites at thruster hardpoints
@@ -504,8 +536,9 @@ export function updateEngineGlow(entityId: string, speed: number): void {
   const ship = activeShips.get(entityId);
   if (!ship || !ship.engineGlows) return;
 
-  // Calculate glow intensity based on speed (0.15 min, 1.0 max at speed 80)
-  const intensity = Math.max(0.15, Math.min(1, speed / 80));
+  // Glow intensity scales linearly with speed, capped at 1 at speed 80.
+  // Below ~speed=1 (near-standstill) the glow is effectively off — no floor.
+  const intensity = speed < 1 ? 0 : Math.min(1, speed / 80);
 
   for (const glow of ship.engineGlows) {
     const material = glow.material as THREE.SpriteMaterial;

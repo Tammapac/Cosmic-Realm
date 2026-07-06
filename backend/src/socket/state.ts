@@ -10,6 +10,15 @@ export type PlayerInput = {
   rocketAmmo: string;
 };
 
+// Compact drone entry replicated to other clients so they can render remote drones.
+// Position is NOT transmitted — the client recomputes formation each frame using
+// the remote player's pos/angle (same formation math as the local player).
+export type WireDrone = {
+  id: string;
+  kind: string;
+  hp: number;
+};
+
 export type OnlinePlayer = {
   socketId: string;
   playerId: number;
@@ -44,6 +53,7 @@ export type OnlinePlayer = {
   afterburnUntil: number;
   lastHitTick: number;
   isDocked: boolean;
+  drones: WireDrone[];
 };
 
 const zones = new Map<string, Map<number, OnlinePlayer>>();

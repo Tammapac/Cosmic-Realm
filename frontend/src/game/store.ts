@@ -82,6 +82,8 @@ export type GameState = {
   showMap: boolean;
   showClan: boolean;
   showSocial: boolean;
+  showLogoutConfirm: boolean;
+  logoutCountdown: boolean;
   showFactionPicker: boolean;
   showSkillTree: boolean;
   showMissions: boolean;
@@ -266,6 +268,13 @@ function makeOthers(zone: ZoneId): OtherPlayer[] {
       zone,
       inParty: false,
       clan: Math.random() < 0.5 ? FAKE_CLANS[Math.floor(Math.random() * FAKE_CLANS.length)] : null,
+      faction: null,
+      honor: 0,
+      miningTargetId: null,
+      hull: 100,
+      hullMax: 100,
+      shield: 0,
+      shieldMax: 100,
     });
   }
   return out;
@@ -475,6 +484,8 @@ export const state: GameState = {
   factoryLevel: 1,
   showClan: false,
   showSocial: false,
+  showLogoutConfirm: false,
+  logoutCountdown: false,
   showFactionPicker: initialPlayer.faction === null,
   showSkillTree: false,
   showMissions: false,
@@ -539,55 +550,140 @@ export function bump(): void {
   notify();
 }
 
+// Coalesces multiple bumps in the same animation frame into a single React
+// re-render. Use this for high-frequency events (network snapshots, projectile
+// spawns, etc.) where the React UI does not need to update more than once per
+// visible frame. Prevents micro-stutter caused by 10-20 bump()s per second
+// each triggering useSyncExternalStore across the entire component tree.
+let _bumpScheduled = false;
+export function scheduleBump(): void {
+  if (_bumpScheduled) return;
+  _bumpScheduled = true;
+  if (typeof requestAnimationFrame !== "undefined") {
+    requestAnimationFrame(() => {
+      _bumpScheduled = false;
+      snap++;
+      notify();
+    });
+  } else {
+    // Fallback for non-browser environments (tests)
+    _bumpScheduled = false;
+    snap++;
+    notify();
+  }
+}
+
 export function useGame<T>(selector: (s: GameState) => T): T {
   useSyncExternalStore(subscribe, getSnapshot);
   return selector(state);
 }
 
+// Slow-tick snapshot for heavy UI (like MiniMap) that draws 40+ elements
+// per re-render. Fires at ~5 Hz regardless of underlying state churn.
+// Components that read many arrays but don't need per-frame updates can
+// subscribe to this instead of the normal snapshot.
+let slowSnap = 0;
+const slowListeners = new Set<() => void>();
+function subscribeSlow(fn: () => void): () => void {
+  slowListeners.add(fn);
+  return () => slowListeners.delete(fn);
+}
+function getSlowSnapshot(): number {
+  return slowSnap;
+}
+if (typeof setInterval !== "undefined") {
+  setInterval(() => {
+    slowSnap++;
+    for (const fn of slowListeners) fn();
+  }, 200); // 5 Hz
+}
+export function useGameSlow<T>(selector: (s: GameState) => T): T {
+  useSyncExternalStore(subscribeSlow, getSlowSnapshot);
+  return selector(state);
+}
+
+function _buildSavePayload(): Partial<Player> {
+  const p = state.player;
+  if (isNaN(p.credits)) p.credits = 0;
+  if (isNaN(p.exp)) p.exp = 0;
+  if (isNaN(p.honor)) p.honor = 0;
+  p.lastSeen = Date.now();
+  return {
+    name: p.name,
+    shipClass: p.shipClass,
+    inventory: p.inventory,
+    equipped: p.equipped,
+    hull: p.hull,
+    level: p.level,
+    exp: p.exp,
+    credits: p.credits,
+    honor: p.honor,
+    cargo: p.cargo,
+    zone: p.zone,
+    ownedShips: p.ownedShips,
+    activeQuests: p.activeQuests,
+    completedQuests: p.completedQuests,
+    clan: p.clan,
+    drones: p.drones,
+    faction: p.faction,
+    skills: p.skills,
+    skillPoints: p.skillPoints,
+    milestones: p.milestones,
+    dailyMissions: p.dailyMissions,
+    missionBoard: state.missionBoard,
+    lastDailyReset: p.lastDailyReset,
+    lastSeen: p.lastSeen,
+    ammo: p.ammo,
+    activeAmmoType: p.activeAmmoType,
+    rocketAmmo: p.rocketAmmo,
+    activeRocketAmmoType: p.activeRocketAmmoType,
+    autoRestock: p.autoRestock,
+    autoRepairHull: p.autoRepairHull,
+    autoShieldRecharge: p.autoShieldRecharge,
+    dungeonClears: p.dungeonClears,
+    dungeonBestTimes: p.dungeonBestTimes,
+  };
+}
+
+// Schedule the heavy work (JSON.stringify + localStorage.setItem) during
+// browser idle time so the periodic save() call never blocks a frame.
+// requestIdleCallback with a 2s deadline guarantees the save happens even
+// under continuous animation load; falls back to setTimeout(0) elsewhere.
+let _saveScheduled = false;
+function _scheduleDeferredSave(toSave: Partial<Player>, pos: { x: number; y: number }): void {
+  if (_saveScheduled) return;
+  _saveScheduled = true;
+  const doWork = () => {
+    _saveScheduled = false;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+      if (localStorage.getItem("cosmic-token")) {
+        fetch("/api/player/save", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("cosmic-token")}`,
+          },
+          body: JSON.stringify({ ...toSave, pos }),
+        }).catch(() => {});
+      }
+    } catch { /* ignore */ }
+  };
+  const ric = (window as any).requestIdleCallback as
+    | ((cb: () => void, opts?: { timeout: number }) => number)
+    | undefined;
+  if (ric) {
+    ric(doWork, { timeout: 2000 });
+  } else {
+    setTimeout(doWork, 0);
+  }
+}
+
 export function save(): void {
   try {
     const p = state.player;
-    if (isNaN(p.credits)) p.credits = 0;
-    if (isNaN(p.exp)) p.exp = 0;
-    if (isNaN(p.honor)) p.honor = 0;
-    p.lastSeen = Date.now();
-    const toSave: Partial<Player> = {
-      name: p.name,
-      shipClass: p.shipClass,
-      inventory: p.inventory,
-      equipped: p.equipped,
-      hull: p.hull,
-      level: p.level,
-      exp: p.exp,
-      credits: p.credits,
-      honor: p.honor,
-      cargo: p.cargo,
-      zone: p.zone,
-      ownedShips: p.ownedShips,
-      activeQuests: p.activeQuests,
-      completedQuests: p.completedQuests,
-      clan: p.clan,
-      drones: p.drones,
-      faction: p.faction,
-      skills: p.skills,
-      skillPoints: p.skillPoints,
-      milestones: p.milestones,
-      dailyMissions: p.dailyMissions,
-      missionBoard: state.missionBoard,
-      lastDailyReset: p.lastDailyReset,
-      lastSeen: p.lastSeen,
-      ammo: p.ammo,
-      activeAmmoType: p.activeAmmoType,
-      rocketAmmo: p.rocketAmmo,
-      activeRocketAmmoType: p.activeRocketAmmoType,
-      autoRestock: p.autoRestock,
-      autoRepairHull: p.autoRepairHull,
-      autoShieldRecharge: p.autoShieldRecharge,
-      dungeonClears: p.dungeonClears,
-      dungeonBestTimes: p.dungeonBestTimes,
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
-    // Sync stats to server engine for authoritative computation
+    const toSave = _buildSavePayload();
+    // sendStatsUpdate is a lightweight socket emit — fine on the hot path.
     sendStatsUpdate({
       level: p.level,
       shipClass: p.shipClass,
@@ -598,20 +694,36 @@ export function save(): void {
       drones: p.drones,
       faction: p.faction ?? undefined,
     });
-    // Also save to server if logged in
-    if (localStorage.getItem("cosmic-token")) {
-      fetch("/api/player/save", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("cosmic-token")}`,
-        },
-        body: JSON.stringify({ ...toSave, pos: p.pos }),
-      }).catch(() => {});
-    }
+    // The heavy JSON.stringify + localStorage.setItem + fetch happens during
+    // browser idle so the periodic save doesn't cause frame hitches.
+    _scheduleDeferredSave(toSave, p.pos);
   } catch {
     /* ignore */
   }
+}
+
+// Synchronous save for unload/tab-hide paths — must block until data is
+// persisted or the browser may discard the tab before idle callback fires.
+export function saveNow(): void {
+  try {
+    const toSave = _buildSavePayload();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+    if (localStorage.getItem("cosmic-token") && typeof navigator !== "undefined" && "sendBeacon" in navigator) {
+      const body = JSON.stringify({ ...toSave, pos: state.player.pos });
+      navigator.sendBeacon(
+        "/api/player/save",
+        new Blob([body], { type: "application/json" }),
+      );
+    }
+  } catch { /* ignore */ }
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeunload", saveNow);
+  window.addEventListener("pagehide", saveNow);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") saveNow();
+  });
 }
 
 export function loadServerPlayer(data: any): void {
