@@ -3,7 +3,7 @@ import {
   type ShipClassId, type RocketAmmoType, type RocketMissileType, type ResourceId,
   type SkillId, type DroneKind,
   ZONES, ENEMY_DEFS, FACTION_ENEMY_MODS, SHIP_CLASSES, MODULE_DEFS,
-  FACTIONS, DRONE_DEFS, SKILL_NODES, ENEMY_NAMES,
+  FACTIONS, DRONE_DEFS, SKILL_NODES, ENEMY_NAMES, STATIONS,
   ROCKET_AMMO_TYPE_DEFS, ROCKET_MISSILE_TYPE_DEFS,
   MAP_RADIUS, EXP_FOR_LEVEL,
   MINING_RANGE, MINING_DPS_FACTOR,
@@ -12,6 +12,27 @@ import {
 import type { OnlinePlayer } from "../socket/state.js";
 import { MOVEMENT } from "../../../lib/game-constants.js";
 
+
+// ── STATION SAFE ZONES ───────────────────────────────────────────────────
+// No enemies may spawn within this radius of any station.
+const STATION_SAFE_RADIUS = 1500;
+
+const STATIONS_BY_ZONE: Record<string, Vec2[]> = {};
+for (const st of STATIONS) {
+  if (!STATIONS_BY_ZONE[st.zone]) STATIONS_BY_ZONE[st.zone] = [];
+  STATIONS_BY_ZONE[st.zone].push(st.pos);
+}
+
+function isInStationSafeZone(zoneId: string, pos: Vec2, extra = 0): boolean {
+  const stations = STATIONS_BY_ZONE[zoneId];
+  if (!stations) return false;
+  const r = STATION_SAFE_RADIUS + extra;
+  for (const sp of stations) {
+    const dx = pos.x - sp.x, dy = pos.y - sp.y;
+    if (dx * dx + dy * dy < r * r) return true;
+  }
+  return false;
+}
 
 // ── ASTEROID BELT DEFINITIONS ────────────────────────────────────────────
 const ASTEROID_BELTS: Record<string, { cx: number; cy: number; rx: number; ry: number }[]> = {
@@ -1349,12 +1370,20 @@ export class GameEngine {
     if (!zoneDef) return;
     const tierMult = Math.pow(2, zoneDef.enemyTier - 1);
 
-    // Pick a random player to spawn near
-    const rp = players[Math.floor(Math.random() * players.length)];
-    const baseAng = Math.random() * Math.PI * 2;
-    const baseDist = 600 + Math.random() * 800;
-    const baseX = clamp(rp.posX + Math.cos(baseAng) * baseDist, -MAP_RADIUS * 0.9, MAP_RADIUS * 0.9);
-    const baseY = clamp(rp.posY + Math.sin(baseAng) * baseDist, -MAP_RADIUS * 0.9, MAP_RADIUS * 0.9);
+    // Pick a random player to spawn near — retry to stay out of station safe zones
+    // (extra 250 margin covers the group scatter below). Skip this cycle if unlucky.
+    let baseX = 0, baseY = 0, foundBase = false;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const rp = players[Math.floor(Math.random() * players.length)];
+      const baseAng = Math.random() * Math.PI * 2;
+      const baseDist = 600 + Math.random() * 800;
+      const bx = clamp(rp.posX + Math.cos(baseAng) * baseDist, -MAP_RADIUS * 0.9, MAP_RADIUS * 0.9);
+      const by = clamp(rp.posY + Math.sin(baseAng) * baseDist, -MAP_RADIUS * 0.9, MAP_RADIUS * 0.9);
+      if (!isInStationSafeZone(zoneId, { x: bx, y: by }, 250)) {
+        baseX = bx; baseY = by; foundBase = true; break;
+      }
+    }
+    if (!foundBase) return;
 
     // Spawn 3-6 pirates in a group (capped to not exceed zone limit)
     const maxToSpawn = Math.max(0, 10 - pirateCount);
@@ -1482,22 +1511,28 @@ export class GameEngine {
     const spdMul = fMods?.speedMul ?? 1;
     const color = fMods?.color ?? baseDef.color;
 
-    // Spawn position: 65% near a player (but at distance), 35% random on map
-    let spawnPos: Vec2;
-    if (players.length > 0 && Math.random() < 0.50) {
-      const rp = players[Math.floor(Math.random() * players.length)];
-      const ang = Math.random() * Math.PI * 2;
-      const d = 800 + Math.random() * 1000;
-      spawnPos = {
-        x: clamp(rp.posX + Math.cos(ang) * d, -MAP_RADIUS, MAP_RADIUS),
-        y: clamp(rp.posY + Math.sin(ang) * d, -MAP_RADIUS, MAP_RADIUS),
-      };
-    } else {
-      spawnPos = {
-        x: randRange(-MAP_RADIUS * 0.9, MAP_RADIUS * 0.9),
-        y: randRange(-MAP_RADIUS * 0.9, MAP_RADIUS * 0.9),
-      };
+    // Spawn position: 50% near a player (but at distance), 50% random on map.
+    // Retry a few times to stay out of station safe zones; skip this tick if unlucky.
+    let spawnPos: Vec2 | null = null;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      let cand: Vec2;
+      if (players.length > 0 && Math.random() < 0.50) {
+        const rp = players[Math.floor(Math.random() * players.length)];
+        const ang = Math.random() * Math.PI * 2;
+        const d = 800 + Math.random() * 1000;
+        cand = {
+          x: clamp(rp.posX + Math.cos(ang) * d, -MAP_RADIUS, MAP_RADIUS),
+          y: clamp(rp.posY + Math.sin(ang) * d, -MAP_RADIUS, MAP_RADIUS),
+        };
+      } else {
+        cand = {
+          x: randRange(-MAP_RADIUS * 0.9, MAP_RADIUS * 0.9),
+          y: randRange(-MAP_RADIUS * 0.9, MAP_RADIUS * 0.9),
+        };
+      }
+      if (!isInStationSafeZone(zoneId, cand)) { spawnPos = cand; break; }
     }
+    if (!spawnPos) return;
 
     const names = ENEMY_NAMES[enemyType];
     const name = names[Math.floor(Math.random() * names.length)];
@@ -1558,14 +1593,24 @@ export class GameEngine {
     const fMods = FACTION_ENEMY_MODS[zoneDef.faction]?.[bossType];
     const color = fMods?.color ?? baseDef.color;
 
-    // Spawn near center or random player
+    // Spawn near a random player (or random spot if none) — never inside a station
+    // safe zone. If no clear spot found, bail; bossTimer is still <= 0 so we retry
+    // next tick.
     const rp = players[Math.floor(Math.random() * players.length)];
-    const spawnPos: Vec2 = rp
-      ? {
-        x: clamp(rp.posX + randRange(-600, 600), -MAP_RADIUS * 0.8, MAP_RADIUS * 0.8),
-        y: clamp(rp.posY + randRange(-600, 600), -MAP_RADIUS * 0.8, MAP_RADIUS * 0.8)
-      }
-      : { x: 0, y: 0 };
+    let spawnPos: Vec2 | null = null;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const cand: Vec2 = rp
+        ? {
+          x: clamp(rp.posX + randRange(-600, 600), -MAP_RADIUS * 0.8, MAP_RADIUS * 0.8),
+          y: clamp(rp.posY + randRange(-600, 600), -MAP_RADIUS * 0.8, MAP_RADIUS * 0.8)
+        }
+        : {
+          x: randRange(-MAP_RADIUS * 0.8, MAP_RADIUS * 0.8),
+          y: randRange(-MAP_RADIUS * 0.8, MAP_RADIUS * 0.8)
+        };
+      if (!isInStationSafeZone(zoneId, cand)) { spawnPos = cand; break; }
+    }
+    if (!spawnPos) return;
 
     const boss: ServerEnemy = {
       id: eid("boss"),
@@ -2151,10 +2196,15 @@ export class GameEngine {
       const dmgMul = (fMods?.damageMul ?? 1) * tierMult;
       const spdMul = fMods?.speedMul ?? 1;
       const color = fMods?.color ?? baseDef.color;
-      const spawnPos: Vec2 = {
-        x: randRange(-MAP_RADIUS * 0.9, MAP_RADIUS * 0.9),
-        y: randRange(-MAP_RADIUS * 0.9, MAP_RADIUS * 0.9),
-      };
+      let spawnPos: Vec2 | null = null;
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const cand: Vec2 = {
+          x: randRange(-MAP_RADIUS * 0.9, MAP_RADIUS * 0.9),
+          y: randRange(-MAP_RADIUS * 0.9, MAP_RADIUS * 0.9),
+        };
+        if (!isInStationSafeZone(zoneId, cand)) { spawnPos = cand; break; }
+      }
+      if (!spawnPos) continue;
       const names = ENEMY_NAMES[enemyType];
       const name = names[Math.floor(Math.random() * names.length)];
       const enemy: ServerEnemy = {
