@@ -1675,28 +1675,30 @@ export function pixiRender(): void {
 const BG_ZONE_CFG: Record<string, { fill: string; wx: number; wy: number; pSpeed: number; pSize: number; glow: string }> = {
   // Earth faction (1-x)
   "1-1": { fill: "#060e2e", wx:  1200, wy:  -900, pSpeed: 0.14, pSize: 2048, glow: "#3366cc" },
-  "1-2": { fill: "#120832", wx: -1100, wy:  -800, pSpeed: 0.20, pSize: 230, glow: "#7722aa" },
-  "1-3": { fill: "#200610", wx:  1000, wy:   900, pSpeed: 0.22, pSize: 210, glow: "#cc2233" },
-  "1-4": { fill: "#030e12", wx: -1200, wy:   700, pSpeed: 0.18, pSize: 240, glow: "#006655" },
-  "1-5": { fill: "#160c04", wx:  1300, wy: -1100, pSpeed: 0.22, pSize: 220, glow: "#cc6600" },
+  // wx/wy deliberately spread across different quadrants/distances so each map's
+  // planet appears somewhere else; pSize varies (bigger, unique planets since v4).
+  "1-2": { fill: "#120832", wx: -3800, wy: -2200, pSpeed: 0.16, pSize: 460, glow: "#7722aa" },
+  "1-3": { fill: "#200610", wx:  4600, wy:  1500, pSpeed: 0.20, pSize: 380, glow: "#cc2233" },
+  "1-4": { fill: "#030e12", wx:   900, wy:  4200, pSpeed: 0.22, pSize: 310, glow: "#006655" },
+  "1-5": { fill: "#160c04", wx: -2600, wy:  3400, pSpeed: 0.18, pSize: 420, glow: "#cc6600" },
   // Mars faction (2-x)
-  "2-1": { fill: "#1a0802", wx: -1000, wy:  -900, pSpeed: 0.22, pSize: 220, glow: "#cc4400" },
-  "2-2": { fill: "#1c0a02", wx:  1100, wy:  1000, pSpeed: 0.20, pSize: 200, glow: "#884422" },
-  "2-3": { fill: "#16040e", wx: -1300, wy: -1000, pSpeed: 0.22, pSize: 215, glow: "#aa0033" },
-  "2-4": { fill: "#16021a", wx:  1200, wy:   800, pSpeed: 0.20, pSize: 225, glow: "#660066" },
-  "2-5": { fill: "#0a0220", wx: -1100, wy: -1200, pSpeed: 0.22, pSize: 235, glow: "#5500cc" },
+  "2-1": { fill: "#1a0802", wx:  3200, wy: -3800, pSpeed: 0.17, pSize: 450, glow: "#cc4400" },
+  "2-2": { fill: "#1c0a02", wx: -4800, wy:   800, pSpeed: 0.22, pSize: 340, glow: "#884422" },
+  "2-3": { fill: "#16040e", wx:  1800, wy:  2600, pSpeed: 0.19, pSize: 400, glow: "#aa0033" },
+  "2-4": { fill: "#16021a", wx: -1200, wy: -4600, pSpeed: 0.21, pSize: 370, glow: "#660066" },
+  "2-5": { fill: "#0a0220", wx:  5200, wy:  -700, pSpeed: 0.15, pSize: 500, glow: "#5500cc" },
   // Venus faction (3-x)
-  "3-1": { fill: "#0a1606", wx:  1000, wy:  -800, pSpeed: 0.22, pSize: 220, glow: "#44aa22" },
-  "3-2": { fill: "#0e1a04", wx: -1200, wy:   900, pSpeed: 0.20, pSize: 225, glow: "#88cc00" },
-  "3-3": { fill: "#0a1800", wx:  1300, wy:  1100, pSpeed: 0.22, pSize: 210, glow: "#22cc44" },
-  "3-4": { fill: "#041206", wx: -1000, wy:  -700, pSpeed: 0.20, pSize: 230, glow: "#00aa66" },
-  "3-5": { fill: "#081402", wx:  1100, wy: -1000, pSpeed: 0.22, pSize: 240, glow: "#66dd00" },
+  "3-1": { fill: "#0a1606", wx: -3400, wy: -3600, pSpeed: 0.18, pSize: 430, glow: "#44aa22" },
+  "3-2": { fill: "#0e1a04", wx:  2400, wy:  4400, pSpeed: 0.21, pSize: 350, glow: "#88cc00" },
+  "3-3": { fill: "#0a1800", wx: -5000, wy:  2000, pSpeed: 0.16, pSize: 470, glow: "#22cc44" },
+  "3-4": { fill: "#041206", wx:   700, wy: -3000, pSpeed: 0.23, pSize: 320, glow: "#00aa66" },
+  "3-5": { fill: "#081402", wx:  3800, wy:  2900, pSpeed: 0.19, pSize: 410, glow: "#66dd00" },
   // Danger zones (4-x)
-  "4-1": { fill: "#180408", wx: -1100, wy:  1200, pSpeed: 0.24, pSize: 230, glow: "#ff2244" },
-  "4-2": { fill: "#1a0206", wx:  1200, wy: -1100, pSpeed: 0.24, pSize: 240, glow: "#ff4400" },
-  "4-3": { fill: "#160008", wx: -1300, wy:   900, pSpeed: 0.24, pSize: 235, glow: "#cc0066" },
-  "4-4": { fill: "#120010", wx:  1000, wy:  1300, pSpeed: 0.24, pSize: 245, glow: "#aa00cc" },
-  "4-5": { fill: "#0e0016", wx: -1200, wy: -1300, pSpeed: 0.24, pSize: 250, glow: "#6600ff" },
+  "4-1": { fill: "#180408", wx: -2000, wy:  4800, pSpeed: 0.18, pSize: 440, glow: "#ff2244" },
+  "4-2": { fill: "#1a0206", wx:  4400, wy: -2600, pSpeed: 0.20, pSize: 390, glow: "#ff4400" },
+  "4-3": { fill: "#160008", wx: -4400, wy: -1400, pSpeed: 0.16, pSize: 480, glow: "#cc0066" },
+  "4-4": { fill: "#120010", wx:  1400, wy:  3800, pSpeed: 0.22, pSize: 355, glow: "#aa00cc" },
+  "4-5": { fill: "#0e0016", wx:  -900, wy: -5200, pSpeed: 0.17, pSize: 430, glow: "#6600ff" },
   // Debug
   "DBG": { fill: "#001a00", wx:     0, wy:     0, pSpeed: 0.20, pSize: 200, glow: "#00ff00" },
 };
@@ -1722,15 +1724,34 @@ let _bgNebulaTile: PIXI.TilingSprite | null = null;
 let _bgPlanetSprite: PIXI.Sprite | null = null;
 let _bgNebulaTopTile: PIXI.TilingSprite | null = null;
 let _bgDustTile: PIXI.TilingSprite | null = null;
+let _bgDebrisTile: PIXI.TilingSprite | null = null;
+let _bgAstSprites: { spr: PIXI.Sprite; u: number; v: number; rotSpeed: number; rot0: number }[] = [];
 let _bgDriftX = 0;
 let _bgDriftY = 0;
 
+// Deterministic per-zone RNG so asteroid layouts are stable across sessions
+function _bgSeededRng(label: string): () => number {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < label.length; i++) { h ^= label.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return () => {
+    h = Math.imul(h ^ (h >>> 15), h | 1);
+    h ^= h + Math.imul(h ^ (h >>> 7), h | 61);
+    return ((h ^ (h >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 function _bgDestroyLayers(): void {
-  for (const s of [_bgFillSprite, _bgStarsTile, _bgNebulaTile, _bgPlanetSprite, _bgNebulaTopTile, _bgDustTile]) {
+  for (const s of [_bgFillSprite, _bgStarsTile, _bgNebulaTile, _bgPlanetSprite, _bgNebulaTopTile, _bgDustTile, _bgDebrisTile]) {
     if (s) { s.parent?.removeChild(s); s.destroy({ texture: false, baseTexture: false }); }
   }
+  for (const a of _bgAstSprites) {
+    a.spr.parent?.removeChild(a.spr);
+    a.spr.destroy({ texture: false, baseTexture: false });
+  }
+  _bgAstSprites = [];
   _bgFillSprite = null; _bgStarsTile = null; _bgNebulaTile = null;
   _bgPlanetSprite = null; _bgNebulaTopTile = null; _bgDustTile = null;
+  _bgDebrisTile = null;
   _bgDriftX = 0; _bgDriftY = 0;
 }
 
@@ -1738,18 +1759,29 @@ function _bgBuildSprites(
   zone: string, w: number, h: number,
   sTex: PIXI.Texture, nTex: PIXI.Texture,
   pTex: PIXI.Texture, dTex: PIXI.Texture,
+  dustTex: PIXI.Texture, debrisTex: PIXI.Texture,
   res: number,
 ): void {
   const label = _bgZoneIdToLabel[zone] ?? zone;
   const cfg = BG_ZONE_CFG[label] ?? BG_ZONE_CFG["1-1"];
 
   // Insert all bg sprites at index 0, in reverse order so the final order is:
-  // 0: fill, 1: stars, 2: nebula, 3: planet, 4: dust, then bgGraphics/starGraphics on top.
-  // We insert dust first (lowest priority addChildAt call) through fill last (index 0).
+  // 0: fill, 1: stars, 2: nebula, 3: nebula-top, 4: dust, 5: planet, 6: debris,
+  // then bgGraphics/starGraphics on top.
+  // We insert debris first (lowest priority addChildAt call) through fill last (index 0).
+
+  _bgDebrisTile = new PIXI.TilingSprite(debrisTex, w, h);
+  _bgDebrisTile.tileScale.set(1 / res);
+  bgLayer.addChildAt(_bgDebrisTile, 0);
 
   _bgPlanetSprite = new PIXI.Sprite(dTex);
   _bgPlanetSprite.anchor.set(0.5);
   bgLayer.addChildAt(_bgPlanetSprite, 0);
+
+  _bgDustTile = new PIXI.TilingSprite(dustTex, w, h);
+  _bgDustTile.alpha = 0.16;
+  _bgDustTile.tileScale.set(1 / res);
+  bgLayer.addChildAt(_bgDustTile, 0);
 
   _bgNebulaTopTile = new PIXI.TilingSprite(pTex, w, h);
   _bgNebulaTopTile.alpha = 0.12;
@@ -1776,7 +1808,8 @@ function _bgBuildSprites(
   _bgFillSprite.width = w; _bgFillSprite.height = h;
   bgLayer.addChildAt(_bgFillSprite, 0);
 
-  // Final order: 0=fill, 1=stars, 2=nebula(L2), 3=nebula-top(L3), 4=planet(L4), 5+=bgGraphics/starGraphics
+  // Final order: 0=fill, 1=stars(L1), 2=nebula(L2), 3=nebula-top(L3), 4=dust(L5),
+  //              5=planet(L4), 6=debris(L6), 7+=bgGraphics/starGraphics
 }
 
 function _bgBuildLayers(zone: string, w: number, h: number): void {
@@ -1790,6 +1823,8 @@ function _bgBuildLayers(zone: string, w: number, h: number): void {
     `${base}/Layer2_${label}.png`,
     `${base}/Layer3_${label}.png?v=2`,
     `${base}/Layer4_${label}.png`,
+    `${base}/Layer5_${label}.png`, // space dust / haze (optional, tiled)
+    `${base}/Layer6_${label}.png`, // foreground debris / asteroids (optional, tiled)
   ];
 
   console.log("[bg] loading zone", zone, "label", label, "urls", urls);
@@ -1802,10 +1837,38 @@ function _bgBuildLayers(zone: string, w: number, h: number): void {
         return t;
       })
       .catch((e: any) => { console.warn("[bg] FAILED:", u, e?.message ?? e); return PIXI.Texture.EMPTY; })
-  )).then(([sTex, nTex, pTex, dTex]) => {
+  )).then(([sTex, nTex, pTex, dTex, dustTex, debrisTex]) => {
     console.log("[bg] all loaded, building sprites for zone", zone);
     if (_bgZoneActive !== zone) { console.log("[bg] zone changed, skipping"); return; }
-    _bgBuildSprites(zone, w, h, sTex as PIXI.Texture, nTex as PIXI.Texture, pTex as PIXI.Texture, dTex as PIXI.Texture, app ? app.renderer.resolution : 1);
+    _bgBuildSprites(zone, w, h, sTex as PIXI.Texture, nTex as PIXI.Texture, pTex as PIXI.Texture, dTex as PIXI.Texture, dustTex as PIXI.Texture, debrisTex as PIXI.Texture, app ? app.renderer.resolution : 1);
+  });
+
+  // Rotating foreground asteroids (ast1..4_<label>.png, optional per map).
+  // Individual sprites so each can spin — a baked tile can't rotate its contents.
+  const astUrls = [1, 2, 3, 4].map(i => `${base}/ast${i}_${label}.png`);
+  Promise.all(astUrls.map(u =>
+    (PIXI.Texture as any).fromURL(u, { scaleMode: PIXI.SCALE_MODES.NEAREST })
+      .catch(() => null)
+  )).then((texs: (PIXI.Texture | null)[]) => {
+    if (_bgZoneActive !== zone) return;
+    const valid = texs.filter((t): t is PIXI.Texture => !!t);
+    if (valid.length === 0 || !bgGraphics) return;
+    const rnd = _bgSeededRng(label);
+    const count = label.startsWith("4-") ? 16 : 11;
+    for (let i = 0; i < count; i++) {
+      const spr = new PIXI.Sprite(valid[Math.floor(rnd() * valid.length)]);
+      spr.anchor.set(0.5);
+      spr.scale.set(0.5 + rnd() * 0.9);
+      spr.alpha = 0.5 + rnd() * 0.45;
+      // insert just below bgGraphics so asteroids stay part of the background stack
+      bgLayer.addChildAt(spr, bgLayer.getChildIndex(bgGraphics));
+      _bgAstSprites.push({
+        spr,
+        u: rnd(), v: rnd(),
+        rotSpeed: (rnd() < 0.5 ? -1 : 1) * (0.05 + rnd() * 0.20), // slow spin, rad/s
+        rot0: rnd() * Math.PI * 2,
+      });
+    }
   });
 }
 function renderBackground(w: number, h: number, cam: { x: number; y: number }): void {
@@ -1846,6 +1909,37 @@ function renderBackground(w: number, h: number, cam: { x: number; y: number }): 
     _bgNebulaTopTile.tilePosition.x = Math.round((-cam.x * 0.08 + _bgDriftX * 0.2) * res) / res;
     _bgNebulaTopTile.tilePosition.y = Math.round((-cam.y * 0.08 + _bgDriftY * 0.2) * res) / res;
     _bgNebulaTopTile.alpha = 0.2;
+  }
+
+  if (_bgDustTile) {
+    // L5: space dust / haze — medium-fast, kept faint
+    _bgDustTile.width = w; _bgDustTile.height = h;
+    _bgDustTile.tilePosition.x = Math.round((-cam.x * 0.18 + _bgDriftX * 0.4) * res) / res;
+    _bgDustTile.tilePosition.y = Math.round((-cam.y * 0.18 + _bgDriftY * 0.4) * res) / res;
+    _bgDustTile.alpha = 0.16;
+  }
+
+  if (_bgDebrisTile) {
+    // L6: foreground debris / asteroids — fastest band, sparse art keeps it calm
+    _bgDebrisTile.width = w; _bgDebrisTile.height = h;
+    _bgDebrisTile.tilePosition.x = Math.round((-cam.x * 0.30 + _bgDriftX * 0.5) * res) / res;
+    _bgDebrisTile.tilePosition.y = Math.round((-cam.y * 0.30 + _bgDriftY * 0.5) * res) / res;
+    _bgDebrisTile.alpha = 0.9;
+  }
+
+  if (_bgAstSprites.length > 0) {
+    // Rotating foreground asteroids — fastest parallax band, individual slow spin.
+    // Positions wrap on a region slightly larger than the screen so sprites
+    // leave one edge fully before re-entering the other.
+    const M = 160;
+    const wrapW = w + M * 2, wrapH = h + M * 2;
+    const scrollX = -cam.x * 0.30 + _bgDriftX * 0.5;
+    const scrollY = -cam.y * 0.30 + _bgDriftY * 0.5;
+    for (const a of _bgAstSprites) {
+      a.spr.x = ((a.u * wrapW + scrollX) % wrapW + wrapW) % wrapW - M;
+      a.spr.y = ((a.v * wrapH + scrollY) % wrapH + wrapH) % wrapH - M;
+      a.spr.rotation = a.rot0 + t * a.rotSpeed;
+    }
   }
 
   if (_bgPlanetSprite) {

@@ -30,10 +30,14 @@ Entry points:
 ```
 app.stage
 ├── [0] bgLayer (Container)
-│       ├── TilingSprite: stars (parallax 0.05x)
-│       ├── TilingSprite: nebula (parallax 0.12x)
-│       ├── TilingSprite: nebula top layer (parallax 0.08x)
-│       └── planet/background sprites (parallax 0.3x)
+│       ├── TilingSprite: stars L1 (parallax 0.05x)
+│       ├── TilingSprite: nebula L2 (parallax 0.12x)
+│       ├── TilingSprite: nebula top / mid stars L3 (parallax 0.08x)
+│       ├── TilingSprite: space dust/haze L5 (parallax 0.18x, alpha 0.16, optional)
+│       ├── planet sprite L4 (world-anchored, pSpeed per zone)
+│       └── TilingSprite: foreground debris L6 (parallax 0.30x, optional)
+│       Files: /bg/<label>/Layer{1..6}_<label>.png — L5/L6 optional per map,
+│       missing files fall back to empty textures. See ASSET_LICENSES.md.
 │
 ├── [1] stationSprite (PIXI.Sprite)
 │       └── Wraps the Three.js station offscreen canvas as a texture
