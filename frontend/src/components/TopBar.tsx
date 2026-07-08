@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { GameButton } from "./GameButton";
+import { TopPanel } from "./TopPanel";
 import { useGame, state, bump, maxDroneSlots, cargoCapacity } from "../game/store";
+import { clearToken } from "../net/api";
+import { disconnectSocket } from "../net/socket";
 import { EXP_FOR_LEVEL, FACTIONS, SHIP_CLASSES, ZONES, rankFor, HONOR_RANKS } from "../game/types";
 import { effectiveStats } from "../game/loop";
-import { setMuted, getMuted, setVolume, getVolume } from "../game/sound";
 
 function fmtNum(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
@@ -17,132 +20,236 @@ export function TopBar() {
   const shieldMax = es.shieldMax;
   const hullMax = es.hullMax;
   const expNeeded = EXP_FOR_LEVEL(player.level);
-  const zone = ZONES[player.zone];
   const rank = rankFor(player.honor);
   const nextRank = HONOR_RANKS.find((r) => r.minHonor > player.honor);
 
   const cargoUsed = player.cargo.reduce((a, c) => a + c.qty, 0);
 
   return (
-    <div className="absolute top-2 left-2 right-2 z-30 flex items-center gap-2 pointer-events-none flex-wrap">
-      {/* Player identity + rank */}
-      <div className="panel pointer-events-auto flex items-center gap-2.5 px-3 py-2" style={{ minWidth: 0, boxShadow: "0 0 16px rgba(78,226,255,0.08), inset 0 0 20px rgba(0,0,0,0.4)" }}>
-        <RankBadge rank={rank} />
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span
-              className="font-bold tracking-widest truncate"
-              style={{ color: "#fff", fontSize: 14, maxWidth: 140 }}
-            >
-              {player.name}
-            </span>
-            <span
-              className="font-bold shrink-0 tabular-nums"
-              style={{ color: "var(--accent-amber)", fontSize: 13 }}
-            >
-              Lv{player.level}
-            </span>
-            {player.skillPoints > 0 && (
+    <>
+    <div className="absolute top-2 left-2 right-2 z-30 flex items-start gap-2 pointer-events-none flex-wrap">
+      {/* Command console — identity, vitals, progression, resources in one frame */}
+      <TopPanel style={{ minWidth: 0 }}>
+      <div className="flex items-stretch" style={{ padding: "6px 10px" }}>
+        {/* identity */}
+        <div className="flex items-center gap-2.5 pr-3">
+          <RankBadge rank={rank} />
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 min-w-0">
               <span
-                className="shrink-0 font-bold tabular-nums"
-                style={{
-                  fontSize: 11,
-                  color: "#ff5cf0",
-                  border: "1px solid #ff5cf088",
-                  padding: "0px 4px",
-                  boxShadow: "0 0 4px #ff5cf088",
-                  animation: "pulse-glow 1.5s ease-in-out infinite",
-                  whiteSpace: "nowrap",
-                }}
+                className="font-bold tracking-widest truncate"
+                style={{ color: "#fff", fontSize: 14, maxWidth: 140, fontFamily: "var(--font-display)" }}
               >
-                +{player.skillPoints} SP
+                {player.name}
               </span>
-            )}
-          </div>
-          <div className="flex items-center gap-1 min-w-0" style={{ fontSize: 11 }}>
-            <span className="shrink-0 font-semibold tracking-widest" style={{ color: rank.color }}>
-              {rank.name.toUpperCase()}
-            </span>
-            <span className="text-mute shrink-0">·</span>
-            <span className="text-mute truncate" style={{ maxWidth: 80 }}>{cls.name}</span>
-            {player.faction && (
-              <>
-                <span className="text-mute shrink-0">·</span>
-                <span className="shrink-0 font-bold" style={{ color: FACTIONS[player.faction].color }}>
-                  [{FACTIONS[player.faction].tag}]
+              <span
+                className="font-bold shrink-0 tabular-nums"
+                style={{ color: "var(--accent-amber)", fontSize: 13 }}
+              >
+                Lv{player.level}
+              </span>
+              {player.skillPoints > 0 && (
+                <span
+                  className="shrink-0 font-bold tabular-nums"
+                  style={{
+                    fontSize: 11,
+                    color: "#ff5cf0",
+                    border: "1px solid #ff5cf088",
+                    padding: "0px 4px",
+                    boxShadow: "0 0 4px #ff5cf088",
+                    animation: "pulse-glow 1.5s ease-in-out infinite",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  +{player.skillPoints} SP
                 </span>
-              </>
-            )}
+              )}
+            </div>
+            <div className="flex items-center gap-1 min-w-0" style={{ fontSize: 11 }}>
+              <span className="shrink-0 font-semibold tracking-widest" style={{ color: rank.color }}>
+                {rank.name.toUpperCase()}
+              </span>
+              <span className="text-mute shrink-0">·</span>
+              <span className="text-mute truncate" style={{ maxWidth: 80 }}>{cls.name}</span>
+              {player.faction && (
+                <>
+                  <span className="text-mute shrink-0">·</span>
+                  <span className="shrink-0 font-bold" style={{ color: FACTIONS[player.faction].color }}>
+                    [{FACTIONS[player.faction].tag}]
+                  </span>
+                </>
+              )}
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* HULL/SHIELD micro bars */}
-      <div className="panel pointer-events-auto px-3 py-2" style={{ minWidth: 170 }}>
-        <MicroBar label="HUL" value={player.hull} max={hullMax} color="#5cff8a" />
-        <MicroBar label="SHD" value={player.shield} max={shieldMax} color="#4ee2ff" />
-      </div>
+        <ConsoleDivider />
 
-      {/* EXP / Honor bars */}
-      <div className="panel pointer-events-auto px-3 py-2" style={{ minWidth: 170 }}>
-        <MicroBar label="XP" value={player.exp} max={expNeeded} color="#ff5cf0" />
-        <MicroBar
-          label="HNR"
-          value={player.honor - rank.minHonor}
-          max={(nextRank?.minHonor ?? rank.minHonor + 1000) - rank.minHonor}
-          color={rank.color}
-        />
-      </div>
+        {/* vitals */}
+        <div className="px-3 flex flex-col justify-center" style={{ minWidth: 176 }}>
+          <MicroBar label="HUL" value={player.hull} max={hullMax} color="#5cff8a" />
+          <MicroBar label="SHD" value={player.shield} max={shieldMax} color="#4ee2ff" />
+        </div>
 
-      {/* Numeric stats */}
-      <div className="panel pointer-events-auto flex items-center py-2 px-1" style={{ minWidth: 0 }}>
-        <Stat label="CR" value={fmtNum(player.credits)} color="var(--accent-amber)" />
-        <Stat label="HONOR" value={fmtNum(player.honor)} color={rank.color} />
-        <Stat label="CARGO" value={`${cargoUsed}/${cargoCapacity()}`} color="#4ee2ff" />
-        <Stat label="DRONES" value={`${player.drones.length}/${maxDroneSlots()}`} color="#aaff5c" />
-      </div>
+        <ConsoleDivider />
 
-      {/* Sector chip */}
-      <div className="panel pointer-events-auto px-3 py-2 text-right" style={{ minWidth: 0 }}>
-        <div className="hud-label">SECTOR</div>
-        <div
-          className="font-bold tracking-widest glow-cyan truncate"
-          style={{ color: "var(--accent-cyan)", fontSize: 13, maxWidth: 110 }}
-        >
-          {zone.name.toUpperCase()}
+        {/* progression */}
+        <div className="px-3 flex flex-col justify-center" style={{ minWidth: 176 }}>
+          <MicroBar label="XP" value={player.exp} max={expNeeded} color="#ff5cf0" />
+          <MicroBar
+            label="HNR"
+            value={player.honor - rank.minHonor}
+            max={(nextRank?.minHonor ?? rank.minHonor + 1000) - rank.minHonor}
+            color={rank.color}
+          />
+        </div>
+
+        <ConsoleDivider />
+
+        {/* resources */}
+        <div className="flex items-center px-1">
+          <Stat label="Credits" value={fmtNum(player.credits)} color="var(--accent-amber)" />
+          <Stat label="HONOR" value={fmtNum(player.honor)} color={rank.color} />
+          <Stat label="CARGO" value={`${cargoUsed}/${cargoCapacity()}`} color="#4ee2ff" />
+          <Stat label="DRONES" value={`${player.drones.length}/${maxDroneSlots()}`} color="#aaff5c" />
         </div>
       </div>
+      </TopPanel>
 
       {/* Spacer */}
       <div className="flex-1 min-w-0" />
 
       {/* Action buttons */}
-      <div className="pointer-events-auto flex gap-1 shrink-0">
-        <AudioToggle />
-        <button
-          className="btn"
-          style={{ padding: "5px 10px", fontSize: 12 }}
-          onClick={() => { state.showMap = !state.showMap; bump(); }}
-          title="Galaxy Map (M)"
-        >
-          ★ Map
-        </button>
-        <button
-          className="btn"
-          style={{ padding: "5px 10px", fontSize: 12 }}
-          onClick={() => { state.showSocial = !state.showSocial; bump(); }}
-          title="Social"
-        >
-          ☷ Social
-        </button>
-        <button
-          className="btn"
-          style={{ padding: "5px 10px", fontSize: 12 }}
-          onClick={() => { state.showClan = !state.showClan; bump(); }}
-          title="Clan (C)"
-        >
-          ⚑ Clan
-        </button>
+      <div className="pointer-events-auto flex flex-col items-end gap-1 shrink-0">
+        <div className="flex gap-1">
+          <GameButton onClick={() => { state.showMap = !state.showMap; bump(); }} title="Galaxy Map (M)" style={{ fontSize: 11 }}>★ Map</GameButton>
+          <GameButton onClick={() => { state.showSocial = !state.showSocial; bump(); }} title="Social" style={{ fontSize: 11 }}>☷ Social</GameButton>
+          <GameButton onClick={() => { state.showClan = !state.showClan; bump(); }} title="Clan (C)" style={{ fontSize: 11 }}>⚑ Clan</GameButton>
+        </div>
+        <div className="flex gap-1">
+          <GameButton
+            onClick={() => { state.showSettings = !state.showSettings; bump(); }}
+            title="Settings"
+            style={{ color: "#44eecc", fontSize: 11 }}
+          >
+            ⚙ Settings
+          </GameButton>
+          <GameButton
+            onClick={() => { state.showLogoutConfirm = true; bump(); }}
+            title="Logout"
+            style={{ color: "#ff8a9a", fontSize: 11 }}
+          >
+            ⎋ Logout
+          </GameButton>
+        </div>
+      </div>
+    </div>
+    <LogoutFlow />
+    </>
+  );
+}
+
+function LogoutFlow() {
+  const showConfirm = useGame((s) => s.showLogoutConfirm);
+  const countingDown = useGame((s) => s.logoutCountdown);
+  const [remaining, setRemaining] = useState(5);
+
+  useEffect(() => {
+    if (!countingDown) return;
+    setRemaining(5);
+    const start = Date.now();
+    const interval = setInterval(() => {
+      const elapsed = (Date.now() - start) / 1000;
+      const left = Math.max(0, 5 - Math.floor(elapsed));
+      setRemaining(left);
+      if (left <= 0) {
+        clearInterval(interval);
+        clearToken();
+        disconnectSocket();
+        window.location.reload();
+      }
+    }, 100);
+    return () => clearInterval(interval);
+  }, [countingDown]);
+
+  if (!showConfirm && !countingDown) return null;
+
+  if (countingDown) {
+    return (
+      <div
+        style={{
+          position: "fixed", inset: 0, zIndex: 100,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          background: "rgba(0,0,0,0.65)",
+          pointerEvents: "auto",
+        }}
+      >
+        <div style={{ textAlign: "center" }}>
+          <div style={{ color: "#ff8a9a", fontSize: 18, letterSpacing: "0.25em", marginBottom: 16, textShadow: "0 0 12px rgba(255,60,80,0.8)" }}>
+            LOGGING OUT IN
+          </div>
+          <div
+            style={{
+              color: "#ffffff",
+              fontSize: 120,
+              fontWeight: 800,
+              lineHeight: 1,
+              textShadow: "0 0 24px rgba(255,60,80,0.9), 0 0 48px rgba(255,60,80,0.5)",
+              fontFamily: "'Courier New', monospace",
+            }}
+          >
+            {remaining}
+          </div>
+          <div style={{ marginTop: 24 }}>
+            <GameButton
+              onClick={() => { state.logoutCountdown = false; state.showLogoutConfirm = false; bump(); }}
+              style={{ color: "#ffffff", fontSize: 13, padding: "8px 24px" }}
+            >
+              ✕ Cancel
+            </GameButton>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 100,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        background: "rgba(0,0,0,0.65)",
+        pointerEvents: "auto",
+      }}
+    >
+      <div style={{
+        background: "rgba(8,12,30,0.95)",
+        border: "1px solid rgba(255,60,80,0.4)",
+        boxShadow: "0 0 40px rgba(255,60,80,0.3), inset 0 0 30px rgba(0,0,0,0.6)",
+        padding: "28px 40px",
+        maxWidth: 440,
+        textAlign: "center",
+      }}>
+        <div style={{ color: "#ff8a9a", fontSize: 16, letterSpacing: "0.2em", marginBottom: 12, textShadow: "0 0 8px rgba(255,60,80,0.6)" }}>
+          CONFIRM LOGOUT
+        </div>
+        <div style={{ color: "#e8ecff", fontSize: 14, marginBottom: 24, lineHeight: 1.5 }}>
+          Are you sure you want to log out?
+        </div>
+        <div className="flex justify-center gap-3">
+          <GameButton
+            onClick={() => { state.showLogoutConfirm = false; state.logoutCountdown = true; bump(); }}
+            style={{ color: "#ff8a9a", fontSize: 13, padding: "6px 20px" }}
+          >
+            ✓ Confirm
+          </GameButton>
+          <GameButton
+            onClick={() => { state.showLogoutConfirm = false; bump(); }}
+            style={{ color: "#e8ecff", fontSize: 13, padding: "6px 20px" }}
+          >
+            ✕ Cancel
+          </GameButton>
+        </div>
       </div>
     </div>
   );
@@ -162,7 +269,7 @@ export function WorldTargetHud() {
   const hpColor = target.kind === "enemy" ? "#ff5c6c" : "#c69060";
   return (
     <div
-      className="panel pointer-events-none"
+      className="hud-chip chip-target pointer-events-none"
       style={{
         position: "fixed",
         left: 14,
@@ -171,7 +278,7 @@ export function WorldTargetHud() {
         zIndex: 35,
         minWidth: 190,
         maxWidth: 240,
-        padding: "10px 12px",
+        padding: "4px 6px",
       }}
     >
       <div className="hud-label mb-0.5">TARGET</div>
@@ -216,6 +323,22 @@ export function WorldTargetHud() {
   );
 }
 
+function ConsoleDivider() {
+  return (
+    <div
+      aria-hidden
+      style={{
+        width: 1,
+        alignSelf: "stretch",
+        background:
+          "linear-gradient(180deg, transparent 0%, rgba(78,226,255,0.35) 20%, rgba(78,226,255,0.35) 80%, transparent 100%)",
+        boxShadow: "1px 0 0 rgba(0,0,0,0.6)",
+        flexShrink: 0,
+      }}
+    />
+  );
+}
+
 function MicroBar({
   label, value, max, color,
 }: { label: string; value: number; max: number; color: string }) {
@@ -224,8 +347,8 @@ function MicroBar({
   return (
     <div className="flex items-center gap-1.5 mb-0.5 last:mb-0">
       <span
-        className="shrink-0 text-right tabular-nums"
-        style={{ color: "#aabbd8", fontSize: 11, width: 28, letterSpacing: "0.08em" }}
+        className="shrink-0 text-right tabular-nums font-bold"
+        style={{ color: "#ffffff", fontSize: 11, width: 28, letterSpacing: "0.08em", textShadow: "0 0 6px rgba(255,255,255,0.7), 0 0 10px rgba(255,255,255,0.35)" }}
       >
         {label}
       </span>
@@ -252,38 +375,18 @@ function MicroBar({
 function Stat({ label, value, color }: { label: string; value: string; color: string }) {
   return (
     <div className="stat-box">
-      <div className="hud-label whitespace-nowrap">{label}</div>
+      <div
+        className="hud-label whitespace-nowrap font-bold"
+        style={{ color: "#ffffff", textShadow: "0 0 6px rgba(255,255,255,0.7), 0 0 10px rgba(255,255,255,0.35)" }}
+      >
+        {label}
+      </div>
       <div
         className="font-bold tabular-nums whitespace-nowrap"
         style={{ color, fontSize: 13 }}
       >
         {value}
       </div>
-    </div>
-  );
-}
-
-function AudioToggle() {
-  const [muted, setMutedState] = useState(getMuted());
-  const [vol, setVol] = useState(getVolume());
-  return (
-    <div
-      className="panel pointer-events-auto flex items-center gap-1.5 px-2 py-1"
-      title="Audio"
-      style={{ minWidth: 0 }}
-    >
-      <button
-        className="btn shrink-0"
-        style={{ padding: "2px 5px", fontSize: 13 }}
-        onClick={() => { const m = !muted; setMuted(m); setMutedState(m); }}
-      >
-        {muted ? "🔇" : "🔊"}
-      </button>
-      <input
-        type="range" min={0} max={1} step={0.05} value={vol}
-        onChange={(e) => { const v = +e.target.value; setVol(v); setVolume(v); }}
-        style={{ width: 46, accentColor: "var(--accent-cyan)" }}
-      />
     </div>
   );
 }

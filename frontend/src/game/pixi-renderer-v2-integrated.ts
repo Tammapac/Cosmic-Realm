@@ -1854,18 +1854,18 @@ function _bgBuildLayers(zone: string, w: number, h: number): void {
     const valid = texs.filter((t): t is PIXI.Texture => !!t);
     if (valid.length === 0 || !bgGraphics) return;
     const rnd = _bgSeededRng(label);
-    const count = label.startsWith("4-") ? 16 : 11;
+    const count = label.startsWith("4-") ? 8 : 5;
     for (let i = 0; i < count; i++) {
       const spr = new PIXI.Sprite(valid[Math.floor(rnd() * valid.length)]);
       spr.anchor.set(0.5);
-      spr.scale.set(0.5 + rnd() * 0.9);
+      spr.scale.set(0.4 + rnd() * 1.2);
       spr.alpha = 0.5 + rnd() * 0.45;
       // insert just below bgGraphics so asteroids stay part of the background stack
       bgLayer.addChildAt(spr, bgLayer.getChildIndex(bgGraphics));
       _bgAstSprites.push({
         spr,
         u: rnd(), v: rnd(),
-        rotSpeed: (rnd() < 0.5 ? -1 : 1) * (0.05 + rnd() * 0.20), // slow spin, rad/s
+        rotSpeed: (rnd() < 0.5 ? -1 : 1) * (0.08 + rnd() * 0.22), // slow but visible spin, rad/s
         rot0: rnd() * Math.PI * 2,
       });
     }

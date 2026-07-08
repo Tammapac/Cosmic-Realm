@@ -1,19 +1,23 @@
-import { useGame, state, bump } from "../game/store";
+import { useGame, useGameSlow, state, bump } from "../game/store";
+import { GameButton } from "./GameButton";
 import { DUNGEONS, MAP_RADIUS, STATIONS, PORTALS, ZONES, RESOURCES, ASTEROID_BELTS, } from "../game/types";
 
-const BASE_SIZE = 130;
+const BASE_SIZE = 110;
 const BASE_RANGE = 1800;
 
 export function MiniMap() {
+  // Player + minimap-scale + show-full stay on the fast tick (they change on
+  // input). The heavy list arrays subscribe to the 5 Hz slow tick — MiniMap
+  // draws 40+ SVG elements per render, and 5 Hz is plenty for a radar.
   const player = useGame((s) => s.player);
-  const enemies = useGame((s) => s.enemies);
-  const others = useGame((s) => s.others);
-  const npcShips = useGame((s) => s.npcShips);
-  const asteroids = useGame((s) => s.asteroids);
-  const cargoBoxes = useGame((s) => s.cargoBoxes);
   const minimapScale = useGame((s) => s.minimapScale);
   const showFull = useGame((s) => s.showFullZoneMap);
   const docked = useGame((s) => s.dockedAt);
+  const enemies = useGameSlow((s) => s.enemies);
+  const others = useGameSlow((s) => s.others);
+  const npcShips = useGameSlow((s) => s.npcShips);
+  const asteroids = useGameSlow((s) => s.asteroids);
+  const cargoBoxes = useGameSlow((s) => s.cargoBoxes);
 
   if (docked) return null;
 
@@ -65,7 +69,7 @@ export function MiniMap() {
         onClick={(e) => { if (e.target === e.currentTarget) { state.showFullZoneMap = false; bump(); }}}
       >
         <div
-          className="panel"
+          className="panel panel-framed"
           style={{
             padding: 10,
             boxShadow: "0 0 30px rgba(78,226,255,0.12), inset 0 0 20px rgba(0,0,0,0.5)",
@@ -81,13 +85,7 @@ export function MiniMap() {
             >
               ◈ {zone?.name ?? player.zone.toUpperCase()} — ZONE MAP
             </div>
-            <button
-              className="btn"
-              style={{ padding: "2px 8px", fontSize: 10 }}
-              onClick={() => { state.showFullZoneMap = false; bump(); }}
-            >
-              ESC ✕
-            </button>
+            <GameButton style={{ fontSize: 10 }} onClick={() => { state.showFullZoneMap = false; bump(); }}>ESC ✕</GameButton>
           </div>
           <svg width={fullSize} height={fullSize} onClick={handleFullClick} style={{ cursor: "crosshair", display: "block" }}>
             <defs>
@@ -200,22 +198,46 @@ export function MiniMap() {
 
   return (
     <div
-      className="panel pointer-events-auto"
+      className="pointer-events-auto hud-chip chip-map"
       style={{
         position: "absolute",
-        top: 62,
+        bottom: 8,
         right: 8,
-        width: SIZE + 8,
-        padding: 3,
-        boxShadow: "0 0 12px rgba(78,226,255,0.08), inset 0 0 10px rgba(0,0,0,0.4)",
+        padding: 4,
       }}
     >
-      <svg
-        width={SIZE}
-        height={SIZE}
-        onClick={handleClick}
-        style={{ cursor: "crosshair", display: "block", borderRadius: 1 }}
+      {/* Sector readout (moved here from the top bar) */}
+      <div
+        className="flex items-center justify-between gap-2"
+        style={{ marginBottom: 6, paddingBottom: 4, borderBottom: "1px solid rgba(78,226,255,0.15)" }}
       >
+        <span
+          className="truncate"
+          style={{
+            fontFamily: "var(--font-display)",
+            fontSize: 9,
+            letterSpacing: "0.16em",
+            color: "var(--accent-cyan)",
+            textShadow: "0 0 6px rgba(78,226,255,0.5)",
+            maxWidth: SIZE - 30,
+          }}
+        >
+          ◈ {(zone?.name ?? player.zone).toUpperCase()}
+        </span>
+        <span
+          className="shrink-0"
+          style={{ fontFamily: "var(--font-display)", fontSize: 8, color: "var(--text-mute)" }}
+        >
+          {(zone as any)?.label ?? ""}
+        </span>
+      </div>
+      <div style={{ position: "relative", width: SIZE, height: SIZE }}>
+        <svg
+          width={SIZE}
+          height={SIZE}
+          onClick={handleClick}
+          style={{ cursor: "crosshair", display: "block", borderRadius: 1 }}
+        >
         <defs>
           <radialGradient id="mm-bg" cx="50%" cy="50%" r="50%">
             <stop offset="0%" stopColor="#0a1230" />
@@ -308,7 +330,8 @@ export function MiniMap() {
         })}
 
         <circle cx={SIZE / 2} cy={SIZE / 2} r={3} fill="#4ee2ff" stroke="#fff" strokeWidth={0.5} />
-      </svg>
+        </svg>
+      </div>
       <div className="flex items-center justify-between gap-1 mt-1 px-0.5">
         <button
           className="leading-none transition-colors duration-150"

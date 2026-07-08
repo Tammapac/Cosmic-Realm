@@ -66,12 +66,11 @@ export default function SettingsMenu({ onClose }: { onClose: () => void }) {
       background: "rgba(0,0,0,0.75)", display: "flex",
       alignItems: "center", justifyContent: "center",
     }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{
-        background: "linear-gradient(180deg, #0a0e14 0%, #131920 100%)",
-        border: "1px solid rgba(68,238,204,0.25)", borderRadius: "12px",
+      <div className="hud-chip" style={{
+        borderRadius: 0,
         padding: "20px 24px", width: "min(440px, 92vw)", maxHeight: "90vh", overflowY: "auto",
-        boxShadow: "0 0 60px rgba(68,238,204,0.08), inset 0 1px 0 rgba(255,255,255,0.04)",
-        color: "#d0d8e0", fontFamily: "'Segoe UI', system-ui, sans-serif",
+        boxShadow: "0 0 60px rgba(68,238,204,0.08), inset 0 0 24px rgba(0,0,0,0.45)",
+        color: "#d0d8e0", fontFamily: "'Courier New', monospace",
       }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "22px" }}>
           <span style={{ fontSize: "16px", fontWeight: 700, color: "#44eecc", letterSpacing: "2px" }}>SETTINGS</span>

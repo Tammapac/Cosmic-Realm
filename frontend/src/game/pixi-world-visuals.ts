@@ -119,7 +119,7 @@ const STATION_ACCENT: Record<string, number> = {
 
 const STATION_FRAMES = 256;
 // Display size in world units (~200px wide on screen)
-const STATION_DISPLAY_PX = 2048;
+const STATION_DISPLAY_PX = 1843;
 
 const _stationTextures: PIXI.Texture[] = [];
 

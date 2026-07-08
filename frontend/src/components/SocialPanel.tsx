@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { state, bump, useGame, pushChat, pushNotification, save } from "../game/store";
 import { serverPlayerId } from "../game/loop";
 import { FAKE_CLANS } from "../game/types";
+import { TopPanel } from "./TopPanel";
 
 export function SocialPanel() {
   const [collapsed, setCollapsed] = useState(false);
@@ -164,19 +165,30 @@ export function BattleLog() {
   };
 
   return (
-    <div
-      className="panel"
+    <TopPanel
+      className="chip-chat"
       style={{
         position: "fixed",
         left: 12,
         bottom: 72,
-        width: 310,
-        height: 196,
+        width: 336,
+        height: 224,
         zIndex: 40,
-        display: "flex",
-        flexDirection: "column",
       }}
     >
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", padding: "6px 4px" }}>
+      {/* Header strip */}
+      <div
+        className="flex items-center justify-between px-2 shrink-0"
+        style={{ paddingBottom: 4, marginBottom: 2, borderBottom: "1px solid rgba(78,226,255,0.15)" }}
+      >
+        <span style={{ fontFamily: "var(--font-display)", fontSize: 9, letterSpacing: "0.2em", color: "var(--accent-cyan)", textShadow: "0 0 6px rgba(78,226,255,0.4)" }}>
+          ▸ COMMS
+        </span>
+        <span style={{ fontFamily: "var(--font-display)", fontSize: 8, color: "var(--text-mute)", letterSpacing: "0.14em" }}>
+          {channel.toUpperCase()}
+        </span>
+      </div>
       {/* Messages */}
       <div className="overflow-y-auto flex-1 px-2 py-1.5 space-y-0.5" style={{ fontSize: 10 }}>
         {(channel === "log" ? chat.filter((c) => c.channel === "system") : chat).map((c) => (
@@ -249,7 +261,8 @@ export function BattleLog() {
           Send
         </button>
       </div>
-    </div>
+      </div>
+    </TopPanel>
   );
 }
 

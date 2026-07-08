@@ -1,5 +1,17 @@
 @import "tailwindcss";
 
+/* Pixel sci-fi display font — Kenney Future (CC0, kenney.nl UI Pack Sci-Fi) */
+@font-face {
+  font-family: "Kenney Future";
+  src: url("/assets/fonts/Kenney Future.ttf") format("truetype");
+  font-display: swap;
+}
+@font-face {
+  font-family: "Kenney Future Narrow";
+  src: url("/assets/fonts/Kenney Future Narrow.ttf") format("truetype");
+  font-display: swap;
+}
+
 :root {
   --bg-deep: #05060f;
   --bg-panel: rgba(8, 12, 28, 0.88);
@@ -9,11 +21,17 @@
   --accent-cyan: #4ee2ff;
   --accent-magenta: #ff5cf0;
   --accent-amber: #ffd24a;
+  --accent-gold: #e8a33d;
   --accent-green: #5cff8a;
   --accent-red: #ff5c6c;
   --text-bright: #ffffff;
   --text-dim: #d0d8f0;
   --text-mute: #a0b0d8;
+  /* Display font for headers/buttons/labels; body text stays monospace */
+  --font-display: "Kenney Future Narrow", "Courier New", monospace;
+  /* Pixel UI frames (Buch, CC0 — see ASSET_LICENSES.md). Swap these urls to reskin. */
+  --ui-panel-frame: url("/assets/ui/frames/panel-frame.png");
+  --ui-panel-frame-gold: url("/assets/ui/frames/panel-frame-gold.png");
 }
 
 * {
@@ -74,16 +92,69 @@ button {
   to   { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 
-/* Primary panel */
+/* Primary panel — pixel-art frame drawn as a layout-safe overlay (no size change) */
 .panel {
   background: var(--bg-panel);
-  border: 1px solid rgba(78, 226, 255, 0.18);
+  border: 1px solid rgba(78, 226, 255, 0.10);
   position: relative;
   box-shadow:
-    0 0 0 1px rgba(0,0,0,0.6),
-    inset 0 1px 0 rgba(78, 226, 255, 0.07),
     inset 0 0 30px rgba(0,0,0,0.4),
     0 4px 24px rgba(0,0,0,0.5);
+}
+
+/* ── Wenrexa frame system (CC0, see ASSET_LICENSES.md) ──────────────────────
+   Every HUD element gets its own panel design from the same kit family:
+   .hud-chip (default: console) · .chip-chat · .chip-map · .chip-quest ·
+   .chip-tray (hotbar) · .chip-target · .panel-framed / .panel-gold (modals)
+   Frames use border-image with `fill`, so the panel art IS the background. */
+.hud-chip {
+  position: relative;
+  background: rgba(6, 9, 22, 0.35);
+  border: 16px solid transparent;
+  border-image: url("/assets/ui/wenrexa/console.png") 34 fill stretch;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.55));
+}
+
+.chip-chat {
+  border-image-source: url("/assets/ui/wenrexa/chat.png");
+  border-image-slice: 44 fill;
+  border-width: 18px;
+}
+
+.chip-map {
+  border-image-source: url("/assets/ui/wenrexa/map.png");
+  border-image-slice: 48 40 26 40 fill; /* keep the tab-notch header in the top band */
+  border-width: 22px 18px 13px 18px;
+}
+
+.chip-quest {
+  border-image-source: url("/assets/ui/wenrexa/quest.png");
+  border-image-slice: 30 fill;
+  border-width: 15px;
+}
+
+.chip-tray {
+  border-image-source: url("/assets/ui/wenrexa/tray.png");
+  border-image-slice: 17 fill;
+  border-width: 14px;
+}
+
+.chip-target {
+  border-image-source: url("/assets/ui/wenrexa/target.png");
+  border-image-slice: 22 fill;
+  border-width: 12px;
+}
+
+/* Modal frame — add next to .panel; .panel-gold switches the glow to gold */
+.panel-framed {
+  border: 22px solid transparent;
+  border-image: url("/assets/ui/wenrexa/modal.png") 44 fill stretch;
+  image-rendering: pixelated;
+}
+
+.panel-framed.panel-gold {
+  border-image-source: url("/assets/ui/wenrexa/modal-gold.png");
 }
 
 /* Subtle scanline texture */
@@ -113,6 +184,7 @@ button {
   padding: 6px 10px;
   background: linear-gradient(90deg, rgba(78,226,255,0.08) 0%, transparent 100%);
   border-bottom: 1px solid rgba(78,226,255,0.12);
+  font-family: var(--font-display);
   font-size: 10px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
@@ -131,35 +203,51 @@ button {
 
 /* Section label style used across HUD panels */
 .hud-label {
+  font-family: var(--font-display);
   font-size: 10px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--text-mute);
 }
 
-/* Standard button — polished sci-fi look */
+/* Standard button — pixel sci-fi: flat fill, hard stepped edges, no radius */
 .btn {
-  background: linear-gradient(180deg, #1c2e6e 0%, #0d1a42 100%);
+  background: linear-gradient(180deg, #1e2f66 0%, #101c46 55%, #0c1638 100%);
   color: var(--text-bright);
-  border: 1px solid var(--border-glow);
+  border: 1px solid #34519e;
+  border-radius: 0;
   padding: 6px 12px;
+  font-family: var(--font-display);
   font-size: 11px;
   letter-spacing: 1px;
   text-transform: uppercase;
-  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
-  text-shadow: 0 0 6px rgba(78, 226, 255, 0.35);
+  transition: filter 0.12s, border-color 0.12s, box-shadow 0.12s;
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.7);
   white-space: nowrap;
+  /* pixel bevel: light top-left, dark bottom-right */
+  box-shadow:
+    inset 1px 1px 0 rgba(140, 180, 255, 0.35),
+    inset -1px -1px 0 rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(0, 0, 0, 0.6);
 }
 
 .btn:hover:not(:disabled) {
-  background: linear-gradient(180deg, #2d46a8 0%, #1c2e6e 100%);
+  filter: brightness(1.18);
   border-color: var(--accent-cyan);
-  box-shadow: 0 0 10px rgba(78, 226, 255, 0.4), inset 0 0 8px rgba(78, 226, 255, 0.06);
+  box-shadow:
+    inset 1px 1px 0 rgba(160, 220, 255, 0.5),
+    inset -1px -1px 0 rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(0, 0, 0, 0.6),
+    0 0 8px rgba(78, 226, 255, 0.25);
 }
 
 .btn:active:not(:disabled) {
   transform: translateY(1px);
-  box-shadow: 0 0 6px rgba(78, 226, 255, 0.3);
+  filter: brightness(0.88);
+  box-shadow:
+    inset -1px -1px 0 rgba(140, 180, 255, 0.2),
+    inset 1px 1px 0 rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(0, 0, 0, 0.6);
 }
 
 .btn:disabled {
@@ -197,20 +285,80 @@ button {
   box-shadow: 0 0 10px rgba(255, 210, 74, 0.35);
 }
 
-/* HP/stat bars */
+/* HP/stat bars — pixel trough + segmented fill (Buch-style ticks) */
 .bar {
   height: 8px;
-  background: rgba(8, 12, 30, 0.9);
-  border: 1px solid var(--border-soft);
+  background: rgba(6, 9, 24, 0.95);
+  border: 1px solid #263462;
   position: relative;
   overflow: hidden;
-  border-radius: 2px;
+  border-radius: 0;
+  box-shadow: inset 1px 1px 0 rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.5);
 }
 
 .bar-fill {
   height: 100%;
   transition: width 0.2s ease-out;
-  border-radius: 2px;
+  border-radius: 0;
+  /* segment ticks over whatever fill color the component sets inline */
+  background-image: repeating-linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0) 0px, rgba(0, 0, 0, 0) 4px,
+    rgba(0, 0, 0, 0.35) 4px, rgba(0, 0, 0, 0.35) 5px
+  );
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), inset 0 -1px 0 rgba(0, 0, 0, 0.35);
+}
+
+/* Holo capsule button (Wenrexa CC0) — used by GameButton; real 4-state art */
+.gbtn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 10px solid transparent;
+  border-left-width: 16px;
+  border-right-width: 16px;
+  border-image: url("/assets/ui/wenrexa/btn.png") 13 18 fill stretch;
+  image-rendering: pixelated;
+  color: var(--text-bright);
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.7);
+  white-space: nowrap;
+  padding: 0 4px;
+  transition: filter 0.12s;
+}
+.gbtn:hover:not(:disabled) {
+  border-image-source: url("/assets/ui/wenrexa/btn-hover.png");
+}
+.gbtn:active:not(:disabled) {
+  border-image-source: url("/assets/ui/wenrexa/btn-active.png");
+  transform: translateY(1px);
+}
+.gbtn:disabled {
+  border-image-source: url("/assets/ui/wenrexa/btn-disabled.png");
+  color: var(--text-mute);
+  cursor: not-allowed;
+}
+.gbtn-gold {
+  filter: hue-rotate(305deg) saturate(1.4); /* teal -> gold capsule */
+}
+
+/* Pixel tooltip — apply to floating hint boxes */
+.tooltip-pixel {
+  background: var(--bg-panel-solid);
+  border: 1px solid #34519e;
+  padding: 4px 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+  box-shadow:
+    inset 1px 1px 0 rgba(140, 180, 255, 0.2),
+    0 0 0 1px rgba(0, 0, 0, 0.7),
+    0 4px 12px rgba(0, 0, 0, 0.6);
+  border-radius: 0;
 }
 
 /* Utility color classes */

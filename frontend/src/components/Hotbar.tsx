@@ -76,20 +76,17 @@ export function Hotbar() {
 
   return (
     <div
+      className="hud-chip chip-tray"
       style={{
         position: "fixed",
         bottom: 12,
         left: "50%",
         transform: "translateX(-50%)",
         display: "flex",
-        gap: 5,
+        gap: 6,
         zIndex: 50,
         pointerEvents: "auto",
-        background: "rgba(4,6,18,0.7)",
-        border: "1px solid rgba(78,226,255,0.1)",
-        borderRadius: 6,
-        padding: "4px 6px",
-        boxShadow: "0 2px 20px rgba(0,0,0,0.7), inset 0 1px 0 rgba(78,226,255,0.04)",
+        padding: "2px 4px",
       }}
     >
       <button
@@ -102,9 +99,10 @@ export function Hotbar() {
           height: 52,
           border: `2px solid ${isAttacking ? "#ff5c6c" : attackOnCooldown ? "#7a1a22" : "#ff3b4d"}`,
           background: isAttacking ? "#3a0a10" : attackOnCooldown ? "#14040a" : "#24070b",
-          borderRadius: 4,
+          borderRadius: 0,
+          boxShadow: "inset 1px 1px 0 rgba(255,255,255,0.10), inset -1px -1px 0 rgba(0,0,0,0.6)",
           color: attackOnCooldown ? "#7a3a44" : "#ffb3bb",
-          fontFamily: "'Courier New', monospace",
+          fontFamily: "var(--font-display)",
           fontWeight: "bold",
           fontSize: 12,
           letterSpacing: "0.1em",
@@ -139,7 +137,7 @@ export function Hotbar() {
             height: 52,
             border: `2px solid ${ammoDef.color}`,
             background: showAmmoSelector ? `${ammoDef.color}33` : "#0c1220",
-            borderRadius: 4,
+            borderRadius: 0,
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
@@ -148,7 +146,7 @@ export function Hotbar() {
             position: "relative",
             overflow: "hidden",
             fontFamily: "'Courier New', monospace",
-            boxShadow: showAmmoSelector ? `0 0 12px ${ammoDef.color}88` : `0 0 6px ${ammoDef.color}44`,
+            boxShadow: `inset 1px 1px 0 rgba(255,255,255,0.10), inset -1px -1px 0 rgba(0,0,0,0.6), ${showAmmoSelector ? `0 0 12px ${ammoDef.color}88` : `0 0 6px ${ammoDef.color}44`}`,
           }}
         >
           <div style={{ position: "absolute", top: 2, left: 4, fontSize: 9, color: "#556", zIndex: 3 }}>1</div>
@@ -169,7 +167,7 @@ export function Hotbar() {
               transform: "translateX(-50%)",
               background: "rgba(6,9,22,0.97)",
               border: "1px solid rgba(78,226,255,0.2)",
-              borderRadius: 5,
+              borderRadius: 0,
               padding: "4px 3px",
               display: "flex",
               flexDirection: "column",
@@ -195,7 +193,7 @@ export function Hotbar() {
                     alignItems: "center",
                     gap: 8,
                     padding: "4px 8px",
-                    borderRadius: 4,
+                    borderRadius: 0,
                     cursor: "pointer",
                     background: isActive ? `${def.color}22` : "transparent",
                     border: isActive ? `1px solid ${def.color}88` : "1px solid transparent",
@@ -233,7 +231,7 @@ export function Hotbar() {
             height: 52,
             border: `2px solid ${rocketDef.color}`,
             background: showRocketAmmoSelector ? `${rocketDef.color}33` : "#0c1220",
-            borderRadius: 4,
+            borderRadius: 0,
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
@@ -242,7 +240,7 @@ export function Hotbar() {
             position: "relative",
             overflow: "hidden",
             fontFamily: "'Courier New', monospace",
-            boxShadow: showRocketAmmoSelector ? `0 0 12px ${rocketDef.color}88` : `0 0 6px ${rocketDef.color}44`,
+            boxShadow: `inset 1px 1px 0 rgba(255,255,255,0.10), inset -1px -1px 0 rgba(0,0,0,0.6), ${showRocketAmmoSelector ? `0 0 12px ${rocketDef.color}88` : `0 0 6px ${rocketDef.color}44`}`,
           }}
         >
           <div style={{ position: "absolute", top: 2, left: 4, fontSize: 9, color: "#556", zIndex: 3 }}>2</div>
@@ -263,7 +261,7 @@ export function Hotbar() {
               transform: "translateX(-50%)",
               background: "rgba(6,9,22,0.97)",
               border: "1px solid rgba(78,226,255,0.2)",
-              borderRadius: 5,
+              borderRadius: 0,
               padding: "4px 3px",
               display: "flex",
               flexDirection: "column",
@@ -289,7 +287,7 @@ export function Hotbar() {
                     alignItems: "center",
                     gap: 8,
                     padding: "4px 8px",
-                    borderRadius: 4,
+                    borderRadius: 0,
                     cursor: "pointer",
                     background: isActive ? `${def.color}22` : "transparent",
                     border: isActive ? `1px solid ${def.color}88` : "1px solid transparent",
@@ -340,7 +338,7 @@ export function Hotbar() {
                 : isEmpty
                 ? "#080c18"
                 : "#0c1220",
-              borderRadius: 4,
+              borderRadius: 0,
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
@@ -350,7 +348,7 @@ export function Hotbar() {
               overflow: "hidden",
               fontFamily: "'Courier New', monospace",
               transition: "border-color 0.15s",
-              boxShadow: isActive ? `0 0 12px ${def?.color}88` : undefined,
+              boxShadow: `inset 1px 1px 0 rgba(255,255,255,0.10), inset -1px -1px 0 rgba(0,0,0,0.6)${isActive ? `, 0 0 12px ${def?.color}88` : ""}`,
             }}
           >
             {cd > 0 && def && (

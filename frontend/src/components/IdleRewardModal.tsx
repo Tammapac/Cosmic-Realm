@@ -9,7 +9,7 @@ export function IdleRewardModal() {
   return (
     <div className="absolute z-[58] pointer-events-auto" style={{ right: 16, bottom: 96 }}>
       <div
-        className="panel"
+        className="panel panel-framed panel-gold"
         style={{
           width: 240,
           padding: "10px 12px",

@@ -6,33 +6,11 @@ interface TopPanelProps {
   className?: string;
 }
 
+// Shared HUD chip: pixel-art 9-slice frame (Buch CC0, see ASSET_LICENSES.md).
+// The frame is drawn by the .hud-chip CSS class as a layout-safe overlay.
 export function TopPanel({ children, style, className = "" }: TopPanelProps) {
   return (
-    <div
-      className={"pointer-events-auto " + className}
-      style={{
-        position: "relative",
-        background: "transparent",
-        border: "none",
-        boxShadow: "none",
-        ...style,
-      }}
-    >
-      <img
-        src="/assets/ui/panels/toolbar-small.png?v=2"
-        alt=""
-        aria-hidden
-        style={{
-          position: "absolute",
-          inset: 0,
-          width: "100%",
-          height: "100%",
-          objectFit: "fill",
-          pointerEvents: "none",
-          userSelect: "none",
-          zIndex: 0,
-        }}
-      />
+    <div className={"pointer-events-auto hud-chip " + className} style={style}>
       <div style={{ position: "relative", zIndex: 1, height: "100%" }}>{children}</div>
     </div>
   );

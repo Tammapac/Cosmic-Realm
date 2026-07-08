@@ -9,6 +9,7 @@ import type { HangarTab } from "../game/store";
 import { effectiveStats } from "../game/loop";
 import { buySkillRank, resetSkills } from "../game/store";
 import { useState, useMemo, useEffect, useRef } from "react";
+import { GameButton } from "./GameButton";
 import { createPortal } from "react-dom";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
@@ -124,7 +125,7 @@ export function Hangar({ stationId }: { stationId: string }) {
       style={{ background: "rgba(2, 4, 12, 0.88)" }}
     >
       <div
-        className="panel relative flex flex-col"
+        className="panel panel-framed panel-gold relative flex flex-col"
         style={{
           width: "min(1280px, 96vw)",
           height: "min(820px, 94vh)",
@@ -155,7 +156,7 @@ export function Hangar({ stationId }: { stationId: string }) {
               <div className="hud-label">DOCKED AT · {station.kind.toUpperCase()}</div>
               <div
                 className="font-bold tracking-widest glow-cyan truncate"
-                style={{ color: "var(--accent-cyan)", fontSize: 16, lineHeight: 1.2 }}
+                style={{ color: "var(--accent-cyan)", fontSize: 16, lineHeight: 1.2, fontFamily: "var(--font-display)" }}
               >
                 {station.name.toUpperCase()}
               </div>
@@ -186,7 +187,8 @@ export function Hangar({ stationId }: { stationId: string }) {
               key={t.id}
               className="relative px-4 py-2.5 whitespace-nowrap transition-colors duration-150 shrink-0"
               style={{
-                fontSize: 13,
+                fontSize: 12,
+                fontFamily: "var(--font-display)",
                 letterSpacing: "0.15em",
                 textTransform: "uppercase",
                 background: tab === t.id
@@ -690,19 +692,17 @@ function LoadoutTab({ stationId }: { stationId: string }) {
             {!showShop && <span className="text-[12px] tracking-widest" style={{ color: "#ffd24a88" }}>hover to compare</span>}
           </div>
           <div className="flex gap-2 shrink-0">
-            <button className="btn" style={{ padding: "4px 10px", fontSize: 13 }} onClick={() => { setShowShop((v) => !v); setHoveredShopDefId(null); setHoveredInvInstanceId(null); }}>
+            <GameButton style={{ fontSize: 13 }} onClick={() => { setShowShop((v) => !v); setHoveredShopDefId(null); setHoveredInvInstanceId(null); }}>
               {showShop ? "Inventory" : `Shop @ ${station.name}`}
-            </button>
-            <button className="btn btn-amber" style={{ padding: "4px 10px", fontSize: 13 }} onClick={() => setShowAmmoPopup((v) => !v)}>
+            </GameButton>
+            <GameButton style={{ fontSize: 13 }} onClick={() => setShowAmmoPopup((v) => !v)}>
               {showAmmoPopup ? "✕ Ammo" : "⟁ Ammo"}
-            </button>
+            </GameButton>
           </div>
         </div>
         <div className="flex gap-2">
           {(["all", "weapon", "generator", "module"] as const).map((f) => (
-            <button key={f} className="btn"
-              style={{ padding: "4px 10px", fontSize: 13, background: filter === f ? "rgba(78,226,255,0.18)" : undefined, borderColor: filter === f ? "var(--accent-cyan)" : undefined }}
-              onClick={() => setFilter(f)}>{f.toUpperCase()}</button>
+            <GameButton key={f} style={{ fontSize: 13, opacity: filter === f ? 1 : 0.6 }} onClick={() => setFilter(f)}>{f.toUpperCase()}</GameButton>
           ))}
         </div>
 
@@ -1136,24 +1136,16 @@ function DronesTab() {
                 <div className="flex flex-col gap-2 items-end">
                   <div className="flex gap-1.5">
                     {(["orbit", "forward", "defensive"] as DroneMode[]).map((m) => (
-                      <button
+                      <GameButton
                         key={m}
-                        className="btn"
-                        style={{
-                          padding: "4px 8px", fontSize: 13,
-                          background: d.mode === m ? `${def.color}33` : "transparent",
-                          borderColor: d.mode === m ? def.color : "var(--border-glow)",
-                          color: d.mode === m ? def.color : "var(--text-dim)",
-                        }}
+                        style={{ fontSize: 13, padding: "4px 8px", color: d.mode === m ? def.color : "var(--text-dim)", opacity: d.mode === m ? 1 : 0.6 }}
                         onClick={() => setMode(d.id, m)}
                       >
                         {m === "orbit" ? "ORB" : m === "forward" ? "FWD" : "DEF"}
-                      </button>
+                      </GameButton>
                     ))}
                   </div>
-                  <button className="btn btn-danger" style={{ padding: "4px 10px", fontSize: 13 }} onClick={() => scrap(d.id)}>
-                    ✕ Scrap
-                  </button>
+                  <GameButton style={{ fontSize: 13, color: "#ff5c6c" }} onClick={() => scrap(d.id)}>✕ Scrap</GameButton>
                 </div>
               </div>
             );
@@ -1367,9 +1359,9 @@ save(); bump();
                     )}
                   </div>
                   <div className="flex gap-1 justify-center">
-                    <button className="btn" style={{ padding: "2px 5px", fontSize: 12 }} onClick={() => buy(r.id, 1)}>+1</button>
-                    <button className="btn" style={{ padding: "2px 5px", fontSize: 12 }} onClick={() => buy(r.id, 10)}>+10</button>
-                    <button className="btn btn-amber" style={{ padding: "2px 5px", fontSize: 12 }} disabled={have <= 0} onClick={() => sell(r.id, 1)}>-1</button>
+                    <GameButton style={{ fontSize: 12, padding: "2px 8px" }} onClick={() => buy(r.id, 1)}>+1</GameButton>
+                    <GameButton style={{ fontSize: 12, padding: "2px 8px" }} onClick={() => buy(r.id, 10)}>+10</GameButton>
+                    <GameButton style={{ fontSize: 12, padding: "2px 8px" }} disabled={have <= 0} onClick={() => sell(r.id, 1)}>-1</GameButton>
                     <button className="btn btn-amber" style={{ padding: "2px 5px", fontSize: 12 }} disabled={have < 10} onClick={() => sell(r.id, 10)}>-10</button>
                     <button className="btn btn-amber" style={{ padding: "2px 5px", fontSize: 12 }} disabled={have <= 0} onClick={() => sell(r.id, have)}>All</button>
                   </div>
@@ -1737,19 +1729,9 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
             Automatically top up rocket ammo when docking, if you have enough credits.
           </div>
         </div>
-        <button
-          className="btn"
-          style={{
-            padding: "6px 18px",
-            borderColor: player.autoRestock ? "#ff8a4e" : "rgba(255,255,255,0.15)",
-            color: player.autoRestock ? "#ff8a4e" : "#888",
-            background: player.autoRestock ? "rgba(255,138,78,0.12)" : "transparent",
-            minWidth: 64,
-          }}
-          onClick={() => setAutoRestock(!player.autoRestock)}
-        >
+        <GameButton style={{ color: player.autoRestock ? "#ff8a4e" : "#888", minWidth: 64 }} onClick={() => setAutoRestock(!player.autoRestock)}>
           {player.autoRestock ? "ON" : "OFF"}
-        </button>
+        </GameButton>
       </div>
 
       <div className="panel p-4 flex items-center gap-4">
@@ -1760,19 +1742,9 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
             Automatically repair hull damage when docking, if you have enough credits (2cr/HP).
           </div>
         </div>
-        <button
-          className="btn"
-          style={{
-            padding: "6px 18px",
-            borderColor: player.autoRepairHull ? "#5cff8a" : "rgba(255,255,255,0.15)",
-            color: player.autoRepairHull ? "#5cff8a" : "#888",
-            background: player.autoRepairHull ? "rgba(92,255,138,0.12)" : "transparent",
-            minWidth: 64,
-          }}
-          onClick={() => setAutoRepairHull(!player.autoRepairHull)}
-        >
+        <GameButton style={{ color: player.autoRepairHull ? "#5cff8a" : "#888", minWidth: 64 }} onClick={() => setAutoRepairHull(!player.autoRepairHull)}>
           {player.autoRepairHull ? "ON" : "OFF"}
-        </button>
+        </GameButton>
       </div>
 
       <div className="panel p-4 flex items-center gap-4">
@@ -1783,19 +1755,9 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
             Automatically recharge shields to full when docking. Always free.
           </div>
         </div>
-        <button
-          className="btn"
-          style={{
-            padding: "6px 18px",
-            borderColor: player.autoShieldRecharge ? "#4ee2ff" : "rgba(255,255,255,0.15)",
-            color: player.autoShieldRecharge ? "#4ee2ff" : "#888",
-            background: player.autoShieldRecharge ? "rgba(78,226,255,0.12)" : "transparent",
-            minWidth: 64,
-          }}
-          onClick={() => setAutoShieldRecharge(!player.autoShieldRecharge)}
-        >
+        <GameButton style={{ color: player.autoShieldRecharge ? "#4ee2ff" : "#888", minWidth: 64 }} onClick={() => setAutoShieldRecharge(!player.autoShieldRecharge)}>
           {player.autoShieldRecharge ? "ON" : "OFF"}
-        </button>
+        </GameButton>
       </div>
 
       <div className="panel p-4">
@@ -1906,19 +1868,13 @@ function SkillsTab() {
                         Req: {SKILL_NODES.find((x) => x.id === n.requires)?.name}
                       </div>
                     )}
-                    <button
-                      className="btn"
-                      style={{
-                        padding: "4px 10px", fontSize: 13, width: "100%",
-                        borderColor: canBuy ? b.color : "var(--border-glow)",
-                        color: canBuy ? b.color : "var(--text-mute)",
-                        background: canBuy ? `${b.color}15` : "transparent",
-                      }}
+                    <GameButton
+                      style={{ fontSize: 13, width: "100%", color: canBuy ? b.color : "var(--text-mute)" }}
                       disabled={!canBuy}
                       onClick={() => buySkillRank(n.id as SkillId)}
                     >
                       {cur >= n.maxRank ? "✓ MAX" : !reqMet ? "🔒 LOCKED" : `Buy · ${n.cost} pt${n.cost > 1 ? "s" : ""}`}
-                    </button>
+                    </GameButton>
                   </div>
                 );
               })}
@@ -1994,14 +1950,14 @@ function MissionsTab() {
           <span style={{ color: "#ff5cf0" }}>+{m.rewardExp.toLocaleString()}xp</span>
           <span style={{ color: "#5cff8a" }}>+{m.rewardHonor} honor</span>
         </div>
-        <button
-          className="btn btn-primary w-full"
-          style={{ padding: "6px 8px", fontSize: 13 }}
+        <GameButton
+          className="w-full"
+          style={{ fontSize: 13, width: "100%", color: ready ? "#5cff8a" : "var(--text-mute)" }}
           disabled={!ready}
           onClick={() => claimMission(m.id)}
         >
           {claimed ? "CLAIMED" : ready ? "CLAIM" : "IN PROGRESS"}
-        </button>
+        </GameButton>
       </div>
     );
   };
@@ -2011,14 +1967,13 @@ function MissionsTab() {
       {/* Sub-tabs */}
       <div className="flex gap-2 flex-wrap border-b pb-3" style={{ borderColor: "var(--border-soft)" }}>
         {tabs.map(t => (
-          <button
+          <GameButton
             key={t.id}
-            className={"btn " + (activeTab === t.id ? "btn-primary" : "")}
-            style={{ padding: "6px 16px", fontSize: 13 }}
+            style={{ fontSize: 13, opacity: activeTab === t.id ? 1 : 0.6 }}
             onClick={() => setActiveTab(t.id)}
           >
             {t.icon} {t.label}
-          </button>
+          </GameButton>
         ))}
       </div>
 
@@ -2195,10 +2150,9 @@ function AmmoTab() {
                 <button
                   className="btn"
                   style={{
-                    padding: "3px 10px", fontSize: 13, minWidth: 90,
-                    borderColor: isActive ? tDef.color : "rgba(255,255,255,0.15)",
+                    fontSize: 13, minWidth: 90,
                     color: isActive ? tDef.color : "var(--text-dim)",
-                    background: isActive ? `${tDef.color}15` : "transparent",
+                    opacity: isActive ? 1 : 0.6,
                   }}
                   onClick={() => switchAmmoType(type)}
                 >
@@ -2294,18 +2248,12 @@ function AmmoTab() {
                   >
                     {missing === 0 ? "FULL" : `BUY ${qty} · ${cost}cr`}
                   </button>
-                  <button
-                    className="btn"
-                    style={{
-                      padding: "3px 10px", fontSize: 13, minWidth: 90,
-                      borderColor: isActive ? tDef.color : "rgba(255,255,255,0.15)",
-                      color: isActive ? tDef.color : "var(--text-dim)",
-                      background: isActive ? `${tDef.color}15` : "transparent",
-                    }}
+                  <GameButton
+                    style={{ fontSize: 13, minWidth: 90, color: isActive ? tDef.color : "var(--text-dim)", opacity: isActive ? 1 : 0.6 }}
                     onClick={() => switchRocketAmmoType(type)}
                   >
                     {isActive ? "ACTIVE" : "USE THIS"}
-                  </button>
+                  </GameButton>
                 </div>
               </div>
             );

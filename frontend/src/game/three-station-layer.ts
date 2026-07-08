@@ -1,5 +1,11 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { PIXELATE_3D, PIXELATE_3D_SCALE } from "./renderer-config";
+
+// Effective downscale factor for the fake pixel-art render mode (1 = off).
+// The Pixi stationSprite stretches this canvas back to screen size with
+// NEAREST filtering, producing the pixelated look.
+const PIX_SCALE = PIXELATE_3D ? Math.max(1, PIXELATE_3D_SCALE) : 1;
 
 interface Station3D { wrapper: THREE.Group; model: THREE.Group; }
 
@@ -74,11 +80,17 @@ export function initStation3DLayer(width?: number, height?: number): HTMLCanvasE
   renderer = new THREE.WebGLRenderer({
     canvas: stationCanvas,
     alpha: true,
-    antialias: true,
+    antialias: PIX_SCALE === 1, // hard pixels when pixelating
     premultipliedAlpha: false,
   });
-  renderer.setSize(w, h, false);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  if (PIX_SCALE > 1) {
+    // Low-res buffer; camera frustum stays in CSS pixels (see renderer-config)
+    renderer.setPixelRatio(1);
+    renderer.setSize(Math.ceil(w / PIX_SCALE), Math.ceil(h / PIX_SCALE), false);
+  } else {
+    renderer.setSize(w, h, false);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  }
   renderer.setClearColor(0x000000, 0); // Transparent — Pixi composites this over its bgLayer
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
@@ -112,7 +124,11 @@ function onResize(): void {
   if (!renderer || !camera || !stationCanvas) return;
   const w = window.innerWidth;
   const h = window.innerHeight;
-  renderer.setSize(w, h, false);
+  if (PIX_SCALE > 1) {
+    renderer.setSize(Math.ceil(w / PIX_SCALE), Math.ceil(h / PIX_SCALE), false);
+  } else {
+    renderer.setSize(w, h, false);
+  }
   camera.left = -w / 2;
   camera.right = w / 2;
   camera.top = h / 2;

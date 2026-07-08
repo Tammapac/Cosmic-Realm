@@ -12,7 +12,7 @@ export function FactionPicker() {
       style={{ background: "rgba(0,0,0,0.88)" }}
     >
       <div
-        className="panel"
+        className="panel panel-framed"
         style={{
           width: "min(740px, 96vw)",
           padding: "20px 20px 24px",

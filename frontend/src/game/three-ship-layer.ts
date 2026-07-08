@@ -11,7 +11,12 @@ import {
   THREE_NEBULA_SPEED_B,
   THREE_NEBULA_SCALE_A,
   THREE_NEBULA_SCALE_B,
+  PIXELATE_3D,
+  PIXELATE_3D_SCALE,
 } from "./renderer-config";
+
+// Effective downscale factor for the fake pixel-art render mode (1 = off)
+const PIX_SCALE = PIXELATE_3D ? Math.max(1, PIXELATE_3D_SCALE) : 1;
 
 const SHIP_3D_MODELS: Record<string, string> = {
   apex: "/models/Apex_Destroyer.glb",
@@ -115,11 +120,20 @@ export function init3DLayer(canvas: HTMLCanvasElement): void {
   renderer = new THREE.WebGLRenderer({
     canvas,
     alpha: true,
-    antialias: true,
+    antialias: PIX_SCALE === 1, // hard pixels when pixelating
     premultipliedAlpha: false,
   });
-  renderer.setSize(w, h);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  if (PIX_SCALE > 1) {
+    // Fake pixel-art mode: render the ships into a low-res buffer and let the
+    // browser upscale the canvas nearest-neighbor. Camera frustum stays in CSS
+    // pixels, so all world/hardpoint math is unaffected — models keep full detail.
+    renderer.setPixelRatio(1);
+    renderer.setSize(Math.ceil(w / PIX_SCALE), Math.ceil(h / PIX_SCALE), false);
+    canvas.style.imageRendering = "pixelated";
+  } else {
+    renderer.setSize(w, h);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  }
   renderer.setClearColor(0x000000, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
@@ -171,7 +185,11 @@ function onResize(): void {
   const canvas = renderer.domElement;
   const w = canvas.clientWidth || window.innerWidth;
   const h = canvas.clientHeight || window.innerHeight;
-  renderer.setSize(w, h);
+  if (PIX_SCALE > 1) {
+    renderer.setSize(Math.ceil(w / PIX_SCALE), Math.ceil(h / PIX_SCALE), false);
+  } else {
+    renderer.setSize(w, h);
+  }
   camera.left = -w / 2;
   camera.right = w / 2;
   camera.top = h / 2;

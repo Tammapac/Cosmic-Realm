@@ -8,6 +8,14 @@ export function setRenderer(r: "canvas2d" | "pixi"): void {
 
 export const DEBUG_OVERLAY = false;
 
+// Fake pixel-art rendering for 3D GLB layers (ships + stations).
+// Models keep their full geometry/animations — only the WebGL drawing buffer
+// is rendered at 1/PIXELATE_3D_SCALE resolution and upscaled with
+// nearest-neighbor, so they look like pixel-art objects in-game.
+// Set PIXELATE_3D to false (or scale to 1) to restore crisp rendering.
+export const PIXELATE_3D = true;
+export const PIXELATE_3D_SCALE = 3;
+
 // Three.js Nebula Background Configuration
 export const ENABLE_THREE_NEBULA_SHADER = false;
 export const THREE_NEBULA_RENDER_SCALE = 0.5;    // Internal resolution (0.5 = half-res for performance)

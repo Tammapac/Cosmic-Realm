@@ -1,5 +1,6 @@
 import { useGame } from "../game/store";
 import { ENEMY_DEFS, ZONES } from "../game/types";
+import { TopPanel } from "./TopPanel";
 
 const TYPE_GLYPHS: Record<string, string> = {
   scout:     "◇",
@@ -18,20 +19,23 @@ export function QuestTracker() {
   return (
     <div
       className="absolute z-30 pointer-events-none"
-      style={{ top: 110, left: 12, display: "flex", flexDirection: "column", gap: 6, maxWidth: 300 }}
+      style={{ top: 110, left: 12, width: 300 }}
     >
-      <div
-        className="tracking-widest"
-        style={{ color: "var(--text-mute)", fontSize: 10, letterSpacing: "0.22em" }}
-      >
-        ▸ ACTIVE BOUNTIES
-      </div>
+      <TopPanel className="chip-quest" style={{ width: "100%" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px" }}>
+          <div
+            className="tracking-widest font-bold"
+            style={{ color: "#ffffff", fontSize: 11, letterSpacing: "0.22em", textShadow: "0 0 6px rgba(255,255,255,0.6)" }}
+          >
+            ▸ ACTIVE BOUNTIES
+          </div>
       {activeQuests.slice(0, 5).map((q) => {
         const pct = Math.min(1, q.progress / q.killCount);
         const done = q.completed;
         const color = done ? "#5cff8a" : (ENEMY_DEFS[q.killType]?.color ?? "#4ee2ff");
         const glyph = TYPE_GLYPHS[q.killType] ?? "•";
         const zoneName = (ZONES as any)[q.zone]?.name ?? q.zone;
+        const zoneLabel = (ZONES as any)[q.zone]?.label ?? "";
         return (
           <div
             key={q.id}
@@ -66,9 +70,25 @@ export function QuestTracker() {
 
             {/* Zone label */}
             <div
-              className="truncate mt-0.5"
-              style={{ color: "var(--text-mute)", fontSize: 9, letterSpacing: "0.1em" }}
+              className="truncate mt-0.5 font-bold"
+              style={{
+                color: "#ffffff",
+                fontSize: 10,
+                letterSpacing: "0.12em",
+                textShadow: "0 0 6px rgba(255,255,255,0.7), 0 0 10px rgba(255,255,255,0.35)",
+              }}
             >
+              {zoneLabel && (
+                <span
+                  style={{
+                    color: "var(--accent-cyan)",
+                    marginRight: 5,
+                    textShadow: "0 0 6px rgba(78,226,255,0.8)",
+                  }}
+                >
+                  [{zoneLabel}]
+                </span>
+              )}
               {zoneName.toUpperCase()}
             </div>
 
@@ -100,6 +120,8 @@ export function QuestTracker() {
           </div>
         );
       })}
+        </div>
+      </TopPanel>
     </div>
   );
 }
