@@ -60,6 +60,13 @@ The original `license.txt` shipped inside the "Space Background" pack states:
 
 ## UI assets `frontend/public/assets/ui/` and fonts `frontend/public/assets/fonts/`
 
+### `ui/skin/` — "STEELWORK" UI skin (original art)
+- **Author:** original project art, procedurally generated (no third-party sources;
+  generator: `scripts/bg-generation/gen_ui_skin.py`). Inspired only by generic
+  browser-MMO genre conventions — no assets, shapes, or graphics copied from any game.
+- **License:** project-owned. No attribution requirements.
+- Used in: all HUD plates (`plate*.png`), buttons (`btn-*.png`), slots (`slot-*.png`).
+
 ### Source: "Assets: UI Minimalism SciFi" + "Free UI Hologram Interface"
 - **Author:** Wenrexa — https://wenrexa.com
 - **Source URLs:** https://opengameart.org/content/assets-ui-minimalism-scifi ·

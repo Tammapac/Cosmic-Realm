@@ -225,10 +225,10 @@ export function MiniMap() {
           ◈ {(zone?.name ?? player.zone).toUpperCase()}
         </span>
         <span
-          className="shrink-0"
+          className="shrink-0 tabular-nums"
           style={{ fontFamily: "var(--font-display)", fontSize: 8, color: "var(--text-mute)" }}
         >
-          {(zone as any)?.label ?? ""}
+          {(zone as any)?.label ?? ""} · {Math.round(player.pos.x / 100)}:{Math.round(player.pos.y / 100)}
         </span>
       </div>
       <div style={{ position: "relative", width: SIZE, height: SIZE }}>

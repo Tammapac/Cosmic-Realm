@@ -100,6 +100,7 @@ export function Hotbar() {
           border: `2px solid ${isAttacking ? "#ff5c6c" : attackOnCooldown ? "#7a1a22" : "#ff3b4d"}`,
           background: isAttacking ? "#3a0a10" : attackOnCooldown ? "#14040a" : "#24070b",
           borderRadius: 0,
+          clipPath: "polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px)",
           boxShadow: "inset 1px 1px 0 rgba(255,255,255,0.10), inset -1px -1px 0 rgba(0,0,0,0.6)",
           color: attackOnCooldown ? "#7a3a44" : "#ffb3bb",
           fontFamily: "var(--font-display)",
@@ -132,21 +133,18 @@ export function Hotbar() {
         <div
           onClick={toggleAmmoSelector}
           title={`${ammoDef.name} — Click or press 1 to change ammo type`}
+          className={`sw-slot ${showAmmoSelector ? "sw-slot--active" : ""}`}
           style={{
             width: 52,
             height: 52,
-            border: `2px solid ${ammoDef.color}`,
-            background: showAmmoSelector ? `${ammoDef.color}33` : "#0c1220",
-            borderRadius: 0,
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
             cursor: "pointer",
             position: "relative",
-            overflow: "hidden",
             fontFamily: "'Courier New', monospace",
-            boxShadow: `inset 1px 1px 0 rgba(255,255,255,0.10), inset -1px -1px 0 rgba(0,0,0,0.6), ${showAmmoSelector ? `0 0 12px ${ammoDef.color}88` : `0 0 6px ${ammoDef.color}44`}`,
+            boxShadow: `inset 0 0 0 1px ${ammoDef.color}88${showAmmoSelector ? `, 0 0 10px ${ammoDef.color}66` : ""}`,
           }}
         >
           <div style={{ position: "absolute", top: 2, left: 4, fontSize: 9, color: "#556", zIndex: 3 }}>1</div>
@@ -226,21 +224,18 @@ export function Hotbar() {
         <div
           onClick={toggleRocketAmmoSelector}
           title={`${rocketDef.name} — Click or press 2 to change rocket type`}
+          className={`sw-slot ${showRocketAmmoSelector ? "sw-slot--active" : ""}`}
           style={{
             width: 52,
             height: 52,
-            border: `2px solid ${rocketDef.color}`,
-            background: showRocketAmmoSelector ? `${rocketDef.color}33` : "#0c1220",
-            borderRadius: 0,
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
             cursor: "pointer",
             position: "relative",
-            overflow: "hidden",
             fontFamily: "'Courier New', monospace",
-            boxShadow: `inset 1px 1px 0 rgba(255,255,255,0.10), inset -1px -1px 0 rgba(0,0,0,0.6), ${showRocketAmmoSelector ? `0 0 12px ${rocketDef.color}88` : `0 0 6px ${rocketDef.color}44`}`,
+            boxShadow: `inset 0 0 0 1px ${rocketDef.color}88${showRocketAmmoSelector ? `, 0 0 10px ${rocketDef.color}66` : ""}`,
           }}
         >
           <div style={{ position: "absolute", top: 2, left: 4, fontSize: 9, color: "#556", zIndex: 3 }}>2</div>
@@ -329,26 +324,21 @@ export function Hotbar() {
             key={i}
             onClick={() => !isEmpty && useConsumable(i)}
             title={def ? `${def.name}: ${def.description}` : "Empty slot"}
+            className={`sw-slot ${isActive ? "sw-slot--active" : ""}`}
             style={{
               width: 52,
               height: 52,
-              border: `2px solid ${def ? def.color : "#334"}`,
-              background: isActive
-                ? `${def?.color ?? "#444"}33`
-                : isEmpty
-                ? "#080c18"
-                : "#0c1220",
-              borderRadius: 0,
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
               cursor: isEmpty ? "default" : "pointer",
               position: "relative",
-              overflow: "hidden",
               fontFamily: "'Courier New', monospace",
-              transition: "border-color 0.15s",
-              boxShadow: `inset 1px 1px 0 rgba(255,255,255,0.10), inset -1px -1px 0 rgba(0,0,0,0.6)${isActive ? `, 0 0 12px ${def?.color}88` : ""}`,
+              boxShadow: def
+                ? `inset 0 0 0 1px ${def.color}66${isActive ? `, 0 0 10px ${def.color}66` : ""}`
+                : "none",
+              opacity: isEmpty && !def ? 0.75 : 1,
             }}
           >
             {cd > 0 && def && (

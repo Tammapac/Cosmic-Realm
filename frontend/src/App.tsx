@@ -350,7 +350,7 @@ function RiftConfirmDialog() {
   if (!def) return null;
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
-      <div style={{ background: "#111827", border: "2px solid #555", borderRadius: 10, padding: 28, maxWidth: 360, textAlign: "center", boxShadow: "0 0 60px rgba(0,0,0,0.9)" }}>
+      <div className="panel panel-framed" style={{ padding: 24, maxWidth: 380, textAlign: "center", boxShadow: "0 0 60px rgba(0,0,0,0.9)" }}>
         <div style={{ fontSize: 20, fontWeight: "bold", marginBottom: 12, color: def.color }}>{def.name}</div>
         <div style={{ fontSize: 14, color: "#aaa", marginBottom: 8 }}>SOLO MODE</div>
         <div style={{ fontSize: 13, color: "#888", marginBottom: 6 }}>{def.waves} waves / {def.enemiesPerWave} enemies per wave</div>
