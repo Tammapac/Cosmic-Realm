@@ -320,7 +320,7 @@ function GameCanvas() {
 function Notifications() {
   const items = useGame((s) => s.notifications);
   return (
-    <div className="absolute flex flex-col items-start gap-1 pointer-events-none z-40" style={{ bottom: 80, left: 12 }}>
+    <div className="absolute flex flex-col items-end gap-1 pointer-events-none z-40" style={{ bottom: 320, right: 12 }}>
       {items.slice(-4).map((n) => (
         <div
           key={n.id}

@@ -83,12 +83,15 @@ export function Hotbar() {
         left: "50%",
         transform: "translateX(-50%)",
         display: "flex",
-        gap: 6,
+        flexDirection: "column",
+        gap: 4,
         zIndex: 50,
         pointerEvents: "auto",
         padding: "2px 4px",
       }}
     >
+      {/* row 1: weapons — attack toggle + ammo/rocket selectors */}
+      <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
       <button
         onClick={toggleAttack}
         onMouseDown={(e) => e.preventDefault()}
@@ -158,14 +161,12 @@ export function Hotbar() {
 
         {showAmmoSelector && (
           <div
+            className="sw-tooltip"
             style={{
               position: "absolute",
               bottom: 62,
               left: "50%",
               transform: "translateX(-50%)",
-              background: "rgba(6,9,22,0.97)",
-              border: "1px solid rgba(78,226,255,0.2)",
-              borderRadius: 0,
               padding: "4px 3px",
               display: "flex",
               flexDirection: "column",
@@ -249,14 +250,12 @@ export function Hotbar() {
 
         {showRocketAmmoSelector && (
           <div
+            className="sw-tooltip"
             style={{
               position: "absolute",
               bottom: 62,
               left: "50%",
               transform: "translateX(-50%)",
-              background: "rgba(6,9,22,0.97)",
-              border: "1px solid rgba(78,226,255,0.2)",
-              borderRadius: 0,
               padding: "4px 3px",
               display: "flex",
               flexDirection: "column",
@@ -309,7 +308,10 @@ export function Hotbar() {
           </div>
         )}
       </div>
+      </div>
 
+      {/* row 2: consumable slots */}
+      <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
       {hotbar.map((id, i) => {
         const def = id ? CONSUMABLE_DEFS[id] : null;
         const count = id ? (consumables[id] ?? 0) : 0;
@@ -401,6 +403,7 @@ export function Hotbar() {
           </div>
         );
       })}
+      </div>
     </div>
   );
 }

@@ -8,13 +8,13 @@ from PIL import Image
 OUT = Path(r"E:\Program Files\Claude Code\Cosmic-Realm\frontend\public\assets\ui\skin")
 OUT.mkdir(parents=True, exist_ok=True)
 
-PLATE1 = (14, 21, 37)
-PLATE2 = (6, 10, 20)
-STRIP = (7, 12, 24)
-STEEL = (92, 108, 132)
-STEEL_L = (142, 160, 186)
-STEEL_D = (44, 54, 72)
-OUTLINE = (7, 10, 18)
+PLATE1 = (21, 31, 52)
+PLATE2 = (11, 17, 30)
+STRIP = (14, 21, 38)
+STEEL = (108, 126, 152)
+STEEL_L = (162, 180, 206)
+STEEL_D = (58, 70, 90)
+OUTLINE = (10, 14, 24)
 CYAN = (56, 214, 245)
 GOLD = (232, 178, 60)
 RED = (242, 70, 74)
@@ -166,10 +166,10 @@ def make_btn(state):
     yy, xx = np.meshgrid(np.arange(h), np.arange(w), indexing="ij")
     out = np.zeros((h, w, 4), dtype=float)
     grads = {
-        "normal": ((27, 42, 68), (12, 20, 38)),
-        "hover": ((36, 58, 92), (16, 27, 52)),
-        "active": ((10, 16, 30), (22, 34, 56)),
-        "disabled": ((18, 21, 29), (11, 13, 19)),
+        "normal": ((36, 54, 84), (18, 28, 48)),
+        "hover": ((48, 72, 110), (24, 36, 64)),
+        "active": ((16, 24, 40), (30, 44, 70)),
+        "disabled": ((24, 28, 38), (15, 18, 26)),
     }
     top, bot = grads[state]
     out[m, :3] = body_tex(h, w, top, bot, 5)[m]
@@ -201,7 +201,7 @@ def make_slot(state):
     yy, xx = np.meshgrid(np.arange(h), np.arange(w), indexing="ij")
     out = np.zeros((h, w, 4), dtype=float)
     t = (yy / (h - 1))[:, :, None]
-    well = (1 - t) * np.array((4, 7, 14))[None, None, :] + t * np.array((13, 20, 35))[None, None, :]
+    well = (1 - t) * np.array((9, 14, 25))[None, None, :] + t * np.array((20, 29, 48))[None, None, :]
     out[m, :3] = well[m]
     out[m, 3] = 252
     r0 = ring(m); m1 = erode(m); r1 = ring(m1); m2 = erode(m1); r2 = ring(m2)

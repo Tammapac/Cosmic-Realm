@@ -135,13 +135,7 @@ export function Hangar({ stationId }: { stationId: string }) {
       >
         <div className="scanline" />
         {/* Header */}
-        <div
-          className="flex items-center justify-between gap-3 px-5 py-3 shrink-0"
-          style={{
-            borderBottom: "1px solid rgba(78,226,255,0.12)",
-            background: "linear-gradient(90deg, rgba(78,226,255,0.06) 0%, transparent 60%)",
-          }}
-        >
+        <div className="sw-window-header">
           <div className="min-w-0 flex items-center gap-4">
             {/* Station icon */}
             <div style={{
@@ -180,49 +174,86 @@ export function Hangar({ stationId }: { stationId: string }) {
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="flex overflow-x-auto shrink-0" style={{ borderBottom: "1px solid rgba(78,226,255,0.12)", background: "rgba(2,4,14,0.6)" }}>
-          {(station.kind === "factory" ? FACTORY_TABS : TABS).map((t) => (
-            <button
-              key={t.id}
-              className="relative px-4 py-2.5 whitespace-nowrap transition-colors duration-150 shrink-0"
-              style={{
-                fontSize: 12,
-                fontFamily: "var(--font-display)",
-                letterSpacing: "0.15em",
-                textTransform: "uppercase",
-                background: tab === t.id
-                  ? "linear-gradient(180deg, rgba(78,226,255,0.12) 0%, rgba(78,226,255,0.04) 100%)"
-                  : "transparent",
-                color: tab === t.id ? "var(--accent-cyan)" : "var(--text-mute)",
-                borderBottom: tab === t.id ? "2px solid var(--accent-cyan)" : "2px solid transparent",
-                borderRight: "1px solid rgba(78,226,255,0.06)",
-                boxShadow: tab === t.id ? "inset 0 -1px 0 var(--accent-cyan), 0 0 12px rgba(78,226,255,0.08)" : "none",
-                textShadow: tab === t.id ? "0 0 8px rgba(78,226,255,0.6)" : "none",
-              }}
-              onClick={() => { state.hangarTab = t.id; bump(); }}
+        {/* Station body: left nav · content · info rail */}
+        <div className="flex flex-1 min-h-0">
+          {/* left navigation */}
+          <div className="sw-nav">
+            <div
+              className="hud-label"
+              style={{ padding: "2px 4px 8px", color: "var(--text-mute)", fontSize: 9 }}
             >
-              <span style={{ marginRight: 5, opacity: 0.7 }}>{t.glyph}</span>{t.label}
-            </button>
-          ))}
-        </div>
+              STATION SERVICES
+            </div>
+            {(station.kind === "factory" ? FACTORY_TABS : TABS).map((t) => (
+              <button
+                key={t.id}
+                className={`sw-nav-item ${tab === t.id ? "sw-nav-item--selected" : ""}`}
+                onClick={() => { state.hangarTab = t.id; bump(); }}
+              >
+                <span style={{ width: 16, textAlign: "center", opacity: 0.8, flexShrink: 0 }}>{t.glyph}</span>
+                <span className="truncate">{t.label}</span>
+              </button>
+            ))}
+          </div>
 
-        <div className="overflow-y-auto flex-1 min-h-0">
-          {tab === "bounties" && <BountiesTab />}
-          {tab === "missions" && <MissionsTab />}
-          {tab === "skills" && <SkillsTab />}
-          {tab === "loadout" && <LoadoutTab stationId={stationId} />}
-          {tab === "dungeons" && <DungeonsTab />}
-          {tab === "ships" && <ShipsTab />}
-          {tab === "drones" && <DronesTab />}
-          {tab === "market" && <MarketTab stationId={stationId} />}
-          {tab === "ammo" && <AmmoTab />}  {/* kept for loadout inline popup */}
-          {tab === "cargo" && <CargoTab />}
-          {tab === "refinery" && <RefineryTab stationId={stationId} />}
-          {tab === "repair" && <RepairTab stationId={stationId} />}
+          {/* content */}
+          <div className="overflow-y-auto flex-1 min-h-0">
+            {tab === "bounties" && <BountiesTab />}
+            {tab === "missions" && <MissionsTab />}
+            {tab === "skills" && <SkillsTab />}
+            {tab === "loadout" && <LoadoutTab stationId={stationId} />}
+            {tab === "dungeons" && <DungeonsTab />}
+            {tab === "ships" && <ShipsTab />}
+            {tab === "drones" && <DronesTab />}
+            {tab === "market" && <MarketTab stationId={stationId} />}
+            {tab === "ammo" && <AmmoTab />}  {/* kept for loadout inline popup */}
+            {tab === "cargo" && <CargoTab />}
+            {tab === "refinery" && <RefineryTab stationId={stationId} />}
+            {tab === "repair" && <RepairTab stationId={stationId} />}
+          </div>
+
+          {/* info rail: pilot + resources summary */}
+          <StationInfoRail station={station} />
         </div>
       </div>
 
+    </div>
+  );
+}
+
+function StationInfoRail({ station }: { station: (typeof STATIONS)[number] }) {
+  const player = useGame((s) => s.player);
+  const cls = SHIP_CLASSES[player.shipClass];
+  const cargoUsed = player.cargo.reduce((a, c) => a + c.qty, 0);
+  const rows: { label: string; value: string; color: string }[] = [
+    { label: "CREDITS", value: player.credits.toLocaleString(), color: "var(--accent-amber)" },
+    { label: "HONOR", value: player.honor.toLocaleString(), color: "#c9a8ff" },
+    { label: "CARGO", value: `${cargoUsed}/${cargoCapacity()}`, color: "var(--accent-cyan)" },
+    { label: "SHIP", value: cls.name, color: "var(--text-dim)" },
+    { label: "HULL", value: `${Math.round(player.hull)}`, color: "#5cff8a" },
+    { label: "LEVEL", value: `${player.level}`, color: "var(--accent-amber)" },
+    { label: "SKILL PTS", value: `${player.skillPoints}`, color: "#ff5cf0" },
+  ];
+  return (
+    <div className="sw-rail">
+      <div className="hud-label" style={{ fontSize: 9, marginBottom: 8 }}>PILOT CONSOLE</div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+        {rows.map((r) => (
+          <div key={r.label} className="flex items-center justify-between gap-2" style={{ fontSize: 11 }}>
+            <span className="hud-label" style={{ fontSize: 9 }}>{r.label}</span>
+            <span className="tabular-nums font-bold truncate" style={{ color: r.color, maxWidth: 120 }}>
+              {r.value}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="sw-hr" style={{ margin: "10px 0" }} />
+      <div className="hud-label" style={{ fontSize: 9, marginBottom: 6 }}>STATION</div>
+      <div style={{ fontSize: 10, lineHeight: 1.5, color: "var(--text-mute)" }}>
+        <span style={{ color: "var(--accent-cyan)" }}>{station.name}</span>
+        {" — "}
+        {station.kind.toUpperCase()} facility. Services and prices vary by station type and controlling faction.
+      </div>
     </div>
   );
 }
@@ -992,41 +1023,55 @@ function ShipsTab() {
   };
 
   return (
-    <div className="grid grid-cols-2 gap-4 p-5">
+    <div className="p-4 space-y-2">
+      <div className="hud-label" style={{ fontSize: 9, paddingBottom: 2 }}>SHIPYARD — AVAILABLE HULLS</div>
       {(Object.values(SHIP_CLASSES) as { id: ShipClassId; [k: string]: any }[]).map((cls) => {
         const owned = player.ownedShips.includes(cls.id);
         const active = player.shipClass === cls.id;
+        const stats: [string, number | string][] = [
+          ["HULL", cls.hullMax], ["SHD", cls.shieldMax], ["SPD", cls.baseSpeed], ["DMG", cls.baseDamage],
+          ["DRN", cls.droneSlots], ["WPN", cls.slots.weapon], ["GEN", cls.slots.generator], ["MOD", cls.slots.module],
+        ];
         return (
-          <div key={cls.id} className="panel p-4" style={{ borderColor: active ? cls.color : "var(--border-glow)" }}>
-            <div className="flex items-center gap-4 mb-4">
-              <div
-                className="shrink-0 overflow-hidden"
-                style={{ width: 96, height: 96, border: `1px solid ${cls.color}`, background: "transparent" }}
-              >
-                <ShipPreview shipId={cls.id} color={cls.color} size={96} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="font-bold tracking-widest text-base" style={{ color: cls.color }}>
+          <div
+            key={cls.id}
+            className="sw-card"
+            style={{ borderColor: active ? `${cls.color}aa` : undefined, background: active ? `${cls.color}0d` : undefined }}
+          >
+            <div
+              className="shrink-0 overflow-hidden"
+              style={{ width: 56, height: 56, border: `1px solid ${cls.color}66` }}
+            >
+              <ShipPreview shipId={cls.id} color={cls.color} size={56} />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="font-bold tracking-widest truncate" style={{ color: cls.color, fontSize: 12, fontFamily: "var(--font-display)" }}>
                   {cls.name.toUpperCase()}
-                </div>
-                <div className="text-dim text-[13px] mt-0.5">{cls.description}</div>
+                </span>
+                {active && (
+                  <span className="shrink-0" style={{ color: "var(--accent-cyan)", fontSize: 9, letterSpacing: "0.14em", border: "1px solid rgba(56,214,245,0.4)", padding: "0 4px" }}>
+                    ACTIVE
+                  </span>
+                )}
               </div>
-              {active && <div className="text-cyan text-[13px] tracking-widest shrink-0">[ACTIVE]</div>}
+              <div className="text-dim clamp2" style={{ fontSize: 10, lineHeight: 1.4, marginTop: 1 }}>{cls.description}</div>
+              <div className="flex flex-wrap" style={{ gap: "2px 10px", marginTop: 3 }}>
+                {stats.map(([l, v]) => (
+                  <span key={l} className="tabular-nums whitespace-nowrap" style={{ fontSize: 10 }}>
+                    <span style={{ color: "var(--text-mute)" }}>{l} </span>
+                    <span style={{ color: "var(--accent-cyan)", fontWeight: 700 }}>{v}</span>
+                  </span>
+                ))}
+              </div>
             </div>
-            <div className="grid grid-cols-4 gap-3 mb-3">
-              <Stat label="HULL" v={cls.hullMax} />
-              <Stat label="SHIELD" v={cls.shieldMax} />
-              <Stat label="SPEED" v={cls.baseSpeed} />
-              <Stat label="DAMAGE" v={cls.baseDamage} />
-            </div>
-            <div className="grid grid-cols-4 gap-3 mb-4">
-              <Stat label="DRONES" v={cls.droneSlots} />
-              <Stat label="WEAPONS" v={cls.slots.weapon} />
-              <Stat label="GENS" v={cls.slots.generator} />
-              <Stat label="MODULES" v={cls.slots.module} />
-            </div>
-            <button className="btn btn-primary w-full" style={{ padding: "8px", fontSize: 14 }} disabled={active || (!owned && player.credits < cls.price)} onClick={() => buy(cls.id)}>
-              {active ? "Currently flying" : owned ? "⬡ Switch to this ship" : `Buy · ${cls.price.toLocaleString()}cr`}
+            <button
+              className="btn btn-primary shrink-0"
+              style={{ padding: "4px 10px", fontSize: 11, minWidth: 128 }}
+              disabled={active || (!owned && player.credits < cls.price)}
+              onClick={() => buy(cls.id)}
+            >
+              {active ? "FLYING" : owned ? "⬡ BOARD" : `BUY · ${cls.price.toLocaleString()}cr`}
             </button>
           </div>
         );
@@ -1774,6 +1819,8 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
 // ── SKILLS ────────────────────────────────────────────────────────────────
 function SkillsTab() {
   const player = useGame((s) => s.player);
+  const [hover, setHover] = useState<{ id: SkillId; x: number; y: number } | null>(null);
+  const hoverNode = hover ? SKILL_NODES.find((n) => n.id === hover.id) ?? null : null;
   const branches: { id: SkillBranch; name: string; color: string }[] = [
     { id: "offense",     name: "OFFENSE",     color: "#ff5c6c" },
     { id: "defense",     name: "DEFENSE",     color: "#4ee2ff" },
@@ -1789,19 +1836,24 @@ function SkillsTab() {
 
   return (
     <div className="p-4 space-y-3">
-      <div className="flex items-center justify-between">
+      {/* Tech Lab header */}
+      <div className="flex items-center justify-between gap-3">
         <div>
-          <div className="text-cyan tracking-widest text-sm">▶ SKILL TREE</div>
-          <div className="text-mute text-[13px] mt-1">Earn 1 skill point per level. Spend below.</div>
+          <div className="tracking-widest" style={{ color: "var(--accent-cyan)", fontSize: 13, fontFamily: "var(--font-display)", textShadow: "0 0 8px rgba(56,214,245,0.5)" }}>
+            ◢ TECH LAB
+          </div>
+          <div className="text-mute" style={{ fontSize: 10, marginTop: 2 }}>
+            Research ship technologies. 1 research point per level.
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="panel px-3 py-2">
-            <div className="text-mute text-[12px] tracking-widest">UNSPENT</div>
-            <div className="text-amber font-bold text-lg tabular-nums">{player.skillPoints}</div>
+        <div className="flex items-center gap-2">
+          <div className="panel" style={{ padding: "4px 12px", textAlign: "center" }}>
+            <div className="hud-label" style={{ fontSize: 8 }}>POINTS</div>
+            <div className="text-amber font-bold tabular-nums" style={{ fontSize: 15, lineHeight: 1.1 }}>{player.skillPoints}</div>
           </div>
           <button
             className="btn btn-danger"
-            style={{ padding: "6px 12px", fontSize: 13 }}
+            style={{ padding: "4px 10px", fontSize: 10 }}
             onClick={() => { if (confirm("Reset skills for 2000cr?")) resetSkills(); }}
           >
             RESPEC · 2000cr
@@ -1809,81 +1861,194 @@ function SkillsTab() {
         </div>
       </div>
 
-      <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(4,1fr)" }}>
-        {branches.map((b) => (
-          <div key={b.id} className="panel p-4" style={{ position: "relative", overflow: "hidden" }}>
-            <div
-              style={{
-                position: "absolute",
-                left: 20,
-                top: 52,
-                bottom: 16,
-                width: 2,
-                background: `linear-gradient(to bottom, ${b.color}66, ${b.color}11)`,
-              }}
-            />
-            <div className="font-bold tracking-widest text-sm mb-3" style={{ color: b.color, fontSize: 14 }}>
-              ◆ {b.name}
-            </div>
-            <div className="space-y-3">
-              {branchNodes[b.id].map((n, idx) => {
-                const cur = player.skills[n.id] ?? 0;
-                const reqMet = !n.requires || (player.skills[n.requires] ?? 0) > 0;
-                const canBuy = cur < n.maxRank && reqMet && player.skillPoints >= n.cost;
-                return (
-                  <div
-                    key={n.id}
-                    className="p-3"
-                    style={{
-                      marginLeft: idx === 0 ? 0 : 12,
-                      background: cur > 0 ? `${b.color}11` : "rgba(255,255,255,0.02)",
-                      border: `1px solid ${cur > 0 ? b.color + "66" : "rgba(255,255,255,0.08)"}`,
-                      borderRadius: 6,
-                      position: "relative",
-                    }}
-                  >
-                    {idx > 0 && (
-                      <div
+      {/* Skill trees — one node graph per branch, connectors light up along researched paths */}
+      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(310px, 1fr))" }}>
+        {branches.map((b) => {
+          const nodes = branchNodes[b.id];
+          const maxRow = Math.max(...nodes.map((n) => n.pos.row));
+          const H = PAD_Y + (maxRow + 1) * ROW_H;
+          const center = (n: SkillNode) => ({
+            cx: PAD_X + n.pos.col * COL_W + NODE_S / 2,
+            cy: PAD_Y + n.pos.row * ROW_H + NODE_S / 2,
+          });
+          return (
+            <div key={b.id} className="panel" style={{ borderColor: `${b.color}44` }}>
+              <div className="section-header" style={{ color: b.color }}>
+                {b.name} SYSTEMS
+              </div>
+              <div style={{ position: "relative", height: H }}>
+                {/* dependency connectors */}
+                <svg width="100%" height={H} style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
+                  {nodes.filter((n) => n.requires).map((n) => {
+                    const p = SKILL_NODES.find((x) => x.id === n.requires);
+                    if (!p || p.branch !== b.id) return null;
+                    const a = center(p);
+                    const c = center(n);
+                    const lit = (player.skills[p.id] ?? 0) > 0;
+                    return (
+                      <line
+                        key={n.id}
+                        x1={a.cx} y1={a.cy} x2={c.cx} y2={c.cy}
+                        stroke={lit ? b.color : "rgba(135,152,178,0.28)"}
+                        strokeWidth={2}
+                        strokeDasharray={lit ? undefined : "4 4"}
+                        opacity={lit ? 0.8 : 1}
+                      />
+                    );
+                  })}
+                </svg>
+                {/* nodes */}
+                {nodes.map((n) => {
+                  const cur = player.skills[n.id] ?? 0;
+                  const reqMet = !n.requires || (player.skills[n.requires] ?? 0) > 0;
+                  const canBuy = cur < n.maxRank && reqMet && player.skillPoints >= n.cost;
+                  const maxed = cur >= n.maxRank;
+                  const rim = maxed ? "var(--accent-gold)" : cur > 0 ? b.color : reqMet ? "#7d8ea8" : "#39445a";
+                  return (
+                    <button
+                      key={n.id}
+                      className="skill-node"
+                      onMouseEnter={(e) => {
+                        const r = e.currentTarget.getBoundingClientRect();
+                        setHover({ id: n.id, x: r.right, y: r.top });
+                      }}
+                      onMouseLeave={() => setHover(null)}
+                      onClick={() => { if (canBuy) buySkillRank(n.id as SkillId); }}
+                      style={{
+                        position: "absolute",
+                        left: PAD_X + n.pos.col * COL_W,
+                        top: PAD_Y + n.pos.row * ROW_H,
+                        width: NODE_S,
+                        height: NODE_S,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 19,
+                        lineHeight: 1,
+                        color: cur > 0 ? b.color : reqMet ? "var(--text-dim)" : "#55617a",
+                        background: cur > 0
+                          ? `radial-gradient(circle at 50% 35%, ${b.color}30 0%, rgba(10,16,30,0.95) 70%)`
+                          : "radial-gradient(circle at 50% 35%, rgba(60,80,120,0.35) 0%, rgba(10,16,30,0.95) 75%)",
+                        border: `2px solid ${rim}`,
+                        boxShadow: cur > 0
+                          ? `0 0 10px ${b.color}66, inset 0 0 8px ${b.color}22`
+                          : "inset 0 1px 0 rgba(255,255,255,0.10), 0 0 0 1px rgba(0,0,0,0.6)",
+                        cursor: canBuy ? "pointer" : "default",
+                        opacity: reqMet ? 1 : 0.55,
+                        padding: 0,
+                      }}
+                    >
+                      {n.icon}
+                      {/* rank badge */}
+                      <span
+                        className="tabular-nums"
                         style={{
                           position: "absolute",
-                          left: -12,
-                          top: 18,
-                          width: 12,
-                          height: 2,
-                          background: `${b.color}55`,
+                          bottom: -15,
+                          left: "50%",
+                          transform: "translateX(-50%)",
+                          fontSize: 9,
+                          fontWeight: 700,
+                          letterSpacing: "0.06em",
+                          color: maxed ? "var(--accent-gold)" : cur > 0 ? b.color : "var(--text-mute)",
+                          textShadow: "0 1px 2px #000",
+                          whiteSpace: "nowrap",
                         }}
-                      />
-                    )}
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="font-bold text-[14px]" style={{ color: cur > 0 ? b.color : "var(--text-dim)" }}>
-                        {n.name}
-                      </div>
-                      <div className="text-[13px] tabular-nums font-bold" style={{ color: b.color }}>
-                        {cur}/{n.maxRank}
-                      </div>
-                    </div>
-                    <div className="text-dim text-[13px] mb-2 leading-snug">{n.description}</div>
-                    {n.requires && (
-                      <div className="text-mute text-[12px] mb-1.5">
-                        Req: {SKILL_NODES.find((x) => x.id === n.requires)?.name}
-                      </div>
-                    )}
-                    <GameButton
-                      style={{ fontSize: 13, width: "100%", color: canBuy ? b.color : "var(--text-mute)" }}
-                      disabled={!canBuy}
-                      onClick={() => buySkillRank(n.id as SkillId)}
-                    >
-                      {cur >= n.maxRank ? "✓ MAX" : !reqMet ? "🔒 LOCKED" : `Buy · ${n.cost} pt${n.cost > 1 ? "s" : ""}`}
-                    </GameButton>
-                  </div>
-                );
-              })}
+                      >
+                        {reqMet ? `${cur}/${n.maxRank}` : "🔒"}
+                      </span>
+                      {canBuy && (
+                        <span
+                          style={{
+                            position: "absolute",
+                            top: -4, right: -4,
+                            width: 8, height: 8,
+                            background: "var(--accent-green)",
+                            boxShadow: "0 0 6px var(--accent-green)",
+                            borderRadius: "50%",
+                            animation: "blink 1.6s ease-in-out infinite",
+                          }}
+                        />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* hover popup */}
+      {hoverNode && (() => {
+        const n = hoverNode;
+        const b = branches.find((x) => x.id === n.branch)!;
+        const cur = player.skills[n.id] ?? 0;
+        const reqMet = !n.requires || (player.skills[n.requires] ?? 0) > 0;
+        const canBuy = cur < n.maxRank && reqMet && player.skillPoints >= n.cost;
+        const maxed = cur >= n.maxRank;
+        const now = rankBonus(n.description, cur);
+        const next = rankBonus(n.description, cur + 1);
+        const left = Math.min(hover!.x + 12, window.innerWidth - 292);
+        const top = Math.max(8, Math.min(hover!.y - 8, window.innerHeight - 210));
+        return (
+          <div
+            className="sw-tooltip"
+            style={{ position: "fixed", left, top, width: 276, zIndex: 70, pointerEvents: "none", padding: "10px 12px" }}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-bold truncate" style={{ color: b.color, fontSize: 12, fontFamily: "var(--font-display)", letterSpacing: "0.08em" }}>
+                {n.icon} {n.name.toUpperCase()}
+              </span>
+              <span className="tabular-nums shrink-0" style={{ color: maxed ? "var(--accent-gold)" : "var(--text-dim)", fontSize: 10 }}>
+                RANK {cur}/{n.maxRank}
+              </span>
+            </div>
+            <div className="text-dim" style={{ fontSize: 10.5, lineHeight: 1.45, margin: "6px 0" }}>{n.description}</div>
+            <div className="sw-hr" />
+            <div style={{ fontSize: 10, lineHeight: 1.6 }}>
+              <div>
+                <span className="hud-label" style={{ fontSize: 8.5 }}>CURRENT </span>
+                <span className="tabular-nums" style={{ color: cur > 0 ? b.color : "var(--text-mute)" }}>{cur > 0 ? (now ?? `rank ${cur} active`) : "not researched"}</span>
+              </div>
+              {!maxed && (
+                <div>
+                  <span className="hud-label" style={{ fontSize: 8.5 }}>NEXT RANK </span>
+                  <span className="tabular-nums" style={{ color: "var(--text-bright)" }}>{next ?? `rank ${cur + 1}`}</span>
+                </div>
+              )}
+            </div>
+            <div style={{ marginTop: 6, fontSize: 9, letterSpacing: "0.1em", color: !reqMet ? "var(--accent-red)" : maxed ? "var(--accent-gold)" : canBuy ? "var(--accent-green)" : "var(--text-mute)" }}>
+              {!reqMet
+                ? `⚠ REQUIRES ${SKILL_NODES.find((x) => x.id === n.requires)?.name.toUpperCase() ?? ""}`
+                : maxed ? "✓ FULLY RESEARCHED"
+                : canBuy ? `▶ CLICK NODE TO RESEARCH · ${n.cost} PT${n.cost > 1 ? "S" : ""}`
+                : `NEEDS ${n.cost} RESEARCH POINT${n.cost > 1 ? "S" : ""}`}
             </div>
           </div>
-        ))}
-      </div>
+        );
+      })()}
     </div>
   );
+}
+
+// tree layout metrics
+const NODE_S = 42;
+const COL_W = 92;
+const ROW_H = 74;
+const PAD_X = 14;
+const PAD_Y = 14;
+
+// Best-effort "what it changes" line: multiply the leading +N[%] of a
+// "... per rank" description by the rank count.
+function rankBonus(desc: string, rank: number): string | null {
+  if (rank <= 0) return null;
+  const m = desc.match(/^([+-])(\d+(?:\.\d+)?)(%?)\s*(.*)/);
+  if (!m) return null;
+  const v = parseFloat(m[2]) * rank;
+  const vs = Number.isInteger(v) ? String(v) : v.toFixed(2);
+  const rest = m[4].replace(/\s*per rank\.?/i, "").replace(/\.$/, "");
+  return `${m[1]}${vs}${m[3]} ${rest}`;
 }
 
 // ── MISSIONS ──────────────────────────────────────────────────────────────

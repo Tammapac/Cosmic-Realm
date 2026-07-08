@@ -28,9 +28,10 @@ export function TopBar() {
   return (
     <>
     <div className="absolute top-2 left-2 right-2 z-30 flex items-start gap-2 pointer-events-none flex-wrap">
-      {/* Command console — identity, vitals, progression, resources in one frame */}
+      {/* Command console — two instrument rows: identity+vitals / progression+resources */}
       <TopPanel style={{ minWidth: 0 }}>
-      <div className="flex items-stretch" style={{ padding: "6px 10px" }}>
+      <div className="flex flex-col" style={{ padding: "4px 10px" }}>
+      <div className="flex items-stretch">
         {/* identity */}
         <div className="flex items-center gap-2.5 pr-3">
           <RankBadge rank={rank} />
@@ -90,11 +91,13 @@ export function TopBar() {
           <MicroBar label="HUL" value={player.hull} max={hullMax} color="#5cff8a" />
           <MicroBar label="SHD" value={player.shield} max={shieldMax} color="#4ee2ff" />
         </div>
+      </div>
 
-        <ConsoleDivider />
+      <div className="sw-hr" />
 
-        {/* progression */}
-        <div className="px-3 flex flex-col justify-center" style={{ minWidth: 176 }}>
+      {/* row 2: progression + resources readout strip */}
+      <div className="flex items-center">
+        <div className="px-1 flex flex-col justify-center" style={{ minWidth: 168, paddingRight: 12 }}>
           <MicroBar label="XP" value={player.exp} max={expNeeded} color="#ff5cf0" />
           <MicroBar
             label="HNR"
@@ -106,13 +109,13 @@ export function TopBar() {
 
         <ConsoleDivider />
 
-        {/* resources */}
         <div className="flex items-center px-1">
           <Stat label="Credits" value={fmtNum(player.credits)} color="var(--accent-amber)" />
           <Stat label="HONOR" value={fmtNum(player.honor)} color={rank.color} />
           <Stat label="CARGO" value={`${cargoUsed}/${cargoCapacity()}`} color="#4ee2ff" />
           <Stat label="DRONES" value={`${player.drones.length}/${maxDroneSlots()}`} color="#aaff5c" />
         </div>
+      </div>
       </div>
       </TopPanel>
 

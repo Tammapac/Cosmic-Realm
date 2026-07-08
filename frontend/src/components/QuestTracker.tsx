@@ -19,7 +19,7 @@ export function QuestTracker() {
   return (
     <div
       className="absolute z-30 pointer-events-none"
-      style={{ top: 110, left: 12, width: 300 }}
+      style={{ top: 104, right: 8, width: 300 }}
     >
       <TopPanel className="chip-quest" style={{ width: "100%" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "10px 12px" }}>
