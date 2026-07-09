@@ -82,6 +82,9 @@ export type GameState = {
   showMap: boolean;
   showClan: boolean;
   showSocial: boolean;
+  showJournal: boolean;
+  journalQuestId: string | null;
+  showQuestTracker: boolean;
   showLogoutConfirm: boolean;
   logoutCountdown: boolean;
   showFactionPicker: boolean;
@@ -484,6 +487,9 @@ export const state: GameState = {
   factoryLevel: 1,
   showClan: false,
   showSocial: false,
+  showJournal: false,
+  journalQuestId: null,
+  showQuestTracker: true,
   showLogoutConfirm: false,
   logoutCountdown: false,
   showFactionPicker: initialPlayer.faction === null,

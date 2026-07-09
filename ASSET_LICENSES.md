@@ -60,6 +60,14 @@ The original `license.txt` shipped inside the "Space Background" pack states:
 
 ## UI assets `frontend/public/assets/ui/` and fonts `frontend/public/assets/fonts/`
 
+### `ui/atlas/` — sci-fi GUI pack (orange/black variant), user-provided
+- **Source:** supplied by the project owner in `Cosmic-Realm/PNG GUI/` (variant 3 of each sheet).
+- **License:** declared license-free for this project by the owner (2026-07-08).
+  Original pack author/store unknown — if identified later, record it here.
+- Used in: all `atlas/*.png` slices (window, chat frame, map frame, buttons,
+  slots, bars, rows, popup, glow) cut by `scripts/bg-generation/slice_gui_pack.py`;
+  state variants (hover/active/disabled) generated from the originals.
+
 ### `ui/skin/` — "STEELWORK" UI skin (original art)
 - **Author:** original project art, procedurally generated (no third-party sources;
   generator: `scripts/bg-generation/gen_ui_skin.py`). Inspired only by generic

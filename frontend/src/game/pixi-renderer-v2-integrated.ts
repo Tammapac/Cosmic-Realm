@@ -793,6 +793,20 @@ function getShipTex(shipClass: ShipClassId, scale: number): PIXI.Texture {
   return tex;
 }
 
+// EnemyType -> alien GLB model (three-ship-layer registry key).
+// Families share silhouettes; color/scale stay per-type (tint pass comes later).
+const ENEMY_3D_MODEL: Record<string, string> = {
+  scout: "enemy_scout", interceptor: "enemy_scout",
+  raider: "enemy_drone", corvette: "enemy_drone",
+  wraith: "enemy_manta", specter: "enemy_manta",
+  voidling: "enemy_shard", phantom: "enemy_shard", sentinel: "enemy_shard",
+  destroyer: "enemy_beetle",
+  dread: "enemy_dread",
+  titan: "enemy_colossus", juggernaut: "enemy_colossus",
+  overlord: "enemy_overlord",
+  leviathan: "enemy_leviathan",
+};
+
 function enemyTexKey(e: Enemy): string {
   const varSeed = (e.id.charCodeAt(0) + e.id.charCodeAt(e.id.length - 1)) % 3;
   return `enemy-${e.type}-${e.color}-${e.size}-${e.isBoss ? 1 : 0}-${varSeed}`;
@@ -2052,6 +2066,20 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
     data.container.visible = true;
     data.container.position.set(e.pos.x, e.pos.y);
     data.body.rotation = e.angle + Math.PI / 2;
+
+    // 3D alien model swap: when the GLB is ready, hide the 2D body and drive
+    // the shared ship layer instead (health bar/name/auras stay in Pixi).
+    const enemyModelKey = ENEMY_3D_MODEL[e.type];
+    const enemyUse3D = !!enemyModelKey && has3DModel(enemyModelKey) && is3DReady(enemyModelKey);
+    if (enemyUse3D) {
+      data.body.visible = false;
+      if (data.coreGlow) data.coreGlow.visible = false;
+      updateShip3D("enemy:" + e.id, enemyModelKey, e.pos.x, e.pos.y, e.angle, e.size / 19, cam.x, cam.y);
+      markActive("enemy:" + e.id);
+    } else {
+      data.body.visible = true;
+      if (data.coreGlow) data.coreGlow.visible = true;
+    }
 
     // Animate alien core glow
     if (data.coreGlow) {

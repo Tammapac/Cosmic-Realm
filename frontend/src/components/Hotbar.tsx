@@ -1,7 +1,19 @@
-import { useGame, useConsumable, state, bump, pushNotification, getActiveAmmoType, getAmmoCount, switchAmmoType, getAmmoWeaponIds, rocketAmmoMax, getActiveRocketAmmoType, getRocketAmmoCount, switchRocketAmmoType, rocketMissileMax } from "../game/store";
-import { CONSUMABLE_DEFS, ROCKET_AMMO_TYPE_DEFS, LASER_AMMO_TYPE_ORDER, RocketAmmoType, ROCKET_MISSILE_TYPE_DEFS, ROCKET_MISSILE_TYPE_ORDER, RocketMissileType } from "../game/types";
+import { useEffect, useState } from "react";
+import { useGame, useConsumable, state, bump, pushNotification, setHotbarSlot, getActiveAmmoType, getAmmoCount, switchAmmoType, getActiveRocketAmmoType, getRocketAmmoCount, switchRocketAmmoType } from "../game/store";
+import { effectiveStats } from "../game/loop";
+import { CONSUMABLE_DEFS, ConsumableId, ROCKET_AMMO_TYPE_DEFS, LASER_AMMO_TYPE_ORDER, RocketAmmoType, ROCKET_MISSILE_TYPE_DEFS, ROCKET_MISSILE_TYPE_ORDER, RocketMissileType } from "../game/types";
 
-const SLOT_KEYS = ["3", "4", "5", "6", "7", "8", "9", "0"];
+// SkillsLine tray (PNG GUI pack, orange variant) — native 710x225.
+// Measured geometry: 9 slots 61px @ x 68 + i*65, y 102; icon strip y 62-92
+// with the "+" glyph left and the lightning glyph right baked into the art.
+const TRAY_W = 710;
+const TRAY_H = 225;
+const SLOT_S = 61;
+const SLOT_Y = 102;
+const slotX = (i: number) => 68 + i * 65;
+
+const HP_COLOR = "#5cff8a";
+const SH_COLOR = "#4ee2ff";
 
 export function Hotbar() {
   const hotbar = useGame((s) => s.player.hotbar);
@@ -21,8 +33,20 @@ export function Hotbar() {
   const showRocketAmmoSelector = useGame((s) => s.showRocketAmmoSelector);
   const player = useGame((s) => s.player);
 
+  // which consumable slot (0-6) has its assign dropdown open
+  const [assignSlot, setAssignSlot] = useState<number | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setAssignSlot(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   if (docked) return null;
 
+  const es = effectiveStats();
   const attackOnCooldown = tick < attackCooldownUntil;
 
   const toggleAttack = () => {
@@ -53,6 +77,7 @@ export function Hotbar() {
   const toggleAmmoSelector = () => {
     state.showAmmoSelector = !state.showAmmoSelector;
     state.showRocketAmmoSelector = false;
+    setAssignSlot(null);
     bump();
   };
 
@@ -65,6 +90,7 @@ export function Hotbar() {
   const toggleRocketAmmoSelector = () => {
     state.showRocketAmmoSelector = !state.showRocketAmmoSelector;
     state.showAmmoSelector = false;
+    setAssignSlot(null);
     bump();
   };
 
@@ -74,47 +100,77 @@ export function Hotbar() {
     bump();
   };
 
+  const toggleAssign = (i: number) => {
+    setAssignSlot(assignSlot === i ? null : i);
+    state.showAmmoSelector = false;
+    state.showRocketAmmoSelector = false;
+    bump();
+  };
+
+  const assignConsumable = (i: number, id: ConsumableId | null) => {
+    setHotbarSlot(i, id);
+    setAssignSlot(null);
+  };
+
   return (
     <div
-      className="hud-chip chip-tray"
       style={{
         position: "fixed",
-        bottom: 12,
+        bottom: 4,
         left: "50%",
         transform: "translateX(-50%)",
-        display: "flex",
-        flexDirection: "column",
-        gap: 4,
+        width: TRAY_W,
+        height: TRAY_H,
         zIndex: 50,
-        pointerEvents: "auto",
-        padding: "2px 4px",
+        pointerEvents: "none",
+        filter: "drop-shadow(0 4px 12px rgba(0,0,0,0.7))",
       }}
     >
-      {/* row 1: weapons — attack toggle + ammo/rocket selectors */}
-      <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
+      {/* tray art (GUI pack, SkillsLine orange variant) */}
+      <img
+        src="/assets/ui/atlas/hotbar-tray2.png"
+        alt=""
+        aria-hidden
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
+      />
+
+      {/* segmented HP / shield tick bars in the top strip ("+" and lightning are baked in the art) */}
+      <TickBar
+        left={102} width={244}
+        value={player.hull} max={es.hullMax} color={HP_COLOR}
+        title={`Hull ${Math.round(player.hull)}/${Math.round(es.hullMax)}`}
+      />
+      <TickBar
+        left={368} width={250}
+        value={player.shield} max={es.shieldMax} color={SH_COLOR}
+        title={`Shield ${Math.round(player.shield)}/${Math.round(es.shieldMax)}`}
+      />
+
+      {/* attack toggle, docked to the tray's left wing */}
       <button
         onClick={toggleAttack}
         onMouseDown={(e) => e.preventDefault()}
         title={selectedTarget?.kind === "enemy" ? (isAttacking ? "Stop attacking" : `Attack ${selectedTarget.name}`) : "Select an enemy first"}
         style={{
-          position: "relative",
-          width: 78,
-          height: 52,
+          position: "absolute",
+          left: -74,
+          top: 101,
+          width: 62,
+          height: 62,
           border: `2px solid ${isAttacking ? "#ff5c6c" : attackOnCooldown ? "#7a1a22" : "#ff3b4d"}`,
           background: isAttacking ? "#3a0a10" : attackOnCooldown ? "#14040a" : "#24070b",
-          borderRadius: 0,
-          clipPath: "polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px)",
-          boxShadow: "inset 1px 1px 0 rgba(255,255,255,0.10), inset -1px -1px 0 rgba(0,0,0,0.6)",
+          borderRadius: "50%",
           color: attackOnCooldown ? "#7a3a44" : "#ffb3bb",
           fontFamily: "var(--font-display)",
           fontWeight: "bold",
-          fontSize: 12,
+          fontSize: 11,
           letterSpacing: "0.1em",
           cursor: attackOnCooldown ? "not-allowed" : "pointer",
           boxShadow: isAttacking ? "0 0 14px #ff3b4d, 0 0 28px #ff3b4d44" : attackOnCooldown ? "none" : "0 0 10px #ff3b4d55",
           overflow: "hidden",
           transition: "border-color 0.07s, background 0.07s, color 0.07s, box-shadow 0.15s",
           animation: isAttacking ? "attack-pulse 1s ease-in-out infinite" : undefined,
+          pointerEvents: "auto",
         }}
       >
         {attackOnCooldown && (
@@ -131,279 +187,294 @@ export function Hotbar() {
         {isAttacking ? "FIRING" : "ATTACK"}
       </button>
 
-      {/* Ammo selector (key 1) */}
-      <div style={{ position: "relative" }}>
-        <div
-          onClick={toggleAmmoSelector}
-          title={`${ammoDef.name} — Click or press 1 to change ammo type`}
-          className={`sw-slot ${showAmmoSelector ? "sw-slot--active" : ""}`}
-          style={{
-            width: 52,
-            height: 52,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            position: "relative",
-            fontFamily: "'Courier New', monospace",
-            boxShadow: `inset 0 0 0 1px ${ammoDef.color}88${showAmmoSelector ? `, 0 0 10px ${ammoDef.color}66` : ""}`,
-          }}
-        >
-          <div style={{ position: "absolute", top: 2, left: 4, fontSize: 9, color: "#556", zIndex: 3 }}>1</div>
-          <div style={{ fontSize: 18, lineHeight: 1, color: ammoDef.color, zIndex: 3, textShadow: `0 0 8px ${ammoDef.color}`, fontWeight: "bold" }}>
-            {ammoDef.glyph}
-          </div>
-          <div style={{ position: "absolute", bottom: 2, right: 4, fontSize: 8, fontWeight: "bold", color: ammoCount === 0 ? "#553" : "#ccc", zIndex: 3 }}>
-            {ammoDef.shortName}
-          </div>
-        </div>
-
+      {/* slot 1 — laser ammo (key 1) */}
+      <TraySlot
+        left={slotX(0)}
+        keyLabel="1"
+        glyph={ammoDef.glyph}
+        color={ammoDef.color}
+        sub={ammoDef.shortName}
+        count={ammoCount}
+        active={isLaserFiring || showAmmoSelector}
+        title={`${ammoDef.name} — click to change ammo type (1 toggles laser fire)`}
+        onClick={toggleAmmoSelector}
+      >
         {showAmmoSelector && (
-          <div
-            className="sw-tooltip"
-            style={{
-              position: "absolute",
-              bottom: 62,
-              left: "50%",
-              transform: "translateX(-50%)",
-              padding: "4px 3px",
-              display: "flex",
-              flexDirection: "column",
-              gap: 2,
-              minWidth: 168,
-              boxShadow: "0 0 24px rgba(0,0,0,0.9), 0 0 12px rgba(78,226,255,0.06)",
-              zIndex: 60,
-            }}
-          >
-            <div style={{ fontSize: 8, color: "rgba(160,176,216,0.6)", letterSpacing: "0.18em", textAlign: "center", padding: "3px 0 2px" }}>
-              SELECT AMMO TYPE
-            </div>
+          <Dropdown header="SELECT AMMO TYPE">
             {LASER_AMMO_TYPE_ORDER.map((type) => {
               const def = ROCKET_AMMO_TYPE_DEFS[type];
-              const count = getAmmoCount(type);
-              const isActive = type === activeAmmoType;
               return (
-                <div
+                <DropRow
                   key={type}
-                  onClick={(e) => { e.stopPropagation(); selectAmmo(type); }}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "4px 8px",
-                    borderRadius: 0,
-                    cursor: "pointer",
-                    background: isActive ? `${def.color}22` : "transparent",
-                    border: isActive ? `1px solid ${def.color}88` : "1px solid transparent",
-                    transition: "background 0.1s",
-                  }}
-                  onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = "#ffffff0a"; }}
-                  onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                >
-                  <div style={{ fontSize: 16, color: def.color, fontWeight: "bold", width: 20, textAlign: "center", textShadow: `0 0 6px ${def.color}` }}>
-                    {def.glyph}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 10, color: isActive ? def.color : "#ccc", fontWeight: isActive ? "bold" : "normal" }}>
-                      {def.shortName} {isActive && "◂"}
-                    </div>
-                    <div style={{ fontSize: 8, color: "#667" }}>{def.description}</div>
-                  </div>
-                  <div style={{ fontSize: 10, color: count === 0 ? "#ff5c6c" : "#aaa", fontWeight: "bold", fontFamily: "'Courier New', monospace" }}>
-                    {count}
-                  </div>
-                </div>
+                  glyph={def.glyph}
+                  color={def.color}
+                  name={def.shortName}
+                  desc={def.description}
+                  count={getAmmoCount(type)}
+                  isActive={type === activeAmmoType}
+                  onClick={() => selectAmmo(type)}
+                />
               );
             })}
-          </div>
+          </Dropdown>
         )}
-      </div>
+      </TraySlot>
 
-      {/* Rocket ammo selector (key 2) */}
-      <div style={{ position: "relative" }}>
-        <div
-          onClick={toggleRocketAmmoSelector}
-          title={`${rocketDef.name} — Click or press 2 to change rocket type`}
-          className={`sw-slot ${showRocketAmmoSelector ? "sw-slot--active" : ""}`}
-          style={{
-            width: 52,
-            height: 52,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            position: "relative",
-            fontFamily: "'Courier New', monospace",
-            boxShadow: `inset 0 0 0 1px ${rocketDef.color}88${showRocketAmmoSelector ? `, 0 0 10px ${rocketDef.color}66` : ""}`,
-          }}
-        >
-          <div style={{ position: "absolute", top: 2, left: 4, fontSize: 9, color: "#556", zIndex: 3 }}>2</div>
-          <div style={{ fontSize: 18, lineHeight: 1, color: rocketDef.color, zIndex: 3, textShadow: `0 0 8px ${rocketDef.color}`, fontWeight: "bold" }}>
-            {rocketDef.glyph}
-          </div>
-          <div style={{ position: "absolute", bottom: 2, right: 4, fontSize: 8, fontWeight: "bold", color: rocketCount === 0 ? "#553" : "#ccc", zIndex: 3 }}>
-            {rocketDef.shortName}
-          </div>
-        </div>
-
+      {/* slot 2 — rockets (key 2) */}
+      <TraySlot
+        left={slotX(1)}
+        keyLabel="2"
+        glyph={rocketDef.glyph}
+        color={rocketDef.color}
+        sub={rocketDef.shortName}
+        count={rocketCount}
+        active={isRocketFiring || showRocketAmmoSelector}
+        title={`${rocketDef.name} — click to change rocket type (2 toggles rocket fire)`}
+        onClick={toggleRocketAmmoSelector}
+      >
         {showRocketAmmoSelector && (
-          <div
-            className="sw-tooltip"
-            style={{
-              position: "absolute",
-              bottom: 62,
-              left: "50%",
-              transform: "translateX(-50%)",
-              padding: "4px 3px",
-              display: "flex",
-              flexDirection: "column",
-              gap: 2,
-              minWidth: 168,
-              boxShadow: "0 0 24px rgba(0,0,0,0.9), 0 0 12px rgba(78,226,255,0.06)",
-              zIndex: 60,
-            }}
-          >
-            <div style={{ fontSize: 8, color: "rgba(160,176,216,0.6)", letterSpacing: "0.18em", textAlign: "center", padding: "3px 0 2px" }}>
-              SELECT ROCKET TYPE
-            </div>
+          <Dropdown header="SELECT ROCKET TYPE">
             {ROCKET_MISSILE_TYPE_ORDER.map((type) => {
               const def = ROCKET_MISSILE_TYPE_DEFS[type];
-              const count = getRocketAmmoCount(type);
-              const isActive = type === activeRocketType;
               return (
-                <div
+                <DropRow
                   key={type}
-                  onClick={(e) => { e.stopPropagation(); selectRocketAmmo(type); }}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    padding: "4px 8px",
-                    borderRadius: 0,
-                    cursor: "pointer",
-                    background: isActive ? `${def.color}22` : "transparent",
-                    border: isActive ? `1px solid ${def.color}88` : "1px solid transparent",
-                    transition: "background 0.1s",
-                  }}
-                  onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = "#ffffff0a"; }}
-                  onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                >
-                  <div style={{ fontSize: 16, color: def.color, fontWeight: "bold", width: 20, textAlign: "center", textShadow: `0 0 6px ${def.color}` }}>
-                    {def.glyph}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 10, color: isActive ? def.color : "#ccc", fontWeight: isActive ? "bold" : "normal" }}>
-                      {def.shortName} {isActive && "◂"}
-                    </div>
-                    <div style={{ fontSize: 8, color: "#667" }}>{def.description}</div>
-                  </div>
-                  <div style={{ fontSize: 10, color: count === 0 ? "#ff5c6c" : "#aaa", fontWeight: "bold", fontFamily: "'Courier New', monospace" }}>
-                    {count}
-                  </div>
-                </div>
+                  glyph={def.glyph}
+                  color={def.color}
+                  name={def.shortName}
+                  desc={def.description}
+                  count={getRocketAmmoCount(type)}
+                  isActive={type === activeRocketType}
+                  onClick={() => selectRocketAmmo(type)}
+                />
               );
             })}
-          </div>
+          </Dropdown>
         )}
-      </div>
-      </div>
+      </TraySlot>
 
-      {/* row 2: consumable slots */}
-      <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
-      {hotbar.map((id, i) => {
+      {/* slots 3-9 — consumables (hotbar 0-6): click to use, right-click / empty click to assign */}
+      {hotbar.slice(0, 7).map((id, i) => {
         const def = id ? CONSUMABLE_DEFS[id] : null;
         const count = id ? (consumables[id] ?? 0) : 0;
         const cd = cooldowns[i] ?? 0;
-        const isEmpty = !id || count === 0;
+        const usable = !!def && count > 0;
         let isActive = false;
         if (id === "afterburn-fuel" && afterburnUntil > tick) isActive = true;
         if (id === "repair-bot" && repairBotUntil > tick) isActive = true;
 
         return (
-          <div
+          <TraySlot
             key={i}
-            onClick={() => !isEmpty && useConsumable(i)}
-            title={def ? `${def.name}: ${def.description}` : "Empty slot"}
-            className={`sw-slot ${isActive ? "sw-slot--active" : ""}`}
-            style={{
-              width: 52,
-              height: 52,
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: isEmpty ? "default" : "pointer",
-              position: "relative",
-              fontFamily: "'Courier New', monospace",
-              boxShadow: def
-                ? `inset 0 0 0 1px ${def.color}66${isActive ? `, 0 0 10px ${def.color}66` : ""}`
-                : "none",
-              opacity: isEmpty && !def ? 0.75 : 1,
-            }}
+            left={slotX(i + 2)}
+            keyLabel={String(i + 3)}
+            glyph={def ? def.icon : "·"}
+            color={def ? def.color : "#5a4626"}
+            sub={def ? `×${count}` : ""}
+            count={def ? count : null}
+            active={isActive || assignSlot === i}
+            title={def ? `${def.name}: ${def.description} — right-click to change` : "Empty slot — click to assign an item"}
+            onClick={() => (usable ? useConsumable(i) : toggleAssign(i))}
+            onContextMenu={() => toggleAssign(i)}
+            cooldownPct={def && cd > 0 ? cd / def.cooldown : 0}
+            cooldownText={cd > 0 ? Math.ceil(cd) : null}
           >
-            {cd > 0 && def && (
-              <div
-                style={{
-                  position: "absolute",
-                  bottom: 0,
-                  left: 0,
-                  width: "100%",
-                  height: `${(cd / def.cooldown) * 100}%`,
-                  background: "rgba(0,0,0,0.6)",
-                  pointerEvents: "none",
-                  zIndex: 2,
-                }}
-              />
+            {assignSlot === i && (
+              <Dropdown header={`ASSIGN SLOT ${i + 3}`}>
+                {(Object.keys(CONSUMABLE_DEFS) as ConsumableId[]).map((cid) => {
+                  const cdef = CONSUMABLE_DEFS[cid];
+                  return (
+                    <DropRow
+                      key={cid}
+                      glyph={cdef.icon}
+                      color={cdef.color}
+                      name={cdef.name}
+                      desc={cdef.description}
+                      count={consumables[cid] ?? 0}
+                      isActive={id === cid}
+                      onClick={() => assignConsumable(i, cid)}
+                    />
+                  );
+                })}
+                <DropRow glyph="∅" color="#8a6a3a" name="Empty" desc="Clear this slot" count={null} isActive={id === null} onClick={() => assignConsumable(i, null)} />
+              </Dropdown>
             )}
-            <div style={{ position: "absolute", top: 2, left: 4, fontSize: 9, color: "#556", zIndex: 3 }}>
-              {SLOT_KEYS[i]}
-            </div>
-            <div
-              style={{
-                fontSize: 20,
-                lineHeight: 1,
-                color: def ? def.color : "#334",
-                zIndex: 3,
-                textShadow: def ? `0 0 8px ${def.color}` : undefined,
-              }}
-            >
-              {def ? def.icon : "·"}
-            </div>
-            {def && (
-              <div
-                style={{
-                  position: "absolute",
-                  bottom: 2,
-                  right: 4,
-                  fontSize: 9,
-                  fontWeight: "bold",
-                  color: count === 0 ? "#553" : "#ccc",
-                  zIndex: 3,
-                }}
-              >
-                ×{count}
-              </div>
-            )}
-            {cd > 0 && (
-              <div
-                style={{
-                  position: "absolute",
-                  fontSize: 11,
-                  fontWeight: "bold",
-                  color: "#fff",
-                  zIndex: 4,
-                  textShadow: "0 1px 3px #000",
-                }}
-              >
-                {Math.ceil(cd)}
-              </div>
-            )}
-          </div>
+          </TraySlot>
         );
       })}
+    </div>
+  );
+}
+
+/** Segmented vertical-tick bar drawn inside the tray's top strip. */
+function TickBar({ left, width, value, max, color, title }: { left: number; width: number; value: number; max: number; color: string; title: string }) {
+  const pct = Math.max(0, Math.min(100, (value / Math.max(1, max)) * 100));
+  const ticks = (c: string) => `repeating-linear-gradient(90deg, ${c} 0px, ${c} 4px, transparent 4px, transparent 7px)`;
+  return (
+    <div
+      title={title}
+      style={{
+        position: "absolute",
+        left,
+        top: 64,
+        width,
+        height: 26,
+        background: ticks(`${color}22`),
+        overflow: "hidden",
+        pointerEvents: "auto",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: `${pct}%`,
+          background: ticks(color),
+          filter: `drop-shadow(0 0 3px ${color})`,
+          transition: "width 0.15s linear",
+        }}
+      />
+    </div>
+  );
+}
+
+function TraySlot({ left, keyLabel, glyph, color, sub, count, active, title, onClick, onContextMenu, cooldownPct = 0, cooldownText = null, children }: {
+  left: number;
+  keyLabel: string;
+  glyph: string;
+  color: string;
+  sub: string;
+  count: number | null;
+  active: boolean;
+  title: string;
+  onClick: () => void;
+  onContextMenu?: () => void;
+  cooldownPct?: number;
+  cooldownText?: number | null;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div style={{ position: "absolute", left, top: SLOT_Y, width: SLOT_S, height: SLOT_S, pointerEvents: "auto" }}>
+      <div
+        onClick={onClick}
+        onContextMenu={(e) => { e.preventDefault(); onContextMenu?.(); }}
+        title={title}
+        style={{
+          width: "100%",
+          height: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          cursor: "pointer",
+          position: "relative",
+          fontFamily: "'Courier New', monospace",
+          boxShadow: active ? `inset 0 0 10px ${color}55, 0 0 10px ${color}66` : "none",
+          transition: "box-shadow 0.1s",
+        }}
+        onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLElement).style.boxShadow = `inset 0 0 8px ${color}44`; }}
+        onMouseLeave={(e) => { if (!active) (e.currentTarget as HTMLElement).style.boxShadow = "none"; }}
+      >
+        {cooldownPct > 0 && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: 0,
+              left: 0,
+              width: "100%",
+              height: `${Math.min(100, cooldownPct * 100)}%`,
+              background: "rgba(0,0,0,0.65)",
+              pointerEvents: "none",
+              zIndex: 2,
+            }}
+          />
+        )}
+        <div style={{ position: "absolute", top: 3, left: 5, fontSize: 9, color: "#8a6a3a", zIndex: 3, fontFamily: "var(--font-display)" }}>
+          {keyLabel}
+        </div>
+        <div style={{ fontSize: 22, lineHeight: 1, color, zIndex: 3, textShadow: `0 0 8px ${color}`, fontWeight: "bold" }}>
+          {glyph}
+        </div>
+        {sub && (
+          <div style={{ position: "absolute", bottom: 3, right: 5, fontSize: 9, fontWeight: "bold", color: count === 0 ? "#6a4a2a" : "#e8c890", zIndex: 3 }}>
+            {sub}
+          </div>
+        )}
+        {cooldownText != null && (
+          <div style={{ position: "absolute", fontSize: 12, fontWeight: "bold", color: "#fff", zIndex: 4, textShadow: "0 1px 3px #000" }}>
+            {cooldownText}
+          </div>
+        )}
       </div>
+      {children}
+    </div>
+  );
+}
+
+function Dropdown({ header, children }: { header: string; children: React.ReactNode }) {
+  return (
+    <div
+      className="sw-tooltip"
+      style={{
+        position: "absolute",
+        bottom: SLOT_S + 10,
+        left: "50%",
+        transform: "translateX(-50%)",
+        padding: "4px 3px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 2,
+        minWidth: 178,
+        boxShadow: "0 0 24px rgba(0,0,0,0.9), 0 0 12px rgba(247,168,50,0.08)",
+        zIndex: 60,
+      }}
+    >
+      <div style={{ fontSize: 8, color: "rgba(232,200,144,0.65)", letterSpacing: "0.18em", textAlign: "center", padding: "3px 0 2px", fontFamily: "var(--font-display)" }}>
+        {header}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function DropRow({ glyph, color, name, desc, count, isActive, onClick }: {
+  glyph: string;
+  color: string;
+  name: string;
+  desc: string;
+  count: number | null;
+  isActive: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <div
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "4px 8px",
+        cursor: "pointer",
+        background: isActive ? `${color}22` : "transparent",
+        border: isActive ? `1px solid ${color}88` : "1px solid transparent",
+        transition: "background 0.1s",
+      }}
+      onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = "#ffffff0a"; }}
+      onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+    >
+      <div style={{ fontSize: 16, color, fontWeight: "bold", width: 20, textAlign: "center", textShadow: `0 0 6px ${color}` }}>
+        {glyph}
+      </div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 10, color: isActive ? color : "#e8d5b0", fontWeight: isActive ? "bold" : "normal" }}>
+          {name} {isActive && "◂"}
+        </div>
+        <div style={{ fontSize: 8, color: "#8a7a5a" }}>{desc}</div>
+      </div>
+      {count != null && (
+        <div style={{ fontSize: 10, color: count === 0 ? "#ff5c6c" : "#c8b088", fontWeight: "bold", fontFamily: "'Courier New', monospace" }}>
+          {count}
+        </div>
+      )}
     </div>
   );
 }

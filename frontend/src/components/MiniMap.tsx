@@ -2,7 +2,7 @@ import { useGame, useGameSlow, state, bump } from "../game/store";
 import { GameButton } from "./GameButton";
 import { DUNGEONS, MAP_RADIUS, STATIONS, PORTALS, ZONES, RESOURCES, ASTEROID_BELTS, } from "../game/types";
 
-const BASE_SIZE = 110;
+const BASE_SIZE = 138;
 const BASE_RANGE = 1800;
 
 export function MiniMap() {
@@ -196,42 +196,74 @@ export function MiniMap() {
     );
   }
 
+  // Frame geometry (atlas/map-frame.png, 298x306): inner transparent window
+  // spans x 25..272 (247w), y 43..282 (239h) — center (148.5, 162.5).
+  // The radar square must COVER the whole window (no see-through gaps), so it
+  // is sized slightly beyond the larger window dimension; the overflow hides
+  // under the opaque frame art drawn on top.
+  const k = SIZE / 251;
+  const FW = 298 * k;
+  const FH = 306 * k;
+
   return (
     <div
-      className="pointer-events-auto hud-chip chip-map"
+      className="pointer-events-none"
       style={{
         position: "absolute",
-        bottom: 8,
+        bottom: 26,
         right: 8,
-        padding: 4,
+        width: FW,
+        height: FH,
+        filter: "drop-shadow(0 3px 10px rgba(0,0,0,0.65))",
       }}
     >
-      {/* Sector readout (moved here from the top bar) */}
+      {/* Sector readout above the frame */}
       <div
-        className="flex items-center justify-between gap-2"
-        style={{ marginBottom: 6, paddingBottom: 4, borderBottom: "1px solid rgba(78,226,255,0.15)" }}
+        className="flex items-center justify-end gap-2"
+        style={{ position: "absolute", top: -15, left: 0, right: 6 }}
       >
         <span
           className="truncate"
           style={{
             fontFamily: "var(--font-display)",
-            fontSize: 9,
+            fontSize: 10,
             letterSpacing: "0.16em",
             color: "var(--accent-cyan)",
-            textShadow: "0 0 6px rgba(78,226,255,0.5)",
-            maxWidth: SIZE - 30,
+            textShadow: "0 0 6px rgba(247,168,50,0.5)",
+            maxWidth: FW - 60,
           }}
         >
           ◈ {(zone?.name ?? player.zone).toUpperCase()}
         </span>
         <span
-          className="shrink-0 tabular-nums"
-          style={{ fontFamily: "var(--font-display)", fontSize: 8, color: "var(--text-mute)" }}
+          className="shrink-0"
+          style={{
+            fontFamily: "var(--font-display)",
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: "0.1em",
+            color: "var(--accent-cyan)",
+            textShadow: "0 0 6px rgba(247,168,50,0.6)",
+            border: "1px solid rgba(247,168,50,0.45)",
+            padding: "0 5px",
+            lineHeight: "14px",
+          }}
         >
-          {(zone as any)?.label ?? ""} · {Math.round(player.pos.x / 100)}:{Math.round(player.pos.y / 100)}
+          {(zone as any)?.label ?? "?"}
         </span>
       </div>
-      <div style={{ position: "relative", width: SIZE, height: SIZE }}>
+      {/* radar sits under the frame art, centered in the frame window */}
+      <div
+        style={{
+          position: "absolute",
+          left: 148.5 * k - SIZE / 2,
+          top: 162.5 * k - SIZE / 2,
+          width: SIZE,
+          height: SIZE,
+          zIndex: 1,
+          pointerEvents: "auto",
+        }}
+      >
         <svg
           width={SIZE}
           height={SIZE}
@@ -332,7 +364,17 @@ export function MiniMap() {
         <circle cx={SIZE / 2} cy={SIZE / 2} r={3} fill="#4ee2ff" stroke="#fff" strokeWidth={0.5} />
         </svg>
       </div>
-      <div className="flex items-center justify-between gap-1 mt-1 px-0.5">
+      {/* octagonal frame art ON TOP of the radar (clicks pass through) */}
+      <img
+        src="/assets/ui/atlas/map-frame.png"
+        alt=""
+        aria-hidden
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 2 }}
+      />
+      <div
+        className="flex items-center justify-between gap-1"
+        style={{ position: "absolute", left: "12%", right: "12%", top: FH - 4, pointerEvents: "auto" }}
+      >
         <button
           className="leading-none transition-colors duration-150"
           style={{

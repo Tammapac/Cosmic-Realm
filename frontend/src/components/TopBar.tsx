@@ -122,29 +122,15 @@ export function TopBar() {
       {/* Spacer */}
       <div className="flex-1 min-w-0" />
 
-      {/* Action buttons */}
-      <div className="pointer-events-auto flex flex-col items-end gap-1 shrink-0">
-        <div className="flex gap-1">
-          <GameButton onClick={() => { state.showMap = !state.showMap; bump(); }} title="Galaxy Map (M)" style={{ fontSize: 11 }}>★ Map</GameButton>
-          <GameButton onClick={() => { state.showSocial = !state.showSocial; bump(); }} title="Social" style={{ fontSize: 11 }}>☷ Social</GameButton>
-          <GameButton onClick={() => { state.showClan = !state.showClan; bump(); }} title="Clan (C)" style={{ fontSize: 11 }}>⚑ Clan</GameButton>
-        </div>
-        <div className="flex gap-1">
-          <GameButton
-            onClick={() => { state.showSettings = !state.showSettings; bump(); }}
-            title="Settings"
-            style={{ color: "#44eecc", fontSize: 11 }}
-          >
-            ⚙ Settings
-          </GameButton>
-          <GameButton
-            onClick={() => { state.showLogoutConfirm = true; bump(); }}
-            title="Logout"
-            style={{ color: "#ff8a9a", fontSize: 11 }}
-          >
-            ⎋ Logout
-          </GameButton>
-        </div>
+      {/* Floating menu icons (PNG GUI pack) */}
+      <div className="pointer-events-auto flex gap-1.5 shrink-0 items-start">
+        <IconBtn icon="ic-map" label="Galaxy Map (M)" onClick={() => { state.showMap = !state.showMap; bump(); }} />
+        <IconBtn icon="ic-journal" label="Mission Journal" onClick={() => { state.showJournal = !state.showJournal; bump(); }} />
+        <IconBtn icon="ic-quests" label="Quest Log on/off" onClick={() => { state.showQuestTracker = !state.showQuestTracker; bump(); }} />
+        <IconBtn icon="ic-social" label="Social" onClick={() => { state.showSocial = !state.showSocial; bump(); }} />
+        <IconBtn icon="ic-clan" label="Clan (C)" onClick={() => { state.showClan = !state.showClan; bump(); }} />
+        <IconBtn icon="ic-settings" label="Settings" onClick={() => { state.showSettings = !state.showSettings; bump(); }} />
+        <IconBtn icon="ic-logout" label="Logout" onClick={() => { state.showLogoutConfirm = true; bump(); }} />
       </div>
     </div>
     <LogoutFlow />
@@ -323,6 +309,17 @@ export function WorldTargetHud() {
         </div>
       )}
     </div>
+  );
+}
+
+function IconBtn({ icon, label, onClick }: { icon: string; label: string; onClick: () => void }) {
+  return (
+    <button
+      className="ic-btn"
+      title={label}
+      onClick={onClick}
+      style={{ backgroundImage: `url(/assets/ui/atlas/${icon}.png?v=3)` }}
+    />
   );
 }
 

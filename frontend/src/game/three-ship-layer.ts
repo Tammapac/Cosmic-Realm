@@ -34,6 +34,16 @@ const SHIP_3D_MODELS: Record<string, string> = {
   titan: "/models/Titan_Bulwark.glb",
   vanguard: "/models/Vanguard.glb",
   wasp: "/models/Wasp_Interceptor.glb",
+  // Alien NPC enemy models (original, generated in Blender — see scripts)
+  enemy_scout: "/models/enemies/enemy_scout.glb?v=3",
+  enemy_drone: "/models/enemies/enemy_drone.glb?v=3",
+  enemy_manta: "/models/enemies/enemy_manta.glb?v=3",
+  enemy_shard: "/models/enemies/enemy_shard.glb?v=3",
+  enemy_beetle: "/models/enemies/enemy_beetle.glb?v=3",
+  enemy_dread: "/models/enemies/enemy_dread.glb?v=3",
+  enemy_colossus: "/models/enemies/enemy_colossus.glb?v=3",
+  enemy_overlord: "/models/enemies/enemy_overlord.glb?v=3",
+  enemy_leviathan: "/models/enemies/enemy_leviathan.glb?v=3",
 };
 
 interface ShipHardpoints {

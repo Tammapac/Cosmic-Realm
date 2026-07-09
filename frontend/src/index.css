@@ -18,7 +18,9 @@
   --bg-panel-solid: #121a32;
   --border-glow: #2a3a7a;
   --border-soft: #1a2348;
-  --accent-cyan: #4ee2ff;
+  /* Primary UI accent follows the atlas pack (amber glass). The variable keeps
+     its historical name — swap the value to re-accent the whole interface. */
+  --accent-cyan: #f7a832;
   --accent-magenta: #ff5cf0;
   --accent-amber: #ffd24a;
   --accent-gold: #e8a33d;
@@ -109,56 +111,62 @@ button {
    .hud-chip = base plate · titled variants for chat/map/quest · red for target
    · gold for station modals. Frames use border-image `fill`: the plate art IS
    the panel background. All art in /assets/ui/skin/ (generated, see scripts). */
+/* ── GUI-pack atlas skin (user-provided, orange/black variant) ──────────────
+   All frames come from /assets/ui/atlas/ — sliced from the licensed pack. */
 .hud-chip {
   position: relative;
   background: none;
-  border: 16px solid transparent;
-  border-image: url("/assets/ui/skin/plate.png") 32 fill round;
-  image-rendering: pixelated;
-  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.6));
+  border: 18px solid transparent;
+  border-image: url("/assets/ui/atlas/oct-panel.png") 46 fill round;
+  filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.65));
 }
 
-/* Titled plates: darker header strip + accent hairline lives in the top band */
-.chip-chat,
-.chip-map,
-.chip-quest {
-  border-image-source: url("/assets/ui/skin/plate-title.png");
-  border-image-slice: 48 32 32 32 fill;
-  border-width: 24px 16px 16px 16px;
+.chip-chat {
+  border-image-source: url("/assets/ui/atlas/chat-frame.png");
+  border-image-slice: 46 fill;
+  border-image-repeat: round;
+  border-width: 22px;
 }
 
+.chip-quest,
 .chip-tray {
-  /* plain plate, slimmer frame for the action bar */
-  border-width: 12px 16px 12px 16px;
+  border-image-source: url("/assets/ui/atlas/popup.png");
+  border-image-slice: 50 fill;
+  border-width: 20px;
 }
 
 .chip-target {
-  border-image-source: url("/assets/ui/skin/plate-red.png");
+  border-image: none;
+  border: 0;
+  background: url("/assets/ui/atlas/hex-plate.png");
+  background-size: 100% 100%;
+  padding: 14px 22px;
 }
 
-/* Modal frame — add next to .panel; .panel-gold = station gold trim */
+/* Modal frame — the pack's armored window; its amber glass title bar lives in
+   the top border band, so window headers get the glass automatically */
 .panel-framed {
-  border: 24px solid transparent;
-  border-image: url("/assets/ui/skin/plate-title.png") 48 32 32 32 fill round;
-  image-rendering: pixelated;
+  border-style: solid;
+  border-color: transparent;
+  border-width: 44px 38px 34px 38px;
+  border-image: url("/assets/ui/atlas/window.png") 96 90 80 90 fill round;
 }
 
 .panel-framed.panel-gold {
-  border-image-source: url("/assets/ui/skin/plate-gold.png");
+  border-image-source: url("/assets/ui/atlas/window.png");
 }
 
 /* Inset slot socket for action-bar cells */
 .sw-slot {
-  border: 7px solid transparent;
-  border-image: url("/assets/ui/skin/slot-normal.png") 14 fill stretch;
-  image-rendering: pixelated;
+  border: 8px solid transparent;
+  border-image: url("/assets/ui/atlas/slot.png") 14 fill stretch;
   border-radius: 0;
 }
 .sw-slot:hover {
-  border-image-source: url("/assets/ui/skin/slot-hover.png");
+  border-image-source: url("/assets/ui/atlas/slot-hover.png");
 }
 .sw-slot--active {
-  border-image-source: url("/assets/ui/skin/slot-active.png");
+  border-image-source: url("/assets/ui/atlas/slot-active.png");
 }
 
 /* ── Station interface (left nav + content + info rail) ─────────────────── */
@@ -190,34 +198,36 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 7px 12px;
+  min-height: 34px;
   font-family: var(--font-display);
   font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-mute);
-  background: linear-gradient(180deg, rgba(20, 30, 52, 0.55) 0%, rgba(9, 14, 26, 0.55) 100%);
-  border: 1px solid rgba(89, 104, 127, 0.25);
-  border-left: 3px solid rgba(89, 104, 127, 0.35);
+  background: url("/assets/ui/atlas/row-strip.png");
+  background-size: 100% 100%;
+  border: none;
   cursor: pointer;
-  transition: color 0.12s, border-color 0.12s, background 0.12s;
+  transition: color 0.12s, filter 0.12s;
   white-space: nowrap;
   text-align: left;
+  filter: saturate(0.35) brightness(0.8);
 }
 
 .sw-nav-item:hover {
   color: var(--text-dim);
-  border-color: rgba(56, 214, 245, 0.35);
-  background: linear-gradient(180deg, rgba(28, 42, 70, 0.6) 0%, rgba(12, 18, 34, 0.6) 100%);
+  background-image: url("/assets/ui/atlas/row-strip-hover.png");
+  filter: saturate(0.7) brightness(0.95);
 }
 
-.sw-nav-item--selected {
-  color: var(--accent-cyan);
-  border-left-color: var(--accent-cyan);
-  border-color: rgba(56, 214, 245, 0.45);
-  background: linear-gradient(90deg, rgba(56, 214, 245, 0.14) 0%, rgba(56, 214, 245, 0.03) 100%);
-  text-shadow: 0 0 8px rgba(56, 214, 245, 0.5);
-  box-shadow: inset 0 1px 0 rgba(56, 214, 245, 0.15);
+.sw-nav-item--selected,
+.sw-nav-item--selected:hover {
+  color: #2b1c05;
+  background-image: url("/assets/ui/atlas/row-strip-sel.png");
+  filter: none;
+  text-shadow: 0 1px 0 rgba(255, 235, 190, 0.5);
+  font-weight: 700;
 }
 
 .sw-rail {
@@ -244,13 +254,13 @@ button {
   border-color: rgba(56, 214, 245, 0.4);
 }
 
-/* Pixel tooltip for popups/hover cards */
+/* Tooltip / popup plate from the atlas */
 .sw-tooltip {
-  background: rgba(7, 11, 22, 0.97);
-  border: 1px solid rgba(89, 104, 127, 0.55);
-  border-top: 1px solid rgba(56, 214, 245, 0.45);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7), 0 6px 18px rgba(0, 0, 0, 0.7);
+  background: none;
+  border: 18px solid transparent;
+  border-image: url("/assets/ui/atlas/popup.png") 50 fill round;
   border-radius: 0;
+  filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.7));
 }
 
 /* Skill tree node hover: lift + glow, no layout shift */
@@ -262,6 +272,110 @@ button {
   transform: scale(1.14);
   z-index: 3;
   filter: brightness(1.25);
+}
+
+/* Quest list rows (questexample.png style): glowing separator + tick marks */
+.q-line {
+  height: 2px;
+  margin: 0 8%;
+  background: linear-gradient(90deg, transparent 0%, rgba(247, 168, 50, 0.55) 18%, rgba(247, 168, 50, 0.55) 82%, transparent 100%);
+  box-shadow: 0 0 5px rgba(247, 168, 50, 0.35);
+}
+.q-row:hover .q-line {
+  background: linear-gradient(90deg, transparent 0%, rgba(247, 168, 50, 0.9) 15%, rgba(247, 168, 50, 0.9) 85%, transparent 100%);
+  box-shadow: 0 0 8px rgba(247, 168, 50, 0.55);
+}
+.q-ticks {
+  display: inline-block;
+  width: 15px;
+  height: 10px;
+  flex-shrink: 0;
+  background: repeating-linear-gradient(90deg, #f7a832 0 3px, transparent 3px 6px);
+  box-shadow: 0 0 6px rgba(247, 168, 50, 0.6);
+}
+
+/* Journal index rows (journalexample2 style):
+   normal   = dark text on the art's light plates
+   hover    = plate dims slightly + thin amber rim
+   selected = TRUE INVERT: dark plate, glowing amber text, glowing rim,
+              small glowing bracket caps extending past both row ends */
+.j-row {
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-align: center;
+  color: #2a2214;
+  background: none;
+  padding: 0 6px;
+  transition: background 0.1s, color 0.1s, box-shadow 0.1s;
+}
+.j-row:hover:not(.j-row--sel) {
+  background: rgba(18, 12, 3, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(247, 168, 50, 0.55), 0 0 6px rgba(247, 168, 50, 0.25);
+}
+.j-row--sel {
+  background: linear-gradient(180deg, #120c02 0%, #1c1305 55%, #0b0701 100%);
+  color: #ffb63f;
+  text-shadow: 0 0 8px rgba(247, 168, 50, 0.95), 0 0 2px #f7a832;
+  box-shadow:
+    inset 0 0 0 1px rgba(247, 168, 50, 0.95),
+    inset 0 0 10px rgba(247, 168, 50, 0.28),
+    0 0 12px rgba(247, 168, 50, 0.55);
+}
+.j-row--sel::before,
+.j-row--sel::after {
+  content: "";
+  position: absolute;
+  top: 15%;
+  bottom: 15%;
+  width: 6px;
+  background: #f7a832;
+  box-shadow: 0 0 8px rgba(247, 168, 50, 0.9);
+}
+.j-row--sel::before {
+  left: -8px;
+  clip-path: polygon(100% 0, 100% 100%, 0 78%, 0 22%);
+}
+.j-row--sel::after {
+  right: -8px;
+  clip-path: polygon(0 0, 0 100%, 100% 78%, 100% 22%);
+}
+
+/* Floating menu icon buttons (top right) */
+.ic-btn {
+  width: 58px;
+  height: 58px;
+  background-size: 100% 100%;
+  background-color: transparent;
+  background-repeat: no-repeat;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: filter 0.12s, transform 0.1s;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6));
+  /* smooth painterly icons — opt out of the global pixelated rendering */
+  image-rendering: auto;
+}
+.ic-btn:hover {
+  filter: brightness(1.3) drop-shadow(0 0 9px rgba(247, 168, 50, 0.65));
+}
+.ic-btn:active {
+  transform: translateY(1px) scale(0.94);
+}
+
+/* Journal close hotspot: sits exactly on the art's ⊘ icon; amber glow on hover */
+.j-close {
+  transition: box-shadow 0.12s, filter 0.12s;
+}
+.j-close:hover {
+  box-shadow: 0 0 12px rgba(247, 168, 50, 0.75), inset 0 0 8px rgba(247, 168, 50, 0.35);
+}
+.j-close:active {
+  box-shadow: 0 0 6px rgba(247, 168, 50, 0.5), inset 0 0 10px rgba(247, 168, 50, 0.5);
 }
 
 /* 2-line text clamp — descriptions in cards never overlap neighbors */
@@ -408,16 +522,16 @@ button {
   box-shadow: 0 0 10px rgba(255, 210, 74, 0.35);
 }
 
-/* HP/stat bars — chamfered steel trough + segmented fill */
+/* HP/stat bars — atlas pill trough + colored fill */
 .bar {
-  height: 8px;
-  background: rgba(4, 7, 16, 0.95);
-  border: 1px solid #3a4457;
+  height: 9px;
+  background: url("/assets/ui/atlas/bar-trough.png");
+  background-size: 100% 100%;
+  border: none;
   position: relative;
   overflow: hidden;
-  border-radius: 0;
-  clip-path: polygon(3px 0, 100% 0, 100% calc(100% - 3px), calc(100% - 3px) 100%, 0 100%, 0 3px);
-  box-shadow: inset 1px 1px 0 rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
 }
 
 .bar-fill {
@@ -435,44 +549,45 @@ button {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), inset 0 -1px 0 rgba(0, 0, 0, 0.35);
 }
 
-/* Steel chamfered button (STEELWORK) — used by GameButton; 4-state plate art */
+/* Atlas button — used by GameButton; octagonal steel plate with amber glass */
 .gbtn {
   position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   background: none;
-  border: 7px solid transparent;
-  border-left-width: 10px;
-  border-right-width: 10px;
-  border-image: url("/assets/ui/skin/btn-normal.png") 14 20 fill stretch;
-  image-rendering: pixelated;
-  color: var(--text-bright);
+  border: 9px solid transparent;
+  border-left-width: 13px;
+  border-right-width: 13px;
+  border-image: url("/assets/ui/atlas/btn.png") 18 26 fill stretch;
+  color: #3a2504;
   font-family: var(--font-display);
   font-size: 11px;
+  font-weight: 700;
   letter-spacing: 1px;
   text-transform: uppercase;
-  text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.7);
+  text-shadow: 0 1px 0 rgba(255, 235, 190, 0.55);
   white-space: nowrap;
-  padding: 2px 6px;
+  padding: 1px 5px;
   transition: filter 0.12s;
 }
 .gbtn:hover:not(:disabled) {
-  border-image-source: url("/assets/ui/skin/btn-hover.png");
-  filter: drop-shadow(0 0 5px rgba(56, 214, 245, 0.35));
+  border-image-source: url("/assets/ui/atlas/btn-hover.png");
+  filter: drop-shadow(0 0 6px rgba(247, 168, 50, 0.45));
 }
 .gbtn:active:not(:disabled) {
-  border-image-source: url("/assets/ui/skin/btn-active.png");
+  border-image-source: url("/assets/ui/atlas/btn-active.png");
   transform: translateY(1px);
   filter: none;
 }
 .gbtn:disabled {
-  border-image-source: url("/assets/ui/skin/btn-disabled.png");
-  color: var(--text-mute);
+  border-image-source: url("/assets/ui/atlas/btn-disabled.png");
+  color: #6b7280;
+  text-shadow: none;
   cursor: not-allowed;
 }
 .gbtn-gold {
-  filter: hue-rotate(210deg) saturate(1.3) brightness(1.1); /* steel-blue -> gold */
+  filter: saturate(1.25) brightness(1.08);
 }
 
 /* Pixel tooltip — apply to floating hint boxes */
