@@ -30,28 +30,25 @@ export function TopBar() {
     <div className="absolute top-2 left-2 right-2 z-30 flex items-start gap-2 pointer-events-none flex-wrap">
       {/* Command console — two instrument rows: identity+vitals / progression+resources */}
       <TopPanel style={{ minWidth: 0 }}>
-      <div className="flex flex-col" style={{ padding: "0px 6px 2px" }}>
-      {/* amber glass banner — pilot identity header */}
-      <div
-        className="banner-amber flex items-center justify-center gap-2"
-        style={{ height: 30, margin: "-8px -10px 4px", padding: "0 26px" }}
-      >
-        <span className="font-bold tracking-widest truncate" style={{ fontSize: 13, maxWidth: 170 }}>
+      <div className="flex flex-col">
+      {/* squared engraved header — pilot identity */}
+      <div className="console-hdr">
+        <span className="font-bold truncate" style={{ fontSize: 13, maxWidth: 190, color: "#ffe9c4", textShadow: "0 1px 2px #000" }}>
           {player.name}
         </span>
-        <span className="font-bold shrink-0 tabular-nums" style={{ fontSize: 12, color: "#5a3204" }}>
-          Lv{player.level}
+        <span className="font-bold shrink-0 tabular-nums" style={{ fontSize: 12, color: "var(--accent-amber)" }}>
+          Lv {player.level}
         </span>
         {player.skillPoints > 0 && (
           <span
             className="shrink-0 font-bold tabular-nums"
             style={{
               fontSize: 10,
-              color: "#7a0a5e",
-              border: "1px solid #7a0a5e66",
-              padding: "0px 4px",
+              color: "#ff5cf0",
+              border: "1px solid #ff5cf066",
+              padding: "0px 5px",
               whiteSpace: "nowrap",
-              textShadow: "none",
+              animation: "pulse-glow 1.5s ease-in-out infinite",
             }}
           >
             +{player.skillPoints} SP
@@ -59,18 +56,19 @@ export function TopBar() {
         )}
       </div>
 
+      <div className="flex flex-col" style={{ padding: "6px 12px 7px" }}>
       <div className="flex items-stretch">
         {/* identity */}
         <div className="flex items-center gap-2.5 pr-3">
           <RankBadge rank={rank} />
           <div className="min-w-0">
-            <div className="flex items-center gap-1 min-w-0" style={{ fontSize: 11 }}>
-              <span className="shrink-0 font-semibold tracking-widest" style={{ color: rank.color }}>
+            <div className="flex items-center gap-1 min-w-0" style={{ fontSize: 11.5 }}>
+              <span className="shrink-0 font-bold tracking-widest" style={{ color: rank.color, fontFamily: "var(--font-display)" }}>
                 {rank.name.toUpperCase()}
               </span>
             </div>
-            <div className="flex items-center gap-1 min-w-0" style={{ fontSize: 11 }}>
-              <span className="text-mute truncate" style={{ maxWidth: 96 }}>{cls.name}</span>
+            <div className="flex items-center gap-1 min-w-0" style={{ fontSize: 11.5 }}>
+              <span className="truncate" style={{ maxWidth: 110, color: "#b8bdca" }}>{cls.name}</span>
               {player.faction && (
                 <>
                   <span className="text-mute shrink-0">·</span>
@@ -85,18 +83,8 @@ export function TopBar() {
 
         <ConsoleDivider />
 
-        {/* vitals */}
-        <div className="px-3 flex flex-col justify-center" style={{ minWidth: 176 }}>
-          <MicroBar label="HUL" value={player.hull} max={hullMax} color="#5cff8a" />
-          <MicroBar label="SHD" value={player.shield} max={shieldMax} color="#4ee2ff" />
-        </div>
-      </div>
-
-      <div className="sw-hr" />
-
-      {/* row 2: progression + resources readout strip */}
-      <div className="flex items-center">
-        <div className="px-1 flex flex-col justify-center" style={{ minWidth: 168, paddingRight: 12 }}>
+        {/* progression */}
+        <div className="pl-3 flex flex-col justify-center" style={{ minWidth: 190 }}>
           <MicroBar label="XP" value={player.exp} max={expNeeded} color="#ff5cf0" />
           <MicroBar
             label="HNR"
@@ -105,15 +93,17 @@ export function TopBar() {
             color={rank.color}
           />
         </div>
+      </div>
 
-        <ConsoleDivider />
+      <div className="sw-hr" />
 
-        <div className="flex items-center px-1">
-          <Stat label="Credits" value={fmtNum(player.credits)} color="var(--accent-amber)" />
-          <Stat label="HONOR" value={fmtNum(player.honor)} color={rank.color} />
-          <Stat label="CARGO" value={`${cargoUsed}/${cargoCapacity()}`} color="#4ee2ff" />
-          <Stat label="DRONES" value={`${player.drones.length}/${maxDroneSlots()}`} color="#aaff5c" />
-        </div>
+      {/* resources readout strip */}
+      <div className="flex items-center justify-between" style={{ gap: 4 }}>
+        <Stat label="CREDITS" value={fmtNum(player.credits)} color="var(--accent-amber)" />
+        <Stat label="HONOR" value={fmtNum(player.honor)} color={rank.color} />
+        <Stat label="CARGO" value={`${cargoUsed}/${cargoCapacity()}`} color="#4ee2ff" />
+        <Stat label="DRONES" value={`${player.drones.length}/${maxDroneSlots()}`} color="#aaff5c" />
+      </div>
       </div>
       </div>
       </TopPanel>
@@ -330,7 +320,7 @@ function ConsoleDivider() {
         width: 1,
         alignSelf: "stretch",
         background:
-          "linear-gradient(180deg, transparent 0%, rgba(78,226,255,0.35) 20%, rgba(78,226,255,0.35) 80%, transparent 100%)",
+          "linear-gradient(180deg, transparent 0%, rgba(247,168,50,0.35) 20%, rgba(247,168,50,0.35) 80%, transparent 100%)",
         boxShadow: "1px 0 0 rgba(0,0,0,0.6)",
         flexShrink: 0,
       }}
@@ -375,14 +365,20 @@ function Stat({ label, value, color }: { label: string; value: string; color: st
   return (
     <div className="stat-box">
       <div
-        className="hud-label whitespace-nowrap font-bold"
-        style={{ color: "#ffffff", textShadow: "0 0 6px rgba(255,255,255,0.7), 0 0 10px rgba(255,255,255,0.35)" }}
+        className="whitespace-nowrap"
+        style={{
+          fontFamily: "var(--font-display)",
+          fontSize: 9.5,
+          letterSpacing: "0.16em",
+          color: "#8f96a6",
+          textShadow: "0 1px 2px #000",
+        }}
       >
         {label}
       </div>
       <div
         className="font-bold tabular-nums whitespace-nowrap"
-        style={{ color, fontSize: 13 }}
+        style={{ color, fontSize: 14, textShadow: "0 1px 2px rgba(0,0,0,0.8)" }}
       >
         {value}
       </div>

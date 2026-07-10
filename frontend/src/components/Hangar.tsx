@@ -7,6 +7,8 @@ import {
 } from "../game/types";
 import type { HangarTab } from "../game/store";
 import { effectiveStats } from "../game/loop";
+import { isRolledItem, lootItemColor, lootItemName, lootSellPrice, lootTipText } from "../game/loot-ui";
+import { affixLine } from "../../../lib/loot/loot";
 import { buySkillRank, resetSkills } from "../game/store";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { GameButton } from "./GameButton";
@@ -129,8 +131,8 @@ export function Hangar({ stationId }: { stationId: string }) {
         style={{
           width: "min(1280px, 96vw)",
           height: "min(820px, 94vh)",
-          boxShadow: "0 0 60px rgba(78,226,255,0.10), 0 0 120px rgba(0,0,0,0.9), inset 0 0 40px rgba(0,0,0,0.5)",
-          border: "1px solid rgba(78,226,255,0.22)",
+          boxShadow: "0 0 60px rgba(247,168,50,0.10), 0 0 120px rgba(0,0,0,0.9), inset 0 0 40px rgba(0,0,0,0.5)",
+          border: "1px solid rgba(247,168,50,0.22)",
         }}
       >
         <div className="scanline" />
@@ -140,11 +142,11 @@ export function Hangar({ stationId }: { stationId: string }) {
             {/* Station icon */}
             <div style={{
               width: 42, height: 42, flexShrink: 0,
-              border: "1px solid rgba(78,226,255,0.3)",
-              background: "rgba(78,226,255,0.07)",
+              border: "1px solid rgba(247,168,50,0.3)",
+              background: "rgba(247,168,50,0.07)",
               display: "flex", alignItems: "center", justifyContent: "center",
               fontSize: 20, color: "var(--accent-cyan)",
-              boxShadow: "0 0 12px rgba(78,226,255,0.15)",
+              boxShadow: "0 0 12px rgba(247,168,50,0.15)",
             }}>⬡</div>
             <div className="min-w-0">
               <div className="hud-label">DOCKED AT · {station.kind.toUpperCase()}</div>
@@ -160,7 +162,7 @@ export function Hangar({ stationId }: { stationId: string }) {
             </div>
           </div>
           <button
-            className="btn btn-danger shrink-0"
+            className="gbtn gbtn-red shrink-0"
             style={{ padding: "6px 16px", fontSize: 11 }}
             onClick={() => {
               state.dockedAt = null; sendDockLeave();
@@ -178,10 +180,7 @@ export function Hangar({ stationId }: { stationId: string }) {
         <div className="flex flex-1 min-h-0">
           {/* left navigation */}
           <div className="sw-nav">
-            <div
-              className="hud-label"
-              style={{ padding: "2px 4px 8px", color: "var(--text-mute)", fontSize: 9 }}
-            >
+            <div className="sec-hdr" style={{ margin: "0 -4px 8px" }}>
               STATION SERVICES
             </div>
             {(station.kind === "factory" ? FACTORY_TABS : TABS).map((t) => (
@@ -236,11 +235,11 @@ function StationInfoRail({ station }: { station: (typeof STATIONS)[number] }) {
   ];
   return (
     <div className="sw-rail">
-      <div className="hud-label" style={{ fontSize: 9, marginBottom: 8 }}>PILOT CONSOLE</div>
+      <div className="sec-hdr" style={{ margin: "0 -6px 8px" }}>PILOT CONSOLE</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
         {rows.map((r) => (
           <div key={r.label} className="flex items-center justify-between gap-2" style={{ fontSize: 11 }}>
-            <span className="hud-label" style={{ fontSize: 9 }}>{r.label}</span>
+            <span className="hud-label" style={{ fontSize: 10 }}>{r.label}</span>
             <span className="tabular-nums font-bold truncate" style={{ color: r.color, maxWidth: 120 }}>
               {r.value}
             </span>
@@ -248,7 +247,7 @@ function StationInfoRail({ station }: { station: (typeof STATIONS)[number] }) {
         ))}
       </div>
       <div className="sw-hr" style={{ margin: "10px 0" }} />
-      <div className="hud-label" style={{ fontSize: 9, marginBottom: 6 }}>STATION</div>
+      <div className="sec-hdr" style={{ margin: "0 -6px 6px" }}>STATION</div>
       <div style={{ fontSize: 10, lineHeight: 1.5, color: "var(--text-mute)" }}>
         <span style={{ color: "var(--accent-cyan)" }}>{station.name}</span>
         {" — "}
@@ -341,7 +340,7 @@ function BountiesTab() {
                         <span className="text-green">+{q.rewardHonor} honor</span>
                       </div>
                     </div>
-                    <button className="btn btn-primary" disabled={!!has} onClick={() => accept(q)}>
+                    <button className="gbtn gbtn-gold" disabled={!!has} onClick={() => accept(q)}>
                       {has ? "Active" : "Accept"}
                     </button>
                   </div>
@@ -371,7 +370,7 @@ function BountiesTab() {
                     boxShadow: "0 0 6px #ff5cf0",
                   }} />
                 </div>
-                <button className="btn btn-amber w-full" disabled={!q.completed} onClick={() => turnIn(q)}>
+                <button className="gbtn w-full" disabled={!q.completed} onClick={() => turnIn(q)}>
                   {q.completed ? "Turn In" : "In Progress"}
                 </button>
               </div>
@@ -505,93 +504,70 @@ function RocketAmmoBadge() {
   );
 }
 
+
+// Multi-line stat tooltip for a module (rendered by the global GameTooltip)
+function moduleTipText(def: ModuleDef, opts?: { action?: string }): string {
+  const st = def.stats;
+  const parts: string[] = [];
+  if (st.damage != null) parts.push(`DMG +${st.damage}`);
+  if (st.fireRate != null && st.fireRate !== 1) parts.push(`ROF ×${st.fireRate}`);
+  if (st.critChance) parts.push(`CRIT +${Math.round(st.critChance * 100)}%`);
+  if (st.aoeRadius) parts.push(`AOE ${st.aoeRadius}`);
+  if (st.shieldMax) parts.push(`SHD +${st.shieldMax}`);
+  if (st.shieldRegen) parts.push(`REG +${st.shieldRegen}/s`);
+  if (st.shieldAbsorb) parts.push(`ABS +${Math.round(st.shieldAbsorb * 100)}%`);
+  if (st.hullMax) parts.push(`HUL +${st.hullMax}`);
+  if (st.speed) parts.push(`SPD +${st.speed}`);
+  if (st.damageReduction) parts.push(`DR ${Math.round(st.damageReduction * 100)}%`);
+  if (st.ammoCapacity) parts.push(`AMMO +${st.ammoCapacity}`);
+  if (st.cargoBonus) parts.push(`CARGO +${st.cargoBonus}`);
+  if (st.lootBonus) parts.push(`LOOT +${st.lootBonus}`);
+  if (st.miningBonus) parts.push(`MINING +${st.miningBonus}`);
+  const lines = [
+    `${def.name} · T${def.tier} ${def.rarity.toUpperCase()}`,
+    def.description,
+    parts.join(" · ") || "no stat bonuses",
+    `VALUE ${def.price.toLocaleString()} CR · SELLS ${Math.floor(def.price * 0.4).toLocaleString()} CR`,
+  ];
+  if (opts?.action) lines.push(opts.action);
+  return lines.join("\n");
+}
+
 function SlotCell({
-  slot, index, instanceId, compareWithDef,
+  slot, index, instanceId, compareWithDef, onHover,
 }: {
   slot: ModuleSlot; index: number; instanceId: string | null; compareWithDef?: ModuleDef | null;
+  onHover?: (info: { slot: ModuleSlot; index: number; def: ModuleDef | null } | null) => void;
 }) {
   const player = useGame((s) => s.player);
   const item = instanceId ? player.inventory.find((m) => m.instanceId === instanceId) : null;
   const def = item ? MODULE_DEFS[item.defId] : null;
-  const color = def ? RARITY_COLOR[def.rarity] : "#36406a";
-  const isWeapon = def?.weaponKind === "laser" || def?.weaponKind === "rocket";
-  const activeType = isWeapon ? getActiveAmmoType() : "x1" as RocketAmmoType;
-  const ammoCount = isWeapon ? getAmmoCount(activeType) : null;
-  const ammoMax = isWeapon ? rocketAmmoMax() : 0;
-  const ammoLow = ammoCount !== null && ammoCount <= 5;
-
-  const isComparing = !!compareWithDef;
-  const diffs = isComparing && def ? computeStatDiff(def.stats, compareWithDef!.stats) : [];
-  const borderColor = isComparing ? "#ffd24a" : (def ? color : "var(--border-soft)");
-  const bgColor = isComparing ? "#ffd24a0d" : (def ? `${color}10` : "transparent");
-
+  const color = item && def ? (isRolledItem(item) ? lootItemColor(item, def) : RARITY_COLOR[def.rarity]) : "#3a3c46";
+  // amber highlight: hovered shop/inventory module fits this slot
+  const fits = !!compareWithDef;
   return (
     <div
-      className="panel p-3 flex items-center gap-4"
+      className="sw-slot equip-cell"
+      title={item && def ? lootTipText(item, { action: "CLICK TO UNEQUIP" }) : "Empty slot\nEquip a module from the inventory list"}
       style={{
-        minHeight: 64,
-        borderColor,
-        background: bgColor,
-        outline: isComparing ? "1px solid #ffd24a33" : undefined,
-        transition: "border-color 0.15s, outline 0.15s",
+        boxShadow: def
+          ? `inset 0 0 0 1px ${color}88${fits ? ", 0 0 8px rgba(255,210,74,0.5)" : ""}`
+          : fits ? "inset 0 0 0 1px rgba(255,210,74,0.7), 0 0 8px rgba(255,210,74,0.35)" : "none",
+        cursor: def ? "pointer" : "default",
+        opacity: def || fits ? 1 : 0.72,
       }}
+      onMouseEnter={() => onHover?.({ slot, index, def })}
+      onMouseLeave={() => onHover?.(null)}
+      onClick={() => { if (def) unequipSlot(slot, index); }}
     >
-      {/* Slot label + icon */}
-      <div className="shrink-0 flex flex-col items-center justify-center" style={{ minWidth: 52 }}>
-        <div className="text-[11px] tracking-widest text-mute">{slot.toUpperCase()}</div>
-        <div className="text-[13px] font-bold tracking-widest" style={{ color: "var(--text-dim)" }}>#{index + 1}</div>
-        {isComparing && <div className="text-[11px] tracking-widest mt-0.5" style={{ color: "#ffd24a" }}>CMP</div>}
-      </div>
-
+      <span className="equip-num">{index + 1}</span>
       {def ? (
         <>
-          {/* Glyph */}
-          <div className="shrink-0 flex items-center justify-center"
-            style={{ width: 36, height: 36, background: `${def.color}22`, border: `1px solid ${def.color}`, color: def.color, fontSize: 18 }}>
-            {def.glyph}
-          </div>
-          {/* Name + stats */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-[14px] font-bold tracking-widest" style={{ color }}>{def.name}</span>
-              <span className="text-[12px] uppercase text-mute">· {def.rarity}</span>
-            </div>
-            <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[13px] tracking-wider">
-              {def.stats.damage != null && <span style={{color:"#ff5c6c"}}>DMG {def.stats.damage}</span>}
-              {def.stats.fireRate != null && def.stats.fireRate !== 1 && <span style={{color:"#ffaa44"}}>ROF {def.stats.fireRate}x</span>}
-              {def.stats.critChance != null && <span style={{color:"#ff5cf0"}}>CRIT {Math.round(def.stats.critChance*100)}%</span>}
-              {def.stats.aoeRadius != null && <span style={{color:"#ff8844"}}>AOE {def.stats.aoeRadius}</span>}
-              {def.stats.shieldMax != null && <span style={{color:"#4ee2ff"}}>SHD +{def.stats.shieldMax}</span>}
-              {def.stats.shieldRegen != null && <span style={{color:"#4ee2ff"}}>REG +{def.stats.shieldRegen}</span>}
-              {def.stats.hullMax != null && <span style={{color:"#5cff8a"}}>HUL +{def.stats.hullMax}</span>}
-              {def.stats.speed != null && <span style={{color:"#aaff5c"}}>SPD +{def.stats.speed}</span>}
-              {def.stats.damageReduction != null && <span style={{color:"#ffd24a"}}>DR {Math.round(def.stats.damageReduction*100)}%</span>}
-              {def.stats.ammoCapacity != null && <span style={{color:"#ffcc88"}}>AMMO +{def.stats.ammoCapacity}</span>}
-              {def.stats.lootBonus != null && <span style={{color:"#ffd24a"}}>LOOT +{def.stats.lootBonus}</span>}
-            </div>
-            {isComparing && diffs.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-1.5">
-                <span className="text-[12px] tracking-widest text-mute mr-1">IF REPLACED:</span>
-                {diffs.map((d, i) => (
-                  <span key={i} className="text-[12px] px-1 tracking-widest"
-                    style={{ color: d.delta > 0 ? "#5cff8a" : "#ff5c6c", border: `1px solid ${d.delta > 0 ? "#5cff8a44" : "#ff5c6c44"}` }}>
-                    {d.label} {d.formatted}
-                  </span>
-                ))}
-              </div>
-            )}
-            {isComparing && diffs.length === 0 && def && (
-              <div className="text-[12px] tracking-widest mt-1" style={{ color: "#ffd24a99" }}>≈ SIMILAR STATS</div>
-            )}
-          </div>
-          {/* Action */}
-          <button className="btn shrink-0" style={{ padding: "4px 10px", fontSize: 13 }}
-            onClick={() => unequipSlot(slot, index)}>Unequip</button>
+          <span style={{ color: def.color, fontSize: 20, lineHeight: 1, textShadow: `0 0 8px ${def.color}` }}>{def.glyph}</span>
+          <span className="equip-tier" style={{ color }}>{"\u25aa".repeat(Math.min(5, def.tier))}</span>
         </>
       ) : (
-        <div className="text-mute text-[13px] italic flex-1">
-          {isComparing ? "⬡ open slot — shop module fits here" : "— empty slot —"}
-        </div>
+        <span style={{ color: fits ? "#ffd24a" : "#4a4c58", fontSize: 16, lineHeight: 1 }}>+</span>
       )}
     </div>
   );
@@ -605,6 +581,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
   const [filter, setFilter] = useState<ModuleSlot | "all">("all");
   const [showShop, setShowShop] = useState(false);
   const [showAmmoPopup, setShowAmmoPopup] = useState(false);
+  const [hoverEquip, setHoverEquip] = useState<{ slot: ModuleSlot; index: number; def: ModuleDef | null } | null>(null);
   const [hoveredShopDefId, setHoveredShopDefId] = useState<string | null>(null);
   const hoveredShopDef = hoveredShopDefId ? MODULE_DEFS[hoveredShopDefId] ?? null : null;
   const [hoveredInvInstanceId, setHoveredInvInstanceId] = useState<string | null>(null);
@@ -660,12 +637,16 @@ function LoadoutTab({ stationId }: { stationId: string }) {
       showShop && hoveredShopDef?.slot === slot ? hoveredShopDef
       : !showShop && hoveredInvDef?.slot === slot ? hoveredInvDef
       : null;
+    const filled = player.equipped[slot].filter(Boolean).length;
     return (
       <div>
-        <div className="text-[13px] tracking-widest mb-2" style={{ color }}>▶ {label} ({player.equipped[slot].length})</div>
-        <div className="space-y-2">
+        <div className="dob-hdr">
+          <span style={{ color }}>▼ {label}</span>
+          <span style={{ color: "#8f96a6" }}>{filled}/{player.equipped[slot].length}</span>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, 54px)", gap: 6, padding: "8px 2px 2px" }}>
           {player.equipped[slot].map((id, i) => (
-            <SlotCell key={`${slot}-${i}`} slot={slot} index={i} instanceId={id} compareWithDef={compareDef} />
+            <SlotCell key={`${slot}-${i}`} slot={slot} index={i} instanceId={id} compareWithDef={compareDef} onHover={setHoverEquip} />
           ))}
         </div>
       </div>
@@ -690,15 +671,34 @@ function LoadoutTab({ stationId }: { stationId: string }) {
         {renderSlotRow("weapon",    "WEAPONS",    "#ff5c6c")}
         {renderSlotRow("generator", "GENERATORS", "#4ee2ff")}
         {renderSlotRow("module",    "MODULES",    "#ff5cf0")}
+        {/* hovered module detail — fixed pane, nothing overlaps */}
+        <div style={{ background: "linear-gradient(180deg, rgba(22,22,28,0.92), rgba(13,13,17,0.92))", border: "1px solid #33353e", padding: "10px 12px", minHeight: 92 }}>
+          {hoverEquip?.def ? (
+            <>
+              <div className="flex items-center gap-2 mb-1 min-w-0">
+                <div className="shrink-0 flex items-center justify-center"
+                  style={{ width: 26, height: 26, background: `${hoverEquip.def.color}22`, border: `1px solid ${hoverEquip.def.color}`, color: hoverEquip.def.color, fontSize: 14 }}>
+                  {hoverEquip.def.glyph}
+                </div>
+                <span className="text-[13px] font-bold tracking-widest truncate" style={{ color: RARITY_COLOR[hoverEquip.def.rarity] }}>{hoverEquip.def.name}</span>
+                <span className="text-[11px] uppercase shrink-0" style={{ color: "#8f96a6" }}>{hoverEquip.slot} #{hoverEquip.index + 1} · {hoverEquip.def.rarity}</span>
+              </div>
+              <div className="text-[12px] leading-tight mb-1" style={{ color: "#b8bdca" }}>{hoverEquip.def.description}</div>
+              {modStatPills(hoverEquip.def.stats)}
+              <div className="text-[10px] mt-1.5 tracking-widest" style={{ color: "#8f96a6" }}>CLICK SLOT TO UNEQUIP</div>
+            </>
+          ) : hoverEquip ? (
+            <div className="text-[12px] italic" style={{ color: "#8f96a6" }}>Empty {hoverEquip.slot} slot · equip a module from the inventory list</div>
+          ) : (
+            <div className="text-[12px] italic" style={{ color: "#8f96a6" }}>Hover an equipped slot to inspect it · click a slot to unequip</div>
+          )}
+        </div>
         <div
           className="panel p-4"
-          style={{ borderColor: "rgba(78,226,255,0.25)" }}
+          style={{ borderColor: "rgba(247,168,50,0.25)" }}
         >
-          <div
-            className="tracking-widest mb-3"
-            style={{ color: "var(--accent-cyan)", fontSize: 11, letterSpacing: "0.2em" }}
-          >
-            ▶ ACTIVE STATS
+          <div className="dob-hdr" style={{ margin: "-16px -16px 12px" }}>
+            <span>▼ ACTIVE STATS</span>
           </div>
           <div className="grid grid-cols-4 gap-x-4 gap-y-3">
             <Stat label="DMG"  v={Math.round(stats.damage)} />
@@ -733,7 +733,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
         </div>
         <div className="flex gap-2">
           {(["all", "weapon", "generator", "module"] as const).map((f) => (
-            <GameButton key={f} style={{ fontSize: 13, opacity: filter === f ? 1 : 0.6 }} onClick={() => setFilter(f)}>{f.toUpperCase()}</GameButton>
+            <GameButton key={f} gold={filter === f} style={{ fontSize: 12, opacity: filter === f ? 1 : 0.7 }} onClick={() => setFilter(f)}>{f.toUpperCase()}</GameButton>
           ))}
         </div>
 
@@ -749,7 +749,8 @@ function LoadoutTab({ stationId }: { stationId: string }) {
               const isBestUpgrade = bestUpgradeDefId === def.id;
               return (
                 <div key={def.id} className="panel p-2 flex items-start gap-2"
-                  style={{ borderColor: isBestUpgrade ? "#ffd24a" : isHovered ? "#ffd24a" : RARITY_COLOR[def.rarity], transition: "border-color 0.1s" }}
+                  title={moduleTipText(def, { action: canAfford ? "BUY AT STATION" : "NOT ENOUGH CREDITS" })}
+                  style={{ borderColor: isBestUpgrade || isHovered ? "#ffd24a" : "#33353e", borderLeft: `3px solid ${RARITY_COLOR[def.rarity]}`, transition: "border-color 0.1s" }}
                   onMouseEnter={() => setHoveredShopDefId(def.id)}>
                   <div className="flex items-center justify-center"
                     style={{ width: 28, height: 28, background: `${def.color}22`, border: `1px solid ${def.color}`, color: def.color, fontSize: 14 }}>
@@ -772,7 +773,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
                     {modStatPills(def.stats)}
                     {def.weaponKind === "rocket" && <RocketAmmoBadge />}
                   </div>
-                  <button className="btn btn-primary"
+                  <button className="gbtn gbtn-gold"
                     style={{ padding: "2px 8px", fontSize: 13 }}
                     disabled={!canAfford}
                     onClick={() => {
@@ -800,7 +801,8 @@ function LoadoutTab({ stationId }: { stationId: string }) {
               const targetIdx = slotArr.findIndex((x) => x === null);
               return (
                 <div key={it.instanceId} className="panel p-2 flex items-start gap-2"
-                  style={{ borderColor: hoveredInvInstanceId === it.instanceId ? "#ffd24a" : RARITY_COLOR[def.rarity], transition: "border-color 0.1s" }}
+                  title={lootTipText(it, { action: isEquipped ? "CURRENTLY EQUIPPED" : "EQUIP OR SELL" })}
+                  style={{ borderColor: hoveredInvInstanceId === it.instanceId ? "#ffd24a" : "#33353e", borderLeft: `3px solid ${isRolledItem(it) ? lootItemColor(it, def) : RARITY_COLOR[def.rarity]}`, transition: "border-color 0.1s" }}
                   onMouseEnter={() => setHoveredInvInstanceId(!isEquipped ? it.instanceId : null)}>
                   <div className="flex items-center justify-center"
                     style={{ width: 28, height: 28, background: `${def.color}22`, border: `1px solid ${def.color}`, color: def.color, fontSize: 14 }}>
@@ -808,17 +810,25 @@ function LoadoutTab({ stationId }: { stationId: string }) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <div className="text-[13px] font-bold tracking-widest" style={{ color: RARITY_COLOR[def.rarity] }}>{def.name}</div>
+                      <div className="text-[13px] font-bold tracking-widest" style={{ color: isRolledItem(it) ? lootItemColor(it, def) : RARITY_COLOR[def.rarity] }}>
+                        {isRolledItem(it) ? lootItemName(it, def) : def.name}
+                        {isRolledItem(it) && <span className="text-mute font-normal"> · i{it.ilvl ?? 1}</span>}
+                      </div>
                       <span className="text-[13px] uppercase text-mute">· {def.slot}</span>
                       {isEquipped && <span className="text-[13px] uppercase" style={{ color: "#5cff8a" }}>· equipped</span>}
                     </div>
                     <div className="text-mute text-[12px] leading-tight">{def.description}</div>
                     {modStatPills(def.stats)}
+                    {isRolledItem(it) && (it.affixes?.length ?? 0) > 0 && (
+                      <div className="text-[11px] leading-tight" style={{ color: lootItemColor(it, def) }}>
+                        {(it.affixes ?? []).map((r) => affixLine(r as any)).join("  ·  ")}
+                      </div>
+                    )}
                     {def.weaponKind === "rocket" && <RocketAmmoBadge />}
                   </div>
                   <div className="flex flex-col gap-1">
                     {!isEquipped && (
-                      <button className="btn btn-primary"
+                      <button className="gbtn gbtn-gold"
                         style={{ padding: "2px 6px", fontSize: 13 }}
                         disabled={targetIdx < 0}
                         onClick={() => {
@@ -830,10 +840,10 @@ function LoadoutTab({ stationId }: { stationId: string }) {
                         {targetIdx >= 0 ? `Equip → #${targetIdx + 1}` : "Replace #1"}
                       </button>
                     )}
-                    <button className="btn btn-amber"
+                    <button className="gbtn"
                       style={{ padding: "2px 6px", fontSize: 13 }}
                       onClick={() => sellInventoryItem(it.instanceId)}>
-                      Sell {Math.floor(def.price * 0.4)}cr
+                      Sell {lootSellPrice(it, def).toLocaleString()}cr
                     </button>
                   </div>
                 </div>
@@ -859,7 +869,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
           <div className="panel" style={{ maxWidth: 640, width: "90vw", maxHeight: "80vh", overflowY: "auto", padding: 0 }}>
             <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b" style={{ borderColor: "var(--border-soft)" }}>
               <div className="text-cyan tracking-widest text-sm font-bold">AMMO MANAGEMENT</div>
-              <button className="btn btn-danger" style={{ padding: "2px 8px", fontSize: 13 }} onClick={() => setShowAmmoPopup(false)}>✕ Close</button>
+              <button className="gbtn gbtn-red" style={{ padding: "2px 8px", fontSize: 13 }} onClick={() => setShowAmmoPopup(false)}>✕ Close</button>
             </div>
             <AmmoTab />
           </div>
@@ -973,12 +983,12 @@ function DungeonsTab() {
               </div>
               {confirmId === d.id ? (
                 <div className="mt-2" style={{ display: "flex", gap: 6 }}>
-                  <button className="btn w-full" style={{ padding: "4px 8px", fontSize: 12, background: "#333", color: "#ccc", border: "1px solid #555" }} onClick={() => setConfirmId(null)}>Cancel</button>
-                  <button className="btn btn-primary w-full" style={{ padding: "4px 8px", fontSize: 12, background: "#4a6cf7" }} onClick={() => { setConfirmId(null); state.dockedAt = null; sendDockLeave(); enterDungeon(d.id as DungeonId); }}>Confirm Entry</button>
+                  <button className="gbtn w-full" style={{ padding: "4px 8px", fontSize: 12, background: "#333", color: "#ccc", border: "1px solid #555" }} onClick={() => setConfirmId(null)}>Cancel</button>
+                  <button className="gbtn gbtn-gold w-full" style={{ padding: "4px 8px", fontSize: 12, background: "#4a6cf7" }} onClick={() => { setConfirmId(null); state.dockedAt = null; sendDockLeave(); enterDungeon(d.id as DungeonId); }}>Confirm Entry</button>
                 </div>
               ) : (
                 <button
-                  className="btn btn-primary w-full mt-2"
+                  className="gbtn gbtn-gold w-full mt-2"
                   style={{ padding: "3px 6px", fontSize: 13, ...(isFeatured && !locked && !dungeon ? { background: "#ffd24a", color: "#000" } : {}) }}
                   disabled={locked || !!dungeon}
                   onClick={() => setConfirmId(d.id)}
@@ -1024,7 +1034,7 @@ function ShipsTab() {
 
   return (
     <div className="p-4 space-y-2">
-      <div className="hud-label" style={{ fontSize: 9, paddingBottom: 2 }}>SHIPYARD — AVAILABLE HULLS</div>
+      <div className="hud-label" style={{ fontSize: 10, paddingBottom: 2 }}>SHIPYARD — AVAILABLE HULLS</div>
       {(Object.values(SHIP_CLASSES) as { id: ShipClassId; [k: string]: any }[]).map((cls) => {
         const owned = player.ownedShips.includes(cls.id);
         const active = player.shipClass === cls.id;
@@ -1050,7 +1060,7 @@ function ShipsTab() {
                   {cls.name.toUpperCase()}
                 </span>
                 {active && (
-                  <span className="shrink-0" style={{ color: "var(--accent-cyan)", fontSize: 9, letterSpacing: "0.14em", border: "1px solid rgba(56,214,245,0.4)", padding: "0 4px" }}>
+                  <span className="shrink-0" style={{ color: "var(--accent-cyan)", fontSize: 10, letterSpacing: "0.14em", border: "1px solid rgba(56,214,245,0.4)", padding: "0 4px" }}>
                     ACTIVE
                   </span>
                 )}
@@ -1066,7 +1076,7 @@ function ShipsTab() {
               </div>
             </div>
             <button
-              className="btn btn-primary shrink-0"
+              className="gbtn gbtn-gold shrink-0"
               style={{ padding: "4px 10px", fontSize: 11, minWidth: 128 }}
               disabled={active || (!owned && player.credits < cls.price)}
               onClick={() => buy(cls.id)}
@@ -1221,7 +1231,7 @@ function DronesTab() {
                   {def.fireRate > 0 && <span className="text-amber">{def.fireRate.toFixed(1)} shots/s</span>}
                 </div>
                 <button
-                  className="btn btn-primary w-full"
+                  className="gbtn gbtn-gold w-full"
                   disabled={player.credits < price || slotsLeft <= 0}
                   onClick={() => buy(def.id)}
                 >
@@ -1316,7 +1326,7 @@ save(); bump();
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <button
-                className="btn btn-amber"
+                className="gbtn"
                 style={{ padding: "4px 10px", fontSize: 11, whiteSpace: "nowrap" }}
                 onClick={sellAll}
               >
@@ -1385,7 +1395,7 @@ save(); bump();
                   </div>
                   <div className="text-right text-mute text-[13px] tabular-nums">{r.basePrice}</div>
                   <div className="text-right font-bold tabular-nums flex items-center justify-end gap-1" style={{ color: diff < 0 ? "#5cff8a" : diff > 0 ? "#ff5c6c" : "var(--text-dim)" }}>
-                    <span style={{ color: dirColor, fontSize: 8 }}>{dirIcon}</span>
+                    <span style={{ color: dirColor, fontSize: 9.5 }}>{dirIcon}</span>
                     {price}
                   </div>
                   <div className="text-right text-[12px] tabular-nums" style={{ color: diff < 0 ? "#5cff8a" : "#ff5c6c" }}>
@@ -1397,7 +1407,7 @@ save(); bump();
                       <div>
                         <div style={{ color: "#5cff8a", fontWeight: "bold" }}>+{profitVsHere}cr</div>
                         <div className="text-mute truncate" style={{ maxWidth: 85, fontSize: 10 }}>{bestStation.name}</div>
-                        <div className="text-cyan" style={{ fontSize: 9 }}>[{(ZONES as any)[bestStation.zone]?.label ?? "?"}]</div>
+                        <div className="text-cyan" style={{ fontSize: 10 }}>[{(ZONES as any)[bestStation.zone]?.label ?? "?"}]</div>
                       </div>
                     ) : (
                       <span style={{ color: "#ffd24a" }}>BEST</span>
@@ -1407,8 +1417,8 @@ save(); bump();
                     <GameButton style={{ fontSize: 12, padding: "2px 8px" }} onClick={() => buy(r.id, 1)}>+1</GameButton>
                     <GameButton style={{ fontSize: 12, padding: "2px 8px" }} onClick={() => buy(r.id, 10)}>+10</GameButton>
                     <GameButton style={{ fontSize: 12, padding: "2px 8px" }} disabled={have <= 0} onClick={() => sell(r.id, 1)}>-1</GameButton>
-                    <button className="btn btn-amber" style={{ padding: "2px 5px", fontSize: 12 }} disabled={have < 10} onClick={() => sell(r.id, 10)}>-10</button>
-                    <button className="btn btn-amber" style={{ padding: "2px 5px", fontSize: 12 }} disabled={have <= 0} onClick={() => sell(r.id, have)}>All</button>
+                    <button className="gbtn" style={{ padding: "2px 5px", fontSize: 12 }} disabled={have < 10} onClick={() => sell(r.id, 10)}>-10</button>
+                    <button className="gbtn" style={{ padding: "2px 5px", fontSize: 12 }} disabled={have <= 0} onClick={() => sell(r.id, have)}>All</button>
                   </div>
                 </div>
               );
@@ -1423,7 +1433,7 @@ save(); bump();
       )}
 
       {!isTrade && (
-        <div className="mb-4 p-3 text-center" style={{ background: "rgba(78, 226, 255, 0.05)", border: "1px solid var(--border-soft)" }}>
+        <div className="mb-4 p-3 text-center" style={{ background: "rgba(247, 168, 50, 0.05)", border: "1px solid var(--border-soft)" }}>
           <div className="text-mute text-[13px]">This station does not have a commodity exchange.</div>
           <div className="text-dim text-[12px] mt-1">Visit a Trade station to buy and sell resources.</div>
         </div>
@@ -1460,7 +1470,7 @@ save(); bump();
                 <div className="text-amber text-[13px] tabular-nums whitespace-nowrap">{def.price}cr</div>
                 <div className="flex gap-1">
                   <button
-                    className="btn btn-primary"
+                    className="gbtn gbtn-gold"
                     style={{ padding: "2px 8px", fontSize: 13 }}
                     disabled={player.credits < def.price}
                     onClick={() => buyConsumable(cid, 1)}
@@ -1468,7 +1478,7 @@ save(); bump();
                     ×1
                   </button>
                   <button
-                    className="btn btn-primary"
+                    className="gbtn gbtn-gold"
                     style={{ padding: "2px 8px", fontSize: 13 }}
                     disabled={player.credits < def.price * 5}
                     onClick={() => buyConsumable(cid, 5)}
@@ -1575,7 +1585,7 @@ function RefineryTab({ stationId }: { stationId: string }) {
         </div>
         {nextCost !== null && (
           <button
-            className="btn btn-primary text-[12px] px-3 py-1.5"
+            className="gbtn gbtn-gold text-[12px] px-3 py-1.5"
             style={{ opacity: player.credits >= nextCost ? 1 : 0.4 }}
             onClick={() => { if (player.credits >= nextCost) upgradeFactory(); }}
           >
@@ -1619,7 +1629,7 @@ function RefineryTab({ stationId }: { stationId: string }) {
                   <div className="text-[12px]" style={{ color: outRes?.color ?? "#aaa" }}>{recipe.output.qty}x {outRes?.name ?? recipe.output.resourceId}</div>
                   {done && (
                     <button
-                      className="btn btn-primary text-[11px] px-2 py-1 mt-1"
+                      className="gbtn gbtn-gold text-[11px] px-2 py-1 mt-1"
                       onClick={() => collectRefineJob(i)}
                     >COLLECT</button>
                   )}
@@ -1659,7 +1669,7 @@ function RefineryTab({ stationId }: { stationId: string }) {
                     <div className="text-amber text-[11px]">~{(recipe.output.qty * (outRes?.basePrice ?? 0)).toLocaleString()}cr base</div>
                   </div>
                   <button
-                    className="btn btn-primary text-[11px] px-3 py-1.5"
+                    className="gbtn gbtn-gold text-[11px] px-3 py-1.5"
                     style={{ opacity: canStart ? 1 : 0.3 }}
                     onClick={() => { if (canStart) startRefineJob(recipe.id); }}
                     disabled={!canStart}
@@ -1737,7 +1747,7 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
           <div className="text-green font-bold tracking-widest">HULL REPAIR</div>
           <div className="text-dim text-[13px]">Restore {hullDamage} hull points to full integrity.</div>
         </div>
-        <button className="btn btn-primary" disabled={hullDamage <= 0 || player.credits < repairCost} onClick={repair}>
+        <button className="gbtn gbtn-gold" disabled={hullDamage <= 0 || player.credits < repairCost} onClick={repair}>
           {hullDamage <= 0 ? "PRISTINE" : `Repair · ${repairCost}cr`}
         </button>
       </div>
@@ -1748,7 +1758,7 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
           <div className="text-cyan font-bold tracking-widest">SHIELD RECHARGE</div>
           <div className="text-dim text-[13px]">Free at any docked station. Restores {Math.round(shieldMissing)} SP.</div>
         </div>
-        <button className="btn btn-primary" disabled={shieldMissing <= 0} onClick={refillShield}>
+        <button className="gbtn gbtn-gold" disabled={shieldMissing <= 0} onClick={refillShield}>
           {shieldMissing <= 0 ? "FULL" : "Recharge · FREE"}
         </button>
       </div>
@@ -1761,7 +1771,7 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
             Restore all {player.drones.length} drone(s) to full HP.
           </div>
         </div>
-        <button className="btn btn-amber" disabled={droneRepairCost <= 0 || player.credits < droneRepairCost} onClick={repairDrones}>
+        <button className="gbtn" disabled={droneRepairCost <= 0 || player.credits < droneRepairCost} onClick={repairDrones}>
           {droneRepairCost <= 0 ? "ALL OK" : `Repair · ${droneRepairCost}cr`}
         </button>
       </div>
@@ -1848,11 +1858,11 @@ function SkillsTab() {
         </div>
         <div className="flex items-center gap-2">
           <div className="panel" style={{ padding: "4px 12px", textAlign: "center" }}>
-            <div className="hud-label" style={{ fontSize: 8 }}>POINTS</div>
+            <div className="hud-label" style={{ fontSize: 9.5 }}>POINTS</div>
             <div className="text-amber font-bold tabular-nums" style={{ fontSize: 15, lineHeight: 1.1 }}>{player.skillPoints}</div>
           </div>
           <button
-            className="btn btn-danger"
+            className="gbtn gbtn-red"
             style={{ padding: "4px 10px", fontSize: 10 }}
             onClick={() => { if (confirm("Reset skills for 2000cr?")) resetSkills(); }}
           >
@@ -1947,7 +1957,7 @@ function SkillsTab() {
                           bottom: -15,
                           left: "50%",
                           transform: "translateX(-50%)",
-                          fontSize: 9,
+                          fontSize: 10,
                           fontWeight: 700,
                           letterSpacing: "0.06em",
                           color: maxed ? "var(--accent-gold)" : cur > 0 ? b.color : "var(--text-mute)",
@@ -2008,17 +2018,17 @@ function SkillsTab() {
             <div className="sw-hr" />
             <div style={{ fontSize: 10, lineHeight: 1.6 }}>
               <div>
-                <span className="hud-label" style={{ fontSize: 8.5 }}>CURRENT </span>
+                <span className="hud-label" style={{ fontSize: 10 }}>CURRENT </span>
                 <span className="tabular-nums" style={{ color: cur > 0 ? b.color : "var(--text-mute)" }}>{cur > 0 ? (now ?? `rank ${cur} active`) : "not researched"}</span>
               </div>
               {!maxed && (
                 <div>
-                  <span className="hud-label" style={{ fontSize: 8.5 }}>NEXT RANK </span>
+                  <span className="hud-label" style={{ fontSize: 10 }}>NEXT RANK </span>
                   <span className="tabular-nums" style={{ color: "var(--text-bright)" }}>{next ?? `rank ${cur + 1}`}</span>
                 </div>
               )}
             </div>
-            <div style={{ marginTop: 6, fontSize: 9, letterSpacing: "0.1em", color: !reqMet ? "var(--accent-red)" : maxed ? "var(--accent-gold)" : canBuy ? "var(--accent-green)" : "var(--text-mute)" }}>
+            <div style={{ marginTop: 6, fontSize: 10, letterSpacing: "0.1em", color: !reqMet ? "var(--accent-red)" : maxed ? "var(--accent-gold)" : canBuy ? "var(--accent-green)" : "var(--text-mute)" }}>
               {!reqMet
                 ? `⚠ REQUIRES ${SKILL_NODES.find((x) => x.id === n.requires)?.name.toUpperCase() ?? ""}`
                 : maxed ? "✓ FULLY RESEARCHED"
@@ -2151,7 +2161,7 @@ function MissionsTab() {
               <div className="text-mute text-[13px] mt-1">Resets in {hrs}h {mins}m</div>
             </div>
             <button
-              className="btn btn-amber"
+              className="gbtn"
               style={{ padding: "6px 12px", fontSize: 13 }}
               onClick={rerollDaily}
               disabled={player.credits < 500}
@@ -2194,7 +2204,7 @@ function MissionsTab() {
               <div className="text-mute text-[13px] mt-1">Complete missions to earn credits, XP, and honor.</div>
             </div>
             <button
-              className="btn btn-amber"
+              className="gbtn"
               style={{ padding: "6px 12px", fontSize: 13 }}
               onClick={rerollMissionBoard}
               disabled={player.credits < 2000}
@@ -2305,7 +2315,7 @@ function AmmoTab() {
               </div>
               <div className="flex flex-col gap-1 items-end">
                 <button
-                  className="btn btn-amber"
+                  className="gbtn"
                   style={{ padding: "3px 10px", fontSize: 13, minWidth: 90 }}
                   disabled={qty === 0 || player.credits < cost}
                   onClick={() => purchaseAmmoAmount(type, qty)}
@@ -2313,7 +2323,7 @@ function AmmoTab() {
                   {missing === 0 ? "FULL" : `BUY ${qty} · ${cost}cr`}
                 </button>
                 <button
-                  className="btn"
+                  className="gbtn"
                   style={{
                     fontSize: 13, minWidth: 90,
                     color: isActive ? tDef.color : "var(--text-dim)",
@@ -2406,7 +2416,7 @@ function AmmoTab() {
                 </div>
                 <div className="flex flex-col gap-1 items-end">
                   <button
-                    className="btn btn-amber"
+                    className="gbtn"
                     style={{ padding: "3px 10px", fontSize: 13, minWidth: 90 }}
                     disabled={qty === 0 || player.credits < cost}
                     onClick={() => purchaseRocketAmmo(type, qty)}

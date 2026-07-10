@@ -11,6 +11,8 @@ import {
 } from "./data.js";
 import type { OnlinePlayer } from "../socket/state.js";
 import { MOVEMENT } from "../../../lib/game-constants.js";
+import { rollEnemyEquipDrop } from "./lootService.js";
+import { resolveAffixStats, type ItemInstance } from "../../../lib/loot/loot.js";
 
 
 // ── STATION SAFE ZONES ───────────────────────────────────────────────────
@@ -92,7 +94,7 @@ export type ServerProjectile = {
   color: string;
   size: number;
   crit: boolean;
-  weaponKind: "laser" | "rocket" | "energy" | "plasma";
+  weaponKind: "laser" | "rocket" | "energy" | "plasma" | "orb" | "spinner" | "flash";
   homing: boolean;
   homingTargetId: string | null;
   aoeRadius: number;
@@ -132,6 +134,10 @@ export type ServerEnemy = {
   spawnPos: Vec2;
   stunUntil: number;
   combo: Map<number, { stacks: number; ttl: number }>;
+  // bullet-hell pattern state
+  spiralAng?: number;
+  volleyCount?: number;
+  secondaryTimer?: number;
 };
 
 export type ServerAsteroid = {
@@ -168,6 +174,8 @@ export type LootDrop = {
   honor: number;
   bonusResource?: { resourceId: ResourceId; qty: number };
   resource?: { resourceId: ResourceId; qty: number };
+  /** Server-rolled equipment drop (ARPG loot). Only ever minted server-side. */
+  item?: ItemInstance;
 };
 
 // Events emitted by the engine for the socket handler to broadcast
@@ -369,6 +377,14 @@ function sumEquippedStats(inventory: any[], equipped: any): Record<string, numbe
     if (!def) continue;
     for (const [key, val] of Object.entries(def.stats)) {
       if (typeof val !== "number") continue;
+      if (key === "fireRate") {
+        result.fireRate = (result.fireRate ?? 1) * val;
+      } else {
+        result[key] = (result[key] ?? 0) + val;
+      }
+    }
+    // Rolled affix + legendary bonuses (shared resolver, mirrors the client)
+    for (const [key, val] of Object.entries(resolveAffixStats(item))) {
       if (key === "fireRate") {
         result.fireRate = (result.fireRate ?? 1) * val;
       } else {
@@ -604,7 +620,7 @@ export class GameEngine {
           const d = Math.sqrt(distSqToTarget);
           const toAngle = Math.atan2(dy, dx);
           if (d > 40) p.angle = toAngle;
-          const accel = 500;
+          const accel = MOVEMENT.ACCELERATION;
           p.velX += Math.cos(toAngle) * accel * dt;
           p.velY += Math.sin(toAngle) * accel * dt;
         }
@@ -911,16 +927,26 @@ export class GameEngine {
 
   private tickProjectiles(zoneId: string, zs: ZoneState, players: OnlinePlayer[], dt: number, events: GameEvent[]): void {
     for (const [projId, proj] of zs.projectiles) {
-      // Homing
+      // Homing — player rockets chase enemies; enemy "seeker" shots chase
+      // players (slower turn rate so they stay dodgeable).
       if (proj.homing && proj.homingTargetId) {
-        const target = zs.enemies.get(proj.homingTargetId);
-        if (target) {
-          const desiredAng = angleFromTo(proj.pos, target.pos);
+        let targetPos: Vec2 | null = null;
+        let turn = 3.5;
+        if (proj.homingTargetId.startsWith("plr:")) {
+          const pid = parseInt(proj.homingTargetId.slice(4), 10);
+          const tp = players.find(p => p.playerId === pid);
+          if (tp && !tp.isDocked) { targetPos = { x: tp.posX, y: tp.posY }; turn = 2.1; }
+        } else {
+          const target = zs.enemies.get(proj.homingTargetId);
+          if (target) targetPos = target.pos;
+        }
+        if (targetPos) {
+          const desiredAng = angleFromTo(proj.pos, targetPos);
           const curAng = Math.atan2(proj.vel.y, proj.vel.x);
           let diff = desiredAng - curAng;
           while (diff > Math.PI) diff -= Math.PI * 2;
           while (diff < -Math.PI) diff += Math.PI * 2;
-          const turnRate = 3.5 * dt;
+          const turnRate = turn * dt;
           const newAng = curAng + Math.sign(diff) * Math.min(Math.abs(diff), turnRate);
           const spd = Math.sqrt(proj.vel.x * proj.vel.x + proj.vel.y * proj.vel.y);
           proj.vel.x = Math.cos(newAng) * spd;
@@ -971,13 +997,16 @@ export class GameEngine {
                 const bonusRes = bonusDrops[Math.floor(Math.random() * bonusDrops.length)];
                 bonusResource = { resourceId: bonusRes, qty: Math.ceil((1 + Math.floor(Math.random() * 2)) * (1 + (zoneDef.enemyTier - 1) * 0.3)) };
               }
+              const killerLootBonus = proj.fromPlayerId != null ? (this.playerStatsCache.get(proj.fromPlayerId)?.lootBonus ?? 0) : 0;
               const loot: LootDrop = {
-                credits: Math.round(e.credits * tierMult) + Math.round((proj.fromPlayerId != null ? (this.playerStatsCache.get(proj.fromPlayerId)?.lootBonus ?? 0) : 0) * 2),
+                credits: Math.round(e.credits * tierMult) + Math.round(killerLootBonus * 2),
                 exp: Math.round(e.exp * tierMult * (e.isBoss ? 2 : 1)),
                 honor: e.honor,
                 resource: dropResource,
                 bonusResource,
               };
+              const rolledItem = rollEnemyEquipDrop(e, zoneId, proj.fromPlayerId, killerLootBonus);
+              if (rolledItem) loot.item = rolledItem;
               events.push({ type: "enemy:die", zone: zoneId, enemyId: e.id, killerId: proj.fromPlayerId, loot, pos: { ...e.pos } });
               zs.enemies.delete(e.id);
               if (e.isBoss) { zs.bossActive = false; zs.bossTimer = randRange(180, 420); }
@@ -1002,6 +1031,8 @@ export class GameEngine {
                         honor: e2.honor,
                         resource: e2.loot ? { ...e2.loot } : undefined,
                       };
+                      const splashItem = rollEnemyEquipDrop(e2, zoneId, proj.fromPlayerId, this.playerStatsCache.get(proj.fromPlayerId)?.lootBonus ?? 0);
+                      if (splashItem) loot2.item = splashItem;
                       events.push({ type: "enemy:die", zone: zoneId, enemyId: e2.id, killerId: proj.fromPlayerId, loot: loot2, pos: { ...e2.pos } });
                       zs.enemies.delete(e2.id);
                     } else {
@@ -1277,6 +1308,8 @@ export class GameEngine {
         honor: e.honor,
         resource: dropResource2,
       };
+      const rolledItem = rollEnemyEquipDrop(e, zone, playerId, stats.lootBonus);
+      if (rolledItem) loot.item = rolledItem;
       events.push({
         type: "enemy:die", zone, enemyId: e.id,
         killerId: playerId, loot, pos: { ...e.pos },
@@ -1308,6 +1341,8 @@ export class GameEngine {
                 honor: e2.honor,
                 resource: e2.loot ? { ...e2.loot } : undefined,
               };
+              const splashItem = rollEnemyEquipDrop(e2, zone, playerId, stats.lootBonus);
+              if (splashItem) loot2.item = splashItem;
               events.push({ type: "enemy:die", zone, enemyId: e2.id, killerId: playerId, loot: loot2, pos: { ...e2.pos } });
               zs.enemies.delete(e2.id);
             } else {
@@ -1494,7 +1529,9 @@ export class GameEngine {
     const zoneDef = ZONES[zoneId as ZoneId];
     if (!zoneDef) return;
 
-    const maxEnemies = 40 + zoneDef.enemyTier * 5;
+    // Live cap matches the seeded density (~130-190 per zone); the 2000-unit
+    // interest culling keeps client/network load bounded regardless.
+    const maxEnemies = 130 + zoneDef.enemyTier * 10;
     const nonBossCount = Array.from(zs.enemies.values()).filter(e => !e.isBoss).length;
     if (nonBossCount >= maxEnemies) return;
 
@@ -1519,7 +1556,7 @@ export class GameEngine {
       if (players.length > 0 && Math.random() < 0.50) {
         const rp = players[Math.floor(Math.random() * players.length)];
         const ang = Math.random() * Math.PI * 2;
-        const d = 800 + Math.random() * 1000;
+        const d = 700 + Math.random() * 700;
         cand = {
           x: clamp(rp.posX + Math.cos(ang) * d, -MAP_RADIUS, MAP_RADIUS),
           y: clamp(rp.posY + Math.sin(ang) * d, -MAP_RADIUS, MAP_RADIUS),
@@ -1728,7 +1765,7 @@ export class GameEngine {
         // Fire at target
         e.fireTimer -= dt;
         if (e.fireTimer <= 0 && d < fireRange) {
-          e.fireTimer = e.isBoss ? this.bossFireCd(e) : (e.type === "wraith" ? randRange(0.4, 0.7) : e.type === "sentinel" ? randRange(0.5, 0.8) : e.type === "overlord" ? randRange(0.7, 1.0) : e.behavior === "fast" ? randRange(0.5, 0.8) : randRange(0.7, 1.2));
+          e.fireTimer = e.isBoss ? this.bossFireCd(e) : this.enemyFireCd(e);
 
           const dmg = this.calcEnemyDamage(e, target);
           const tPos = { x: target.posX, y: target.posY };
@@ -1743,15 +1780,15 @@ export class GameEngine {
               if (phase < 2) {
                 for (let i = 0; i < shotCount; i++) {
                   const shotAng = projAng + (i - (shotCount - 1) / 2) * 0.09;
-                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg / shotCount), shotAng, e.color, "plasma", 6, 0.8);
+                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg / shotCount), shotAng, e.color, "spinner", 6, 0.8);
                 }
               } else {
                 for (let i = 0; i < 16; i++) {
                   const ra = (Math.PI * 2 / 16) * i;
-                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.6 / 16), ra, "#ff2244", "energy", 5, 0.65);
+                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.6 / 16), ra, "#ff2244", "orb", 5, 0.65);
                 }
                 for (let i = -3; i <= 3; i++) {
-                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 1.2 / 7), projAng + i * 0.07, "#ffffff", "plasma", 7, 1.0);
+                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 1.2 / 7), projAng + i * 0.07, "#ffffff", "spinner", 7, 1.0);
                 }
               }
             } else if (e.type === "wraith" || e.type === "sentinel") {
@@ -1761,15 +1798,15 @@ export class GameEngine {
               if (phase < 2) {
                 for (let i = 0; i < shotCount; i++) {
                   const shotAng = projAng + (i - (shotCount - 1) / 2) * 0.12;
-                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg / shotCount), shotAng, e.color, "energy", 4, spd);
+                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg / shotCount), shotAng, e.color, "orb", 4, spd);
                 }
               } else {
                 for (let i = 0; i < 20; i++) {
                   const ra = (Math.PI * 2 / 20) * i;
-                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.5 / 20), ra, "#cc44ff", "energy", 3, 1.1);
+                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.5 / 20), ra, "#cc44ff", "orb", 3, 1.1);
                 }
                 for (let i = -3; i <= 3; i++) {
-                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 1.0 / 7), projAng + i * 0.06, "#ffffff", "energy", 5, 1.5);
+                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 1.0 / 7), projAng + i * 0.06, "#ffffff", "orb", 5, 1.5);
                 }
               }
             } else {
@@ -1778,91 +1815,134 @@ export class GameEngine {
               if (phase < 2) {
                 for (let i = 0; i < shotCount; i++) {
                   const shotAng = projAng + (i - (shotCount - 1) / 2) * 0.08;
-                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg / shotCount), shotAng, e.color, "plasma", 5, phase === 1 ? 1.1 : 0.95);
+                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg / shotCount), shotAng, e.color, "spinner", 5, phase === 1 ? 1.1 : 0.95);
                 }
                 if (phase === 1) {
                   for (let i = 0; i < 6; i++) {
                     const ra = (Math.PI * 2 / 6) * i;
-                    this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.5 / 6), ra, "#ffaa22", "energy", 4, 0.7);
+                    this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.5 / 6), ra, "#ffaa22", "orb", 4, 0.7);
                   }
                 }
               } else {
                 for (let i = 0; i < 24; i++) {
                   const ra = (Math.PI * 2 / 24) * i;
-                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.6 / 24), ra, "#ff3b4d", "plasma", 4, 0.75);
+                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.6 / 24), ra, "#ff3b4d", "spinner", 4, 0.75);
                 }
                 for (let i = -4; i <= 4; i++) {
-                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 1.2 / 9), projAng + i * 0.06, "#ffffff", "plasma", 6, 1.2);
+                  this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 1.2 / 9), projAng + i * 0.06, "#ffffff", "spinner", 6, 1.2);
                 }
               }
             }
-          } else if (e.type === "sentinel") {
-            // Predictive aim + area denial
-            const pVelX = target.targetX !== null ? (target.targetX - target.posX) * 0.3 : 0;
-            const pVelY = target.targetY !== null ? (target.targetY - target.posY) * 0.3 : 0;
-            const predTime = d / (600 * 1.2);
-            const predAng = angleFromTo(e.pos, { x: tPos.x + pVelX * predTime * 80, y: tPos.y + pVelY * predTime * 80 });
-            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.9), predAng - 0.04, e.color, "energy", 4, 1.2);
-            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.9), predAng + 0.04, e.color, "energy", 4, 1.2);
-            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.4), predAng + 0.3, e.color, "energy", 3, 0.9);
-            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.4), predAng - 0.3, e.color, "energy", 3, 0.9);
-          } else if (e.type === "wraith") {
-            // Fast predictive burst + flanking
-            const pVelX = target.targetX !== null ? (target.targetX - target.posX) * 0.3 : 0;
-            const pVelY = target.targetY !== null ? (target.targetY - target.posY) * 0.3 : 0;
-            const predTime = d / (600 * 1.4);
-            const predAng = angleFromTo(e.pos, { x: tPos.x + pVelX * predTime * 90, y: tPos.y + pVelY * predTime * 90 });
+          } else if (e.type === "scout") {
+            // twin snap flashes with jitter
+            for (const j of [-0.05, 0.05]) {
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.5), projAng + j + (Math.random() - 0.5) * 0.06, e.color, "flash", 3, 1.0);
+            }
+          } else if (e.type === "interceptor") {
+            // fast 3-flash fan
             for (let i = -1; i <= 1; i++) {
-              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.6), predAng + i * 0.12, e.color, "energy", 3, 1.4);
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.4), projAng + i * 0.15, e.color, "flash", 3, 1.25);
             }
-            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.3), predAng + Math.PI * 0.4, e.color, "energy", 2, 1.6);
-            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.3), predAng - Math.PI * 0.4, e.color, "energy", 2, 1.6);
-          } else if (e.type === "titan") {
-            // Predictive heavy spread + area denial
-            const pVelX = target.targetX !== null ? (target.targetX - target.posX) * 0.3 : 0;
-            const pVelY = target.targetY !== null ? (target.targetY - target.posY) * 0.3 : 0;
-            const predTime = d / (600 * 0.7);
-            const predAng = angleFromTo(e.pos, { x: tPos.x + pVelX * predTime * 50, y: tPos.y + pVelY * predTime * 50 });
-            // Heavy predictive plasma volley
-            for (let i = -2; i <= 2; i++) {
-              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.7), predAng + i * 0.07, e.color, "plasma", 6, 0.75);
-            }
-            // Area denial around predicted position
-            for (let i = 0; i < 5; i++) {
-              const offsetAng = predAng + (i - 2) * 0.3 + (Math.random() - 0.5) * 0.15;
-              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.4), offsetAng, "#ff6644", "plasma", 5, 0.5);
-            }
-          } else if (e.type === "overlord") {
-            // Predictive barrage + area denial ring
-            const pVelX = target.targetX !== null ? (target.targetX - target.posX) * 0.3 : 0;
-            const pVelY = target.targetY !== null ? (target.targetY - target.posY) * 0.3 : 0;
-            const predTime = d / (600 * 1.1);
-            const predAng = angleFromTo(e.pos, { x: tPos.x + pVelX * predTime * 70, y: tPos.y + pVelY * predTime * 70 });
-            for (let i = -2; i <= 2; i++) {
-              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.5), predAng + i * 0.09, e.color, "energy", 4, 1.1);
-            }
-            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 1.2), predAng, "#ff4466", "plasma", 7, 0.8);
-            for (let i = 0; i < 4; i++) {
-              const ringAng = predAng + (Math.PI / 3) * (i - 1.5);
-              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.3), ringAng, e.color, "energy", 3, 0.7);
-            }
-          } else if (e.type === "dread") {
-            // Predictive plasma spread
-            const pVelX = target.targetX !== null ? (target.targetX - target.posX) * 0.3 : 0;
-            const pVelY = target.targetY !== null ? (target.targetY - target.posY) * 0.3 : 0;
-            const predTime = d / (600 * 0.9);
-            const predAng = angleFromTo(e.pos, { x: tPos.x + pVelX * predTime * 60, y: tPos.y + pVelY * predTime * 60 });
+          } else if (e.type === "raider") {
+            // slow orb fan
             for (let i = -1; i <= 1; i++) {
-              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.8), predAng + i * 0.06, e.color, "plasma", 5, 0.9);
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.45), projAng + i * 0.22, e.color, "orb", 5, 0.5);
+            }
+          } else if (e.type === "corvette") {
+            // wide 5-orb fan
+            for (let i = -2; i <= 2; i++) {
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.3), projAng + i * 0.2, e.color, "orb", 5, 0.52);
             }
           } else if (e.type === "destroyer") {
-            for (let i = -1; i <= 1; i++) {
-              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.7), projAng + i * 0.06, e.color, "plasma", 4);
+            // heavy aimed spinner + flanking orbs
+            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.9), projAng, e.color, "spinner", 9, 0.42);
+            for (let i = -2; i <= 2; i++) {
+              if (i !== 0) this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.25), projAng + i * 0.3, e.color, "orb", 4, 0.5);
+            }
+          } else if (e.type === "sentinel") {
+            // rotating 3-arm spiral emitter (dense, fast cadence)
+            e.spiralAng = (e.spiralAng ?? Math.random() * Math.PI * 2) + 0.55;
+            for (let arm = 0; arm < 3; arm++) {
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.35), e.spiralAng + arm * (Math.PI * 2 / 3), e.color, "spinner", 5, 0.5);
+            }
+            e.volleyCount = (e.volleyCount ?? 0) + 1;
+            if (e.volleyCount % 4 === 0) {
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.6), projAng, "#ffffff", "flash", 4, 1.3);
             }
           } else if (e.type === "voidling") {
-            this.spawnEnemyProjectile(zoneId, zs, e, dmg, projAng, e.color, "energy", 4);
+            // rotating ring bursts
+            e.volleyCount = (e.volleyCount ?? 0) + 1;
+            for (let i = 0; i < 10; i++) {
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.22), (Math.PI * 2 / 10) * i + e.volleyCount * 0.31, e.color, "orb", 5, 0.5);
+            }
+          } else if (e.type === "wraith") {
+            // twin seeker orbs that chase the player + snap shot
+            for (const j of [-0.4, 0.4]) {
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.45), projAng + j, e.color, "orb", 5, 0.55, target.playerId);
+            }
+            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.5), projAng, "#ffffff", "flash", 3, 1.4);
+          } else if (e.type === "specter") {
+            // curving seeker spinner + flanking flashes
+            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.7), projAng + Math.PI * 0.25, e.color, "spinner", 6, 0.6, target.playerId);
+            for (const j of [-0.5, 0.5]) {
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.35), projAng + j, e.color, "flash", 3, 1.3);
+            }
+          } else if (e.type === "phantom") {
+            // predictive sniper flash + trailing orb fan
+            const pVelX = target.targetX !== null ? (target.targetX - target.posX) * 0.3 : 0;
+            const pVelY = target.targetY !== null ? (target.targetY - target.posY) * 0.3 : 0;
+            const predTime = d / (600 * 1.7);
+            const predAng = angleFromTo(e.pos, { x: tPos.x + pVelX * predTime * 80, y: tPos.y + pVelY * predTime * 80 });
+            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.8), predAng, "#ffffff", "flash", 4, 1.7);
+            for (let i = -1; i <= 1; i++) {
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.25), projAng + i * 0.25, e.color, "orb", 4, 0.55);
+            }
+          } else if (e.type === "dread") {
+            // wide fork of flashes + rear-launched seeker orb every 2nd volley
+            e.volleyCount = (e.volleyCount ?? 0) + 1;
+            for (let i = -3; i <= 3; i++) {
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.28), projAng + i * 0.15, e.color, "flash", 4, 0.8);
+            }
+            if (e.volleyCount % 2 === 0) {
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.6), projAng + Math.PI, "#ff2200", "orb", 6, 0.5, target.playerId);
+            }
+          } else if (e.type === "titan") {
+            // slow heavy spinner fan + full ring every 3rd volley
+            e.volleyCount = (e.volleyCount ?? 0) + 1;
+            for (let i = -2; i <= 2; i++) {
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.35), projAng + i * 0.15, e.color, "spinner", 8, 0.45);
+            }
+            if (e.volleyCount % 3 === 0) {
+              for (let i = 0; i < 12; i++) {
+                this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.2), (Math.PI * 2 / 12) * i, "#ff6644", "orb", 5, 0.5);
+              }
+            }
+          } else if (e.type === "juggernaut") {
+            // alternating rotated rings + aimed heavy spinner
+            e.volleyCount = (e.volleyCount ?? 0) + 1;
+            const ringOff = (e.volleyCount % 2) * (Math.PI / 8);
+            for (let i = 0; i < 8; i++) {
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.22), (Math.PI * 2 / 8) * i + ringOff, e.color, "orb", 6, 0.48);
+            }
+            this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.8), projAng, "#ffffff", "spinner", 9, 0.5);
+          } else if (e.type === "overlord") {
+            // spinner fan + triple seekers
+            for (let i = -2; i <= 2; i++) {
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.3), projAng + i * 0.18, e.color, "spinner", 5, 0.55);
+            }
+            for (const j of [-0.7, 0, 0.7]) {
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.3), projAng + j, "#ff44cc", "orb", 5, 0.5, target.playerId);
+            }
+          } else if (e.type === "leviathan") {
+            // wavy bullet wall (alternating speeds) + twin seekers
+            for (let i = -4; i <= 4; i++) {
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.2), projAng + i * 0.14, e.color, "orb", 6, (i % 2 === 0) ? 0.42 : 0.58);
+            }
+            for (const j of [-0.9, 0.9]) {
+              this.spawnEnemyProjectile(zoneId, zs, e, Math.round(dmg * 0.3), projAng + j, "#00ffcc", "orb", 5, 0.55, target.playerId);
+            }
           } else {
-            this.spawnEnemyProjectile(zoneId, zs, e, dmg, projAng, e.color);
+            this.spawnEnemyProjectile(zoneId, zs, e, dmg, projAng, e.color, "flash", 3, 0.9);
           }
 
           // Also emit the event for VFX purposes
@@ -1887,14 +1967,14 @@ export class GameEngine {
               const spiralBase = (this.tickCount ?? 0) * 0.08;
               for (let arm = 0; arm < 2; arm++) {
                 const sAng = spiralBase + arm * Math.PI;
-                this.spawnEnemyProjectile(zoneId, zs, e, Math.round(secDmg * 0.3), sAng, e.color, "energy", 3, 0.55);
+                this.spawnEnemyProjectile(zoneId, zs, e, Math.round(secDmg * 0.3), sAng, e.color, "orb", 3, 0.55);
               }
             }
             if (phase >= 2) {
               // Area denial around player
               for (let i = 0; i < 3; i++) {
                 const offsetAng = secAng + (i - 1) * 0.4 + (Math.random() - 0.5) * 0.2;
-                this.spawnEnemyProjectile(zoneId, zs, e, Math.round(secDmg * 0.4), offsetAng, "#ff8844", "plasma", 4, 0.6);
+                this.spawnEnemyProjectile(zoneId, zs, e, Math.round(secDmg * 0.4), offsetAng, "#ff8844", "spinner", 4, 0.6);
               }
             }
             e.secondaryTimer = phase >= 2 ? 0.35 : 0.6;
@@ -1941,8 +2021,10 @@ export class GameEngine {
     }
   }
 
-  private spawnEnemyProjectile(zoneId: string, zs: ZoneState, e: ServerEnemy, damage: number, angle: number, color: string, weaponKind: string = "laser", size: number = 3, speedMul: number = 1): void {
+  private spawnEnemyProjectile(zoneId: string, zs: ZoneState, e: ServerEnemy, damage: number, angle: number, color: string, weaponKind: string = "laser", size: number = 3, speedMul: number = 1, homingPlayerId: number | null = null): void {
     const projSpeed = 600 * speedMul;
+    // Slow bullet-hell shots live longer so effective range stays ~900 units
+    const ttl = clamp(900 / Math.max(1, projSpeed), 1.6, 4.5);
     const proj: ServerProjectile = {
       id: eid("ep"),
       zone: zoneId,
@@ -1952,18 +2034,41 @@ export class GameEngine {
       pos: { x: e.pos.x, y: e.pos.y },
       vel: { x: Math.cos(angle) * projSpeed, y: Math.sin(angle) * projSpeed },
       damage,
-      ttl: 2.5,
+      ttl,
       color,
       size,
       crit: false,
       weaponKind: weaponKind as any,
-      homing: false,
-      homingTargetId: null,
+      homing: homingPlayerId !== null,
+      homingTargetId: homingPlayerId !== null ? "plr:" + homingPlayerId : null,
       aoeRadius: 0,
       empStun: 0,
       armorPiercing: false,
     };
     zs.projectiles.set(proj.id, proj);
+  }
+
+  // Bullet-hell cadence per type: dense emitters fire fast with weak shots,
+  // heavies fire slow thick patterns.
+  private enemyFireCd(e: ServerEnemy): number {
+    switch (e.type) {
+      case "scout": return randRange(0.7, 0.95);
+      case "interceptor": return randRange(0.6, 0.85);
+      case "raider": return randRange(1.2, 1.6);
+      case "corvette": return randRange(1.3, 1.7);
+      case "destroyer": return randRange(1.8, 2.2);
+      case "sentinel": return randRange(0.35, 0.45);
+      case "voidling": return randRange(2.0, 2.4);
+      case "wraith": return randRange(1.4, 1.8);
+      case "specter": return randRange(1.3, 1.7);
+      case "phantom": return randRange(1.2, 1.5);
+      case "dread": return randRange(1.1, 1.4);
+      case "titan": return randRange(1.6, 2.0);
+      case "juggernaut": return randRange(1.5, 1.9);
+      case "overlord": return randRange(1.4, 1.7);
+      case "leviathan": return randRange(2.0, 2.4);
+      default: return randRange(0.8, 1.2);
+    }
   }
 
   private bossFireCd(e: ServerEnemy): number {
@@ -2185,10 +2290,33 @@ export class GameEngine {
   private spawnInitialEnemies(zoneId: string, zs: ZoneState): void {
     const zoneDef = ZONES[zoneId as ZoneId];
     if (!zoneDef) return;
-    const initialCount = 25 + zoneDef.enemyTier * 4;
+    // Populate the map so ~6-7 enemies sit inside any 2000-unit interest
+    // radius: same-type packs of 2-4 scattered across the zone. Each pack is
+    // one type from the zone's list, so maps visibly read as their roster.
+    const initialCount = 110 + zoneDef.enemyTier * 8;
     const tierMult = Math.pow(2, zoneDef.enemyTier - 1);
-    for (let i = 0; i < initialCount; i++) {
-      const enemyType = zoneDef.enemyTypes[Math.floor(Math.random() * zoneDef.enemyTypes.length)];
+    let spawned = 0;
+    let packType: EnemyType = zoneDef.enemyTypes[0];
+    let packCenter: Vec2 | null = null;
+    let packLeft = 0;
+    while (spawned < initialCount) {
+      if (packLeft <= 0 || !packCenter) {
+        // start a new pack: pick type + clear center
+        packType = zoneDef.enemyTypes[Math.floor(Math.random() * zoneDef.enemyTypes.length)];
+        packLeft = 2 + Math.floor(Math.random() * 3);
+        packCenter = null;
+        for (let attempt = 0; attempt < 8; attempt++) {
+          const cand: Vec2 = {
+            x: randRange(-MAP_RADIUS * 0.9, MAP_RADIUS * 0.9),
+            y: randRange(-MAP_RADIUS * 0.9, MAP_RADIUS * 0.9),
+          };
+          if (!isInStationSafeZone(zoneId, cand, 300)) { packCenter = cand; break; }
+        }
+        if (!packCenter) { spawned++; continue; }
+      }
+      packLeft--;
+      spawned++;
+      const enemyType = packType;
       const baseDef = ENEMY_DEFS[enemyType];
       if (!baseDef) continue;
       const fMods = FACTION_ENEMY_MODS[zoneDef.faction]?.[enemyType];
@@ -2196,15 +2324,10 @@ export class GameEngine {
       const dmgMul = (fMods?.damageMul ?? 1) * tierMult;
       const spdMul = fMods?.speedMul ?? 1;
       const color = fMods?.color ?? baseDef.color;
-      let spawnPos: Vec2 | null = null;
-      for (let attempt = 0; attempt < 8; attempt++) {
-        const cand: Vec2 = {
-          x: randRange(-MAP_RADIUS * 0.9, MAP_RADIUS * 0.9),
-          y: randRange(-MAP_RADIUS * 0.9, MAP_RADIUS * 0.9),
-        };
-        if (!isInStationSafeZone(zoneId, cand)) { spawnPos = cand; break; }
-      }
-      if (!spawnPos) continue;
+      const spawnPos: Vec2 = {
+        x: clamp(packCenter.x + (Math.random() - 0.5) * 500, -MAP_RADIUS * 0.95, MAP_RADIUS * 0.95),
+        y: clamp(packCenter.y + (Math.random() - 0.5) * 500, -MAP_RADIUS * 0.95, MAP_RADIUS * 0.95),
+      };
       const names = ENEMY_NAMES[enemyType];
       const name = names[Math.floor(Math.random() * names.length)];
       const enemy: ServerEnemy = {

@@ -6,11 +6,14 @@ interface TopPanelProps {
   className?: string;
 }
 
-// Shared HUD chip: pixel-art 9-slice frame (Buch CC0, see ASSET_LICENSES.md).
-// The frame is drawn by the .hud-chip CSS class as a layout-safe overlay.
+// Square command console plate with amber corner accents (.console-sq).
 export function TopPanel({ children, style, className = "" }: TopPanelProps) {
   return (
-    <div className={"pointer-events-auto hud-chip " + className} style={style}>
+    <div className={"pointer-events-auto console-sq " + className} style={style}>
+      <span className="console-corner tl" aria-hidden />
+      <span className="console-corner tr" aria-hidden />
+      <span className="console-corner bl" aria-hidden />
+      <span className="console-corner br" aria-hidden />
       <div style={{ position: "relative", zIndex: 1, height: "100%" }}>{children}</div>
     </div>
   );

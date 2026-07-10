@@ -22,6 +22,70 @@ const PIX_SCALE = PIXELATE_3D ? Math.max(1, PIXELATE_3D_SCALE) : 1;
 // Excluded from the silhouette-outline pass, drawn on top afterwards.
 const FX_LAYER = 1;
 
+// ── Billboard glow sprites ───────────────────────────────────────────────
+// Enemy GLBs author their light effects as transparent "halo" shell meshes.
+// At runtime those shells are hidden and replaced by layered camera-facing
+// sprites parented to the same node — so authored positions, colors, sizes
+// and scale-pulse animations all drive the sprites. Nodes named "Glow_*"
+// (empties exported from Blender) are supported as explicit anchors too.
+//
+// Layered look: small bright inner glow, medium soft glow, faint outer glow.
+// All values configurable here.
+const GLOW_SPRITE_LAYERS = [
+  { scale: 1.15, opacity: 0.85 }, // inner bright
+  { scale: 2.4,  opacity: 0.34 }, // medium soft
+  { scale: 4.0,  opacity: 0.12 }, // outer faint
+];
+const GLOW_BASE_ALPHA = 0.24;     // authored halo alpha that maps to 1x intensity
+const GLOW_DEFAULT_COLOR = 0x88ccff;
+
+let glowTexture: THREE.CanvasTexture | null = null;
+// Radial gradient: bright center, soft falloff, fully transparent edge —
+// no square border, no hard rim. White; sprite material tints it.
+function getGlowTexture(): THREE.CanvasTexture {
+  if (glowTexture) return glowTexture;
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const ctx = c.getContext("2d")!;
+  const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0.0, "rgba(255,255,255,1)");
+  g.addColorStop(0.12, "rgba(255,255,255,0.85)");
+  g.addColorStop(0.35, "rgba(255,255,255,0.30)");
+  g.addColorStop(0.65, "rgba(255,255,255,0.08)");
+  g.addColorStop(1.0, "rgba(255,255,255,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 128);
+  glowTexture = new THREE.CanvasTexture(c);
+  return glowTexture;
+}
+
+interface GlowAnchor {
+  color: THREE.Color;
+  intensity: number; // 1 = authored baseline
+  size: number;      // base radius in node-local units
+}
+
+function attachGlowSprites(node: THREE.Object3D, anchor: GlowAnchor): void {
+  for (const layer of GLOW_SPRITE_LAYERS) {
+    const mat = new THREE.SpriteMaterial({
+      map: getGlowTexture(),
+      color: anchor.color,
+      transparent: true,
+      opacity: Math.min(1, layer.opacity * anchor.intensity),
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: false,
+    });
+    const sprite = new THREE.Sprite(mat);
+    const s = anchor.size * layer.scale;
+    sprite.scale.set(s, s, 1);
+    sprite.castShadow = false;
+    sprite.receiveShadow = false;
+    sprite.layers.set(FX_LAYER);
+    node.add(sprite);
+  }
+}
+
 const SHIP_3D_MODELS: Record<string, string> = {
   apex: "/models/Apex_Destroyer.glb",
   colossus: "/models/Colossus_MK_X.glb",
@@ -479,10 +543,24 @@ function loadModel(shipClass: string): void {
             mesh.castShadow = !mat.transparent;
             mesh.receiveShadow = true;
 
-            // Transparent glow shells (enemy halos) go to the FX layer: they
-            // render after the outline pass so the black silhouette line
-            // traces the solid hull, not the glow cloud around it.
-            if (isEnemy && mat.transparent) mesh.layers.set(FX_LAYER);
+            // Transparent glow shells (enemy halos): hide the sphere geometry
+            // (material-level, so child sprites stay visible) and mark the
+            // node as a glow anchor — updateShip3D attaches layered billboard
+            // sprites to it per instance. Color/size/alpha come from the
+            // authored shell; its pulse animation drives the sprites.
+            if (isEnemy && mat.transparent) {
+              mat.visible = false;
+              const col = (mat.emissive && (mat.emissive.r + mat.emissive.g + mat.emissive.b) > 0.05)
+                ? mat.emissive.clone() : (mat.color ? mat.color.clone() : new THREE.Color(GLOW_DEFAULT_COLOR));
+              if (!mesh.geometry.boundingSphere) mesh.geometry.computeBoundingSphere();
+              const r = mesh.geometry.boundingSphere ? mesh.geometry.boundingSphere.radius : 1;
+              mesh.userData.glowAnchor = {
+                color: "#" + col.getHexString(),
+                intensity: (mat.opacity ?? GLOW_BASE_ALPHA) / GLOW_BASE_ALPHA,
+                size: r * 2,
+              };
+              mesh.layers.set(FX_LAYER);
+            }
           }
         }
       });
@@ -865,24 +943,13 @@ export function updateShip3D(
     const glowSize = shipClass === "sovereign" ? 0.45 : 0.9;
 
     for (const thruster of hardpoints.thrusters) {
-      // Create circular glow texture
-      const canvas = document.createElement('canvas');
-      canvas.width = 64;
-      canvas.height = 64;
-      const ctx = canvas.getContext('2d')!;
-      const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-      gradient.addColorStop(0, 'rgba(68, 136, 255, 1)');
-      gradient.addColorStop(0.5, 'rgba(68, 136, 255, 0.5)');
-      gradient.addColorStop(1, 'rgba(68, 136, 255, 0)');
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, 64, 64);
-
-      const texture = new THREE.CanvasTexture(canvas);
       const material = new THREE.SpriteMaterial({
-        map: texture,
+        map: getGlowTexture(),
+        color: 0x4488ff,
         transparent: true,
         opacity: 0,
         depthWrite: false,
+        depthTest: false,
         blending: THREE.AdditiveBlending
       });
       const sprite = new THREE.Sprite(material);
@@ -901,6 +968,27 @@ export function updateShip3D(
     wrapper.rotation.x = SHIP_WRAPPER_TILT_X;
     wrapper.add(model);
     scene.add(wrapper);
+
+    // Billboard glow sprites: attach to authored halo anchors (hidden shells)
+    // and to any explicitly named "Glow_*" empties. Parenting means the
+    // anchor's pulse animation scales the sprites too.
+    model.traverse((child) => {
+      const ud = child.userData || {};
+      if (ud.glowAnchor) {
+        const a = ud.glowAnchor;
+        attachGlowSprites(child, {
+          color: new THREE.Color(a.color ?? GLOW_DEFAULT_COLOR),
+          intensity: a.intensity ?? 1,
+          size: a.size ?? 1,
+        });
+      } else if (/^glow[_.]/i.test(child.name) && !(child as THREE.Mesh).isMesh) {
+        attachGlowSprites(child, {
+          color: new THREE.Color(ud.glow_color ?? GLOW_DEFAULT_COLOR),
+          intensity: ud.glow_intensity ?? 1,
+          size: ud.glow_size ?? 0.3,
+        });
+      }
+    });
 
     // Play authored idle animations (clips bind to cloned nodes by name)
     let mixer: THREE.AnimationMixer | null = null;

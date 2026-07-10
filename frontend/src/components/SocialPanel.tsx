@@ -98,7 +98,7 @@ export function SocialPanel() {
               {/* Action button */}
               {!o.inParty ? (
                 <button
-                  className="btn shrink-0"
+                  className="gbtn shrink-0"
                   style={{ padding: "2px 7px", fontSize: 9 }}
                   onClick={() => {
                     if (player.party.length >= 4) {
@@ -116,7 +116,7 @@ export function SocialPanel() {
                 </button>
               ) : (
                 <button
-                  className="btn btn-danger shrink-0"
+                  className="gbtn gbtn-red shrink-0"
                   style={{ padding: "2px 7px", fontSize: 9 }}
                   onClick={() => {
                     o.inParty = false;
@@ -221,15 +221,8 @@ export function BattleLog() {
         <select
           value={channel}
           onChange={(e) => setChannel(e.target.value as any)}
-          style={{
-            background: "rgba(0,0,0,0.5)",
-            border: "1px solid var(--border-glow)",
-            color: "var(--accent-cyan)",
-            fontSize: 9,
-            padding: "2px 3px",
-            outline: "none",
-            borderRadius: 2,
-          }}
+          className="ginput"
+          style={{ fontSize: 9, padding: "2px 3px" }}
         >
           <option value="local">Local</option>
           <option value="party">Party</option>
@@ -241,25 +234,16 @@ export function BattleLog() {
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && send()}
           placeholder="Hail the comms..."
-          style={{
-            flex: 1,
-            background: "rgba(0,0,0,0.5)",
-            border: "1px solid var(--border-glow)",
-            color: "var(--text-bright)",
-            fontSize: 10,
-            padding: "2px 6px",
-            outline: "none",
-            minWidth: 0,
-            borderRadius: 2,
-          }}
+          className="ginput"
+          style={{ flex: 1, fontSize: 10, padding: "2px 6px", minWidth: 0 }}
         />
         <button
-          className="btn shrink-0"
-          style={{ padding: "2px 8px", fontSize: 9 }}
+          className="send-tri shrink-0"
+          title="Send"
+          aria-label="Send message"
+          style={{ width: 22, height: 24 }}
           onClick={send}
-        >
-          Send
-        </button>
+        />
       </div>
       </div>
     </TopPanel>
@@ -292,7 +276,7 @@ export function ClanPanel() {
             ⚑ CLAN COMMAND
           </div>
           <button
-            className="btn btn-danger"
+            className="gbtn gbtn-red"
             style={{ padding: "3px 8px", fontSize: 11 }}
             onClick={() => { state.showClan = false; bump(); }}
           >
@@ -347,7 +331,7 @@ export function ClanPanel() {
               </div>
 
               <button
-                className="btn btn-danger w-full"
+                className="gbtn gbtn-red w-full"
                 style={{ padding: "6px 0", fontSize: 11 }}
                 onClick={() => {
                   player.clan = null;
@@ -381,7 +365,7 @@ export function ClanPanel() {
                       </div>
                     </div>
                     <button
-                      className="btn btn-primary shrink-0"
+                      className="gbtn gbtn-gold shrink-0"
                       style={{ padding: "4px 12px", fontSize: 11 }}
                       onClick={() => {
                         player.clan = c;
@@ -417,7 +401,7 @@ export function ClanPanel() {
                   }}
                 />
                 <button
-                  className="btn btn-amber shrink-0"
+                  className="gbtn shrink-0"
                   style={{ padding: "6px 12px", fontSize: 11, whiteSpace: "nowrap" }}
                   disabled={!name.trim() || player.credits < 5000}
                   onClick={() => {
@@ -532,7 +516,7 @@ export function GalaxyMap() {
             ★ GALAXY MAP
           </div>
           <button
-            className="btn btn-danger"
+            className="gbtn gbtn-red"
             style={{ padding: "3px 10px", fontSize: 11 }}
             onClick={() => { state.showMap = false; bump(); }}
           >

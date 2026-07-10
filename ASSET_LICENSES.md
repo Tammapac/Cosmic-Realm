@@ -116,3 +116,9 @@ Kept on file from the asset research (2026-07-07); usable for future maps:
 
 - `frontend/public/bg/1-1/` (existing map art) and other pre-existing art/assets
   predate this file and are not documented here.
+
+## Projectile FX (frontend/public/assets/projectiles/)
+- **Warped Shooting Fx** — ansimuz — CC0 (public domain) — https://opengameart.org/content/warped-shooting-fx
+  Animated projectile/impact frames: bolt, charged, crossed, pulse, spark, wave, hit (packed into horizontal strips).
+- **Pixel Art Spells** — DevWizard — CC0 (public domain) — https://opengameart.org/content/pixel-art-spells
+  Animated 16px spell projectiles; "orb.png" strip (Magic Orb) used for energy-ball shots. Credit appreciated but not required.

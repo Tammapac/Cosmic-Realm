@@ -44,7 +44,7 @@ function QuestRow({
             fontWeight: highlighted ? 700 : 400,
             maxWidth: "78%",
           }}
-          title={`${q.title} — ${count}`}
+          title={`${q.title}\n${q.description ?? ""}\nPROGRESS ${count}${q.completed ? " · COMPLETE" : ""}\nREWARDS: ${(q.rewardCredits ?? 0).toLocaleString()} CR · ${q.rewardExp ?? 0} XP · ${q.rewardHonor ?? 0} HONOR`}
         >
           {done ? "✓ " : ""}{q.title}
         </span>

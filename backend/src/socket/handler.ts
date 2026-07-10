@@ -15,6 +15,7 @@ import {
   getAllZones,
 } from "./state.js";
 import { GameEngine, computeStats, type GameEvent } from "../game/engine.js";
+import { sanitizeInventory } from "../game/lootService.js";
 import { MOVEMENT } from "../../../lib/game-constants.js";
 
 const CULL_RADIUS = 2000;
@@ -343,7 +344,16 @@ export function setupSocket(io: Server) {
       const cached = engine.playerDataCache.get(user.playerId);
       if (cached) {
         if (data.shipClass) cached.shipClass = data.shipClass;
-        if (data.inventory) cached.inventory = data.inventory;
+        if (data.inventory) {
+          cached.inventory = data.inventory;
+          // async loot guard: strip forged rolled items from the combat cache
+          sanitizeInventory(user.playerId, data.inventory).then((clean) => {
+            if (clean.length !== (data.inventory?.length ?? 0)) {
+              const c = engine.playerDataCache.get(user.playerId);
+              if (c) { c.inventory = clean; engine.refreshPlayerStats(user.playerId); }
+            }
+          }).catch(() => {});
+        }
         if (data.equipped) cached.equipped = data.equipped;
         if (data.skills) cached.skills = data.skills;
         if (data.drones) cached.drones = data.drones;

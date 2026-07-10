@@ -200,7 +200,7 @@ export function Hotbar() {
         sub={ammoDef.shortName}
         count={ammoCount}
         active={isLaserFiring || showAmmoSelector}
-        title={`${ammoDef.name} — click to change ammo type (1 toggles laser fire)`}
+        title={`${ammoDef.name}\n${ammoDef.description}\nDMG ×${ammoDef.damageMul}${ammoDef.hasAoe ? " · AOE SPLASH" : ""}${ammoDef.stunDuration ? ` · STUN ${ammoDef.stunDuration}s` : ""} · COST ${ammoDef.costPerRound} CR/round\nIN STOCK ${ammoCount} — click to change ammo type · key 1 toggles laser fire`}
         onClick={toggleAmmoSelector}
       >
         {showAmmoSelector && (
@@ -233,7 +233,7 @@ export function Hotbar() {
         sub={rocketDef.shortName}
         count={rocketCount}
         active={isRocketFiring || showRocketAmmoSelector}
-        title={`${rocketDef.name} — click to change rocket type (2 toggles rocket fire)`}
+        title={`${rocketDef.name}\n${rocketDef.description}\nDMG ×${rocketDef.damageMul} · COST ${rocketDef.costPerRound} CR/round\nIN STOCK ${rocketCount} — click to change rocket type · key 2 toggles rocket fire`}
         onClick={toggleRocketAmmoSelector}
       >
         {showRocketAmmoSelector && (
@@ -277,7 +277,7 @@ export function Hotbar() {
             sub={def ? `×${count}` : ""}
             count={def ? count : null}
             active={isActive || assignSlot === i}
-            title={def ? `${def.name}: ${def.description} — right-click to change` : "Empty slot — click to assign an item"}
+            title={def ? `${def.name}\n${def.description}\n${def.cooldown > 0 ? `COOLDOWN ${def.cooldown}s · ` : ""}OWNED ×${count} · MAX STACK ${def.stackMax}\nClick to use · right-click to reassign` : "Empty slot\nClick to assign a consumable"}
             onClick={() => (usable ? useConsumable(i) : toggleAssign(i))}
             onContextMenu={() => toggleAssign(i)}
             cooldownPct={def && cd > 0 ? cd / def.cooldown : 0}

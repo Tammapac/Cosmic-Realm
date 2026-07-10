@@ -159,7 +159,12 @@ export type EnemyHitEvent = {
 export type EnemyDieEvent = {
   enemyId: string;
   killerId: number;
-  loot: { credits: number; exp: number; honor: number; resource?: { resourceId: string; qty: number } };
+  loot: {
+    credits: number; exp: number; honor: number;
+    resource?: { resourceId: string; qty: number };
+    bonusResource?: { resourceId: string; qty: number };
+    item?: import("../game/types").ModuleItem;
+  };
   pos: { x: number; y: number };
 };
 

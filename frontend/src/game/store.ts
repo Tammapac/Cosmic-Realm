@@ -52,6 +52,7 @@ import {
   MISSION_BOARD_POOL, MissionCategory,
 } from "./types";
 import { sfx } from "./sound";
+import { lootSellPrice } from "./loot-ui";
 import { sendWarp, sendStatsUpdate, sendDockRepair, sendDockLeave, sendInstanceEnter, sendInstanceLeave } from "../net/socket";
 
 export type HangarTab =
@@ -91,6 +92,7 @@ export type GameState = {
   showSkillTree: boolean;
   showMissions: boolean;
   showCargo: boolean;
+  showInventory: boolean;
   refiningJobs: RefineJob[];
   factoryLevel: number;
   paused: boolean;
@@ -483,6 +485,7 @@ export const state: GameState = {
   hangarTab: "bounties",
   showMap: false,
   showCargo: false,
+  showInventory: false,
   refiningJobs: [],
   factoryLevel: 1,
   showClan: false,
@@ -1457,7 +1460,7 @@ export function sellInventoryItem(instanceId: string): void {
   if (!item) return;
   const def = MODULE_DEFS[item.defId];
   if (!def) return;
-  const price = Math.floor(def.price * 0.4);
+  const price = lootSellPrice(item, def);
   unequipInstance(instanceId);
   p.inventory = p.inventory.filter((m) => m.instanceId !== instanceId);
   p.credits += price;

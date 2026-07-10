@@ -2,6 +2,7 @@ import { Router } from "express";
 import { eq } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import { authMiddleware } from "../middleware/auth.js";
+import { sanitizeInventory } from "../game/lootService.js";
 
 const router = Router();
 router.use(authMiddleware);
@@ -32,6 +33,18 @@ router.post("/save", async (req, res) => {
     const { playerId } = (req as any).user;
     const data = req.body;
 
+    // Server-authoritative loot guard: strip forged/duped/mutated rolled items
+    const cleanInventory = await sanitizeInventory(playerId, data.inventory ?? []);
+    const validIds = new Set(cleanInventory.map((i: any) => i.instanceId));
+    const cleanEquipped = data.equipped && typeof data.equipped === "object"
+      ? Object.fromEntries(
+          Object.entries(data.equipped).map(([slot, arr]) => [
+            slot,
+            Array.isArray(arr) ? arr.map((id: any) => (id == null || validIds.has(id) ? id : null)) : arr,
+          ])
+        )
+      : data.equipped;
+
     await db
       .update(schema.players)
       .set({
@@ -49,8 +62,8 @@ router.post("/save", async (req, res) => {
         skillPoints: data.skillPoints,
         skills: data.skills,
         ownedShips: data.ownedShips,
-        inventory: data.inventory,
-        equipped: data.equipped,
+        inventory: cleanInventory,
+        equipped: cleanEquipped,
         cargo: data.cargo,
         drones: data.drones,
         consumables: data.consumables,

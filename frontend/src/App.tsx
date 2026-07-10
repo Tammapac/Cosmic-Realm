@@ -13,7 +13,9 @@ import { SocialPanel, ClanPanel, GalaxyMap, BattleLog } from "./components/Socia
 import { FactionPicker } from "./components/FactionPicker";
 import { IdleRewardModal } from "./components/IdleRewardModal";
 import { EventBanners } from "./components/EventBanners";
+import { GameTooltip } from "./components/GameTooltip";
 import { Hotbar } from "./components/Hotbar";
+import { InventoryPanel } from "./components/InventoryPanel";
 import { QuestTracker } from "./components/QuestTracker";
 import SettingsMenu from "./components/SettingsMenu";
 import { AdminPanel } from "./components/AdminPanel";
@@ -379,7 +381,7 @@ function DungeonHud() {
           <div className="text-[10px] tracking-[0.25em] font-bold" style={{ color: def.color }}>▼ {def.name.toUpperCase()}</div>
           <div className="text-[10px] text-mute tabular-nums">WAVE {dungeon.wave}/{dungeon.totalWaves}</div>
           <div className="text-[10px] text-amber tabular-nums">ENEMIES: {state.enemies.length}</div>
-          <button className="btn btn-danger" style={{ padding: "1px 6px", fontSize: 9 }} onClick={abandonDungeon}>
+          <button className="gbtn gbtn-red" style={{ padding: "1px 6px", fontSize: 9 }} onClick={abandonDungeon}>
             Abandon
           </button>
         </div>
@@ -405,7 +407,7 @@ function DockPrompt() {
     <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-40">
       {station && !state.dockedAt && (
         <button
-          className="btn btn-primary text-base px-8 py-3"
+          className="gbtn gbtn-gold text-base px-8 py-3"
           style={{ animation: "pulse-glow 2s ease-in-out infinite", whiteSpace: "nowrap", minWidth: "fit-content" }}
           onClick={() => {
             state.dockedAt = station.id; sendDockEnter();
@@ -422,7 +424,7 @@ function DockPrompt() {
       )}
       {portal && (
         <button
-          className="btn px-6 py-3"
+          className="gbtn px-6 py-3"
           style={{ borderColor: "#ff5cf0", color: "#ff5cf0", animation: "pulse-glow 2s ease-in-out infinite" }}
           onClick={() => {
             const z = ZONES[portal.toZone];
@@ -790,15 +792,19 @@ function GameApp() {
         } else if (data.type === "enemy:fire") {
           const d = data.data;
           if (d) {
-            state.projectiles.push({
-              id: "ip-" + Math.random().toString(36).slice(2, 8),
-              pos: { x: d.x, y: d.y },
-              vel: { x: Math.cos(d.angle) * 200, y: Math.sin(d.angle) * 200 },
-              damage: d.damage,
-              color: d.color ?? "#ff4444",
-              fromPlayer: false,
-              size: 3, ttl: 1.6,
-            });
+            // bullet-hell orb fan for instance enemies
+            for (let bi = -1; bi <= 1; bi++) {
+              state.projectiles.push({
+                id: "ip-" + Math.random().toString(36).slice(2, 8),
+                pos: { x: d.x, y: d.y },
+                vel: { x: Math.cos(d.angle + bi * 0.2) * 210, y: Math.sin(d.angle + bi * 0.2) * 210 },
+                damage: d.damage,
+                color: d.color ?? "#ff4444",
+                fromPlayer: false,
+                size: 5, ttl: 3.2,
+                weaponKind: "orb" as any,
+              });
+            }
           }
         }
       },
@@ -896,15 +902,18 @@ function GameApp() {
         state.showSocial = !state.showSocial; bump();
       } else if (e.key === "j" || e.key === "J") {
         state.showCargo = !state.showCargo; bump();
+      } else if (e.key === "i" || e.key === "I") {
+        state.showInventory = !state.showInventory; bump();
       } else if (e.key === "Escape") {
         if (state.showSettings) {
           state.showSettings = false;
-        } else if (state.showMap || state.showClan || state.showAmmoSelector || state.showRocketAmmoSelector || state.showFullZoneMap) {
+        } else if (state.showMap || state.showClan || state.showAmmoSelector || state.showRocketAmmoSelector || state.showFullZoneMap || state.showInventory) {
           state.showMap = false;
           state.showClan = false;
           state.showAmmoSelector = false;
           state.showRocketAmmoSelector = false;
           state.showFullZoneMap = false;
+          state.showInventory = false;
         } else {
           state.showSettings = true;
         }
@@ -1029,6 +1038,7 @@ function GameApp() {
       <ClanPanel />
       <GalaxyMap />
       <EventBanners />
+      <GameTooltip />
       <Title />
       {docked && <Hangar stationId={docked} />}
       <DockingSummary />
@@ -1046,6 +1056,7 @@ function GameApp() {
       </div>
       <Hotbar />
       <CargoOverlay />
+      <InventoryPanel />
       <IdleRewardModal />
       <FactionPicker />
       </div>

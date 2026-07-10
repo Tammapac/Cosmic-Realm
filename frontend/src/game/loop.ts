@@ -17,6 +17,7 @@ import { type ServerEnemy, type ServerAsteroid, type ServerNpc, type EnemyHitEve
 import { sendInstanceEnemyHit } from "../net/socket";
 import { getShipMuzzleWorldPositions, getShipMuzzleWorldPositionsAt } from "./three-ship-layer";
 import { MOVEMENT, NETCODE } from "../../../lib/game-constants";
+import { resolveAffixStats, itemDisplayName, rarityColor } from "../../../lib/loot/loot";
 
 
 
@@ -36,7 +37,7 @@ function sumEquippedStats(): ModuleStats {
   const acc: Required<ModuleStats> = {
     damage: 0, fireRate: 1, critChance: 0, shieldMax: 0, shieldRegen: 0,
     hullMax: 0, speed: 0, damageReduction: 0, shieldAbsorb: 0, cargoBonus: 0, lootBonus: 0, aoeRadius: 0,
-    ammoCapacity: 0,
+    ammoCapacity: 0, miningBonus: 0,
   };
   let weaponDmg = 0, weaponFireRate = 1, weaponCrit = 0, weaponAoe = 0, weaponCount = 0;
   for (const id of p.equipped.weapon) {
@@ -75,6 +76,19 @@ function sumEquippedStats(): ModuleStats {
     acc.cargoBonus      += s.cargoBonus ?? 0;
     acc.lootBonus       += s.lootBonus ?? 0;
     acc.aoeRadius       = Math.max(acc.aoeRadius, s.aoeRadius ?? 0);
+  }
+
+  // Rolled affix + legendary bonuses — same resolver and fold rules as the
+  // server (fireRate multiplicative, everything else additive) so combat
+  // numbers stay in sync.
+  for (const id of [...p.equipped.weapon, ...p.equipped.generator, ...p.equipped.module]) {
+    if (!id) continue;
+    const item = p.inventory.find((m) => m.instanceId === id);
+    if (!item) continue;
+    for (const [key, val] of Object.entries(resolveAffixStats(item))) {
+      if (key === "fireRate") acc.fireRate *= val;
+      else (acc as any)[key] = ((acc as any)[key] ?? 0) + val;
+    }
   }
   return acc;
 }
@@ -634,7 +648,7 @@ function emitDeath(_x: number, _y: number, _color: string, _big = false, _enemyS
 function fireProjectile(
   from: "player" | "enemy" | "drone",
   x: number, y: number, angle: number, damage: number, color: string, size = 3,
-  opts?: { crit?: boolean; aoeRadius?: number; speedMul?: number; homing?: boolean; empStun?: number; armorPiercing?: boolean; weaponKind?: WeaponKind; renderOnly?: boolean },
+  opts?: { crit?: boolean; aoeRadius?: number; speedMul?: number; homing?: boolean; empStun?: number; armorPiercing?: boolean; weaponKind?: WeaponKind; renderOnly?: boolean; ttl?: number },
 ): void {
   const speedBase = from === "player" ? 230 : from === "drone" ? 600 : 200;
   const speed = speedBase * (opts?.speedMul ?? 1);
@@ -643,7 +657,7 @@ function fireProjectile(
     pos: { x, y },
     vel: { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed },
     damage,
-    ttl: opts?.homing ? 4.0 : 1.5, // 1.5 matches server laser TTL
+    ttl: opts?.ttl ?? (opts?.homing ? 4.0 : 1.5), // 1.5 matches server laser TTL
     fromPlayer: from !== "enemy",
     color,
     size: opts?.crit ? size + 2 : size,
@@ -1041,7 +1055,7 @@ function tickWorld(dt: number): void {
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist > MOVEMENT.STOP_DISTANCE) {
       p.angle = Math.atan2(dy, dx);
-      const accel = 500;
+      const accel = MOVEMENT.ACCELERATION;
       p.vel.x += Math.cos(p.angle) * accel * dt;
       p.vel.y += Math.sin(p.angle) * accel * dt;
     }
@@ -1399,25 +1413,25 @@ function tickWorld(dt: number): void {
           // TITAN/OVERLORD BOSS: Heavy plasma barrage + energy ring
           if (phase === 0) {
             for (let i = -3; i <= 3; i++) {
-              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.09, e.damage, e.color, 6, { weaponKind: "plasma", speedMul: 0.8, aoeRadius: 25 });
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.09, e.damage, e.color, 6, { weaponKind: "spinner" as any, speedMul: 0.8, aoeRadius: 25 });
             }
             e.fireCd = 1.3;
           } else if (phase === 1) {
             for (let i = -4; i <= 4; i++) {
-              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.1, e.damage * 1.2, "#ff4466", 6, { weaponKind: "plasma", speedMul: 0.9, aoeRadius: 30 });
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.1, e.damage * 1.2, "#ff4466", 6, { weaponKind: "spinner" as any, speedMul: 0.9, aoeRadius: 30 });
             }
             for (let i = 0; i < 8; i++) {
               const ra = (Math.PI * 2 / 8) * i + state.tick * 0.3;
-              fireProjectile("enemy", e.pos.x, e.pos.y, ra, e.damage * 0.6, e.color, 5, { weaponKind: "energy", speedMul: 0.6 });
+              fireProjectile("enemy", e.pos.x, e.pos.y, ra, e.damage * 0.6, e.color, 5, { weaponKind: "orb" as any, speedMul: 0.6 });
             }
             e.fireCd = 1.0;
           } else {
             for (let i = 0; i < 16; i++) {
               const ra = (Math.PI * 2 / 16) * i + state.tick * 0.4;
-              fireProjectile("enemy", e.pos.x, e.pos.y, ra, e.damage * 0.9, "#ff2244", 5, { weaponKind: "energy", speedMul: 0.65 });
+              fireProjectile("enemy", e.pos.x, e.pos.y, ra, e.damage * 0.9, "#ff2244", 5, { weaponKind: "orb" as any, speedMul: 0.65 });
             }
             for (let i = -3; i <= 3; i++) {
-              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.07, e.damage * 1.5, "#ffffff", 7, { weaponKind: "plasma", speedMul: 1.0, aoeRadius: 35 });
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.07, e.damage * 1.5, "#ffffff", 7, { weaponKind: "spinner" as any, speedMul: 1.0, aoeRadius: 35 });
             }
             e.fireCd = 0.9;
           }
@@ -1425,21 +1439,21 @@ function tickWorld(dt: number): void {
           // WRAITH/SENTINEL BOSS: Rapid energy storm
           if (phase === 0) {
             for (let i = -3; i <= 3; i++) {
-              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.12, e.damage * 0.8, e.color, 4, { weaponKind: "energy", speedMul: 1.2 });
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.12, e.damage * 0.8, e.color, 4, { weaponKind: "orb" as any, speedMul: 1.2 });
             }
             e.fireCd = 0.8;
           } else if (phase === 1) {
             for (let i = -4; i <= 4; i++) {
-              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.1, e.damage * 0.9, "#cc44ff", 4, { weaponKind: "energy", speedMul: 1.4 });
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.1, e.damage * 0.9, "#cc44ff", 4, { weaponKind: "orb" as any, speedMul: 1.4 });
             }
             e.fireCd = 0.5;
           } else {
             for (let i = 0; i < 20; i++) {
               const ra = (Math.PI * 2 / 20) * i + state.tick * 0.7;
-              fireProjectile("enemy", e.pos.x, e.pos.y, ra, e.damage * 0.6, "#cc44ff", 3, { weaponKind: "energy", speedMul: 1.1 });
+              fireProjectile("enemy", e.pos.x, e.pos.y, ra, e.damage * 0.6, "#cc44ff", 3, { weaponKind: "orb" as any, speedMul: 1.1 });
             }
             for (let i = -3; i <= 3; i++) {
-              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.06, e.damage * 1.3, "#ffffff", 5, { weaponKind: "energy", speedMul: 1.5 });
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.06, e.damage * 1.3, "#ffffff", 5, { weaponKind: "orb" as any, speedMul: 1.5 });
             }
             e.fireCd = 0.4;
           }
@@ -1447,25 +1461,25 @@ function tickWorld(dt: number): void {
           // DREAD BOSS (default): Massive plasma barrage - WAY more projectiles
           if (phase === 0) {
             for (let i = -4; i <= 4; i++) {
-              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.08, e.damage, e.color, 5, { weaponKind: "plasma", speedMul: 0.95 });
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.08, e.damage, e.color, 5, { weaponKind: "spinner" as any, speedMul: 0.95 });
             }
             e.fireCd = 1.1;
           } else if (phase === 1) {
             for (let i = -5; i <= 5; i++) {
-              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.09, e.damage * 1.2, "#ff5c6c", 5, { weaponKind: "plasma", speedMul: 1.1 });
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.09, e.damage * 1.2, "#ff5c6c", 5, { weaponKind: "spinner" as any, speedMul: 1.1 });
             }
             for (let i = 0; i < 6; i++) {
               const ra = (Math.PI * 2 / 6) * i + state.tick * 0.4;
-              fireProjectile("enemy", e.pos.x, e.pos.y, ra, e.damage * 0.7, "#ffaa22", 4, { weaponKind: "energy", speedMul: 0.7 });
+              fireProjectile("enemy", e.pos.x, e.pos.y, ra, e.damage * 0.7, "#ffaa22", 4, { weaponKind: "orb" as any, speedMul: 0.7 });
             }
             e.fireCd = 0.7;
           } else {
             for (let i = 0; i < 24; i++) {
               const ra = (Math.PI * 2 / 24) * i + state.tick * 0.5;
-              fireProjectile("enemy", e.pos.x, e.pos.y, ra, e.damage * 0.7, "#ff3b4d", 4, { weaponKind: "plasma", speedMul: 0.75 });
+              fireProjectile("enemy", e.pos.x, e.pos.y, ra, e.damage * 0.7, "#ff3b4d", 4, { weaponKind: "spinner" as any, speedMul: 0.75 });
             }
             for (let i = -4; i <= 4; i++) {
-              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.06, e.damage * 1.5, "#ffffff", 6, { weaponKind: "plasma", speedMul: 1.2 });
+              fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.06, e.damage * 1.5, "#ffffff", 6, { weaponKind: "spinner" as any, speedMul: 1.2 });
             }
             e.fireCd = 0.6;
           }
@@ -1476,7 +1490,7 @@ function tickWorld(dt: number): void {
       if ((e.burstShots ?? 0) > 0) {
         e.burstCd = (e.burstCd ?? 0) - dt;
         if ((e.burstCd ?? 0) <= 0) {
-          const bWk = (e.type === "wraith" || e.type === "sentinel") ? "energy" : "plasma";
+          const bWk = (e.type === "wraith" || e.type === "sentinel") ? "orb" : "spinner";
           fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + (Math.random() - 0.5) * 0.2, e.damage * 0.6, e.color, 3, { weaponKind: bWk as any });
           e.burstShots = (e.burstShots ?? 0) - 1;
           e.burstCd = 0.1;
@@ -1492,7 +1506,7 @@ function tickWorld(dt: number): void {
           const spiralBase = state.tick * 2.5;
           for (let arm = 0; arm < 2; arm++) {
             const sAng = spiralBase + arm * Math.PI;
-            fireProjectile("enemy", e.pos.x, e.pos.y, sAng, e.damage * 0.4, e.color, 3, { weaponKind: "energy", speedMul: 0.55 });
+            fireProjectile("enemy", e.pos.x, e.pos.y, sAng, e.damage * 0.4, e.color, 3, { weaponKind: "orb" as any, speedMul: 0.55 });
           }
         }
         if (phase >= 2) {
@@ -1500,7 +1514,7 @@ function tickWorld(dt: number): void {
           const pDist = ed * 0.8;
           for (let i = 0; i < 3; i++) {
             const offsetAng = pAng + (i - 1) * 0.4 + (Math.random() - 0.5) * 0.2;
-            fireProjectile("enemy", e.pos.x, e.pos.y, offsetAng, e.damage * 0.5, "#ff8844", 4, { weaponKind: "plasma", speedMul: 0.6, aoeRadius: 35 });
+            fireProjectile("enemy", e.pos.x, e.pos.y, offsetAng, e.damage * 0.5, "#ff8844", 4, { weaponKind: "spinner" as any, speedMul: 0.6, aoeRadius: 35 });
           }
           // Slow homing orb (aims at player predicted position)
           const projSpd = 220 * 0.4;
@@ -1508,127 +1522,176 @@ function tickWorld(dt: number): void {
           const predX = p.pos.x + p.vel.x * tHit * 0.5;
           const predY = p.pos.y + p.vel.y * tHit * 0.5;
           const homingAng = Math.atan2(predY - e.pos.y, predX - e.pos.x);
-          fireProjectile("enemy", e.pos.x, e.pos.y, homingAng, e.damage * 0.8, "#ffcc00", 5, { weaponKind: "energy", speedMul: 0.4, homing: true });
+          fireProjectile("enemy", e.pos.x, e.pos.y, homingAng, e.damage * 0.8, "#ffcc00", 5, { weaponKind: "orb" as any, speedMul: 0.4, homing: true });
         }
         e.secondaryCd = phase >= 2 ? 0.35 : 0.6;
       }
       if (phase >= 2) { e.speed = 55; }
+    } else if (e.type === "scout") {
+      // twin snap flashes with jitter
+      if (e.fireCd <= 0 && ed < 400) {
+        for (const j of [-0.05, 0.05]) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + j + (Math.random() - 0.5) * 0.06, e.damage * 0.5, e.color, 3, { weaponKind: "flash" as any, speedMul: 2.2, ttl: 2.0 });
+        }
+        e.fireCd = 0.75 + Math.random() * 0.25;
+      }
+    } else if (e.type === "interceptor") {
+      // fast 3-flash fan
+      if (e.fireCd <= 0 && ed < 420) {
+        for (let i = -1; i <= 1; i++) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.15, e.damage * 0.4, e.color, 3, { weaponKind: "flash" as any, speedMul: 2.6, ttl: 1.8 });
+        }
+        e.fireCd = 0.6 + Math.random() * 0.25;
+      }
+    } else if (e.type === "raider") {
+      // slow orb fan
+      if (e.fireCd <= 0 && ed < 460) {
+        for (let i = -1; i <= 1; i++) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.22, e.damage * 0.45, e.color, 5, { weaponKind: "orb" as any, speedMul: 1.0, ttl: 3.5 });
+        }
+        e.fireCd = 1.2 + Math.random() * 0.4;
+      }
+    } else if (e.type === "corvette") {
+      // wide 5-orb fan
+      if (e.fireCd <= 0 && ed < 470) {
+        for (let i = -2; i <= 2; i++) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.2, e.damage * 0.3, e.color, 5, { weaponKind: "orb" as any, speedMul: 1.05, ttl: 3.5 });
+        }
+        e.fireCd = 1.3 + Math.random() * 0.4;
+      }
+    } else if (e.type === "destroyer") {
+      // heavy aimed spinner + flanking orbs
+      if (e.fireCd <= 0 && ed < 470) {
+        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage * 0.9, e.color, 9, { weaponKind: "spinner" as any, speedMul: 0.8, ttl: 4.0 });
+        for (let i = -2; i <= 2; i++) {
+          if (i !== 0) fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.3, e.damage * 0.25, e.color, 4, { weaponKind: "orb" as any, speedMul: 1.0, ttl: 3.5 });
+        }
+        e.fireCd = 1.8 + Math.random() * 0.4;
+      }
     } else if (e.type === "sentinel") {
-      // Sentinel: predictive double-tap + area denial bursts
+      // rotating 3-arm spiral emitter
       if (e.fireCd <= 0 && ed < 520) {
-        const p = state.player;
-        // Predictive aim: lead the target based on player velocity
-        const projSpd = 220 * 1.2;
-        const tHit = ed / projSpd;
-        const predX = p.pos.x + p.vel.x * tHit * 0.6;
-        const predY = p.pos.y + p.vel.y * tHit * 0.6;
-        const predAng = Math.atan2(predY - e.pos.y, predX - e.pos.x);
-        // Main shots aimed at predicted position
-        fireProjectile("enemy", e.pos.x, e.pos.y, predAng - 0.04, e.damage, e.color, 4, { weaponKind: "energy", speedMul: 1.2 });
-        fireProjectile("enemy", e.pos.x, e.pos.y, predAng + 0.04, e.damage, e.color, 4, { weaponKind: "energy", speedMul: 1.2 });
-        // Area denial: shots offset to sides of player
-        fireProjectile("enemy", e.pos.x, e.pos.y, predAng + 0.3, e.damage * 0.5, e.color, 3, { weaponKind: "energy", speedMul: 0.9 });
-        fireProjectile("enemy", e.pos.x, e.pos.y, predAng - 0.3, e.damage * 0.5, e.color, 3, { weaponKind: "energy", speedMul: 0.9 });
-        e.fireCd = 0.6 + Math.random() * 0.3;
+        const ex = e as any;
+        ex.spiralAng = (ex.spiralAng ?? Math.random() * Math.PI * 2) + 0.55;
+        for (let arm = 0; arm < 3; arm++) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, ex.spiralAng + arm * (Math.PI * 2 / 3), e.damage * 0.35, e.color, 5, { weaponKind: "spinner" as any, speedMul: 1.0, ttl: 3.5 });
+        }
+        ex.volleyCount = (ex.volleyCount ?? 0) + 1;
+        if (ex.volleyCount % 4 === 0) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage * 0.6, "#ffffff", 4, { weaponKind: "flash" as any, speedMul: 2.6, ttl: 1.8 });
+        }
+        e.fireCd = 0.38 + Math.random() * 0.1;
+      }
+    } else if (e.type === "voidling") {
+      // rotating ring bursts
+      if (e.fireCd <= 0 && ed < 480) {
+        const ex = e as any;
+        ex.volleyCount = (ex.volleyCount ?? 0) + 1;
+        for (let i = 0; i < 10; i++) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, (Math.PI * 2 / 10) * i + ex.volleyCount * 0.31, e.damage * 0.22, e.color, 5, { weaponKind: "orb" as any, speedMul: 1.0, ttl: 3.5 });
+        }
+        e.fireCd = 2.0 + Math.random() * 0.4;
       }
     } else if (e.type === "wraith") {
-      // Wraith: fast predictive burst + flanking shots
-      if (e.fireCd <= 0 && ed < 400) {
+      // twin seeker orbs + snap flash
+      if (e.fireCd <= 0 && ed < 460) {
+        for (const j of [-0.4, 0.4]) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + j, e.damage * 0.45, e.color, 5, { weaponKind: "orb" as any, speedMul: 1.1, homing: true, ttl: 4.0 });
+        }
+        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage * 0.5, "#ffffff", 3, { weaponKind: "flash" as any, speedMul: 2.8, ttl: 1.8 });
+        e.fireCd = 1.4 + Math.random() * 0.4;
+      }
+    } else if (e.type === "specter") {
+      // curving seeker spinner + flanking flashes
+      if (e.fireCd <= 0 && ed < 460) {
+        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + Math.PI * 0.25, e.damage * 0.7, e.color, 6, { weaponKind: "spinner" as any, speedMul: 1.2, homing: true, ttl: 4.0 });
+        for (const j of [-0.5, 0.5]) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + j, e.damage * 0.35, e.color, 3, { weaponKind: "flash" as any, speedMul: 2.6, ttl: 1.8 });
+        }
+        e.fireCd = 1.3 + Math.random() * 0.4;
+      }
+    } else if (e.type === "phantom") {
+      // predictive sniper flash + trailing orb fan
+      if (e.fireCd <= 0 && ed < 520) {
         const p = state.player;
-        const projSpd = 220 * 1.4;
+        const projSpd = 200 * 3.4;
         const tHit = ed / projSpd;
         const predX = p.pos.x + p.vel.x * tHit * 0.7;
         const predY = p.pos.y + p.vel.y * tHit * 0.7;
         const predAng = Math.atan2(predY - e.pos.y, predX - e.pos.x);
-        // Fast triple burst at predicted position
+        fireProjectile("enemy", e.pos.x, e.pos.y, predAng, e.damage * 0.8, "#ffffff", 4, { weaponKind: "flash" as any, speedMul: 3.4, ttl: 1.5 });
         for (let i = -1; i <= 1; i++) {
-          fireProjectile("enemy", e.pos.x, e.pos.y, predAng + i * 0.12, e.damage * 0.7, e.color, 3, { weaponKind: "energy", speedMul: 1.4 });
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.25, e.damage * 0.25, e.color, 4, { weaponKind: "orb" as any, speedMul: 1.1, ttl: 3.5 });
         }
-        // Two flanking shots aimed where player might dodge
-        const dodgeAng1 = predAng + Math.PI * 0.4;
-        const dodgeAng2 = predAng - Math.PI * 0.4;
-        fireProjectile("enemy", e.pos.x, e.pos.y, dodgeAng1, e.damage * 0.4, e.color, 2, { weaponKind: "energy", speedMul: 1.6 });
-        fireProjectile("enemy", e.pos.x, e.pos.y, dodgeAng2, e.damage * 0.4, e.color, 2, { weaponKind: "energy", speedMul: 1.6 });
-        e.fireCd = 0.35 + Math.random() * 0.25;
-      }
-    } else if (e.type === "titan") {
-      // Titan: heavy plasma spread + slow homing orb + ground denial
-      if (e.fireCd <= 0 && ed < 520) {
-        const p = state.player;
-        // Main heavy spread
-        for (let i = -1; i <= 1; i++) {
-          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.08, e.damage * 1.2, e.color, 6, { weaponKind: "plasma", speedMul: 0.7, aoeRadius: 30 });
-        }
-        // Area denial: shots aimed around the player (not at them)
-        const pAng = Math.atan2(p.pos.y - e.pos.y, p.pos.x - e.pos.x);
-        for (let i = 0; i < 4; i++) {
-          const offsetAng = pAng + (i - 1.5) * 0.25;
-          fireProjectile("enemy", e.pos.x, e.pos.y, offsetAng, e.damage * 0.6, "#ff6644", 5, { weaponKind: "plasma", speedMul: 0.5, aoeRadius: 40 });
-        }
-        e.fireCd = 1.0 + Math.random() * 0.3;
-      }
-    } else if (e.type === "overlord") {
-      // Overlord: predictive barrage + 360 pulse + homing
-      if (e.fireCd <= 0 && ed < 600) {
-        const p = state.player;
-        const projSpd = 220 * 1.1;
-        const tHit = ed / projSpd;
-        const predX = p.pos.x + p.vel.x * tHit * 0.5;
-        const predY = p.pos.y + p.vel.y * tHit * 0.5;
-        const predAng = Math.atan2(predY - e.pos.y, predX - e.pos.x);
-        // Main barrage at predicted position
-        for (let i = -2; i <= 2; i++) {
-          fireProjectile("enemy", e.pos.x, e.pos.y, predAng + i * 0.09, e.damage * 0.7, e.color, 4, { weaponKind: "energy", speedMul: 1.1 });
-        }
-        // Heavy center shot
-        fireProjectile("enemy", e.pos.x, e.pos.y, predAng, e.damage * 1.5, "#ff4466", 7, { weaponKind: "plasma", speedMul: 0.8, aoeRadius: 40 });
-        // Area denial ring (4 shots around player area)
-        for (let i = 0; i < 4; i++) {
-          const ringAng = predAng + (Math.PI / 3) * (i - 1.5);
-          fireProjectile("enemy", e.pos.x, e.pos.y, ringAng, e.damage * 0.4, e.color, 3, { weaponKind: "energy", speedMul: 0.7 });
-        }
-        e.fireCd = 0.7 + Math.random() * 0.3;
+        e.fireCd = 1.2 + Math.random() * 0.3;
       }
     } else if (e.type === "dread") {
-      // Dread: heavy plasma spread + predictive shots
+      // wide fork of flashes + rear seeker orb every 2nd volley
       if (e.fireCd <= 0 && ed < 500) {
-        const p = state.player;
-        const projSpd = 220 * 0.9;
-        const tHit = ed / projSpd;
-        const predX = p.pos.x + p.vel.x * tHit * 0.4;
-        const predY = p.pos.y + p.vel.y * tHit * 0.4;
-        const predAng = Math.atan2(predY - e.pos.y, predX - e.pos.x);
-        for (let i = -1; i <= 1; i++) {
-          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.06, e.damage, e.color, 5, { weaponKind: "plasma", speedMul: 0.9 });
+        const ex = e as any;
+        ex.volleyCount = (ex.volleyCount ?? 0) + 1;
+        for (let i = -3; i <= 3; i++) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.15, e.damage * 0.28, e.color, 4, { weaponKind: "flash" as any, speedMul: 1.6, ttl: 2.4 });
         }
-        e.fireCd = 1.0 + Math.random() * 0.4;
-      }
-    } else if (e.type === "voidling") {
-      // Voidling: pulsing energy shots
-      if (e.fireCd <= 0 && ed < 480) {
-        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage, e.color, 4, { weaponKind: "energy" });
-        e.fireCd = 0.6 + Math.random() * 0.3;
-      }
-    } else if (e.type === "destroyer") {
-      // Destroyer: triple plasma spread
-      if (e.fireCd <= 0 && ed < 440) {
-        for (let i = -1; i <= 1; i++) {
-          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.06, e.damage * 0.8, e.color, 4, { weaponKind: "plasma" });
+        if (ex.volleyCount % 2 === 0) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + Math.PI, e.damage * 0.6, "#ff2200", 6, { weaponKind: "orb" as any, speedMul: 1.0, homing: true, ttl: 4.0 });
         }
-        e.fireCd = 1.2 + Math.random() * 0.5;
+        e.fireCd = 1.1 + Math.random() * 0.3;
       }
-    } else if (e.behavior === "fast") {
-      // Scout: rapid small lasers
-      if (e.fireCd <= 0 && ed < 300) {
-        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage, e.color, 2);
-        e.fireCd = 0.45 + Math.random() * 0.3;
+    } else if (e.type === "titan") {
+      // heavy spinner fan + ring every 3rd volley
+      if (e.fireCd <= 0 && ed < 520) {
+        const ex = e as any;
+        ex.volleyCount = (ex.volleyCount ?? 0) + 1;
+        for (let i = -2; i <= 2; i++) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.15, e.damage * 0.35, e.color, 8, { weaponKind: "spinner" as any, speedMul: 0.9, ttl: 4.0 });
+        }
+        if (ex.volleyCount % 3 === 0) {
+          for (let i = 0; i < 12; i++) {
+            fireProjectile("enemy", e.pos.x, e.pos.y, (Math.PI * 2 / 12) * i, e.damage * 0.2, "#ff6644", 5, { weaponKind: "orb" as any, speedMul: 1.0, ttl: 3.5 });
+          }
+        }
+        e.fireCd = 1.6 + Math.random() * 0.4;
+      }
+    } else if (e.type === "juggernaut") {
+      // alternating rotated rings + aimed heavy spinner
+      if (e.fireCd <= 0 && ed < 520) {
+        const ex = e as any;
+        ex.volleyCount = (ex.volleyCount ?? 0) + 1;
+        const ringOff = (ex.volleyCount % 2) * (Math.PI / 8);
+        for (let i = 0; i < 8; i++) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, (Math.PI * 2 / 8) * i + ringOff, e.damage * 0.22, e.color, 6, { weaponKind: "orb" as any, speedMul: 0.95, ttl: 3.5 });
+        }
+        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle, e.damage * 0.8, "#ffffff", 9, { weaponKind: "spinner" as any, speedMul: 1.0, ttl: 4.0 });
+        e.fireCd = 1.5 + Math.random() * 0.4;
+      }
+    } else if (e.type === "overlord") {
+      // spinner fan + triple seekers
+      if (e.fireCd <= 0 && ed < 600) {
+        for (let i = -2; i <= 2; i++) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.18, e.damage * 0.3, e.color, 5, { weaponKind: "spinner" as any, speedMul: 1.1, ttl: 3.5 });
+        }
+        for (const j of [-0.7, 0, 0.7]) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + j, e.damage * 0.3, "#ff44cc", 5, { weaponKind: "orb" as any, speedMul: 1.0, homing: true, ttl: 4.0 });
+        }
+        e.fireCd = 1.4 + Math.random() * 0.3;
+      }
+    } else if (e.type === "leviathan") {
+      // wavy bullet wall + twin seekers
+      if (e.fireCd <= 0 && ed < 560) {
+        for (let i = -4; i <= 4; i++) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + i * 0.14, e.damage * 0.2, e.color, 6, { weaponKind: "orb" as any, speedMul: (i % 2 === 0) ? 0.85 : 1.15, ttl: 3.8 });
+        }
+        for (const j of [-0.9, 0.9]) {
+          fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + j, e.damage * 0.3, "#00ffcc", 5, { weaponKind: "orb" as any, speedMul: 1.1, homing: true, ttl: 4.0 });
+        }
+        e.fireCd = 2.0 + Math.random() * 0.4;
       }
     } else {
-      // Raider/default: dual laser
+      // pirates / fallback: aimed flash
       if (e.fireCd <= 0 && ed < 500) {
-        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle - 0.03, e.damage * 0.9, e.color);
-        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + 0.03, e.damage * 0.9, e.color);
-        e.fireCd = 0.8 + Math.random() * 0.5;
+        fireProjectile("enemy", e.pos.x, e.pos.y, e.angle + (Math.random() - 0.5) * 0.05, e.damage * 0.8, e.color, 3, { weaponKind: "flash" as any, speedMul: 1.8, ttl: 2.2 });
+        e.fireCd = 0.8 + Math.random() * 0.4;
       }
     }
   }
@@ -2002,6 +2065,21 @@ function tickWorld(dt: number): void {
         pr.vel.x = Math.cos(newAng) * spd;
         pr.vel.y = Math.sin(newAng) * spd;
       }
+    }
+    // Enemy seeker shots curve toward the player — deliberately dodgeable
+    // turn rate for bullet-hell weaving.
+    if (pr.homing && !pr.fromPlayer) {
+      const pp = state.player;
+      const desiredAng = Math.atan2(pp.pos.y - pr.pos.y, pp.pos.x - pr.pos.x);
+      const curAng = Math.atan2(pr.vel.y, pr.vel.x);
+      let diff = desiredAng - curAng;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      const turnRate = 2.1 * dt;
+      const newAng = curAng + Math.sign(diff) * Math.min(Math.abs(diff), turnRate);
+      const spd = Math.sqrt(pr.vel.x * pr.vel.x + pr.vel.y * pr.vel.y);
+      pr.vel.x = Math.cos(newAng) * spd;
+      pr.vel.y = Math.sin(newAng) * spd;
     }
     pr.pos.x += pr.vel.x * dt;
     pr.pos.y += pr.vel.y * dt;
@@ -2740,6 +2818,23 @@ export function onEnemyDie(data: EnemyDieEvent): void {
     } as any);
   }
 
+  // Server-rolled equipment drop → straight to inventory (auto-pickup)
+  if (loot.item && loot.item.instanceId && MODULE_DEFS[loot.item.defId]) {
+    if (!p.inventory.some((m) => m.instanceId === loot.item!.instanceId)) {
+      p.inventory.push(loot.item);
+      const def = MODULE_DEFS[loot.item.defId];
+      const dispName = itemDisplayName(loot.item, def.name);
+      const color = rarityColor(loot.item.rarity as any, def.color);
+      pushFloater({ text: dispName.toUpperCase(), color, x: pos.x, y: pos.y - 46, scale: 1.15 });
+      pushNotification(`${(loot.item.rarity ?? "common").toUpperCase()} DROP: ${dispName}`, "good");
+      pushChat("system", "LOOT", `${dispName} [ilvl ${loot.item.ilvl ?? 1}] looted`);
+      if (loot.item.rarity && loot.item.rarity !== "common" && loot.item.rarity !== "uncommon") {
+        sfx.bossKill();
+      }
+      save();
+    }
+  }
+
   // Kill log in chat
   const eName = e?.name ?? "Enemy";
   const eType = e?.type ?? "unknown";
@@ -2769,40 +2864,108 @@ export function onEnemyDie(data: EnemyDieEvent): void {
   bump();
 }
 
+// Per-enemy volley counters for alternating / spiral bullet-hell patterns.
+const _volleySeq = new Map<string, number>();
+const _spiralSeq = new Map<string, number>();
+function _volleyN(id: string): number {
+  if (_volleySeq.size > 800) _volleySeq.clear();
+  const n = (_volleySeq.get(id) ?? 0) + 1;
+  _volleySeq.set(id, n);
+  return n;
+}
+
 export function onEnemyAttack(data: EnemyAttackEvent): void {
   if (state.dungeon) return;
   const isTargetingMe = data.targetId === serverPlayerId;
   const ang = Math.atan2(data.targetPos.y - data.pos.y, data.targetPos.x - data.pos.x);
-  // Look up the enemy to determine projectile style
   const srcEnemy = state.enemies.find(e => e.id === data.enemyId);
   const eType = srcEnemy?.type ?? (data as any).enemyType;
-  let projColor = srcEnemy?.color ?? "#ff5c6c";
-  let projSize = 3;
-  let projWk: "laser" | "energy" | "plasma" | undefined = undefined;
-  let projSpeed = 2.73;
-  if (eType === "sentinel" || eType === "wraith" || eType === "voidling" || eType === "overlord") {
-    projWk = "energy";
-    projSize = 4;
-    projSpeed = eType === "wraith" ? 3.2 : 2.8;
-  } else if (eType === "dread" || eType === "titan" || eType === "destroyer") {
-    projWk = "plasma";
-    projSize = eType === "titan" ? 6 : 5;
-    projSpeed = eType === "titan" ? 2.0 : 2.5;
-  }
+  const projColor = srcEnemy?.color ?? "#ff5c6c";
+  const dmg = data.damage;
+  const x = data.pos.x, y = data.pos.y;
+  // In server mode damage is authoritative — every visual bullet is renderOnly.
+  const rOnly = serverAuthoritative || !isTargetingMe;
+  const F = (a: number, dm: number, c: string, size: number, wk: string, spd: number, ttl: number, homing = false) =>
+    fireProjectile("enemy", x, y, a, dm, c, size, { weaponKind: wk as any, speedMul: spd, ttl, homing, renderOnly: rOnly });
+
   // Muzzle flash at enemy position
   state.particles.push({
     id: `emf-${Math.random().toString(36).slice(2, 8)}`,
-    pos: { x: data.pos.x, y: data.pos.y },
+    pos: { x, y },
     vel: { x: 0, y: 0 }, ttl: 0.2, maxTtl: 0.2,
-    color: projColor, size: 60 + (projSize * 8), kind: "flash",
+    color: projColor, size: 70, kind: "flash",
   });
-  state.particles.push({
-    id: `emf2-${Math.random().toString(36).slice(2, 8)}`,
-    pos: { x: data.pos.x + Math.cos(ang) * 10, y: data.pos.y + Math.sin(ang) * 10 },
-    vel: { x: 0, y: 0 }, ttl: 0.12, maxTtl: 0.12,
-    color: "#ffffff", size: 40 + (projSize * 5), kind: "flash",
-  });
-  fireProjectile("enemy", data.pos.x, data.pos.y, ang, data.damage, projColor, projSize, { renderOnly: !isTargetingMe, speedMul: projSpeed, weaponKind: projWk as any });
+
+  const n = _volleyN(data.enemyId);
+  const isBoss = srcEnemy?.isBoss ?? false;
+  const phase = srcEnemy?.bossPhase ?? 0;
+
+  if (isBoss) {
+    // Boss: aimed spinner fan + rotating orb ring (+seekers in later phases)
+    const fanN = phase === 0 ? 7 : 9;
+    for (let i = 0; i < fanN; i++) {
+      F(ang + (i - (fanN - 1) / 2) * 0.11, dmg * 0.4, projColor, 6, "charged", 1.0, 3.5);
+    }
+    const ringN = 10 + phase * 5;
+    for (let i = 0; i < ringN; i++) {
+      F((Math.PI * 2 / ringN) * i + n * 0.25, dmg * 0.25, phase >= 2 ? "#ff2244" : projColor, 5, "orb", 0.9, 3.5);
+    }
+    if (phase >= 1) {
+      for (const j of [-0.5, 0.5]) F(ang + j, dmg * 0.35, "#ffffff", 5, "orb", 1.05, 4.0, true);
+    }
+  } else if (eType === "scout") {
+    for (const j of [-0.05, 0.05]) F(ang + j + (Math.random() - 0.5) * 0.06, dmg * 0.5, projColor, 3, "flash", 2.2, 2.0);
+  } else if (eType === "interceptor") {
+    for (let i = -1; i <= 1; i++) F(ang + i * 0.15, dmg * 0.4, projColor, 3, "flash", 2.6, 1.8);
+  } else if (eType === "raider") {
+    for (let i = -1; i <= 1; i++) F(ang + i * 0.22, dmg * 0.45, projColor, 5, "orb", 1.0, 3.5);
+  } else if (eType === "corvette") {
+    for (let i = -2; i <= 2; i++) F(ang + i * 0.2, dmg * 0.3, projColor, 5, "orb", 1.05, 3.5);
+  } else if (eType === "destroyer") {
+    F(ang, dmg * 0.9, projColor, 9, "charged", 0.8, 4.0);
+    for (let i = -2; i <= 2; i++) {
+      if (i !== 0) F(ang + i * 0.3, dmg * 0.25, projColor, 4, "orb", 1.0, 3.5);
+    }
+  } else if (eType === "sentinel") {
+    if (_spiralSeq.size > 800) _spiralSeq.clear();
+    const sa = (_spiralSeq.get(data.enemyId) ?? Math.random() * Math.PI * 2) + 0.55;
+    _spiralSeq.set(data.enemyId, sa);
+    for (let arm = 0; arm < 3; arm++) F(sa + arm * (Math.PI * 2 / 3), dmg * 0.35, projColor, 5, "spinner", 1.0, 3.5);
+    if (n % 4 === 0) F(ang, dmg * 0.6, "#ffffff", 4, "flash", 2.6, 1.8);
+  } else if (eType === "voidling") {
+    for (let i = 0; i < 10; i++) F((Math.PI * 2 / 10) * i + n * 0.31, dmg * 0.22, projColor, 5, "orb", 1.0, 3.5);
+  } else if (eType === "wraith") {
+    for (const j of [-0.4, 0.4]) F(ang + j, dmg * 0.45, projColor, 5, "orb", 1.1, 4.0, true);
+    F(ang, dmg * 0.5, "#ffffff", 3, "flash", 2.8, 1.8);
+  } else if (eType === "specter") {
+    F(ang + Math.PI * 0.25, dmg * 0.7, projColor, 6, "spinner", 1.2, 4.0, true);
+    for (const j of [-0.5, 0.5]) F(ang + j, dmg * 0.35, projColor, 3, "flash", 2.6, 1.8);
+  } else if (eType === "phantom") {
+    F(ang, dmg * 0.8, "#ffffff", 4, "pulse", 3.4, 1.5);
+    for (let i = -1; i <= 1; i++) F(ang + i * 0.25, dmg * 0.25, projColor, 4, "orb", 1.1, 3.5);
+  } else if (eType === "dread") {
+    for (let i = -3; i <= 3; i++) F(ang + i * 0.15, dmg * 0.28, projColor, 4, "flash", 1.6, 2.4);
+    if (n % 2 === 0) F(ang + Math.PI, dmg * 0.6, "#ff2200", 6, "orb", 1.0, 4.0, true);
+  } else if (eType === "titan") {
+    for (let i = -2; i <= 2; i++) F(ang + i * 0.15, dmg * 0.35, projColor, 8, "charged", 0.9, 4.0);
+    if (n % 3 === 0) {
+      for (let i = 0; i < 12; i++) F((Math.PI * 2 / 12) * i, dmg * 0.2, "#ff6644", 5, "orb", 1.0, 3.5);
+    }
+  } else if (eType === "juggernaut") {
+    const ringOff = (n % 2) * (Math.PI / 8);
+    for (let i = 0; i < 8; i++) F((Math.PI * 2 / 8) * i + ringOff, dmg * 0.22, projColor, 6, "orb", 0.95, 3.5);
+    F(ang, dmg * 0.8, "#ffffff", 9, "charged", 1.0, 4.0);
+  } else if (eType === "overlord") {
+    for (let i = -2; i <= 2; i++) F(ang + i * 0.18, dmg * 0.3, projColor, 5, "spinner", 1.1, 3.5);
+    for (const j of [-0.7, 0, 0.7]) F(ang + j, dmg * 0.3, "#ff44cc", 5, "orb", 1.0, 4.0, true);
+  } else if (eType === "leviathan") {
+    for (let i = -4; i <= 4; i++) F(ang + i * 0.14, dmg * 0.2, projColor, 6, "wave", (i % 2 === 0) ? 0.85 : 1.15, 3.8);
+    for (const j of [-0.9, 0.9]) F(ang + j, dmg * 0.3, "#00ffcc", 5, "orb", 1.1, 4.0, true);
+  } else {
+    // pirates / fallback
+    F(ang + (Math.random() - 0.5) * 0.05, dmg * 0.8, projColor, 3, "flash", 1.8, 2.2);
+  }
+
   if (!serverAuthoritative && isTargetingMe) {
     damagePlayer(data.damage);
   }

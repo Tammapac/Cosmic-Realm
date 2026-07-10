@@ -88,7 +88,7 @@ export function IdleRewardModal() {
         </div>
 
         <button
-          className="btn btn-primary w-full"
+          className="gbtn gbtn-gold w-full"
           style={{ padding: "5px 0", fontSize: 10, letterSpacing: "0.2em" }}
           onClick={claimIdleReward}
         >

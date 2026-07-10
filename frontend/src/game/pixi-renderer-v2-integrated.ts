@@ -1081,6 +1081,183 @@ function getLaserBoltTex(length: number): PIXI.Texture {
   return tex;
 }
 
+// ── Bullet-hell projectile art (white, tinted per projectile) ─────────────
+function getOrbTex(): PIXI.Texture {
+  const key = "proj-orb";
+  let tex = texCache.get(key);
+  if (tex) return tex;
+  const s = 48;
+  const c = document.createElement("canvas");
+  c.width = c.height = s;
+  const ctx = c.getContext("2d")!;
+  const g = ctx.createRadialGradient(s/2, s/2, 0, s/2, s/2, s/2);
+  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(0.25, "rgba(255,255,255,0.95)");
+  g.addColorStop(0.55, "rgba(255,255,255,0.40)");
+  g.addColorStop(1, "transparent");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, s, s);
+  tex = PIXI.Texture.from(c);
+  texCache.set(key, tex);
+  return tex;
+}
+
+function getSpinnerTex(): PIXI.Texture {
+  const key = "proj-spinner";
+  let tex = texCache.get(key);
+  if (tex) return tex;
+  const s = 64;
+  const c = document.createElement("canvas");
+  c.width = c.height = s;
+  const ctx = c.getContext("2d")!;
+  const cx = s / 2;
+  // 4 rotating energy petals
+  for (let i = 0; i < 4; i++) {
+    ctx.save();
+    ctx.translate(cx, cx);
+    ctx.rotate((Math.PI / 2) * i);
+    const pg = ctx.createRadialGradient(14, 0, 0, 14, 0, 15);
+    pg.addColorStop(0, "rgba(255,255,255,0.9)");
+    pg.addColorStop(0.6, "rgba(255,255,255,0.35)");
+    pg.addColorStop(1, "transparent");
+    ctx.fillStyle = pg;
+    ctx.beginPath();
+    ctx.ellipse(14, 0, 15, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  // bright core
+  const g = ctx.createRadialGradient(cx, cx, 0, cx, cx, 13);
+  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(0.5, "rgba(255,255,255,0.8)");
+  g.addColorStop(1, "transparent");
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(cx, cx, 13, 0, Math.PI * 2);
+  ctx.fill();
+  tex = PIXI.Texture.from(c);
+  texCache.set(key, tex);
+  return tex;
+}
+
+function getFlashBoltTex(): PIXI.Texture {
+  const key = "proj-flash";
+  let tex = texCache.get(key);
+  if (tex) return tex;
+  const s = 48;
+  const c = document.createElement("canvas");
+  c.width = c.height = s;
+  const ctx = c.getContext("2d")!;
+  const cx = s / 2;
+  // 4-point star: long horizontal lens + short vertical lens
+  for (const [rx, ry] of [[20, 3.5], [3.5, 11]] as const) {
+    const g = ctx.createRadialGradient(cx, cx, 0, cx, cx, Math.max(rx, ry));
+    g.addColorStop(0, "rgba(255,255,255,1)");
+    g.addColorStop(0.4, "rgba(255,255,255,0.6)");
+    g.addColorStop(1, "transparent");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(cx, cx, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const g2 = ctx.createRadialGradient(cx, cx, 0, cx, cx, 8);
+  g2.addColorStop(0, "rgba(255,255,255,1)");
+  g2.addColorStop(1, "transparent");
+  ctx.fillStyle = g2;
+  ctx.beginPath();
+  ctx.arc(cx, cx, 8, 0, Math.PI * 2);
+  ctx.fill();
+  tex = PIXI.Texture.from(c);
+  texCache.set(key, tex);
+  return tex;
+}
+
+// ── Animated projectile FX (CC0 packs: ansimuz "Warped Shooting Fx",
+//    DevWizard "Pixel Art Spells" — see ASSET_LICENSES.md) ────────────────
+// Frames are recolored per enemy color at load: glow tinted, white cores kept.
+const FX_DEFS: Record<string, { url: string; frames: number; fw: number; fh: number; mult: number; directional: boolean; speed: number }> = {
+  orb:     { url: "/assets/projectiles/orb.png",     frames: 6, fw: 16, fh: 16, mult: 3.6, directional: false, speed: 0.18 },
+  crossed: { url: "/assets/projectiles/crossed.png", frames: 6, fw: 32, fh: 32, mult: 4.2, directional: false, speed: 0.22 },
+  spark:   { url: "/assets/projectiles/spark.png",   frames: 5, fw: 63, fh: 32, mult: 3.2, directional: true,  speed: 0.3 },
+  pulse:   { url: "/assets/projectiles/pulse.png",   frames: 4, fw: 63, fh: 32, mult: 3.4, directional: true,  speed: 0.3 },
+  charged: { url: "/assets/projectiles/charged.png", frames: 6, fw: 63, fh: 48, mult: 3.4, directional: true,  speed: 0.22 },
+  wave:    { url: "/assets/projectiles/wave.png",    frames: 4, fw: 95, fh: 32, mult: 3.4, directional: true,  speed: 0.22 },
+  bolt:    { url: "/assets/projectiles/bolt.png",    frames: 4, fw: 48, fh: 32, mult: 3.4, directional: true,  speed: 0.25 },
+  hit:     { url: "/assets/projectiles/hit.png",     frames: 5, fw: 32, fh: 32, mult: 4.0, directional: false, speed: 0.35 },
+};
+const FX_KIND_MAP: Record<string, string> = {
+  orb: "orb", spinner: "crossed", flash: "spark",
+  pulse: "pulse", charged: "charged", wave: "wave", bolt: "bolt",
+};
+const _fxImages = new Map<string, HTMLImageElement>();
+const _fxColored = new Map<string, PIXI.Texture[]>();
+
+function _fxImg(name: string): HTMLImageElement | null {
+  let img = _fxImages.get(name);
+  if (!img) {
+    img = new Image();
+    img.src = FX_DEFS[name].url;
+    _fxImages.set(name, img);
+  }
+  return img.complete && img.naturalWidth > 0 ? img : null;
+}
+
+function getFxFrames(name: string, colorHex: string): PIXI.Texture[] | null {
+  const key = name + "|" + colorHex;
+  const cached = _fxColored.get(key);
+  if (cached) return cached;
+  const def = FX_DEFS[name];
+  if (!def) return null;
+  const img = _fxImg(name);
+  if (!img) return null;
+  const c = document.createElement("canvas");
+  c.width = img.naturalWidth; c.height = img.naturalHeight;
+  const ctx = c.getContext("2d")!;
+  ctx.drawImage(img, 0, 0);
+  const col = PIXI.utils.string2hex(colorHex);
+  const cr = (col >> 16) & 255, cg = (col >> 8) & 255, cb = col & 255;
+  const id = ctx.getImageData(0, 0, c.width, c.height);
+  const d = id.data;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] === 0) continue;
+    const inten = Math.max(d[i], d[i + 1], d[i + 2]) / 255;
+    const wht = Math.min(d[i], d[i + 1], d[i + 2]) / 255;
+    const w2 = wht * wht; // only true whites stay white-hot
+    d[i]     = Math.min(255, cr * inten + (255 - cr * inten) * w2);
+    d[i + 1] = Math.min(255, cg * inten + (255 - cg * inten) * w2);
+    d[i + 2] = Math.min(255, cb * inten + (255 - cb * inten) * w2);
+  }
+  ctx.putImageData(id, 0, 0);
+  const base = PIXI.BaseTexture.from(c);
+  base.scaleMode = PIXI.SCALE_MODES.NEAREST;
+  const frames: PIXI.Texture[] = [];
+  for (let i = 0; i < def.frames; i++) {
+    frames.push(new PIXI.Texture(base, new PIXI.Rectangle(i * def.fw, 0, def.fw, def.fh)));
+  }
+  _fxColored.set(key, frames);
+  return frames;
+}
+
+/** One-shot animated impact burst (warped hit fx) at a projectile's death. */
+function spawnFxImpact(x: number, y: number, colorHex: string, size: number): void {
+  const frames = getFxFrames("hit", colorHex);
+  if (!frames || !projectileLayer) return;
+  const a = new PIXI.AnimatedSprite(frames);
+  a.anchor.set(0.5);
+  a.position.set(x, y);
+  a.blendMode = PIXI.BLEND_MODES.ADD;
+  a.loop = false;
+  a.animationSpeed = FX_DEFS.hit.speed;
+  const s = Math.max(0.9, (size * FX_DEFS.hit.mult) / FX_DEFS.hit.fh);
+  a.scale.set(s);
+  a.onComplete = () => {
+    if (a.parent) a.parent.removeChild(a);
+    a.destroy();
+  };
+  projectileLayer.addChild(a);
+  a.play();
+}
+
 function getRocketTex(): PIXI.Texture {
   const key = "rocket-body";
   let tex = texCache.get(key);
@@ -2229,18 +2406,57 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
     let data = projectileSprites.get(pr.id);
 
     if (!data) {
-      // Native PixiJS projectile visuals
-      const isRocket = pr.weaponKind === "rocket";
-      const tex = isRocket ? getRocketTex() : getLaserBoltTex(Math.max(16, pr.size * 4));
+      // Projectile visuals: animated FX sprites (CC0 packs, recolored per
+      // enemy) with procedural canvas art as instant fallback while loading.
+      const kind = pr.weaponKind;
+      const isRocket = kind === "rocket";
+      const fxName = !pr.fromPlayer ? FX_KIND_MAP[kind] : undefined;
+      const fxFrames = fxName ? getFxFrames(fxName, pr.color) : null;
+      if (fxFrames && fxName) {
+        const def = FX_DEFS[fxName];
+        const anim = new PIXI.AnimatedSprite(fxFrames);
+        anim.anchor.set(0.5);
+        anim.blendMode = PIXI.BLEND_MODES.ADD;
+        anim.animationSpeed = def.speed;
+        anim.gotoAndPlay(Math.floor(Math.random() * def.frames));
+        anim.scale.set(Math.max(0.5, (pr.size * def.mult) / def.fh));
+        data = { sprite: anim, kind, fx: true, fxDir: def.directional } as any;
+        projectileSprites.set(pr.id, data);
+      } else {
+      let tex: PIXI.Texture;
+      let baseScale = 1;
+      if (isRocket) {
+        tex = getRocketTex();
+      } else if (kind === "orb") {
+        tex = getOrbTex();
+        baseScale = (pr.size * 3.4) / 48;
+      } else if (kind === "spinner") {
+        tex = getSpinnerTex();
+        baseScale = (pr.size * 3.8) / 64;
+      } else if (kind === "flash") {
+        tex = getFlashBoltTex();
+        baseScale = (pr.size * 4.2) / 48;
+      } else {
+        tex = getLaserBoltTex(Math.max(16, pr.size * 4));
+      }
       const sprite = new PIXI.Sprite(tex);
       sprite.anchor.set(0.5);
       sprite.blendMode = isRocket ? PIXI.BLEND_MODES.NORMAL : PIXI.BLEND_MODES.ADD;
       sprite.tint = PIXI.utils.string2hex(pr.color);
-      if (!isRocket) {
+      if (kind === "orb" || kind === "spinner" || kind === "flash") {
+        sprite.scale.set(baseScale);
+      } else if (!isRocket) {
         sprite.scale.set(1 + pr.size * 0.15, 0.8 + pr.size * 0.1);
       }
-      data = { sprite };
+      data = {
+        sprite,
+        kind,
+        baseScale,
+        phase: Math.random() * Math.PI * 2,
+        spin: (pr.id.charCodeAt(pr.id.length - 1) % 2 === 0 ? 1 : -1),
+      } as any;
       projectileSprites.set(pr.id, data);
+      }
 
       // EffectManager muzzle flash at the projectile's own spawn position.
       // The projectile is already anchored at the correct GLB hardpoint
@@ -2263,7 +2479,26 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
 
     data.sprite.visible = true;
     data.sprite.position.set(pr.pos.x, pr.pos.y);
-    data.sprite.rotation = Math.atan2(pr.vel.y, pr.vel.x);
+    const dKind = (data as any).kind;
+    if ((data as any).fx) {
+      // animated FX sprite: directional shots face their velocity, orbs and
+      // spinners carry their motion in the animation frames themselves
+      if ((data as any).fxDir) {
+        data.sprite.rotation = Math.atan2(pr.vel.y, pr.vel.x);
+      }
+    } else if (dKind === "spinner") {
+      // spinning energy orb: time-driven rotation, not flight direction
+      data.sprite.rotation += 0.16 * (data as any).spin;
+    } else if (dKind === "orb") {
+      // pulsing energy ball
+      const p = 1 + 0.13 * Math.sin(performance.now() * 0.012 + (data as any).phase);
+      data.sprite.scale.set((data as any).baseScale * p);
+    } else if (dKind === "flash") {
+      data.sprite.rotation = Math.atan2(pr.vel.y, pr.vel.x);
+      data.sprite.alpha = 0.78 + 0.22 * Math.random(); // energy flicker
+    } else {
+      data.sprite.rotation = Math.atan2(pr.vel.y, pr.vel.x);
+    }
     const projGoingNorth = pr.vel.y < 0;
     const targetLayer = projGoingNorth ? projectileLayer : projectileBehindLayer;
     if (data.sprite.parent !== targetLayer) {
@@ -2274,7 +2509,7 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
     // Projectile trail particles — throttled per-projectile timers instead of
     // per-frame random chance. Prevents burst allocations when many projectiles
     // are on screen.
-    if (effectManager) {
+    if (effectManager && !(FX_KIND_MAP[pr.weaponKind] && !pr.fromPlayer)) {
       const isRocket = pr.weaponKind === "rocket";
       const nowMs = performance.now();
       const last = _lastProjTrailAt.get(pr.id) ?? 0;
@@ -2341,6 +2576,9 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
             effectManager.spawnSparkBurst(prev.x, prev.y, Math.random() * Math.PI * 2, 8, 0xff6622);
             effectManager.spawnSmokePuff(prev.x, prev.y, 12);
           }
+        } else if (!prev.fromPlayer && FX_KIND_MAP[prev.weaponKind]) {
+          // bullet-hell shot fizzle: animated ring burst in the shot's color
+          spawnFxImpact(prev.x, prev.y, PIXI.utils.hex2string(prev.color), (prev as any).size ?? 4);
         } else {
           effectManager.spawnCinematicLaserHit(prev.x, prev.y, prev.angle, prev.color);
         }
@@ -2352,10 +2590,11 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
         x: pr.pos.x,
         y: pr.pos.y,
         color: PIXI.utils.string2hex(pr.color),
-        weaponKind: pr.weaponKind === "rocket" ? "rocket" : "laser",
+        weaponKind: pr.weaponKind === "rocket" ? "rocket" : (FX_KIND_MAP[pr.weaponKind] ? pr.weaponKind : "laser"),
         angle: Math.atan2(pr.vel.y, pr.vel.x),
         fromPlayer: pr.fromPlayer,
-      });
+        size: pr.size,
+      } as any);
     }
   }
 

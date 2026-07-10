@@ -89,6 +89,22 @@ export const players = pgTable(
   ]
 );
 
+// ── ITEM AUDIT (server-minted loot registry, anti-dup/anti-forge) ──────
+export const itemAudit = pgTable(
+  "item_audit",
+  {
+    instanceId: varchar("instance_id", { length: 64 }).primaryKey(),
+    ownerId: integer("owner_id").notNull(),
+    defId: varchar("def_id", { length: 48 }).notNull(),
+    ilvl: integer("ilvl").notNull(),
+    rarity: varchar("rarity", { length: 16 }).notNull(),
+    fingerprint: text("fingerprint").notNull(),
+    data: jsonb("data").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [index("item_audit_owner_idx").on(table.ownerId)]
+);
+
 // ── CLANS ───────────────────────────────────────────────────────────────
 export const clans = pgTable("clans", {
   id: serial("id").primaryKey(),

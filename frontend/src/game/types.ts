@@ -97,6 +97,15 @@ export type ModuleDef = {
 export type ModuleItem = {
   instanceId: string;
   defId: string;
+  // ── rolled ARPG loot fields (server-minted; absent on plain shop items) ──
+  ilvl?: number;
+  rarity?: "common" | "uncommon" | "rare" | "epic" | "legendary" | "relic" | "celestial";
+  seed?: number;
+  affixes?: { id: string; tier: number; value: number }[];
+  legendaryId?: string;
+  bind?: "none" | "pickup";
+  src?: string;
+  ts?: number;
 };
 
 export type EquippedSlots = {
