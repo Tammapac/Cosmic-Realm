@@ -116,9 +116,18 @@ button {
 .hud-chip {
   position: relative;
   background: none;
-  border: 18px solid transparent;
-  border-image: url("/assets/ui/atlas/oct-panel.png") 46 fill round;
+  border: 16px solid transparent;
+  border-image: url("/assets/ui/atlas/plate-dark.png") 34 fill stretch;
   filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.65));
+}
+
+/* Amber glass banner strip (Elements1) — panel headers */
+.banner-amber {
+  background: url("/assets/ui/atlas/banner-amber.png");
+  background-size: 100% 100%;
+  font-family: var(--font-display);
+  color: #2b1c05;
+  text-shadow: 0 1px 0 rgba(255, 235, 190, 0.5);
 }
 
 .chip-chat {
@@ -254,13 +263,14 @@ button {
   border-color: rgba(56, 214, 245, 0.4);
 }
 
-/* Tooltip / popup plate from the atlas */
+/* Tooltip / popup plate — beveled dark bar (Elements1) with amber hairline */
 .sw-tooltip {
   background: none;
-  border: 18px solid transparent;
-  border-image: url("/assets/ui/atlas/popup.png") 50 fill round;
+  border: 14px solid transparent;
+  border-image: url("/assets/ui/atlas/plate-dark.png") 34 fill stretch;
   border-radius: 0;
   filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.7));
+  box-shadow: inset 0 0 0 1px rgba(247, 168, 50, 0.25);
 }
 
 /* Skill tree node hover: lift + glow, no layout shift */

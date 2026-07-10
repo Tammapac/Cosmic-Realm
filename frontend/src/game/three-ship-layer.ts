@@ -18,6 +18,10 @@ import {
 // Effective downscale factor for the fake pixel-art render mode (1 = off)
 const PIX_SCALE = PIXELATE_3D ? Math.max(1, PIXELATE_3D_SCALE) : 1;
 
+// Render layer for additive/transparent glow FX (engine sprites, halo shells).
+// Excluded from the silhouette-outline pass, drawn on top afterwards.
+const FX_LAYER = 1;
+
 const SHIP_3D_MODELS: Record<string, string> = {
   apex: "/models/Apex_Destroyer.glb",
   colossus: "/models/Colossus_MK_X.glb",
@@ -35,15 +39,16 @@ const SHIP_3D_MODELS: Record<string, string> = {
   vanguard: "/models/Vanguard.glb",
   wasp: "/models/Wasp_Interceptor.glb",
   // Alien NPC enemy models (original, generated in Blender — see scripts)
-  enemy_scout: "/models/enemies/enemy_scout.glb?v=3",
-  enemy_drone: "/models/enemies/enemy_drone.glb?v=3",
-  enemy_manta: "/models/enemies/enemy_manta.glb?v=3",
-  enemy_shard: "/models/enemies/enemy_shard.glb?v=3",
-  enemy_beetle: "/models/enemies/enemy_beetle.glb?v=3",
-  enemy_dread: "/models/enemies/enemy_dread.glb?v=3",
-  enemy_colossus: "/models/enemies/enemy_colossus.glb?v=3",
-  enemy_overlord: "/models/enemies/enemy_overlord.glb?v=3",
-  enemy_leviathan: "/models/enemies/enemy_leviathan.glb?v=3",
+  enemy_scout: "/models/enemies/enemy_scout.glb?v=8",
+  enemy_drone: "/models/enemies/enemy_drone.glb?v=8",
+  enemy_manta: "/models/enemies/enemy_manta.glb?v=8",
+  enemy_huntress: "/models/enemies/enemy_huntress.glb?v=8",
+  enemy_shard: "/models/enemies/enemy_shard.glb?v=8",
+  enemy_beetle: "/models/enemies/enemy_beetle.glb?v=8",
+  enemy_dread: "/models/enemies/enemy_dread.glb?v=8",
+  enemy_colossus: "/models/enemies/enemy_colossus.glb?v=8",
+  enemy_overlord: "/models/enemies/enemy_overlord.glb?v=8",
+  enemy_leviathan: "/models/enemies/enemy_leviathan.glb?v=8",
 };
 
 interface ShipHardpoints {
@@ -86,6 +91,7 @@ interface Ship3D {
   model: THREE.Group;
   hardpoints: ShipHardpoints;
   engineGlows: THREE.Sprite[];
+  mixer: THREE.AnimationMixer | null;
   lastCamX: number;
   lastCamY: number;
   lastWorldX: number;
@@ -100,6 +106,122 @@ let renderer: THREE.WebGLRenderer | null = null;
 let scene: THREE.Scene | null = null;
 let camera: THREE.OrthographicCamera | null = null;
 let initialized = false;
+
+// Silhouette outline pass: ships render into an offscreen target, then a
+// fullscreen blit paints 1 buffer-pixel of black wherever a transparent pixel
+// touches an opaque one. In the pixelated low-res buffer this reads as a
+// crisp 1-line pixel-art outline around every ship/enemy, player included.
+let outlineRT: THREE.WebGLRenderTarget | null = null;
+let outlineScene: THREE.Scene | null = null;
+let outlineCamera: THREE.OrthographicCamera | null = null;
+let outlineMat: THREE.ShaderMaterial | null = null;
+
+const OUTLINE_FRAG = `
+uniform sampler2D tDiffuse;
+uniform sampler2D tBloom;
+uniform vec2 texel;
+varying vec2 vUv;
+void main() {
+  vec4 c = texture2D(tDiffuse, vUv);
+  if (c.a < 0.5) {
+    float n = texture2D(tDiffuse, vUv + vec2(texel.x, 0.0)).a;
+    n = max(n, texture2D(tDiffuse, vUv - vec2(texel.x, 0.0)).a);
+    n = max(n, texture2D(tDiffuse, vUv + vec2(0.0, texel.y)).a);
+    n = max(n, texture2D(tDiffuse, vUv - vec2(0.0, texel.y)).a);
+    if (n > 0.5) c = vec4(0.0, 0.0, 0.0, 1.0);
+  }
+  // Emissive bloom: bulbs, cores and strips bleed light like real lamps
+  vec3 b = texture2D(tBloom, vUv).rgb * 0.85;
+  c.rgb += b;
+  c.a = max(c.a, min(1.0, (b.r + b.g + b.b) * 1.4));
+  gl_FragColor = c;
+  #include <colorspace_fragment>
+}`;
+
+const BRIGHT_FRAG = `
+uniform sampler2D tDiffuse;
+varying vec2 vUv;
+void main() {
+  vec4 c = texture2D(tDiffuse, vUv);
+  float l = max(max(c.r, c.g), c.b) * c.a;
+  float f = smoothstep(0.72, 0.95, l);
+  gl_FragColor = vec4(c.rgb * f, 1.0);
+}`;
+
+const BLUR_FRAG = `
+uniform sampler2D tDiffuse;
+uniform vec2 dir;
+varying vec2 vUv;
+void main() {
+  vec3 acc = texture2D(tDiffuse, vUv).rgb * 0.227027;
+  acc += texture2D(tDiffuse, vUv + dir * 1.3846).rgb * 0.3162162;
+  acc += texture2D(tDiffuse, vUv - dir * 1.3846).rgb * 0.3162162;
+  acc += texture2D(tDiffuse, vUv + dir * 3.2308).rgb * 0.0702703;
+  acc += texture2D(tDiffuse, vUv - dir * 3.2308).rgb * 0.0702703;
+  gl_FragColor = vec4(acc, 1.0);
+}`;
+
+const QUAD_VERT = `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
+
+let bloomRTA: THREE.WebGLRenderTarget | null = null;
+let bloomRTB: THREE.WebGLRenderTarget | null = null;
+let brightMat: THREE.ShaderMaterial | null = null;
+let blurMat: THREE.ShaderMaterial | null = null;
+let fsQuad: THREE.Mesh | null = null;
+
+function setupOutlinePass(bufW: number, bufH: number): void {
+  const hw = Math.max(1, Math.floor(bufW / 2));
+  const hh = Math.max(1, Math.floor(bufH / 2));
+  outlineRT = new THREE.WebGLRenderTarget(bufW, bufH, {
+    depthBuffer: true,
+    format: THREE.RGBAFormat,
+  });
+  bloomRTA = new THREE.WebGLRenderTarget(hw, hh, { depthBuffer: false, format: THREE.RGBAFormat });
+  bloomRTB = new THREE.WebGLRenderTarget(hw, hh, { depthBuffer: false, format: THREE.RGBAFormat });
+  bloomRTA.texture.minFilter = bloomRTA.texture.magFilter = THREE.LinearFilter;
+  bloomRTB.texture.minFilter = bloomRTB.texture.magFilter = THREE.LinearFilter;
+
+  brightMat = new THREE.ShaderMaterial({
+    uniforms: { tDiffuse: { value: outlineRT.texture } },
+    vertexShader: QUAD_VERT,
+    fragmentShader: BRIGHT_FRAG,
+    blending: THREE.NoBlending, depthTest: false, depthWrite: false,
+  });
+  blurMat = new THREE.ShaderMaterial({
+    uniforms: { tDiffuse: { value: null }, dir: { value: new THREE.Vector2() } },
+    vertexShader: QUAD_VERT,
+    fragmentShader: BLUR_FRAG,
+    blending: THREE.NoBlending, depthTest: false, depthWrite: false,
+  });
+  outlineMat = new THREE.ShaderMaterial({
+    uniforms: {
+      tDiffuse: { value: outlineRT.texture },
+      tBloom: { value: bloomRTA.texture },
+      texel: { value: new THREE.Vector2(1 / bufW, 1 / bufH) },
+    },
+    vertexShader: QUAD_VERT,
+    fragmentShader: OUTLINE_FRAG,
+    blending: THREE.NoBlending,
+    depthTest: false,
+    depthWrite: false,
+    transparent: true,
+  });
+  outlineScene = new THREE.Scene();
+  outlineCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  fsQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), outlineMat);
+  fsQuad.frustumCulled = false;
+  outlineScene.add(fsQuad);
+}
+
+function resizeOutlinePass(bufW: number, bufH: number): void {
+  if (!outlineRT || !outlineMat) return;
+  outlineRT.setSize(bufW, bufH);
+  const hw = Math.max(1, Math.floor(bufW / 2));
+  const hh = Math.max(1, Math.floor(bufH / 2));
+  if (bloomRTA) bloomRTA.setSize(hw, hh);
+  if (bloomRTB) bloomRTB.setSize(hw, hh);
+  (outlineMat.uniforms.texel.value as THREE.Vector2).set(1 / bufW, 1 / bufH);
+}
 
 const loadedModels = new Map<string, THREE.Group>();
 const loadingModels = new Set<string>();
@@ -147,6 +269,13 @@ export function init3DLayer(canvas: HTMLCanvasElement): void {
   renderer.setClearColor(0x000000, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
+  // Self-shadowing: plates/limbs cast onto the hull for a lived-in look
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  const dbSize = renderer.getDrawingBufferSize(new THREE.Vector2());
+  setupOutlinePass(dbSize.x, dbSize.y);
+
   scene = new THREE.Scene();
 
   // Orthographic camera looking straight down (top-down view)
@@ -179,6 +308,16 @@ export function init3DLayer(canvas: HTMLCanvasElement): void {
   // Main sun: brighter warm light from upper-right for strong highlights
   const sun = new THREE.DirectionalLight(0xfff8f0, 2.6);
   sun.position.set(100, 300, -80);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(4096, 4096);
+  sun.shadow.camera.left = -900;
+  sun.shadow.camera.right = 900;
+  sun.shadow.camera.top = 900;
+  sun.shadow.camera.bottom = -900;
+  sun.shadow.camera.near = 1;
+  sun.shadow.camera.far = 1500;
+  sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.6;
   scene.add(sun);
 
   // Rim/fill: cooler blue light from opposite side for edge definition
@@ -200,6 +339,8 @@ function onResize(): void {
   } else {
     renderer.setSize(w, h);
   }
+  const dbSize = renderer.getDrawingBufferSize(new THREE.Vector2());
+  resizeOutlinePass(dbSize.x, dbSize.y);
   camera.left = -w / 2;
   camera.right = w / 2;
   camera.top = h / 2;
@@ -295,6 +436,9 @@ function loadModel(shipClass: string): void {
     path,
     (gltf) => {
       const model = gltf.scene;
+      // Enemy models author their own emissive glow + PBR values in Blender —
+      // preserve them. Player ships keep the legacy clamps below.
+      const isEnemy = shipClass.startsWith("enemy_");
       model.traverse((child) => {
         if ((child as THREE.Mesh).isMesh) {
           const mesh = child as THREE.Mesh;
@@ -319,18 +463,31 @@ function loadModel(shipClass: string): void {
             const mat = mesh.material as THREE.MeshStandardMaterial;
             if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace;
 
-            // Set good default shading properties if they exist
-            if (mat.roughness !== undefined) mat.roughness = Math.max(0.5, Math.min(0.7, mat.roughness));
-            if (mat.metalness !== undefined) mat.metalness = Math.max(0.1, Math.min(0.3, mat.metalness));
+            if (!isEnemy) {
+              // Set good default shading properties if they exist
+              if (mat.roughness !== undefined) mat.roughness = Math.max(0.5, Math.min(0.7, mat.roughness));
+              if (mat.metalness !== undefined) mat.metalness = Math.max(0.1, Math.min(0.3, mat.metalness));
 
-            // Remove excessive emissive glow that can wash out lighting
-            if (mat.emissive) mat.emissive.set(0x000000);
-            if (mat.emissiveIntensity !== undefined) mat.emissiveIntensity = 0;
+              // Remove excessive emissive glow that can wash out lighting
+              if (mat.emissive) mat.emissive.set(0x000000);
+              if (mat.emissiveIntensity !== undefined) mat.emissiveIntensity = 0;
+            }
 
             mat.needsUpdate = true;
+
+            // Self-shadowing (transparent halo shells don't cast)
+            mesh.castShadow = !mat.transparent;
+            mesh.receiveShadow = true;
+
+            // Transparent glow shells (enemy halos) go to the FX layer: they
+            // render after the outline pass so the black silhouette line
+            // traces the solid hull, not the glow cloud around it.
+            if (isEnemy && mat.transparent) mesh.layers.set(FX_LAYER);
           }
         }
       });
+      // Keep authored animation clips (glow pulses, spinning rings, limb sway)
+      model.userData.animations = gltf.animations ?? [];
       const box = new THREE.Box3().setFromObject(model);
       const size = box.getSize(new THREE.Vector3());
       const maxDim = Math.max(size.x, size.y, size.z);
@@ -730,6 +887,7 @@ export function updateShip3D(
       });
       const sprite = new THREE.Sprite(material);
       sprite.scale.set(glowSize, glowSize, 1); // Glow size - tiny and subtle
+      sprite.layers.set(FX_LAYER); // engine glow must not receive an outline
 
       // Position relative to thruster
       thruster.add(sprite);
@@ -744,8 +902,22 @@ export function updateShip3D(
     wrapper.add(model);
     scene.add(wrapper);
 
+    // Play authored idle animations (clips bind to cloned nodes by name)
+    let mixer: THREE.AnimationMixer | null = null;
+    const clips = (template.userData.animations as THREE.AnimationClip[]) || [];
+    if (clips.length > 0) {
+      mixer = new THREE.AnimationMixer(model);
+      for (const clip of clips) {
+        const action = mixer.clipAction(clip);
+        action.setLoop(THREE.LoopRepeat, Infinity);
+        action.play();
+      }
+      // Desync instances so a pack of the same enemy doesn't pulse in unison
+      mixer.setTime(Math.random() * 5);
+    }
+
     ship = {
-      wrapper, model, hardpoints, engineGlows,
+      wrapper, model, hardpoints, engineGlows, mixer,
       lastYRot: -angle + Math.PI,
       lastCamX: camX, lastCamY: camY,
       lastWorldX: worldX, lastWorldY: worldY,
@@ -802,6 +974,7 @@ export function updateShip3D(
 export function removeShip3D(entityId: string): void {
   const ship = activeShips.get(entityId);
   if (ship && scene) {
+    if (ship.mixer) ship.mixer.stopAllAction();
     scene.remove(ship.wrapper);
     activeShips.delete(entityId);
   }
@@ -848,7 +1021,47 @@ export function render3DLayer(): void {
   const now = performance.now() / 1000;
   if (lastFrameTime > 0) frameDt = Math.min(0.1, now - lastFrameTime);
   lastFrameTime = now;
-  renderer.render(scene, camera);
+  for (const ship of activeShips.values()) {
+    if (ship.mixer) ship.mixer.update(frameDt);
+  }
+  if (outlineRT && outlineScene && outlineCamera && fsQuad && brightMat && blurMat && outlineMat && bloomRTA && bloomRTB) {
+    // Pass 1: solid hulls only (default layer) → offscreen target
+    camera.layers.set(0);
+    renderer.setRenderTarget(outlineRT);
+    renderer.clear();
+    renderer.render(scene, camera);
+
+    // Pass 2: bloom — extract bright emissives, blur H+V twice at half res
+    fsQuad.material = brightMat;
+    renderer.setRenderTarget(bloomRTA);
+    renderer.render(outlineScene, outlineCamera);
+    fsQuad.material = blurMat;
+    const bw = bloomRTA.width, bh = bloomRTA.height;
+    for (let i = 0; i < 2; i++) {
+      blurMat.uniforms.tDiffuse.value = bloomRTA.texture;
+      (blurMat.uniforms.dir.value as THREE.Vector2).set(1 / bw, 0);
+      renderer.setRenderTarget(bloomRTB);
+      renderer.render(outlineScene, outlineCamera);
+      blurMat.uniforms.tDiffuse.value = bloomRTB.texture;
+      (blurMat.uniforms.dir.value as THREE.Vector2).set(0, 1 / bh);
+      renderer.setRenderTarget(bloomRTA);
+      renderer.render(outlineScene, outlineCamera);
+    }
+
+    // Pass 3: blit with 1px black outline + additive bloom
+    fsQuad.material = outlineMat;
+    renderer.setRenderTarget(null);
+    renderer.render(outlineScene, outlineCamera);
+
+    // Pass 4: glow FX (halos, engine sprites) on top, no outline/bloom
+    camera.layers.set(FX_LAYER);
+    renderer.autoClear = false;
+    renderer.render(scene, camera);
+    renderer.autoClear = true;
+    camera.layers.set(0);
+  } else {
+    renderer.render(scene, camera);
+  }
   renderFrameCount++;
   if (renderFrameCount === 1 || renderFrameCount % 300 === 0) {
     console.log("[Three.js] Frame:", renderFrameCount, "ships:", activeShips.size, "models:", loadedModels.size, "loading:", loadingModels.size);
@@ -861,6 +1074,18 @@ export function destroy3DLayer(): void {
     nebulaBackground = null;
   }
 
+  if (outlineRT) {
+    outlineRT.dispose();
+    outlineRT = null;
+    outlineScene = null;
+    outlineCamera = null;
+    outlineMat = null;
+  }
+  if (bloomRTA) { bloomRTA.dispose(); bloomRTA = null; }
+  if (bloomRTB) { bloomRTB.dispose(); bloomRTB = null; }
+  brightMat = null;
+  blurMat = null;
+  fsQuad = null;
   if (renderer) {
     renderer.dispose();
     renderer = null;

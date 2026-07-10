@@ -6,10 +6,14 @@ import { CONSUMABLE_DEFS, ConsumableId, ROCKET_AMMO_TYPE_DEFS, LASER_AMMO_TYPE_O
 // SkillsLine tray (PNG GUI pack, orange variant) — native 710x225.
 // Measured geometry: 9 slots 61px @ x 68 + i*65, y 102; icon strip y 62-92
 // with the "+" glyph left and the lightning glyph right baked into the art.
+// Displayed vertically squashed (KY) so the bar sits flatter on screen;
+// x coordinates stay native, y coordinates/heights are scaled.
+const KY = 0.75;
 const TRAY_W = 710;
-const TRAY_H = 225;
+const TRAY_H = Math.round(225 * KY);
 const SLOT_S = 61;
-const SLOT_Y = 102;
+const SLOT_H = Math.round(SLOT_S * KY);
+const SLOT_Y = Math.round(102 * KY);
 const slotX = (i: number) => 68 + i * 65;
 
 const HP_COLOR = "#5cff8a";
@@ -154,9 +158,9 @@ export function Hotbar() {
         style={{
           position: "absolute",
           left: -74,
-          top: 101,
-          width: 62,
-          height: 62,
+          top: Math.round((102 + 30.5) * KY) - 29,
+          width: 58,
+          height: 58,
           border: `2px solid ${isAttacking ? "#ff5c6c" : attackOnCooldown ? "#7a1a22" : "#ff3b4d"}`,
           background: isAttacking ? "#3a0a10" : attackOnCooldown ? "#14040a" : "#24070b",
           borderRadius: "50%",
@@ -316,9 +320,9 @@ function TickBar({ left, width, value, max, color, title }: { left: number; widt
       style={{
         position: "absolute",
         left,
-        top: 64,
+        top: Math.round(64 * KY),
         width,
-        height: 26,
+        height: Math.round(26 * KY),
         background: ticks(`${color}22`),
         overflow: "hidden",
         pointerEvents: "auto",
@@ -354,7 +358,7 @@ function TraySlot({ left, keyLabel, glyph, color, sub, count, active, title, onC
   children?: React.ReactNode;
 }) {
   return (
-    <div style={{ position: "absolute", left, top: SLOT_Y, width: SLOT_S, height: SLOT_S, pointerEvents: "auto" }}>
+    <div style={{ position: "absolute", left, top: SLOT_Y, width: SLOT_S, height: SLOT_H, pointerEvents: "auto" }}>
       <div
         onClick={onClick}
         onContextMenu={(e) => { e.preventDefault(); onContextMenu?.(); }}
@@ -391,7 +395,7 @@ function TraySlot({ left, keyLabel, glyph, color, sub, count, active, title, onC
         <div style={{ position: "absolute", top: 3, left: 5, fontSize: 9, color: "#8a6a3a", zIndex: 3, fontFamily: "var(--font-display)" }}>
           {keyLabel}
         </div>
-        <div style={{ fontSize: 22, lineHeight: 1, color, zIndex: 3, textShadow: `0 0 8px ${color}`, fontWeight: "bold" }}>
+        <div style={{ fontSize: 19, lineHeight: 1, color, zIndex: 3, textShadow: `0 0 8px ${color}`, fontWeight: "bold" }}>
           {glyph}
         </div>
         {sub && (
@@ -416,7 +420,7 @@ function Dropdown({ header, children }: { header: string; children: React.ReactN
       className="sw-tooltip"
       style={{
         position: "absolute",
-        bottom: SLOT_S + 10,
+        bottom: SLOT_H + 10,
         left: "50%",
         transform: "translateX(-50%)",
         padding: "4px 3px",

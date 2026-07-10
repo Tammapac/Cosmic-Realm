@@ -14,7 +14,7 @@ export const DEBUG_OVERLAY = false;
 // nearest-neighbor, so they look like pixel-art objects in-game.
 // Set PIXELATE_3D to false (or scale to 1) to restore crisp rendering.
 export const PIXELATE_3D = true;
-export const PIXELATE_3D_SCALE = 3;
+export const PIXELATE_3D_SCALE = 2.5;
 
 // Three.js Nebula Background Configuration
 export const ENABLE_THREE_NEBULA_SHADER = false;

@@ -798,7 +798,7 @@ function getShipTex(shipClass: ShipClassId, scale: number): PIXI.Texture {
 const ENEMY_3D_MODEL: Record<string, string> = {
   scout: "enemy_scout", interceptor: "enemy_scout",
   raider: "enemy_drone", corvette: "enemy_drone",
-  wraith: "enemy_manta", specter: "enemy_manta",
+  wraith: "enemy_huntress", specter: "enemy_huntress",
   voidling: "enemy_shard", phantom: "enemy_shard", sentinel: "enemy_shard",
   destroyer: "enemy_beetle",
   dread: "enemy_dread",
@@ -2025,7 +2025,7 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
         stroke: "#000000",
         strokeThickness: 1,
       });
-      nameText.resolution = 2;
+      nameText.resolution = 4;
       nameText.anchor.set(0.5, 1);
       container.addChild(nameText);
 
@@ -2074,7 +2074,7 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
     if (enemyUse3D) {
       data.body.visible = false;
       if (data.coreGlow) data.coreGlow.visible = false;
-      updateShip3D("enemy:" + e.id, enemyModelKey, e.pos.x, e.pos.y, e.angle, e.size / 19, cam.x, cam.y);
+      updateShip3D("enemy:" + e.id, enemyModelKey, e.pos.x, e.pos.y, e.angle, e.size / 15.2, cam.x, cam.y);
       markActive("enemy:" + e.id);
     } else {
       data.body.visible = true;
@@ -2833,7 +2833,7 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
         stroke: "#000000",
         strokeThickness: 1,
       });
-      nameText.resolution = 2;
+      nameText.resolution = 4;
       nameText.anchor.set(0.5, 0);
       container.addChild(nameText);
 
@@ -2848,7 +2848,7 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
         fill: "#ffffff",
         fontWeight: "bold",
       });
-      badgeLetter.resolution = 2;
+      badgeLetter.resolution = 4;
       badgeLetter.anchor.set(0.5);
       badgeLetter.name = "letter";
       badgeContainer.addChild(badgeLetter);
@@ -3038,7 +3038,7 @@ function syncNpcs(cam: { x: number; y: number }, halfW: number, halfH: number): 
         stroke: "#000000",
         strokeThickness: 1,
       });
-      nameText.resolution = 2;
+      nameText.resolution = 4;
       nameText.anchor.set(0.5, 0);
       container.addChild(nameText);
 
@@ -3226,7 +3226,7 @@ function syncFloaters(cam: { x: number; y: number }, halfW: number, halfH: numbe
         stroke: "#000000",
         strokeThickness: f.bold ? 1.5 : 1,
       });
-      text.resolution = 2;
+      text.resolution = 4;
       text.anchor.set(0.5);
       floaterLayer.addChild(text);
       floaterTexts.set(f.id, text);
@@ -3552,7 +3552,7 @@ function syncDungeonRifts(): void {
         stroke: "#000000",
         strokeThickness: 1,
       });
-      label.resolution = 2;
+      label.resolution = 4;
       label.anchor.set(0.5, 0);
       label.position.set(0, 22);
       cont.addChild(label);
@@ -3712,7 +3712,7 @@ function syncDebugMuzzleMarkers(): void {
       stroke: 0x000000,
       strokeThickness: 2,
     });
-    label.resolution = 2;
+    label.resolution = 4;
     label.position.set(s.spawnX + 4, s.spawnY + 4);
     label.alpha = alpha;
     debugMuzzleLabels.addChild(label);

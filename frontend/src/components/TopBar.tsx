@@ -30,48 +30,47 @@ export function TopBar() {
     <div className="absolute top-2 left-2 right-2 z-30 flex items-start gap-2 pointer-events-none flex-wrap">
       {/* Command console — two instrument rows: identity+vitals / progression+resources */}
       <TopPanel style={{ minWidth: 0 }}>
-      <div className="flex flex-col" style={{ padding: "4px 10px" }}>
+      <div className="flex flex-col" style={{ padding: "0px 6px 2px" }}>
+      {/* amber glass banner — pilot identity header */}
+      <div
+        className="banner-amber flex items-center justify-center gap-2"
+        style={{ height: 30, margin: "-8px -10px 4px", padding: "0 26px" }}
+      >
+        <span className="font-bold tracking-widest truncate" style={{ fontSize: 13, maxWidth: 170 }}>
+          {player.name}
+        </span>
+        <span className="font-bold shrink-0 tabular-nums" style={{ fontSize: 12, color: "#5a3204" }}>
+          Lv{player.level}
+        </span>
+        {player.skillPoints > 0 && (
+          <span
+            className="shrink-0 font-bold tabular-nums"
+            style={{
+              fontSize: 10,
+              color: "#7a0a5e",
+              border: "1px solid #7a0a5e66",
+              padding: "0px 4px",
+              whiteSpace: "nowrap",
+              textShadow: "none",
+            }}
+          >
+            +{player.skillPoints} SP
+          </span>
+        )}
+      </div>
+
       <div className="flex items-stretch">
         {/* identity */}
         <div className="flex items-center gap-2.5 pr-3">
           <RankBadge rank={rank} />
           <div className="min-w-0">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <span
-                className="font-bold tracking-widest truncate"
-                style={{ color: "#fff", fontSize: 14, maxWidth: 140, fontFamily: "var(--font-display)" }}
-              >
-                {player.name}
-              </span>
-              <span
-                className="font-bold shrink-0 tabular-nums"
-                style={{ color: "var(--accent-amber)", fontSize: 13 }}
-              >
-                Lv{player.level}
-              </span>
-              {player.skillPoints > 0 && (
-                <span
-                  className="shrink-0 font-bold tabular-nums"
-                  style={{
-                    fontSize: 11,
-                    color: "#ff5cf0",
-                    border: "1px solid #ff5cf088",
-                    padding: "0px 4px",
-                    boxShadow: "0 0 4px #ff5cf088",
-                    animation: "pulse-glow 1.5s ease-in-out infinite",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  +{player.skillPoints} SP
-                </span>
-              )}
-            </div>
             <div className="flex items-center gap-1 min-w-0" style={{ fontSize: 11 }}>
               <span className="shrink-0 font-semibold tracking-widest" style={{ color: rank.color }}>
                 {rank.name.toUpperCase()}
               </span>
-              <span className="text-mute shrink-0">·</span>
-              <span className="text-mute truncate" style={{ maxWidth: 80 }}>{cls.name}</span>
+            </div>
+            <div className="flex items-center gap-1 min-w-0" style={{ fontSize: 11 }}>
+              <span className="text-mute truncate" style={{ maxWidth: 96 }}>{cls.name}</span>
               {player.faction && (
                 <>
                   <span className="text-mute shrink-0">·</span>

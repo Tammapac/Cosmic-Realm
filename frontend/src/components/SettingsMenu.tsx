@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getVolume, getMuted, setVolume, setMuted } from "../game/sound";
-import { state, bump } from "../game/store";
+import { state, bump, pushNotification } from "../game/store";
 
 const KEYBINDINGS = [
   { action: "Move Ship", key: "Left Click" },
@@ -15,6 +15,17 @@ const KEYBINDINGS = [
   { action: "Minimap Zoom +/-", key: "+ / -" },
   { action: "Settings", key: "ESC" },
 ];
+
+// options.png window (PNG GUI pack) — native 809x691, interior demo controls
+// cleaned out (see options-window.png). All coordinates below are native px
+// scaled by K. Baked art kept: OPTIONS title, close icon, SAVE / EXIT buttons.
+const K = 680 / 809;
+const W = 680;
+const H = Math.round(691 * K);
+const px = (n: number) => Math.round(n * K);
+
+const AMBER = "#f7a832";
+const AMBER_DIM = "#8a5c14";
 
 export default function SettingsMenu({ onClose }: { onClose: () => void }) {
   const [vol, setVol] = useState(() => getVolume());
@@ -49,126 +60,266 @@ export default function SettingsMenu({ onClose }: { onClose: () => void }) {
     localStorage.setItem("sf-particles", level);
     (window as any).__particleDensity = level === "low" ? 0.3 : level === "medium" ? 0.6 : 1;
   };
+  const onSave = () => { pushNotification("Settings saved", "good"); onClose(); };
 
   const tabBtn = (t: typeof tab, label: string) => (
-    <button onClick={() => setTab(t)} style={{
-      padding: "8px 18px", cursor: "pointer", fontFamily: "inherit",
-      background: tab === t ? "rgba(68,238,204,0.12)" : "transparent",
-      border: tab === t ? "1px solid rgba(68,238,204,0.4)" : "1px solid rgba(255,255,255,0.08)",
-      borderRadius: "6px", fontSize: "13px", letterSpacing: "0.5px",
-      color: tab === t ? "#44eecc" : "#777",
-    }}>{label}</button>
+    <button
+      key={t}
+      onClick={() => setTab(t)}
+      style={{
+        padding: "5px 16px",
+        cursor: "pointer",
+        fontFamily: "var(--font-display)",
+        background: "transparent",
+        border: "none",
+        borderBottom: tab === t ? `2px solid ${AMBER}` : "2px solid transparent",
+        fontSize: 12,
+        letterSpacing: "0.18em",
+        color: tab === t ? AMBER : AMBER_DIM,
+        textShadow: tab === t ? `0 0 8px ${AMBER}88` : "none",
+        transition: "color 0.12s",
+      }}
+    >
+      {label}
+    </button>
   );
 
   return (
-    <div style={{
-      position: "fixed", inset: 0, zIndex: 9999,
-      background: "rgba(0,0,0,0.75)", display: "flex",
-      alignItems: "center", justifyContent: "center",
-    }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="hud-chip" style={{
-        borderRadius: 0,
-        padding: "20px 24px", width: "min(440px, 92vw)", maxHeight: "90vh", overflowY: "auto",
-        boxShadow: "0 0 60px rgba(68,238,204,0.08), inset 0 0 24px rgba(0,0,0,0.45)",
-        color: "#d0d8e0", fontFamily: "'Courier New', monospace",
-      }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "22px" }}>
-          <span style={{ fontSize: "16px", fontWeight: 700, color: "#44eecc", letterSpacing: "2px" }}>SETTINGS</span>
-          <button onClick={onClose} style={{
-            background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)",
-            color: "#666", fontSize: "14px", cursor: "pointer", padding: "4px 10px",
-            borderRadius: "6px", fontFamily: "inherit",
-          }}>ESC</button>
-        </div>
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 9999,
+        background: "rgba(0,0,0,0.75)", display: "flex",
+        alignItems: "center", justifyContent: "center",
+      }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div style={{ position: "relative", width: W, height: H, filter: "drop-shadow(0 10px 40px rgba(0,0,0,0.8))" }}>
+        <img
+          src="/assets/ui/atlas/options-window.png"
+          alt=""
+          aria-hidden
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
+        />
 
-        <div style={{ display: "flex", gap: "8px", marginBottom: "24px" }}>
+        {/* close — hotspot over the baked ⊘ icon */}
+        <button
+          onClick={onClose}
+          title="Close (ESC)"
+          style={{
+            position: "absolute", left: px(665), top: px(39), width: px(38), height: px(38),
+            background: "none", border: "none", cursor: "pointer", borderRadius: "50%",
+            transition: "box-shadow 0.12s",
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = `0 0 12px ${AMBER}aa`; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "none"; }}
+        />
+
+        {/* tabs at the top of the interior */}
+        <div style={{ position: "absolute", left: px(150), top: px(162), width: px(510), display: "flex", justifyContent: "center", gap: 10 }}>
           {tabBtn("sound", "SOUND")}
           {tabBtn("graphics", "GRAPHICS")}
           {tabBtn("controls", "CONTROLS")}
         </div>
 
-        {tab === "sound" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
-                <span style={{ fontSize: "13px" }}>Master Volume</span>
-                <span style={{ fontSize: "13px", color: "#44eecc" }}>{Math.round(vol * 100)}%</span>
-              </div>
-              <input type="range" min="0" max="100" value={Math.round(vol * 100)}
-                onChange={e => onVol(parseInt(e.target.value) / 100)}
-                style={{ width: "100%", accentColor: "#44eecc", cursor: "pointer" }} />
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontSize: "13px" }}>Mute All Sounds</span>
-              <button onClick={onMute} style={{
-                width: "46px", height: "26px", borderRadius: "13px", border: "none", cursor: "pointer",
-                background: muted ? "#44eecc" : "rgba(255,255,255,0.12)", position: "relative",
-                transition: "background 0.2s",
-              }}>
-                <div style={{
-                  width: "20px", height: "20px", borderRadius: "50%", background: "#fff",
-                  position: "absolute", top: "3px", transition: "left 0.2s",
-                  left: muted ? "23px" : "3px",
-                  boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
-                }} />
-              </button>
-            </div>
-          </div>
-        )}
+        {/* content area inside the thin orange frame */}
+        <div
+          style={{
+            position: "absolute", left: px(165), top: px(215), width: px(480), height: px(320),
+            display: "flex", flexDirection: "column", gap: px(26),
+            fontFamily: "var(--font-display)", color: "#e8c890",
+            overflowY: tab === "controls" ? "auto" : "visible",
+          }}
+        >
+          {tab === "sound" && (
+            <>
+              <SettingRow label="MASTER VOLUME" value={`${Math.round(vol * 100)}%`}>
+                <TickSlider value={vol} onChange={onVol} />
+              </SettingRow>
+              <SettingRow label="MUTE ALL" value={muted ? "ON" : "OFF"}>
+                <OctToggle on={muted} onClick={onMute} />
+              </SettingRow>
+            </>
+          )}
 
-        {tab === "graphics" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "10px" }}>
-                <span style={{ fontSize: "13px" }}>UI Scale</span>
-                <span style={{ fontSize: "13px", color: "#44eecc" }}>{Math.round(uiScale * 100)}%</span>
-              </div>
-              <input type="range" min="40" max="140" value={Math.round(uiScale * 100)}
-                onChange={e => onScale(parseInt(e.target.value) / 100)}
-                style={{ width: "100%", accentColor: "#44eecc", cursor: "pointer" }} />
-            </div>
-            <div>
-              <span style={{ fontSize: "13px", display: "block", marginBottom: "10px" }}>Particle Effects</span>
-              <div style={{ display: "flex", gap: "8px" }}>
-                {(["low", "medium", "high"] as const).map(level => (
-                  <button key={level} onClick={() => onParticles(level)} style={{
-                    flex: 1, padding: "10px 0", cursor: "pointer", fontFamily: "inherit",
-                    border: particles === level ? "1px solid rgba(68,238,204,0.45)" : "1px solid rgba(255,255,255,0.08)",
-                    borderRadius: "6px",
-                    background: particles === level ? "rgba(68,238,204,0.1)" : "rgba(255,255,255,0.02)",
-                    color: particles === level ? "#44eecc" : "#666",
-                    fontSize: "12px", textTransform: "uppercase", letterSpacing: "1px",
-                  }}>{level}</button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+          {tab === "graphics" && (
+            <>
+              <SettingRow label="UI SCALE" value={`${Math.round(uiScale * 100)}%`}>
+                <TickSlider value={(uiScale - 0.4) / 1.0} onChange={(v) => onScale(Math.round((0.4 + v * 1.0) * 20) / 20)} />
+              </SettingRow>
+              <SettingRow label="PARTICLES" value="">
+                <div style={{ display: "flex", gap: 8 }}>
+                  {(["low", "medium", "high"] as const).map((level) => (
+                    <button
+                      key={level}
+                      onClick={() => onParticles(level)}
+                      style={{
+                        padding: "6px 14px",
+                        cursor: "pointer",
+                        fontFamily: "var(--font-display)",
+                        fontSize: 10,
+                        letterSpacing: "0.12em",
+                        textTransform: "uppercase",
+                        color: particles === level ? "#2b1c05" : AMBER_DIM,
+                        background: particles === level ? `linear-gradient(180deg, #ffd062, ${AMBER})` : "rgba(247,168,50,0.06)",
+                        border: `1px solid ${particles === level ? AMBER : "rgba(247,168,50,0.25)"}`,
+                        boxShadow: particles === level ? `0 0 10px ${AMBER}66` : "none",
+                        fontWeight: particles === level ? 700 : 400,
+                      }}
+                    >
+                      {level}
+                    </button>
+                  ))}
+                </div>
+              </SettingRow>
+            </>
+          )}
 
-        {tab === "controls" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-            {KEYBINDINGS.map(({ action, key }) => (
-              <div key={action} style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                padding: "9px 14px", borderRadius: "4px",
-                background: "rgba(255,255,255,0.02)",
-              }}>
-                <span style={{ fontSize: "13px", color: "#bbb" }}>{action}</span>
-                <span style={{
-                  fontSize: "11px", color: "#44eecc", padding: "3px 12px",
-                  background: "rgba(68,238,204,0.06)", borderRadius: "4px",
-                  border: "1px solid rgba(68,238,204,0.15)", letterSpacing: "0.5px",
-                  fontFamily: "monospace",
-                }}>{key}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div style={{ marginTop: "24px", textAlign: "center", color: "#333", fontSize: "11px" }}>
-          Press ESC to close
+          {tab === "controls" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, paddingRight: 6 }}>
+              {KEYBINDINGS.map(({ action, key }) => (
+                <div
+                  key={action}
+                  style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    padding: "4px 10px",
+                    background: "rgba(247,168,50,0.05)",
+                    boxShadow: "inset 0 0 0 1px rgba(247,168,50,0.12)",
+                  }}
+                >
+                  <span style={{ fontSize: 11, letterSpacing: "0.08em", color: "#d8b070" }}>{action.toUpperCase()}</span>
+                  <span
+                    style={{
+                      fontSize: 10, color: AMBER, padding: "1px 10px",
+                      background: "rgba(247,168,50,0.1)",
+                      boxShadow: `inset 0 0 0 1px ${AMBER}44`,
+                      letterSpacing: "0.06em",
+                    }}
+                  >
+                    {key}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
+
+        {/* SAVE / EXIT — hotspots over the baked buttons */}
+        <BakedButton left={px(255)} top={px(578)} width={px(141)} height={px(78)} label="Save settings" onClick={onSave} />
+        <BakedButton left={px(422)} top={px(578)} width={px(141)} height={px(78)} label="Close" onClick={onClose} />
       </div>
     </div>
+  );
+}
+
+function SettingRow({ label, value, children }: { label: string; value: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+      <span style={{ width: 138, fontSize: 12, letterSpacing: "0.14em", color: AMBER, textShadow: `0 0 6px ${AMBER}55`, flexShrink: 0 }}>
+        {label}
+      </span>
+      <div style={{ flex: 1, display: "flex", alignItems: "center" }}>{children}</div>
+      {value && (
+        <span style={{ width: 44, textAlign: "right", fontSize: 12, color: "#ffd67a", flexShrink: 0 }} className="tabular-nums">
+          {value}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** DarkOrbit-style tick slider: ◄ segmented ticks ►, click/drag to set. */
+function TickSlider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const barRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+  const v = Math.max(0, Math.min(1, value));
+  const ticks = (c: string) => `repeating-linear-gradient(90deg, ${c} 0px, ${c} 4px, transparent 4px, transparent 7px)`;
+
+  const setFromEvent = (clientX: number) => {
+    const el = barRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    onChange(Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)));
+  };
+
+  useEffect(() => {
+    const move = (e: PointerEvent) => { if (dragging.current) setFromEvent(e.clientX); };
+    const up = () => { dragging.current = false; };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    return () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+  }, []);
+
+  const arrow = (dir: -1 | 1) => (
+    <button
+      onClick={() => onChange(Math.max(0, Math.min(1, v + dir * 0.05)))}
+      style={{
+        background: "none", border: "none", cursor: "pointer", padding: "0 4px",
+        color: AMBER, fontSize: 13, lineHeight: 1, fontFamily: "var(--font-display)",
+      }}
+    >
+      {dir < 0 ? "◄" : "►"}
+    </button>
+  );
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 2, flex: 1 }}>
+      {arrow(-1)}
+      <div
+        ref={barRef}
+        onPointerDown={(e) => { dragging.current = true; setFromEvent(e.clientX); }}
+        style={{
+          position: "relative", flex: 1, height: 18, cursor: "pointer",
+          background: ticks("rgba(247,168,50,0.16)"),
+          touchAction: "none",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute", inset: 0, width: `${v * 100}%`,
+            background: ticks(AMBER),
+            filter: `drop-shadow(0 0 3px ${AMBER})`,
+          }}
+        />
+      </div>
+      {arrow(1)}
+    </div>
+  );
+}
+
+/** Octagonal toggle in the style of the window's baked round buttons. */
+function OctToggle({ on, onClick }: { on: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        width: 30, height: 30, cursor: "pointer",
+        clipPath: "polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%)",
+        border: "none",
+        background: on
+          ? `radial-gradient(circle at 50% 38%, #ffd062 0%, ${AMBER} 60%, #a06010 100%)`
+          : "radial-gradient(circle at 50% 38%, #3a2a10 0%, #1a1206 70%)",
+        boxShadow: on ? `0 0 14px ${AMBER}aa` : "inset 0 0 0 1px rgba(247,168,50,0.3)",
+        transition: "background 0.15s, box-shadow 0.15s",
+      }}
+    />
+  );
+}
+
+/** Invisible hotspot over a button baked into the window art. */
+function BakedButton({ left, top, width, height, label, onClick }: {
+  left: number; top: number; width: number; height: number; label: string; onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      style={{
+        position: "absolute", left, top, width, height,
+        background: "none", border: "none", cursor: "pointer",
+        transition: "filter 0.1s, box-shadow 0.12s",
+      }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = `inset 0 0 18px ${AMBER}55`; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "none"; }}
+    />
   );
 }
