@@ -76,13 +76,13 @@ function AvatarConsole({
     `HONOR ${fmtNum(player.honor)}${nextRank ? ` · NEXT RANK AT ${fmtNum(nextRank.minHonor)}` : " · MAX RANK"}\n` +
     `SHIP ${clsName}${player.faction ? ` · FACTION [${FACTIONS[player.faction].tag}]` : ""}`;
 
-  // Button frames measured in the art: icon centers x≈240/296/350, y≈118..180
+  // Button frames measured in the art: x≈216/272/326 (48px wide), y≈118..180
   const consoleBtn = (left: string, label: string, onClick: () => void, opts?: { badge?: number; iconSrc?: string }) => (
     <button
       onClick={onClick}
       title={label}
       className="avatar-btn"
-      style={{ position: "absolute", left, top: "60%", width: "12.5%", height: "31%" }}
+      style={{ position: "absolute", left, top: "61.1%", width: "9.8%", height: "32.1%" }}
     >
       {opts?.iconSrc && (
         <img
@@ -115,40 +115,71 @@ function AvatarConsole({
     </button>
   );
 
+  // Sliced composite: the art is NOT scaled uniformly. The octagon (native
+  // x0..214) and the button row (x214..383, y114..193) render at natural
+  // scale; only the name-strip + dark-panel band (x214..383, y0..114) is
+  // stretched horizontally so the console gets LONGER without getting taller.
+  const H = 170;                       // total height (octagon smaller)
+  const W = 432;                       // total width (panel longer)
+  const s = H / 193;                   // uniform scale (0.881)
+  const AW = Math.round(214 * s);      // octagon slice width (≈189)
+  const NAT_BG = `${Math.round(383 * s)}px ${H}px`;          // natural bg size
+  const bandNative = (383 - 214) * s;                        // right band natural width
+  const fB = (W - AW) / bandNative;                          // panel stretch (≈1.63)
+  const BAND_H = Math.round(114 * s);                        // panel band height (≈100)
+
   return (
     <div
       className="pointer-events-auto shrink-0"
       style={{
         position: "relative",
-        width: 420,
-        aspectRatio: "383 / 193",
-        backgroundImage: "url(/assets/ui/avatar-frame.png)",
-        backgroundSize: "100% 100%",
+        width: W,
+        height: H,
         filter: "drop-shadow(0 4px 14px rgba(0,0,0,0.55))",
         userSelect: "none",
       }}
     >
+      {/* art layer A — octagon assembly, natural scale */}
+      <div aria-hidden style={{
+        position: "absolute", left: 0, top: 0, width: AW, height: H,
+        backgroundImage: "url(/assets/ui/avatar-frame.png)",
+        backgroundSize: NAT_BG, backgroundPosition: "0 0", backgroundRepeat: "no-repeat",
+      }} />
+      {/* art layer B — name strip + dark panel band, stretched horizontally */}
+      <div aria-hidden style={{
+        position: "absolute", left: AW, top: 0, width: W - AW, height: BAND_H,
+        backgroundImage: "url(/assets/ui/avatar-frame.png)",
+        backgroundSize: `${383 * s * fB}px ${H}px`,
+        backgroundPosition: `-${214 * s * fB}px 0`, backgroundRepeat: "no-repeat",
+      }} />
+      {/* art layer C — octagon buttons row, natural scale (no distortion) */}
+      <div aria-hidden style={{
+        position: "absolute", left: AW, top: BAND_H, width: Math.ceil(bandNative), height: H - BAND_H,
+        backgroundImage: "url(/assets/ui/avatar-frame.png)",
+        backgroundSize: NAT_BG, backgroundPosition: `-${214 * s}px -${BAND_H}px`, backgroundRepeat: "no-repeat",
+      }} />
+
       {/* octagon — pilot rank */}
       <div
         title={rankTip}
         style={{
-          position: "absolute", left: "10.5%", top: "18.5%", width: "32%", height: "69%",
+          position: "absolute", left: "8.1%", top: "18.6%", width: "25.1%", height: "68.6%",
           display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-          gap: 2, cursor: "default",
+          gap: 1, cursor: "default",
         }}
       >
-        <div style={{ color: rank.color, fontSize: 40, lineHeight: 1, textShadow: `0 0 14px ${rank.color}, 0 0 30px ${rank.color}66` }}>
+        <div style={{ color: rank.color, fontSize: 32, lineHeight: 1, textShadow: `0 0 12px ${rank.color}, 0 0 26px ${rank.color}66` }}>
           {rank.symbol}
         </div>
         <div className="flex gap-[3px]" style={{ margin: "3px 0 1px" }}>
           {Array.from({ length: rank.pips }).map((_, i) => (
-            <div key={i} style={{ width: 5, height: 5, background: rank.color, borderRadius: 1, boxShadow: `0 0 4px ${rank.color}` }} />
+            <div key={i} style={{ width: 4, height: 4, background: rank.color, borderRadius: 1, boxShadow: `0 0 4px ${rank.color}` }} />
           ))}
         </div>
         <div
           className="font-bold text-center"
           style={{
-            color: rank.color, fontSize: 11, letterSpacing: "0.14em", lineHeight: 1.15,
+            color: rank.color, fontSize: 9.5, letterSpacing: "0.12em", lineHeight: 1.15,
             fontFamily: "var(--font-display)", textShadow: `0 0 8px ${rank.color}55, 0 1px 2px #000`,
             maxWidth: "100%",
           }}
@@ -156,7 +187,7 @@ function AvatarConsole({
           {rank.name.toUpperCase()}
         </div>
         {/* honor progress to next rank */}
-        <div style={{ width: "72%", height: 4, background: "#000a", border: `1px solid ${rank.color}44`, marginTop: 3 }}>
+        <div style={{ width: "70%", height: 3, background: "#000a", border: `1px solid ${rank.color}44`, marginTop: 2 }}>
           <div style={{ width: `${honorPct}%`, height: "100%", background: rank.color, boxShadow: `0 0 5px ${rank.color}` }} />
         </div>
       </div>
@@ -164,12 +195,12 @@ function AvatarConsole({
       {/* name strip */}
       <div
         style={{
-          position: "absolute", left: "56%", top: "7.2%", width: "40%", height: "10%",
+          position: "absolute", left: "45.4%", top: "7.8%", width: "49%", height: "9.9%",
           display: "flex", alignItems: "center", gap: 5, overflow: "hidden",
         }}
         title={`${player.name} · ${clsName}${player.faction ? ` · ${FACTIONS[player.faction].name}` : ""}`}
       >
-        <span className="font-bold truncate" style={{ fontSize: 12, color: "#ffe9c4", textShadow: "0 1px 2px #000", letterSpacing: "0.06em" }}>
+        <span className="font-bold truncate" style={{ fontSize: 11.5, color: "#ffe9c4", textShadow: "0 1px 2px #000", letterSpacing: "0.06em" }}>
           {player.name}
         </span>
         {player.faction && (
@@ -182,9 +213,9 @@ function AvatarConsole({
       {/* dark hex panel — level / honor / credits / cargo */}
       <div
         style={{
-          position: "absolute", left: "54.4%", top: "23.8%", width: "40.5%", height: "31.6%",
+          position: "absolute", left: "46%", top: "23.8%", width: "47%", height: "31.6%",
           display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr",
-          columnGap: "6%", rowGap: 1, padding: "1.5% 3%", alignItems: "center",
+          columnGap: "5%", rowGap: 1, padding: "1% 2%", alignItems: "center",
         }}
       >
         <PanelStat
@@ -206,10 +237,11 @@ function AvatarConsole({
         />
       </div>
 
-      {/* octagon buttons — skills / inventory (backpack) / cargo manifest */}
-      {consoleBtn("56.5%", `Skill Tree${player.skillPoints > 0 ? `\n${player.skillPoints} skill points available` : ""}`, () => { state.showSkillTree = !state.showSkillTree; bump(); }, { badge: player.skillPoints, iconSrc: "/assets/ui/atlas/ic-skillsym.png" })}
-      {consoleBtn("71.0%", "Inventory (I)", () => { state.showInventory = !state.showInventory; bump(); })}
-      {consoleBtn("85.2%", "Cargo Hold (J)", () => { state.showCargo = !state.showCargo; bump(); })}
+      {/* octagon buttons — skills / inventory (backpack) / cargo manifest.
+          Zones follow layer C (natural scale): screen_x = AW + (native_x - 214) * s */}
+      {consoleBtn("44.2%", `Skill Tree${player.skillPoints > 0 ? `\n${player.skillPoints} skill points available` : ""}`, () => { state.showSkillTree = !state.showSkillTree; bump(); }, { badge: player.skillPoints, iconSrc: "/assets/ui/atlas/ic-skillsym.png" })}
+      {consoleBtn("55.6%", "Inventory (I)", () => { state.showInventory = !state.showInventory; bump(); })}
+      {consoleBtn("66.6%", "Cargo Hold (J)", () => { state.showCargo = !state.showCargo; bump(); })}
     </div>
   );
 }
