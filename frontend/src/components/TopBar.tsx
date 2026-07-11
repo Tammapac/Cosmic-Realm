@@ -40,7 +40,7 @@ export function TopBar() {
       <div className="pointer-events-auto flex gap-1.5 shrink-0 items-start">
         <IconBtn icon="ic-map" label="Galaxy Map (M)" onClick={() => { state.showMap = !state.showMap; bump(); }} />
         <IconBtn icon="ic-journal" label="Mission Journal" onClick={() => { state.showJournal = !state.showJournal; bump(); }} />
-        <IconBtn icon="ic-quests" label="Quest Log on/off" onClick={() => { state.showQuestTracker = !state.showQuestTracker; bump(); }} />
+        <IconBtn icon="ic-quests" label="Quest Log on/off" onClick={() => { state.showQuestTracker = !state.showQuestTracker; localStorage.setItem("sf-quest-tracker", state.showQuestTracker ? "on" : "off"); bump(); }} />
         <IconBtn icon="ic-social" label="Social" onClick={() => { state.showSocial = !state.showSocial; bump(); }} />
         <IconBtn icon="ic-clan" label="Clan (C)" onClick={() => { state.showClan = !state.showClan; bump(); }} />
         <IconBtn icon="ic-settings" label="Settings" onClick={() => { state.showSettings = !state.showSettings; bump(); }} />
@@ -445,7 +445,7 @@ function IconBtn({ icon, label, onClick }: { icon: string; label: string; onClic
       className="ic-btn"
       title={label}
       onClick={onClick}
-      style={{ backgroundImage: `url(/assets/ui/atlas/${icon}.png?v=3)` }}
+      style={{ backgroundImage: `url(/assets/ui/atlas/${icon}.png?v=4)` }}
     />
   );
 }

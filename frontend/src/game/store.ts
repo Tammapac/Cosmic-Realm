@@ -492,7 +492,8 @@ export const state: GameState = {
   showSocial: false,
   showJournal: false,
   journalQuestId: null,
-  showQuestTracker: true,
+  // quest log stays closed on launch; the toggle persists across sessions
+  showQuestTracker: localStorage.getItem("sf-quest-tracker") === "on",
   showLogoutConfirm: false,
   logoutCountdown: false,
   showFactionPicker: initialPlayer.faction === null,
