@@ -131,20 +131,20 @@ function AvatarConsole({
       {/* art layer A — octagon assembly, natural scale */}
       <div aria-hidden style={{
         position: "absolute", left: 0, top: 0, width: AW, height: H,
-        backgroundImage: "url(/assets/ui/avatar-frame.png?v=2)",
+        backgroundImage: "url(/assets/ui/avatar-frame.png?v=3)",
         backgroundSize: NAT_BG, backgroundPosition: "0 0", backgroundRepeat: "no-repeat",
       }} />
       {/* art layer B — name strip + dark panel band, stretched horizontally */}
       <div aria-hidden style={{
         position: "absolute", left: AW, top: 0, width: W - AW, height: BAND_H,
-        backgroundImage: "url(/assets/ui/avatar-frame.png?v=2)",
+        backgroundImage: "url(/assets/ui/avatar-frame.png?v=3)",
         backgroundSize: `${383 * s * fB}px ${H}px`,
         backgroundPosition: `-${214 * s * fB}px 0`, backgroundRepeat: "no-repeat",
       }} />
       {/* art layer C — octagon buttons row, natural scale (no distortion) */}
       <div aria-hidden style={{
         position: "absolute", left: AW, top: BAND_H, width: Math.ceil(bandNative), height: H - BAND_H,
-        backgroundImage: "url(/assets/ui/avatar-frame.png?v=2)",
+        backgroundImage: "url(/assets/ui/avatar-frame.png?v=3)",
         backgroundSize: NAT_BG, backgroundPosition: `-${214 * s}px -${BAND_H}px`, backgroundRepeat: "no-repeat",
       }} />
 
