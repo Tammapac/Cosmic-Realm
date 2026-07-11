@@ -148,11 +148,11 @@ function AvatarConsole({
         backgroundSize: NAT_BG, backgroundPosition: `-${214 * s}px -${BAND_H}px`, backgroundRepeat: "no-repeat",
       }} />
 
-      {/* octagon — pilot rank */}
+      {/* octagon — pilot rank (inner octagon center: native 107.5,102 → 21.9%,52.9%) */}
       <div
         title={rankTip}
         style={{
-          position: "absolute", left: "8.1%", top: "18.6%", width: "25.1%", height: "68.6%",
+          position: "absolute", left: "9.4%", top: "18.6%", width: "25.1%", height: "68.6%",
           display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
           gap: 1, cursor: "default",
         }}
