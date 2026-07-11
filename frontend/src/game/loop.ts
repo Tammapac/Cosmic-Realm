@@ -1228,8 +1228,13 @@ function tickWorld(dt: number): void {
       if (e.combo.ttl <= 0) e.combo = undefined;
     }
     if (serverAuthoritative || state.dungeon) {
-      // Server owns enemy positions; applyServerSmoothing handles interpolation
-      if (Math.abs(e.vel.x) > 1 || Math.abs(e.vel.y) > 1) {
+      // Server owns enemy positions; applyServerSmoothing handles interpolation.
+      // Facing comes from the server angle (movement direction while flying,
+      // player-facing while orbiting/attacking) — do NOT override it from
+      // velocity here, or orbiting enemies point along their strafe path.
+      // Dungeon instances are client-simulated and receive no server angle,
+      // so only there the velocity drives the facing.
+      if (state.dungeon && (Math.abs(e.vel.x) > 1 || Math.abs(e.vel.y) > 1)) {
         e.angle = Math.atan2(e.vel.y, e.vel.x);
       }
       // Enemy engine trail even in server mode
