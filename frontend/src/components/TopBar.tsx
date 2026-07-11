@@ -76,14 +76,28 @@ function AvatarConsole({
     `HONOR ${fmtNum(player.honor)}${nextRank ? ` · NEXT RANK AT ${fmtNum(nextRank.minHonor)}` : " · MAX RANK"}\n` +
     `SHIP ${clsName}${player.faction ? ` · FACTION [${FACTIONS[player.faction].tag}]` : ""}`;
 
-  const consoleBtn = (left: string, label: string, onClick: () => void, badge?: number) => (
+  // Button frames measured in the art: icon centers x≈240/296/350, y≈118..180
+  const consoleBtn = (left: string, label: string, onClick: () => void, opts?: { badge?: number; iconSrc?: string }) => (
     <button
       onClick={onClick}
       title={label}
       className="avatar-btn"
-      style={{ position: "absolute", left, top: "59.5%", width: "11.8%", height: "27%" }}
+      style={{ position: "absolute", left, top: "60%", width: "12.5%", height: "31%" }}
     >
-      {badge != null && badge > 0 && (
+      {opts?.iconSrc && (
+        <img
+          src={opts.iconSrc}
+          alt=""
+          draggable={false}
+          style={{
+            position: "absolute", inset: "9%",
+            width: "82%", height: "82%", objectFit: "contain",
+            clipPath: "polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%)",
+            pointerEvents: "none",
+          }}
+        />
+      )}
+      {opts?.badge != null && opts.badge > 0 && (
         <span
           style={{
             position: "absolute", top: "-12%", right: "-8%",
@@ -92,9 +106,10 @@ function AvatarConsole({
             fontSize: 10, fontWeight: 800, lineHeight: "15px",
             borderRadius: 8, textShadow: "none",
             animation: "pulse-glow 1.5s ease-in-out infinite",
+            zIndex: 1,
           }}
         >
-          {badge}
+          {opts.badge}
         </span>
       )}
     </button>
@@ -105,7 +120,7 @@ function AvatarConsole({
       className="pointer-events-auto shrink-0"
       style={{
         position: "relative",
-        width: 358,
+        width: 420,
         aspectRatio: "383 / 193",
         backgroundImage: "url(/assets/ui/avatar-frame.png)",
         backgroundSize: "100% 100%",
@@ -191,10 +206,10 @@ function AvatarConsole({
         />
       </div>
 
-      {/* octagon buttons — pilot / inventory / cargo */}
-      {consoleBtn("53.2%", `Skill Tree${player.skillPoints > 0 ? `\n${player.skillPoints} skill points available` : ""}`, () => { state.showSkillTree = !state.showSkillTree; bump(); }, player.skillPoints)}
-      {consoleBtn("65.3%", "Inventory (I)", () => { state.showInventory = !state.showInventory; bump(); })}
-      {consoleBtn("77.4%", "Cargo Hold (J)", () => { state.showCargo = !state.showCargo; bump(); })}
+      {/* octagon buttons — skills / inventory (backpack) / cargo manifest */}
+      {consoleBtn("56.5%", `Skill Tree${player.skillPoints > 0 ? `\n${player.skillPoints} skill points available` : ""}`, () => { state.showSkillTree = !state.showSkillTree; bump(); }, { badge: player.skillPoints, iconSrc: "/assets/ui/atlas/ic-skillsym.png" })}
+      {consoleBtn("71.0%", "Inventory (I)", () => { state.showInventory = !state.showInventory; bump(); })}
+      {consoleBtn("85.2%", "Cargo Hold (J)", () => { state.showCargo = !state.showCargo; bump(); })}
     </div>
   );
 }
