@@ -1524,18 +1524,22 @@ export class GameEngine {
     private tickEnemySpawns(zoneId: string, zs: ZoneState, players: OnlinePlayer[], dt: number, events: GameEvent[]): void {
     zs.spawnTimer -= dt;
     if (zs.spawnTimer > 0) return;
-    zs.spawnTimer = randRange(0.4, 1.0);
 
     const zoneDef = ZONES[zoneId as ZoneId];
     if (!zoneDef) return;
 
-    // Live cap matches the seeded density (~130-190 per zone); the 2000-unit
-    // interest culling keeps client/network load bounded regardless.
-    const maxEnemies = 130 + zoneDef.enemyTier * 10;
+    // DarkOrbit-style repopulation: keep the zone near its target density at
+    // all times. Refill in quick bursts when farming has thinned the map,
+    // trickle otherwise.
+    const maxEnemies = 210 + zoneDef.enemyTier * 12;
     const nonBossCount = Array.from(zs.enemies.values()).filter(e => !e.isBoss).length;
-    if (nonBossCount >= maxEnemies) return;
+    if (nonBossCount >= maxEnemies) { zs.spawnTimer = randRange(0.5, 1.0); return; }
+    const deficit = maxEnemies - nonBossCount;
+    const batch = deficit > 40 ? 3 : deficit > 15 ? 2 : 1;
+    zs.spawnTimer = deficit > 40 ? randRange(0.25, 0.5) : randRange(0.4, 1.0);
 
     const tierMult = Math.pow(2, zoneDef.enemyTier - 1);
+    for (let b = 0; b < batch; b++) {
     const typePool = zoneDef.enemyTypes;
     const enemyType = typePool[Math.floor(Math.random() * typePool.length)];
     const baseDef = ENEMY_DEFS[enemyType];
@@ -1548,23 +1552,24 @@ export class GameEngine {
     const spdMul = fMods?.speedMul ?? 1;
     const color = fMods?.color ?? baseDef.color;
 
-    // Spawn position: 50% near a player (but at distance), 50% random on map.
-    // Retry a few times to stay out of station safe zones; skip this tick if unlucky.
+    // Spawn position: mostly random across the whole map (DarkOrbit feel),
+    // a smaller share near players (at a safe distance) to keep action
+    // flowing where people hunt. Never inside station safe zones.
     let spawnPos: Vec2 | null = null;
     for (let attempt = 0; attempt < 8; attempt++) {
       let cand: Vec2;
-      if (players.length > 0 && Math.random() < 0.50) {
+      if (players.length > 0 && Math.random() < 0.30) {
         const rp = players[Math.floor(Math.random() * players.length)];
         const ang = Math.random() * Math.PI * 2;
-        const d = 700 + Math.random() * 700;
+        const d = 900 + Math.random() * 900;
         cand = {
           x: clamp(rp.posX + Math.cos(ang) * d, -MAP_RADIUS, MAP_RADIUS),
           y: clamp(rp.posY + Math.sin(ang) * d, -MAP_RADIUS, MAP_RADIUS),
         };
       } else {
         cand = {
-          x: randRange(-MAP_RADIUS * 0.9, MAP_RADIUS * 0.9),
-          y: randRange(-MAP_RADIUS * 0.9, MAP_RADIUS * 0.9),
+          x: randRange(-MAP_RADIUS * 0.95, MAP_RADIUS * 0.95),
+          y: randRange(-MAP_RADIUS * 0.95, MAP_RADIUS * 0.95),
         };
       }
       if (!isInStationSafeZone(zoneId, cand)) { spawnPos = cand; break; }
@@ -1607,6 +1612,7 @@ export class GameEngine {
 
     zs.enemies.set(enemy.id, enemy);
     events.push({ type: "enemy:spawn", zone: zoneId, enemy: enemyToClient(enemy) });
+    } // end batch loop
   }
 
   // ── BOSS SPAWNING ────────────────────────────────────────────────────
@@ -2292,33 +2298,16 @@ export class GameEngine {
   private spawnInitialEnemies(zoneId: string, zs: ZoneState): void {
     const zoneDef = ZONES[zoneId as ZoneId];
     if (!zoneDef) return;
-    // Populate the map so ~6-7 enemies sit inside any 2000-unit interest
-    // radius: same-type packs of 2-4 scattered across the zone. Each pack is
-    // one type from the zone's list, so maps visibly read as their roster.
-    const initialCount = 110 + zoneDef.enemyTier * 8;
+    // DarkOrbit-style population: individual enemies of mixed types scattered
+    // uniformly across the whole map (no same-type packs — pirates keep their
+    // group spawns separately). Density targets ~10+ ships inside any
+    // 2000-unit interest radius so the map never feels empty.
+    const initialCount = 200 + zoneDef.enemyTier * 12;
     const tierMult = Math.pow(2, zoneDef.enemyTier - 1);
     let spawned = 0;
-    let packType: EnemyType = zoneDef.enemyTypes[0];
-    let packCenter: Vec2 | null = null;
-    let packLeft = 0;
     while (spawned < initialCount) {
-      if (packLeft <= 0 || !packCenter) {
-        // start a new pack: pick type + clear center
-        packType = zoneDef.enemyTypes[Math.floor(Math.random() * zoneDef.enemyTypes.length)];
-        packLeft = 2 + Math.floor(Math.random() * 3);
-        packCenter = null;
-        for (let attempt = 0; attempt < 8; attempt++) {
-          const cand: Vec2 = {
-            x: randRange(-MAP_RADIUS * 0.9, MAP_RADIUS * 0.9),
-            y: randRange(-MAP_RADIUS * 0.9, MAP_RADIUS * 0.9),
-          };
-          if (!isInStationSafeZone(zoneId, cand, 300)) { packCenter = cand; break; }
-        }
-        if (!packCenter) { spawned++; continue; }
-      }
-      packLeft--;
       spawned++;
-      const enemyType = packType;
+      const enemyType = zoneDef.enemyTypes[Math.floor(Math.random() * zoneDef.enemyTypes.length)];
       const baseDef = ENEMY_DEFS[enemyType];
       if (!baseDef) continue;
       const fMods = FACTION_ENEMY_MODS[zoneDef.faction]?.[enemyType];
@@ -2326,10 +2315,15 @@ export class GameEngine {
       const dmgMul = (fMods?.damageMul ?? 1) * tierMult;
       const spdMul = fMods?.speedMul ?? 1;
       const color = fMods?.color ?? baseDef.color;
-      const spawnPos: Vec2 = {
-        x: clamp(packCenter.x + (Math.random() - 0.5) * 500, -MAP_RADIUS * 0.95, MAP_RADIUS * 0.95),
-        y: clamp(packCenter.y + (Math.random() - 0.5) * 500, -MAP_RADIUS * 0.95, MAP_RADIUS * 0.95),
-      };
+      let spawnPos: Vec2 | null = null;
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const cand: Vec2 = {
+          x: randRange(-MAP_RADIUS * 0.95, MAP_RADIUS * 0.95),
+          y: randRange(-MAP_RADIUS * 0.95, MAP_RADIUS * 0.95),
+        };
+        if (!isInStationSafeZone(zoneId, cand)) { spawnPos = cand; break; }
+      }
+      if (!spawnPos) continue;
       const names = ENEMY_NAMES[enemyType];
       const name = names[Math.floor(Math.random() * names.length)];
       const enemy: ServerEnemy = {
