@@ -76,28 +76,16 @@ function AvatarConsole({
     `HONOR ${fmtNum(player.honor)}${nextRank ? ` · NEXT RANK AT ${fmtNum(nextRank.minHonor)}` : " · MAX RANK"}\n` +
     `SHIP ${clsName}${player.faction ? ` · FACTION [${FACTIONS[player.faction].tag}]` : ""}`;
 
-  // Button frames measured in the art: x≈216/272/326 (48px wide), y≈118..180
-  const consoleBtn = (left: string, label: string, onClick: () => void, opts?: { badge?: number; iconSrc?: string }) => (
+  // Button frames measured in the art: x≈216/272/326 (48px wide), y≈118..180.
+  // The skill-shield icon is baked directly into avatar-frame.png (helmet
+  // erased in the asset), so buttons are pure click zones.
+  const consoleBtn = (left: string, label: string, onClick: () => void, opts?: { badge?: number }) => (
     <button
       onClick={onClick}
       title={label}
       className="avatar-btn"
       style={{ position: "absolute", left, top: "61.1%", width: "9.8%", height: "32.1%" }}
     >
-      {opts?.iconSrc && (
-        <img
-          src={opts.iconSrc}
-          alt=""
-          draggable={false}
-          style={{
-            position: "absolute", left: "19%", top: "50%",
-            width: "62%", aspectRatio: "1 / 1", transform: "translateY(-50%)",
-            objectFit: "contain",
-            clipPath: "polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%)",
-            pointerEvents: "none",
-          }}
-        />
-      )}
       {opts?.badge != null && opts.badge > 0 && (
         <span
           style={{
@@ -143,20 +131,20 @@ function AvatarConsole({
       {/* art layer A — octagon assembly, natural scale */}
       <div aria-hidden style={{
         position: "absolute", left: 0, top: 0, width: AW, height: H,
-        backgroundImage: "url(/assets/ui/avatar-frame.png)",
+        backgroundImage: "url(/assets/ui/avatar-frame.png?v=2)",
         backgroundSize: NAT_BG, backgroundPosition: "0 0", backgroundRepeat: "no-repeat",
       }} />
       {/* art layer B — name strip + dark panel band, stretched horizontally */}
       <div aria-hidden style={{
         position: "absolute", left: AW, top: 0, width: W - AW, height: BAND_H,
-        backgroundImage: "url(/assets/ui/avatar-frame.png)",
+        backgroundImage: "url(/assets/ui/avatar-frame.png?v=2)",
         backgroundSize: `${383 * s * fB}px ${H}px`,
         backgroundPosition: `-${214 * s * fB}px 0`, backgroundRepeat: "no-repeat",
       }} />
       {/* art layer C — octagon buttons row, natural scale (no distortion) */}
       <div aria-hidden style={{
         position: "absolute", left: AW, top: BAND_H, width: Math.ceil(bandNative), height: H - BAND_H,
-        backgroundImage: "url(/assets/ui/avatar-frame.png)",
+        backgroundImage: "url(/assets/ui/avatar-frame.png?v=2)",
         backgroundSize: NAT_BG, backgroundPosition: `-${214 * s}px -${BAND_H}px`, backgroundRepeat: "no-repeat",
       }} />
 
@@ -241,7 +229,7 @@ function AvatarConsole({
 
       {/* octagon buttons — skills / inventory (backpack) / cargo manifest.
           Zones follow layer C (natural scale): screen_x = AW + (native_x - 214) * s */}
-      {consoleBtn("44.2%", `Skill Tree${player.skillPoints > 0 ? `\n${player.skillPoints} skill points available` : ""}`, () => { state.showSkillTree = !state.showSkillTree; bump(); }, { badge: player.skillPoints, iconSrc: "/assets/ui/atlas/ic-skillsym.png" })}
+      {consoleBtn("44.2%", `Skill Tree${player.skillPoints > 0 ? `\n${player.skillPoints} skill points available` : ""}`, () => { state.showSkillTree = !state.showSkillTree; bump(); }, { badge: player.skillPoints })}
       {consoleBtn("55.6%", "Inventory (I)", () => { state.showInventory = !state.showInventory; bump(); })}
       {consoleBtn("66.6%", "Cargo Hold (J)", () => { state.showCargo = !state.showCargo; bump(); })}
     </div>
