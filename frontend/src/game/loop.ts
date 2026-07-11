@@ -18,6 +18,26 @@ import { sendInstanceEnemyHit } from "../net/socket";
 import { getShipMuzzleWorldPositions, getShipMuzzleWorldPositionsAt } from "./three-ship-layer";
 import { MOVEMENT, NETCODE } from "../../../lib/game-constants";
 import { resolveAffixStats, itemDisplayName, rarityColor } from "../../../lib/loot/loot";
+import { shipHitTestSwept, enemyModelKey, enemySizeScale } from "../../../lib/hitbox";
+
+// Silhouette hit test (matches the server): projectile travel vs ship hull.
+function projHitsEnemyHull(pr: Projectile, e: Enemy, dt: number): boolean {
+  const key = enemyModelKey(e.type, e.id);
+  if (!key) return Math.hypot(pr.pos.x - e.pos.x, pr.pos.y - e.pos.y) < e.size + 4;
+  return shipHitTestSwept(
+    key, e.pos.x, e.pos.y, e.angle, enemySizeScale(e.size),
+    pr.pos.x - pr.vel.x * dt, pr.pos.y - pr.vel.y * dt, pr.pos.x, pr.pos.y, 1.06,
+  );
+}
+
+function projHitsPlayerHull(pr: Projectile, px: number, py: number, angle: number, shipClass: string, dt: number): boolean {
+  const scale = (SHIP_SIZE_SCALE as Record<string, number>)[shipClass];
+  if (!scale) return Math.hypot(pr.pos.x - px, pr.pos.y - py) < 12;
+  return shipHitTestSwept(
+    shipClass, px, py, angle, scale,
+    pr.pos.x - pr.vel.x * dt, pr.pos.y - pr.vel.y * dt, pr.pos.x, pr.pos.y, 0.95,
+  );
+}
 
 
 
@@ -2129,9 +2149,9 @@ function tickWorld(dt: number): void {
       }
     }
     if (pr.fromPlayer) {
-      // hit enemies
+      // hit enemies (silhouette hulls, mirrors the server)
       for (const e of state.enemies) {
-        if (distance(pr.pos.x, pr.pos.y, e.pos.x, e.pos.y) < e.size + 4) {
+        if (projHitsEnemyHull(pr, e, dt)) {
           if (pr.renderOnly) {
             e.hitFlash = 1;
             sfx.enemyHit();
@@ -2403,7 +2423,7 @@ function tickWorld(dt: number): void {
         }
       }
       for (const o of state.others) {
-        if (distance(pr.pos.x, pr.pos.y, o.pos.x, o.pos.y) < 14) {
+        if (projHitsPlayerHull(pr, o.pos.x, o.pos.y, o.angle, o.shipClass, dt)) {
           emitSpark(pr.pos.x, pr.pos.y, "#ff5c6c", 5, 80, 2);
           emitRing(pr.pos.x, pr.pos.y, "#ff5c6c", 18);
           state.particles.push({
@@ -2415,7 +2435,7 @@ function tickWorld(dt: number): void {
           return false;
         }
       }
-      if (distance(pr.pos.x, pr.pos.y, p.pos.x, p.pos.y) < 12 * (SHIP_SIZE_SCALE[p.shipClass] ?? 1)) {
+      if (projHitsPlayerHull(pr, p.pos.x, p.pos.y, p.angle, p.shipClass, dt)) {
         emitSpark(pr.pos.x, pr.pos.y, "#ff5c6c", 6, 90, 2);
         emitRing(pr.pos.x, pr.pos.y, "#ff5c6c", 18);
         state.particles.push({

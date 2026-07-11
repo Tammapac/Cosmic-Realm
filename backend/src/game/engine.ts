@@ -13,6 +13,31 @@ import type { OnlinePlayer } from "../socket/state.js";
 import { MOVEMENT } from "../../../lib/game-constants.js";
 import { rollEnemyEquipDrop } from "./lootService.js";
 import { resolveAffixStats, type ItemInstance } from "../../../lib/loot/loot.js";
+import { shipHitTestSwept, enemyModelKey, enemySizeScale, PLAYER_SIZE_SCALE } from "../../../lib/hitbox.js";
+
+// Silhouette hit test for a projectile's travel this tick vs an enemy hull;
+// falls back to the legacy circle when a hull is missing.
+function projHitsEnemy(proj: ServerProjectile, e: ServerEnemy, dt: number): boolean {
+  const key = enemyModelKey(e.type, e.id);
+  if (!key) return dist(proj.pos, e.pos) < e.size + 4;
+  return shipHitTestSwept(
+    key, e.pos.x, e.pos.y, e.angle, enemySizeScale(e.size),
+    proj.pos.x - proj.vel.x * dt, proj.pos.y - proj.vel.y * dt,
+    proj.pos.x, proj.pos.y,
+    1.06, // slightly generous toward the shooter
+  );
+}
+
+function projHitsPlayer(proj: ServerProjectile, p: OnlinePlayer, dt: number): boolean {
+  const scale = PLAYER_SIZE_SCALE[p.shipClass];
+  if (!scale) return dist(proj.pos, { x: p.posX, y: p.posY }) < 12;
+  return shipHitTestSwept(
+    p.shipClass, p.posX, p.posY, p.angle, scale,
+    proj.pos.x - proj.vel.x * dt, proj.pos.y - proj.vel.y * dt,
+    proj.pos.x, proj.pos.y,
+    0.95, // slightly forgiving toward the player
+  );
+}
 
 
 // ── STATION SAFE ZONES ───────────────────────────────────────────────────
@@ -960,9 +985,9 @@ export class GameEngine {
       if (proj.ttl <= 0) { zs.projectiles.delete(projId); continue; }
 
       if (proj.fromPlayerId !== null) {
-        // Player projectile -> hit enemies
+        // Player projectile -> hit enemies (silhouette hulls)
         for (const e of zs.enemies.values()) {
-          if (dist(proj.pos, e.pos) < e.size + 4) {
+          if (projHitsEnemy(proj, e, dt)) {
             // Combo system
             let combo = e.combo.get(proj.fromPlayerId);
             const stacks = combo ? Math.min(5, combo.stacks + 1) : 1;
@@ -1047,9 +1072,9 @@ export class GameEngine {
           }
         }
       } else if (proj.fromNpcId !== null) {
-        // NPC projectile -> hit enemies
+        // NPC projectile -> hit enemies (silhouette hulls)
         for (const e of zs.enemies.values()) {
-          if (dist(proj.pos, e.pos) < e.size + 4) {
+          if (projHitsEnemy(proj, e, dt)) {
             e.hull -= proj.damage;
             if (e.hull <= 0) {
               const loot: LootDrop = {
@@ -1067,10 +1092,10 @@ export class GameEngine {
           }
         }
       } else if (proj.fromEnemyId !== null) {
-        // Enemy projectile -> hit players
+        // Enemy projectile -> hit players (player ship silhouette)
         for (const p of players) {
           if (p.isDocked) continue;
-          if (dist(proj.pos, { x: p.posX, y: p.posY }) < 12) {
+          if (projHitsPlayer(proj, p, dt)) {
             this.damagePlayer(p, proj.damage);
             events.push({ type: "player:hit", playerId: p.playerId, damage: proj.damage, zone: zoneId });
             zs.projectiles.delete(projId);
