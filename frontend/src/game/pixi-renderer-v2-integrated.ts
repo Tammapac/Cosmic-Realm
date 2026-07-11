@@ -793,16 +793,23 @@ function getShipTex(shipClass: ShipClassId, scale: number): PIXI.Texture {
   return tex;
 }
 
-// EnemyType -> alien GLB model (three-ship-layer registry key).
-// Families share silhouettes; color/scale stay per-type (tint pass comes later).
+// EnemyType -> GLB model (three-ship-layer registry key).
+// Every type has its own dedicated model; per-type size comes from
+// ENEMY_DEFS.size (small scouts → huge leviathans) via maxDim normalization.
 const ENEMY_3D_MODEL: Record<string, string> = {
-  scout: "enemy_scout", interceptor: "enemy_scout",
-  raider: "enemy_drone", corvette: "enemy_drone",
-  wraith: "enemy_huntress", specter: "enemy_huntress",
-  voidling: "enemy_shard", phantom: "enemy_shard", sentinel: "enemy_shard",
-  destroyer: "enemy_beetle",
+  scout: "enemy_scout",
+  interceptor: "enemy_interceptor",
+  raider: "enemy_raider",
+  corvette: "enemy_corvette",
+  destroyer: "enemy_destroyer",
+  sentinel: "enemy_sentinel",
+  specter: "enemy_specter",
+  phantom: "enemy_phantom",
+  wraith: "enemy_wraith",
+  voidling: "enemy_voidling",
   dread: "enemy_dread",
-  titan: "enemy_colossus", juggernaut: "enemy_colossus",
+  titan: "enemy_titan",
+  juggernaut: "enemy_juggernaut",
   overlord: "enemy_overlord",
   leviathan: "enemy_leviathan",
 };

@@ -102,17 +102,25 @@ const SHIP_3D_MODELS: Record<string, string> = {
   titan: "/models/Titan_Bulwark.glb",
   vanguard: "/models/Vanguard.glb",
   wasp: "/models/Wasp_Interceptor.glb",
-  // Alien NPC enemy models (original, generated in Blender — see scripts)
-  enemy_scout: "/models/enemies/enemy_scout.glb?v=8",
-  enemy_drone: "/models/enemies/enemy_drone.glb?v=8",
-  enemy_manta: "/models/enemies/enemy_manta.glb?v=8",
-  enemy_huntress: "/models/enemies/enemy_huntress.glb?v=8",
-  enemy_shard: "/models/enemies/enemy_shard.glb?v=8",
-  enemy_beetle: "/models/enemies/enemy_beetle.glb?v=8",
-  enemy_dread: "/models/enemies/enemy_dread.glb?v=8",
-  enemy_colossus: "/models/enemies/enemy_colossus.glb?v=8",
-  enemy_overlord: "/models/enemies/enemy_overlord.glb?v=8",
-  enemy_leviathan: "/models/enemies/enemy_leviathan.glb?v=8",
+  // Enemy NPC models — one GLB per enemy type (nose = -Z, up = +Y, size
+  // normalization via maxDim so ENEMY_DEFS.size drives small→big scaling)
+  enemy_scout: "/models/enemies/enemy_scout.glb?v=9",
+  enemy_interceptor: "/models/enemies/enemy_interceptor.glb?v=9",
+  enemy_raider: "/models/enemies/enemy_raider.glb?v=9",
+  enemy_corvette: "/models/enemies/enemy_corvette.glb?v=9",
+  enemy_destroyer: "/models/enemies/enemy_destroyer.glb?v=9",
+  enemy_sentinel: "/models/enemies/enemy_sentinel.glb?v=9",
+  enemy_specter: "/models/enemies/enemy_specter.glb?v=9",
+  enemy_phantom: "/models/enemies/enemy_phantom.glb?v=9",
+  enemy_wraith: "/models/enemies/enemy_wraith.glb?v=9",
+  enemy_voidling: "/models/enemies/enemy_voidling.glb?v=9",
+  enemy_dread: "/models/enemies/enemy_dread.glb?v=9",
+  enemy_titan: "/models/enemies/enemy_titan.glb?v=9",
+  enemy_juggernaut: "/models/enemies/enemy_juggernaut.glb?v=9",
+  enemy_overlord: "/models/enemies/enemy_overlord.glb?v=9",
+  enemy_leviathan: "/models/enemies/enemy_leviathan.glb?v=9",
+  // Zengas — x-4 tier ship, registered and render-ready (not yet mapped to a type)
+  enemy_zengas: "/models/enemies/enemy_zengas.glb?v=9",
 };
 
 interface ShipHardpoints {
