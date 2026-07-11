@@ -90,8 +90,9 @@ function AvatarConsole({
           alt=""
           draggable={false}
           style={{
-            position: "absolute", inset: "9%",
-            width: "82%", height: "82%", objectFit: "contain",
+            position: "absolute", left: "19%", top: "50%",
+            width: "62%", aspectRatio: "1 / 1", transform: "translateY(-50%)",
+            objectFit: "contain",
             clipPath: "polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%)",
             pointerEvents: "none",
           }}
@@ -192,15 +193,16 @@ function AvatarConsole({
         </div>
       </div>
 
-      {/* name strip */}
+      {/* pilot name — upper section of the dark panel (ends before the
+          baked angled divider kicks up at the right) */}
       <div
         style={{
-          position: "absolute", left: "45.4%", top: "7.8%", width: "49%", height: "9.9%",
+          position: "absolute", left: "45.8%", top: "23.5%", width: "32.5%", height: "11.8%",
           display: "flex", alignItems: "center", gap: 5, overflow: "hidden",
         }}
         title={`${player.name} · ${clsName}${player.faction ? ` · ${FACTIONS[player.faction].name}` : ""}`}
       >
-        <span className="font-bold truncate" style={{ fontSize: 11.5, color: "#ffe9c4", textShadow: "0 1px 2px #000", letterSpacing: "0.06em" }}>
+        <span className="font-bold truncate" style={{ fontSize: 12, color: "#ffe9c4", textShadow: "0 1px 2px #000", letterSpacing: "0.06em" }}>
           {player.name}
         </span>
         {player.faction && (
@@ -210,12 +212,12 @@ function AvatarConsole({
         )}
       </div>
 
-      {/* dark hex panel — level / honor / credits / cargo */}
+      {/* lower section of the dark panel — level / honor / credits / cargo */}
       <div
         style={{
-          position: "absolute", left: "46%", top: "23.8%", width: "47%", height: "31.6%",
-          display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr",
-          columnGap: "5%", rowGap: 1, padding: "1% 2%", alignItems: "center",
+          position: "absolute", left: "45.8%", top: "40%", width: "47.7%", height: "15.9%",
+          display: "grid", gridTemplateColumns: "0.8fr 1fr 1.2fr 1fr",
+          columnGap: "3.5%", alignItems: "center",
         }}
       >
         <PanelStat
@@ -254,7 +256,7 @@ function PanelStat({
       <div
         className="whitespace-nowrap"
         style={{
-          fontFamily: "var(--font-display)", fontSize: 8.5, letterSpacing: "0.18em",
+          fontFamily: "var(--font-display)", fontSize: 7.5, letterSpacing: "0.16em",
           color: "#9a9484", textShadow: "0 1px 2px #000", lineHeight: 1.2,
         }}
       >
@@ -262,12 +264,12 @@ function PanelStat({
       </div>
       <div
         className="font-bold tabular-nums whitespace-nowrap truncate"
-        style={{ color, fontSize: 13.5, lineHeight: 1.15, textShadow: "0 1px 3px rgba(0,0,0,0.9)" }}
+        style={{ color, fontSize: 12, lineHeight: 1.15, textShadow: "0 1px 3px rgba(0,0,0,0.9)" }}
       >
         {value}
       </div>
       {barPct !== undefined && (
-        <div style={{ width: "86%", height: 3, background: "#000a", marginTop: 1 }}>
+        <div style={{ width: "86%", height: 2, background: "#000a", marginTop: 1 }}>
           <div style={{ width: `${barPct}%`, height: "100%", background: barColor, boxShadow: `0 0 4px ${barColor}` }} />
         </div>
       )}
