@@ -1726,7 +1726,7 @@ export class GameEngine {
         // Hold point behind the player's heading, with a stable per-enemy
         // sideways spread so a pack fans out instead of stacking.
         const heading = target.angle ?? 0;
-        const standOff = e.behavior === "ranged" ? 240 : (e.isBoss ? 190 : 115);
+        const standOff = e.behavior === "ranged" ? 340 : (e.isBoss ? 300 : 220);
         const hseed = ((e.id.charCodeAt(e.id.length - 1) * 31 + e.id.charCodeAt(e.id.length - 2)) % 100) / 100;
         const side = (hseed - 0.5) * 2; // -1..1
         const holdPos = {
@@ -1757,10 +1757,15 @@ export class GameEngine {
           e.pos.y += vy * dt;
         }
 
-        // Fire at target
+        // Fire at target — also while chasing/repositioning (extended range),
+        // not only once parked at the hold point.
         e.fireTimer -= dt;
-        if (e.fireTimer <= 0 && d < fireRange) {
-          e.fireTimer = e.isBoss ? this.bossFireCd(e) : this.enemyFireCd(e);
+        const effFireRange = dHold > 90 ? Math.max(fireRange, 650) : fireRange;
+        if (e.fireTimer <= 0 && d < effFireRange) {
+          // unpredictable cadence: occasional quick follow-up volley, and
+          // ±15% jitter on the base rhythm so waves don't come metronomic
+          const baseCd = e.isBoss ? this.bossFireCd(e) : this.enemyFireCd(e);
+          e.fireTimer = Math.random() < 0.18 ? randRange(0.25, 0.45) : baseCd * randRange(0.85, 1.15);
 
           const dmg = this.calcEnemyDamage(e, target);
           const tPos = { x: target.posX, y: target.posY };
@@ -2017,7 +2022,9 @@ export class GameEngine {
   }
 
   private spawnEnemyProjectile(zoneId: string, zs: ZoneState, e: ServerEnemy, damage: number, angle: number, color: string, weaponKind: string = "laser", size: number = 3, speedMul: number = 1, homingPlayerId: number | null = null): void {
-    const projSpeed = 600 * speedMul;
+    // per-shot jitter: patterns stay recognizable but never pixel-identical
+    angle += (Math.random() - 0.5) * 0.09;
+    const projSpeed = 750 * speedMul * (0.92 + Math.random() * 0.16);
     // Slow bullet-hell shots live longer so effective range stays ~900 units
     const ttl = clamp(900 / Math.max(1, projSpeed), 1.6, 4.5);
     const proj: ServerProjectile = {

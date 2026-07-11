@@ -650,14 +650,19 @@ function fireProjectile(
   x: number, y: number, angle: number, damage: number, color: string, size = 3,
   opts?: { crit?: boolean; aoeRadius?: number; speedMul?: number; homing?: boolean; empStun?: number; armorPiercing?: boolean; weaponKind?: WeaponKind; renderOnly?: boolean; ttl?: number },
 ): void {
-  const speedBase = from === "player" ? 230 : from === "drone" ? 600 : 200;
-  const speed = speedBase * (opts?.speedMul ?? 1);
+  const speedBase = from === "player" ? 230 : from === "drone" ? 600 : 300;
+  let speed = speedBase * (opts?.speedMul ?? 1);
+  if (from === "enemy") {
+    // mirror the server's per-shot jitter so incoming waves aren't metronomic
+    angle += (Math.random() - 0.5) * 0.09;
+    speed *= 0.92 + Math.random() * 0.16;
+  }
   state.projectiles.push({
     id: `pr-${Math.random().toString(36).slice(2, 8)}`,
     pos: { x, y },
     vel: { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed },
     damage,
-    ttl: opts?.ttl ?? (opts?.homing ? 4.0 : 1.5), // 1.5 matches server laser TTL
+    ttl: opts?.ttl ?? (opts?.homing ? 4.0 : from === "enemy" ? 2.4 : 1.5), // enemies fire from further out while chasing
     fromPlayer: from !== "enemy",
     color,
     size: opts?.crit ? size + 2 : size,
