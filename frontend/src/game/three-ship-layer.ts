@@ -118,7 +118,7 @@ const SHIP_3D_MODELS: Record<string, string> = {
   enemy_titan: "/models/enemies/enemy_titan.glb?v=13",
   enemy_juggernaut: "/models/enemies/enemy_juggernaut.glb?v=13",
   enemy_overlord: "/models/enemies/enemy_overlord.glb?v=13",
-  enemy_leviathan: "/models/enemies/enemy_leviathan.glb?v=13",
+  enemy_leviathan: "/models/enemies/enemy_leviathan.glb?v=14",
   // Zengas — x-4 tier ship, registered and render-ready (not yet mapped to a type)
   enemy_zengas: "/models/enemies/enemy_zengas.glb?v=13",
 };
