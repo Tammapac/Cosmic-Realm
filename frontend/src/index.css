@@ -560,6 +560,23 @@ button {
   transform: translateY(1px) scale(0.94);
 }
 
+/* invisible click zone over a button baked into panel artwork (avatar.png) */
+.avatar-btn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  transition: box-shadow 0.12s, background 0.12s;
+}
+.avatar-btn:hover {
+  background: radial-gradient(ellipse at center, rgba(247, 168, 50, 0.28) 0%, transparent 70%);
+  box-shadow: 0 0 12px rgba(247, 168, 50, 0.35);
+  border-radius: 8px;
+}
+.avatar-btn:active {
+  background: radial-gradient(ellipse at center, rgba(247, 168, 50, 0.5) 0%, transparent 70%);
+}
+
 /* Journal close hotspot: sits exactly on the art's ⊘ icon; amber glow on hover */
 .j-close {
   transition: box-shadow 0.12s, filter 0.12s;

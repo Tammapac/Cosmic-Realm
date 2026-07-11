@@ -1,11 +1,9 @@
 import { useState, useEffect } from "react";
 import { GameButton } from "./GameButton";
-import { TopPanel } from "./TopPanel";
-import { useGame, state, bump, maxDroneSlots, cargoCapacity } from "../game/store";
+import { useGame, state, bump, cargoCapacity } from "../game/store";
 import { clearToken } from "../net/api";
 import { disconnectSocket } from "../net/socket";
-import { EXP_FOR_LEVEL, FACTIONS, SHIP_CLASSES, ZONES, rankFor, HONOR_RANKS } from "../game/types";
-import { effectiveStats } from "../game/loop";
+import { EXP_FOR_LEVEL, FACTIONS, SHIP_CLASSES, rankFor, HONOR_RANKS } from "../game/types";
 
 function fmtNum(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
@@ -16,9 +14,6 @@ function fmtNum(n: number): string {
 export function TopBar() {
   const player = useGame((s) => s.player);
   const cls = SHIP_CLASSES[player.shipClass];
-  const es = effectiveStats();
-  const shieldMax = es.shieldMax;
-  const hullMax = es.hullMax;
   const expNeeded = EXP_FOR_LEVEL(player.level);
   const rank = rankFor(player.honor);
   const nextRank = HONOR_RANKS.find((r) => r.minHonor > player.honor);
@@ -28,85 +23,15 @@ export function TopBar() {
   return (
     <>
     <div className="absolute top-2 left-2 right-2 z-30 flex items-start gap-2 pointer-events-none flex-wrap">
-      {/* Command console — two instrument rows: identity+vitals / progression+resources */}
-      <TopPanel style={{ minWidth: 0 }}>
-      <div className="flex flex-col">
-      {/* squared engraved header — pilot identity */}
-      <div className="console-hdr">
-        <span className="font-bold truncate" style={{ fontSize: 13, maxWidth: 190, color: "#ffe9c4", textShadow: "0 1px 2px #000" }}>
-          {player.name}
-        </span>
-        <span className="font-bold shrink-0 tabular-nums" style={{ fontSize: 12, color: "var(--accent-amber)" }}>
-          Lv {player.level}
-        </span>
-        {player.skillPoints > 0 && (
-          <span
-            className="shrink-0 font-bold tabular-nums"
-            style={{
-              fontSize: 10,
-              color: "#ff5cf0",
-              border: "1px solid #ff5cf066",
-              padding: "0px 5px",
-              whiteSpace: "nowrap",
-              animation: "pulse-glow 1.5s ease-in-out infinite",
-            }}
-          >
-            +{player.skillPoints} SP
-          </span>
-        )}
-      </div>
-
-      <div className="flex flex-col" style={{ padding: "6px 12px 7px" }}>
-      <div className="flex items-stretch">
-        {/* identity */}
-        <div className="flex items-center gap-2.5 pr-3">
-          <RankBadge rank={rank} />
-          <div className="min-w-0">
-            <div className="flex items-center gap-1 min-w-0" style={{ fontSize: 11.5 }}>
-              <span className="shrink-0 font-bold tracking-widest" style={{ color: rank.color, fontFamily: "var(--font-display)" }}>
-                {rank.name.toUpperCase()}
-              </span>
-            </div>
-            <div className="flex items-center gap-1 min-w-0" style={{ fontSize: 11.5 }}>
-              <span className="truncate" style={{ maxWidth: 110, color: "#b8bdca" }}>{cls.name}</span>
-              {player.faction && (
-                <>
-                  <span className="text-mute shrink-0">·</span>
-                  <span className="shrink-0 font-bold" style={{ color: FACTIONS[player.faction].color }}>
-                    [{FACTIONS[player.faction].tag}]
-                  </span>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <ConsoleDivider />
-
-        {/* progression */}
-        <div className="pl-3 flex flex-col justify-center" style={{ minWidth: 190 }}>
-          <MicroBar label="XP" value={player.exp} max={expNeeded} color="#ff5cf0" />
-          <MicroBar
-            label="HNR"
-            value={player.honor - rank.minHonor}
-            max={(nextRank?.minHonor ?? rank.minHonor + 1000) - rank.minHonor}
-            color={rank.color}
-          />
-        </div>
-      </div>
-
-      <div className="sw-hr" />
-
-      {/* resources readout strip */}
-      <div className="flex items-center justify-between" style={{ gap: 4 }}>
-        <Stat label="CREDITS" value={fmtNum(player.credits)} color="var(--accent-amber)" />
-        <Stat label="HONOR" value={fmtNum(player.honor)} color={rank.color} />
-        <Stat label="CARGO" value={`${cargoUsed}/${cargoCapacity()}`} color="#4ee2ff" />
-        <Stat label="DRONES" value={`${player.drones.length}/${maxDroneSlots()}`} color="#aaff5c" />
-      </div>
-      </div>
-      </div>
-      </TopPanel>
+      {/* Pilot console — avatar.png frame: rank in the octagon, stats in the dark panel */}
+      <AvatarConsole
+        player={player}
+        rank={rank}
+        nextRank={nextRank}
+        expNeeded={expNeeded}
+        clsName={cls.name}
+        cargoUsed={cargoUsed}
+      />
 
       {/* Spacer */}
       <div className="flex-1 min-w-0" />
@@ -124,6 +49,182 @@ export function TopBar() {
     </div>
     <LogoutFlow />
     </>
+  );
+}
+
+// ── Pilot console on the avatar.png frame art (383×193 native) ────────────
+// Geometry is % of the artwork so it scales: octagon inner ≈ x36..167/y32..172,
+// name strip ≈ x216..372/y15..34, dark hex panel ≈ x206..366/y44..108,
+// three octagon buttons ≈ y115..168 starting at x203, pitch ~47px.
+function AvatarConsole({
+  player, rank, nextRank, expNeeded, clsName, cargoUsed,
+}: {
+  player: any;
+  rank: { color: string; symbol: string; pips: number; name: string; minHonor: number };
+  nextRank: { minHonor: number } | undefined;
+  expNeeded: number;
+  clsName: string;
+  cargoUsed: number;
+}) {
+  const honorSpan = (nextRank?.minHonor ?? rank.minHonor + 1000) - rank.minHonor;
+  const honorPct = Math.max(0, Math.min(100, ((player.honor - rank.minHonor) / Math.max(1, honorSpan)) * 100));
+  const xpPct = Math.max(0, Math.min(100, (player.exp / Math.max(1, expNeeded)) * 100));
+
+  const rankTip =
+    `${rank.name.toUpperCase()}\n` +
+    `Pilot rank — earned through honor.\n` +
+    `HONOR ${fmtNum(player.honor)}${nextRank ? ` · NEXT RANK AT ${fmtNum(nextRank.minHonor)}` : " · MAX RANK"}\n` +
+    `SHIP ${clsName}${player.faction ? ` · FACTION [${FACTIONS[player.faction].tag}]` : ""}`;
+
+  const consoleBtn = (left: string, label: string, onClick: () => void, badge?: number) => (
+    <button
+      onClick={onClick}
+      title={label}
+      className="avatar-btn"
+      style={{ position: "absolute", left, top: "59.5%", width: "11.8%", height: "27%" }}
+    >
+      {badge != null && badge > 0 && (
+        <span
+          style={{
+            position: "absolute", top: "-12%", right: "-8%",
+            minWidth: 15, height: 15, padding: "0 3px",
+            background: "#ff5cf0", color: "#0b0b12",
+            fontSize: 10, fontWeight: 800, lineHeight: "15px",
+            borderRadius: 8, textShadow: "none",
+            animation: "pulse-glow 1.5s ease-in-out infinite",
+          }}
+        >
+          {badge}
+        </span>
+      )}
+    </button>
+  );
+
+  return (
+    <div
+      className="pointer-events-auto shrink-0"
+      style={{
+        position: "relative",
+        width: 358,
+        aspectRatio: "383 / 193",
+        backgroundImage: "url(/assets/ui/avatar-frame.png)",
+        backgroundSize: "100% 100%",
+        filter: "drop-shadow(0 4px 14px rgba(0,0,0,0.55))",
+        userSelect: "none",
+      }}
+    >
+      {/* octagon — pilot rank */}
+      <div
+        title={rankTip}
+        style={{
+          position: "absolute", left: "10.5%", top: "18.5%", width: "32%", height: "69%",
+          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+          gap: 2, cursor: "default",
+        }}
+      >
+        <div style={{ color: rank.color, fontSize: 40, lineHeight: 1, textShadow: `0 0 14px ${rank.color}, 0 0 30px ${rank.color}66` }}>
+          {rank.symbol}
+        </div>
+        <div className="flex gap-[3px]" style={{ margin: "3px 0 1px" }}>
+          {Array.from({ length: rank.pips }).map((_, i) => (
+            <div key={i} style={{ width: 5, height: 5, background: rank.color, borderRadius: 1, boxShadow: `0 0 4px ${rank.color}` }} />
+          ))}
+        </div>
+        <div
+          className="font-bold text-center"
+          style={{
+            color: rank.color, fontSize: 11, letterSpacing: "0.14em", lineHeight: 1.15,
+            fontFamily: "var(--font-display)", textShadow: `0 0 8px ${rank.color}55, 0 1px 2px #000`,
+            maxWidth: "100%",
+          }}
+        >
+          {rank.name.toUpperCase()}
+        </div>
+        {/* honor progress to next rank */}
+        <div style={{ width: "72%", height: 4, background: "#000a", border: `1px solid ${rank.color}44`, marginTop: 3 }}>
+          <div style={{ width: `${honorPct}%`, height: "100%", background: rank.color, boxShadow: `0 0 5px ${rank.color}` }} />
+        </div>
+      </div>
+
+      {/* name strip */}
+      <div
+        style={{
+          position: "absolute", left: "56%", top: "7.2%", width: "40%", height: "10%",
+          display: "flex", alignItems: "center", gap: 5, overflow: "hidden",
+        }}
+        title={`${player.name} · ${clsName}${player.faction ? ` · ${FACTIONS[player.faction].name}` : ""}`}
+      >
+        <span className="font-bold truncate" style={{ fontSize: 12, color: "#ffe9c4", textShadow: "0 1px 2px #000", letterSpacing: "0.06em" }}>
+          {player.name}
+        </span>
+        {player.faction && (
+          <span className="shrink-0 font-bold" style={{ fontSize: 10, color: FACTIONS[player.faction].color, textShadow: "0 1px 2px #000" }}>
+            [{FACTIONS[player.faction].tag}]
+          </span>
+        )}
+      </div>
+
+      {/* dark hex panel — level / honor / credits / cargo */}
+      <div
+        style={{
+          position: "absolute", left: "54.4%", top: "23.8%", width: "40.5%", height: "31.6%",
+          display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "1fr 1fr",
+          columnGap: "6%", rowGap: 1, padding: "1.5% 3%", alignItems: "center",
+        }}
+      >
+        <PanelStat
+          label="LEVEL" value={String(player.level)} color="var(--accent-amber)"
+          tip={`Level ${player.level}\nXP ${fmtNum(player.exp)} / ${fmtNum(expNeeded)} to next level`}
+          barPct={xpPct} barColor="#ff5cf0"
+        />
+        <PanelStat
+          label="HONOR" value={fmtNum(player.honor)} color={rank.color}
+          tip={`Honor ${fmtNum(player.honor)}\n${nextRank ? `Next rank at ${fmtNum(nextRank.minHonor)}` : "Maximum rank reached"}`}
+        />
+        <PanelStat
+          label="CREDITS" value={fmtNum(player.credits)} color="var(--accent-amber)"
+          tip={`${player.credits.toLocaleString()} credits`}
+        />
+        <PanelStat
+          label="CARGO" value={`${cargoUsed}/${cargoCapacity()}`} color="#4ee2ff"
+          tip={`Cargo hold ${cargoUsed}/${cargoCapacity()} units\nPress J to open`}
+        />
+      </div>
+
+      {/* octagon buttons — pilot / inventory / cargo */}
+      {consoleBtn("53.2%", `Skill Tree${player.skillPoints > 0 ? `\n${player.skillPoints} skill points available` : ""}`, () => { state.showSkillTree = !state.showSkillTree; bump(); }, player.skillPoints)}
+      {consoleBtn("65.3%", "Inventory (I)", () => { state.showInventory = !state.showInventory; bump(); })}
+      {consoleBtn("77.4%", "Cargo Hold (J)", () => { state.showCargo = !state.showCargo; bump(); })}
+    </div>
+  );
+}
+
+function PanelStat({
+  label, value, color, tip, barPct, barColor,
+}: { label: string; value: string; color: string; tip: string; barPct?: number; barColor?: string }) {
+  return (
+    <div title={tip} style={{ minWidth: 0, cursor: "default" }}>
+      <div
+        className="whitespace-nowrap"
+        style={{
+          fontFamily: "var(--font-display)", fontSize: 8.5, letterSpacing: "0.18em",
+          color: "#9a9484", textShadow: "0 1px 2px #000", lineHeight: 1.2,
+        }}
+      >
+        {label}
+      </div>
+      <div
+        className="font-bold tabular-nums whitespace-nowrap truncate"
+        style={{ color, fontSize: 13.5, lineHeight: 1.15, textShadow: "0 1px 3px rgba(0,0,0,0.9)" }}
+      >
+        {value}
+      </div>
+      {barPct !== undefined && (
+        <div style={{ width: "86%", height: 3, background: "#000a", marginTop: 1 }}>
+          <div style={{ width: `${barPct}%`, height: "100%", background: barColor, boxShadow: `0 0 4px ${barColor}` }} />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -312,100 +413,3 @@ function IconBtn({ icon, label, onClick }: { icon: string; label: string; onClic
   );
 }
 
-function ConsoleDivider() {
-  return (
-    <div
-      aria-hidden
-      style={{
-        width: 1,
-        alignSelf: "stretch",
-        background:
-          "linear-gradient(180deg, transparent 0%, rgba(247,168,50,0.35) 20%, rgba(247,168,50,0.35) 80%, transparent 100%)",
-        boxShadow: "1px 0 0 rgba(0,0,0,0.6)",
-        flexShrink: 0,
-      }}
-    />
-  );
-}
-
-function MicroBar({
-  label, value, max, color,
-}: { label: string; value: number; max: number; color: string }) {
-  const pct = Math.max(0, Math.min(100, (value / Math.max(1, max)) * 100));
-  const valStr = `${Math.round(value)}/${Math.round(max)}`;
-  return (
-    <div className="flex items-center gap-1.5 mb-0.5 last:mb-0">
-      <span
-        className="shrink-0 text-right tabular-nums font-bold"
-        style={{ color: "#ffffff", fontSize: 11, width: 28, letterSpacing: "0.08em", textShadow: "0 0 6px rgba(255,255,255,0.7), 0 0 10px rgba(255,255,255,0.35)" }}
-      >
-        {label}
-      </span>
-      <div className="bar flex-1" style={{ height: 10, minWidth: 60 }}>
-        <div
-          className="bar-fill"
-          style={{
-            width: `${pct}%`,
-            background: `linear-gradient(90deg, ${color}55, ${color})`,
-            boxShadow: `0 0 4px ${color}88`,
-          }}
-        />
-      </div>
-      <span
-        className="tabular-nums shrink-0 text-right"
-        style={{ color, fontSize: 10, minWidth: 56 }}
-      >
-        {valStr}
-      </span>
-    </div>
-  );
-}
-
-function Stat({ label, value, color }: { label: string; value: string; color: string }) {
-  return (
-    <div className="stat-box">
-      <div
-        className="whitespace-nowrap"
-        style={{
-          fontFamily: "var(--font-display)",
-          fontSize: 9.5,
-          letterSpacing: "0.16em",
-          color: "#8f96a6",
-          textShadow: "0 1px 2px #000",
-        }}
-      >
-        {label}
-      </div>
-      <div
-        className="font-bold tabular-nums whitespace-nowrap"
-        style={{ color, fontSize: 14, textShadow: "0 1px 2px rgba(0,0,0,0.8)" }}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}
-
-export function RankBadge({ rank }: { rank: { color: string; symbol: string; pips: number; name: string } }) {
-  return (
-    <div
-      className="flex flex-col items-center justify-center shrink-0"
-      style={{
-        width: 38, height: 38,
-        background: `${rank.color}1a`,
-        border: `1px solid ${rank.color}cc`,
-        boxShadow: `0 0 8px ${rank.color}44, inset 0 0 6px ${rank.color}0a`,
-      }}
-      title={rank.name}
-    >
-      <div style={{ color: rank.color, fontSize: 17, lineHeight: 1, textShadow: `0 0 6px ${rank.color}` }}>
-        {rank.symbol}
-      </div>
-      <div className="flex gap-[2px] mt-[2px]">
-        {Array.from({ length: rank.pips }).map((_, i) => (
-          <div key={i} style={{ width: 3, height: 3, background: rank.color, borderRadius: 1 }} />
-        ))}
-      </div>
-    </div>
-  );
-}
