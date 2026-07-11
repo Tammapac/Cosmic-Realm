@@ -1717,9 +1717,21 @@ export class GameEngine {
           target = null;
         }
       }
-      // DarkOrbit-style passivity: enemies never aggro on their own — they
-      // retaliate only. aggroTarget is set where the enemy takes damage
-      // (projectile hit / playerAttack), and drops on leash/dock above.
+      // DarkOrbit-style passivity: regular enemies never aggro on their own —
+      // they retaliate only (aggroTarget set where they take damage).
+      // PIRATES are the exception: they hunt any player on sight.
+      if (!target && (e.id.startsWith("pir") || e.id.startsWith("pboss"))) {
+        let closestDist = e.aggroRange;
+        for (const p of players) {
+          if (p.isDocked) continue;
+          const d = dist(e.pos, { x: p.posX, y: p.posY });
+          if (d < closestDist) { closestDist = d; target = p; }
+        }
+        if (target) {
+          e.aggroTarget = target.playerId;
+          e.retargetCd = 2.5;
+        }
+      }
 
       if (target) {
         // DarkOrbit-style pursuit: burst toward a hold point just behind the
@@ -1729,19 +1741,31 @@ export class GameEngine {
         const d = dist(e.pos, tPos);
         const fireRange = e.isBoss ? 500 : (e.behavior === "ranged" ? 350 : 250);
 
-        // Hold point behind the player's heading, with a stable per-enemy
-        // sideways spread so a pack fans out instead of stacking.
-        const heading = target.angle ?? 0;
+        // Hold point ON THE ENEMY'S OWN SIDE of the player at standOff range
+        // (never behind/through the ship), with a stable per-enemy angular
+        // spread so a pack fans out around the player. The enemy closes in
+        // fast, parks at range, and keeps firing — backing off if the player
+        // pushes toward it.
         const standOff = e.behavior === "ranged" ? 340 : (e.isBoss ? 300 : 220);
         const hseed = ((e.id.charCodeAt(e.id.length - 1) * 31 + e.id.charCodeAt(e.id.length - 2)) % 100) / 100;
         const side = (hseed - 0.5) * 2; // -1..1
+        const dirAng = angleFromTo(tPos, e.pos); // player → enemy: stay on own side
+        const spreadAng = dirAng + side * 0.55;
         const holdPos = {
-          x: tPos.x - Math.cos(heading) * standOff + Math.cos(heading + Math.PI / 2) * side * 100,
-          y: tPos.y - Math.sin(heading) * standOff + Math.sin(heading + Math.PI / 2) * side * 100,
+          x: tPos.x + Math.cos(spreadAng) * standOff,
+          y: tPos.y + Math.sin(spreadAng) * standOff,
         };
         const dHold = dist(e.pos, holdPos);
 
-        if (dHold > 90) {
+        if (d < standOff * 0.55) {
+          // Hard keep-out: too close (player charged in) — back straight off
+          const away = angleFromTo(tPos, e.pos);
+          e.angle = angleFromTo(e.pos, tPos); // still face the player
+          e.vel.x = Math.cos(away) * e.speed;
+          e.vel.y = Math.sin(away) * e.speed;
+          e.pos.x += e.vel.x * dt;
+          e.pos.y += e.vel.y * dt;
+        } else if (dHold > 80) {
           // Chase burst: noticeably faster than cruise, extra boost when far
           const chaseMul = dHold > 600 ? 1.9 : 1.45;
           const ang = angleFromTo(e.pos, holdPos);
@@ -1751,7 +1775,7 @@ export class GameEngine {
           e.pos.x += e.vel.x * dt;
           e.pos.y += e.vel.y * dt;
         } else {
-          // Station-keeping: glue to the hold point, face the player
+          // Station-keeping at range: face the player, keep firing
           e.angle = angleFromTo(e.pos, tPos);
           let vx = (holdPos.x - e.pos.x) * 2.4;
           let vy = (holdPos.y - e.pos.y) * 2.4;
