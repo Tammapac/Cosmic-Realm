@@ -814,6 +814,10 @@ const ENEMY_3D_MODEL: Record<string, string> = {
   leviathan: "enemy_leviathan",
 };
 
+// Beginner-tier player hulls pirates fly (picked per-pirate by id hash so a
+// pack shows a stable mix; boss pirates get the Marauder).
+const PIRATE_SHIP_MODELS = ["skimmer", "wasp", "vanguard", "reaver"];
+
 function enemyTexKey(e: Enemy): string {
   const varSeed = (e.id.charCodeAt(0) + e.id.charCodeAt(e.id.length - 1)) % 3;
   return `enemy-${e.type}-${e.color}-${e.size}-${e.isBoss ? 1 : 0}-${varSeed}`;
@@ -2253,7 +2257,17 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
 
     // 3D alien model swap: when the GLB is ready, hide the 2D body and drive
     // the shared ship layer instead (health bar/name/auras stay in Pixi).
-    const enemyModelKey = ENEMY_3D_MODEL[e.type];
+    // Pirates fly stolen PLAYER ships: beginner hulls for the rank and file,
+    // a Marauder for the bounty boss (render-only — stats/AI untouched).
+    let enemyModelKey = ENEMY_3D_MODEL[e.type];
+    if (e.id.startsWith("pboss")) {
+      enemyModelKey = "marauder";
+    } else if (e.id.startsWith("pir")) {
+      // ids look like "pir-<time36>-<seq36>" — hash the tail for a stable pick
+      let h = 0;
+      for (let ci = 4; ci < e.id.length; ci++) h = (h + e.id.charCodeAt(ci)) | 0;
+      enemyModelKey = PIRATE_SHIP_MODELS[h % PIRATE_SHIP_MODELS.length];
+    }
     const enemyUse3D = !!enemyModelKey && has3DModel(enemyModelKey) && is3DReady(enemyModelKey);
     if (enemyUse3D) {
       data.body.visible = false;
