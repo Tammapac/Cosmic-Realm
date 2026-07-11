@@ -116,7 +116,7 @@ const SHIP_3D_MODELS: Record<string, string> = {
   enemy_voidling: "/models/enemies/enemy_voidling.glb?v=11",
   enemy_dread: "/models/enemies/enemy_dread.glb?v=11",
   enemy_titan: "/models/enemies/enemy_titan.glb?v=11",
-  enemy_juggernaut: "/models/enemies/enemy_juggernaut.glb?v=11",
+  enemy_juggernaut: "/models/enemies/enemy_juggernaut.glb?v=12",
   enemy_overlord: "/models/enemies/enemy_overlord.glb?v=11",
   enemy_leviathan: "/models/enemies/enemy_leviathan.glb?v=11",
   // Zengas — x-4 tier ship, registered and render-ready (not yet mapped to a type)
