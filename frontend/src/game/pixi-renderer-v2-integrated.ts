@@ -30,7 +30,7 @@ import {
   endFrame as endEnemyFrame,
   render3DLayer as renderEnemy3DLayer,
 } from "./three-ship-layer?instance=enemy";
-import { enemyModelKey as sharedEnemyModelKey } from "../../../lib/hitbox";
+import { enemyModelKey as sharedEnemyModelKey, shipHullRadius } from "../../../lib/hitbox";
 import { state } from "./store";
 import { effectiveStats, getDebugSpawnBuffer } from "./loop";
 import {
@@ -1455,6 +1455,35 @@ let fps = 0;
 // ══════════════════════════════════════════════════════════════════════════
 
 let _labelOverlay: HTMLDivElement | null = null;
+// Per-frame DOM label blocks for OTHER players (built in syncOtherPlayers,
+// flushed together with the local player's block in syncPlayer). DOM labels
+// live above the Three.js canvases and don't scale with camera zoom.
+let _otherLabelHtml = "";
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// Name row: faction dot + pilot name + honor-rank icon (PNG GUI/ranks).
+function shipLabelHtml(
+  sx: number, syTop: number, name: string,
+  faction: { color: string; tag: string } | null,
+  rank: { index: number; name: string },
+  hullPct: number | null,
+  extra: string,
+): string {
+  const dot = faction
+    ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${faction.color};margin-right:4px;vertical-align:middle;box-shadow:0 0 4px ${faction.color};" title="${faction.tag}"></span>`
+    : "";
+  const rankImg = `<img src="/assets/ui/ranks/rank_${String(rank.index + 1).padStart(2, "0")}.png" style="height:12px;width:auto;vertical-align:middle;margin-left:5px;filter:drop-shadow(0 1px 1px #000);" title="${rank.name}"/>`;
+  const bar = hullPct != null
+    ? `<div style="width:46px;height:3px;background:rgba(0,0,0,0.55);margin:0 auto 3px;"><div style="width:${Math.round(hullPct * 100)}%;height:100%;background:#44ff66;"></div></div>`
+    : "";
+  return `<div style="position:absolute;left:${Math.round(sx)}px;top:${Math.round(syTop)}px;transform:translate(-50%,0);pointer-events:none;text-align:center;">
+    ${bar}
+    <div style="font-family:'Kenney Future Narrow','Courier New',monospace;font-size:13px;font-weight:bold;color:#e8f0ff;text-shadow:0 0 3px #000,0 1px 2px #000;white-space:nowrap;letter-spacing:0.05em;">${dot}${escapeHtml(name)}${rankImg}${extra}</div>
+  </div>`;
+}
 
 export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLDivElement): void {
   if (labelOverlay) _labelOverlay = labelOverlay;
@@ -3048,7 +3077,10 @@ function syncPlayer(): void {
     }
   }
 
-  // HTML overlay labels (rendered above Three.js canvas via zIndex:2 div)
+  // HTML overlay labels — above the 3D canvases, constant screen size at any
+  // zoom. The vertical offset follows the ship's rendered silhouette radius
+  // so bars/name always clear the hull. Other players' blocks were collected
+  // in syncOtherPlayers; flush everything in one write.
   if (_labelOverlay) {
     const zoom = state.cameraZoom;
     const w2 = app!.screen.width;
@@ -3056,6 +3088,7 @@ function syncPlayer(): void {
     // Player is always at the camera center in world space
     const sx = w2 / 2;
     const sy = h2 / 2;
+    const rPx = shipHullRadius(p.shipClass, SHIP_SIZE_SCALE[p.shipClass] ?? 1) * zoom * 0.66 + 8;
 
     const hullPct = Math.max(0, p.hull / es.hullMax);
     const shieldPct = Math.max(0, p.shield / es.shieldMax);
@@ -3064,31 +3097,20 @@ function syncPlayer(): void {
     const barW = 56;
     const hullW = Math.round(barW * hullPct);
     const shieldW = Math.round(barW * shieldPct);
-    const factionDot = pFaction
-      ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${pFaction.color};margin-right:3px;vertical-align:middle;"></span>`
-      : "";
 
-    _labelOverlay.innerHTML = `
-      <div style="position:absolute;left:${sx}px;top:${sy - 38}px;transform:translate(-50%,-100%);pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:2px;">
+    const selfBars = `
+      <div style="position:absolute;left:${sx}px;top:${Math.round(sy - rPx)}px;transform:translate(-50%,-100%);pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:2px;">
         <div style="width:${barW}px;height:4px;background:rgba(0,0,0,0.5);border-radius:2px;overflow:hidden;">
           <div style="width:${hullW}px;height:100%;background:#44ff66;border-radius:2px;"></div>
         </div>
         <div style="width:${barW}px;height:4px;background:rgba(0,0,0,0.5);border-radius:2px;overflow:hidden;">
           <div style="width:${shieldW}px;height:100%;background:#4ee2ff;border-radius:2px;"></div>
         </div>
-      </div>
-      <div style="position:absolute;left:${sx}px;top:${sy + 38}px;transform:translate(-50%,0);pointer-events:none;">
-      <div style="
-        font-family:'Segoe UI',Arial,sans-serif;
-        font-size:12px;
-        font-weight:bold;
-        color:#e8f0ff;
-        text-shadow:0 0 3px #000,0 0 3px #000;
-        white-space:nowrap;
-        text-align:center;
-        white-space:nowrap;
-      ">${factionDot}${p.name} ${pRank.symbol}${state.dockedAt ? ' <span style="color:#44ff88">DOCKED</span>' : ""}</div>
       </div>`;
+    const dockedTag = state.dockedAt ? ' <span style="color:#44ff88">DOCKED</span>' : "";
+    const selfName = shipLabelHtml(sx, sy + rPx, p.name, pFaction, pRank, null, dockedTag);
+
+    _labelOverlay.innerHTML = _otherLabelHtml + selfBars + selfName;
   }
 }
 
@@ -3099,6 +3121,7 @@ function syncPlayer(): void {
 function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: number): void {
   _reuseOtherPlayerSyncIds.clear();
   const activeIds = _reuseOtherPlayerSyncIds;
+  _otherLabelHtml = "";
 
   for (const o of state.others) {
     if (Math.abs(o.pos.x - cam.x) > halfW + 30 || Math.abs(o.pos.y - cam.y) > halfH + 30) {
@@ -3126,37 +3149,10 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
       body.anchor.set(0.5);
       container.addChild(body);
 
-      const bars = new PIXI.Graphics();
-      container.addChild(bars);
-
-      const nameText = new PIXI.Text(o.name, {
-        fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
-        fontSize: 11,
-        fill: "#7a8ad8",
-        fontWeight: "bold",
-        stroke: "#000000",
-        strokeThickness: 1,
-      });
-      nameText.resolution = 4;
-      nameText.anchor.set(0.5, 0);
-      container.addChild(nameText);
-
-      const badgeContainer = new PIXI.Container();
-      badgeContainer.name = "factionBadge";
-      const badgeCircle = new PIXI.Graphics();
-      badgeCircle.name = "circle";
-      badgeContainer.addChild(badgeCircle);
-      const badgeLetter = new PIXI.Text("", {
-        fontFamily: "Arial, sans-serif",
-        fontSize: 8,
-        fill: "#ffffff",
-        fontWeight: "bold",
-      });
-      badgeLetter.resolution = 4;
-      badgeLetter.anchor.set(0.5);
-      badgeLetter.name = "letter";
-      badgeContainer.addChild(badgeLetter);
-      container.addChild(badgeContainer);
+      // Name/faction/rank + hull bar are DOM overlay labels now (constant
+      // screen size, above the 3D canvases) — no Pixi text/bars attached.
+      const bars = new PIXI.Graphics(); // kept for the shared sprite type
+      const nameText = new PIXI.Text("", {});
 
       playerLayer.addChild(container);
       data = { container, body, nameText, bars };
@@ -3178,43 +3174,16 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
       data.body.rotation = _oDir.isDirectional ? 0 : o.angle + Math.PI / 2;
     }
 
-    // Bars
-    const hullPct = Math.max(0, o.hull / o.hullMax);
-    const shieldPct = o.shield / Math.max(1, o.hullMax);
-    data.bars.clear();
-    data.bars.position.set(-14, -24);
-    data.bars.beginFill(0x222222, 0.5);
-    data.bars.drawRect(0, 0, 28, 3);
-    data.bars.endFill();
-    data.bars.beginFill(0x44ff66);
-    data.bars.drawRect(0, 0, 28 * hullPct, 3);
-    data.bars.endFill();
-
-    // Name with rank symbol on right, white
+    // DOM overlay label: hull bar + faction dot + name + rank icon, at
+    // constant screen size below the ship (in front of the 3D model).
     const oRank = rankFor(o.honor);
-    data.nameText.style.fill = "#e8f0ff";
-    data.nameText.text = o.name + " " + oRank.symbol;
-    data.nameText.position.set(0, 24);
-
-    // Faction badge (colored circle with letter) left of name
-    const badge = data.container.getChildByName("factionBadge") as PIXI.Container;
-    if (badge) {
-      const oFaction = o.faction ? FACTIONS[o.faction as keyof typeof FACTIONS] : null;
-      if (oFaction) {
-        badge.visible = true;
-        const nw = data.nameText.width;
-        badge.position.set(-nw / 2 - 10, 30);
-        const bCirc = badge.getChildByName("circle") as PIXI.Graphics;
-        bCirc.clear();
-        bCirc.beginFill(PIXI.utils.string2hex(oFaction.color));
-        bCirc.drawCircle(0, 0, 6);
-        bCirc.endFill();
-        const bLetter = badge.getChildByName("letter") as PIXI.Text;
-        bLetter.text = oFaction.tag.charAt(0);
-      } else {
-        badge.visible = false;
-      }
-    }
+    const oFaction = o.faction ? FACTIONS[o.faction as keyof typeof FACTIONS] : null;
+    const zoomL = state.cameraZoom;
+    const sxL = (o.pos.x - cam.x) * zoomL + app!.screen.width / 2;
+    const syL = (o.pos.y - cam.y) * zoomL + app!.screen.height / 2;
+    const rPxL = shipHullRadius(o.shipClass, SHIP_SIZE_SCALE[o.shipClass] ?? 1) * zoomL * 0.66 + 8;
+    const hullPct = Math.max(0, Math.min(1, o.hull / Math.max(1, o.hullMax)));
+    _otherLabelHtml += shipLabelHtml(sxL, syL + rPxL, o.name, oFaction, oRank, hullPct, "");
 
     const factionColor = o.faction ? FACTIONS[o.faction as keyof typeof FACTIONS]?.color ?? "#7a8ad8" : "#7a8ad8";
     // Animate body glow with faction color
