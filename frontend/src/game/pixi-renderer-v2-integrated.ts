@@ -2278,12 +2278,13 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
       container.addChild(healthBar);
 
       const nameText = new PIXI.Text(e.name || "", {
-        fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
-        fontSize: 12,
-        fill: e.color,
+        fontFamily: '"Kenney Future Narrow", "Courier New", monospace',
+        fontSize: 16,
+        fill: "#ff3344",
         fontWeight: "bold",
         stroke: "#000000",
-        strokeThickness: 1,
+        strokeThickness: 2,
+        letterSpacing: 1,
       });
       nameText.resolution = 4;
       nameText.anchor.set(0.5, 1);
@@ -2318,7 +2319,6 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
     } else if (data.texKey !== currentTexKey) {
       data.body.texture = getEnemyTex(e);
       data.texKey = currentTexKey;
-      data.nameText.style.fill = e.color;
       if (data.coreGlow) data.coreGlow.tint = PIXI.utils.string2hex(e.color);
     }
 

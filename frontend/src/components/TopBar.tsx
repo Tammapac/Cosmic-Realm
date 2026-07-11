@@ -385,53 +385,53 @@ export function WorldTargetHud() {
   const hpColor = target.kind === "enemy" ? "#ff5c6c" : "#c69060";
   return (
     <div
-      className="hud-chip chip-target pointer-events-none"
+      className="console-sq pointer-events-none"
       style={{
         position: "fixed",
         left: 14,
         top: "50%",
         transform: "translateY(-50%)",
         zIndex: 35,
-        minWidth: 190,
-        maxWidth: 240,
-        padding: "4px 6px",
+        width: 216,
+        padding: "8px 10px 10px",
       }}
     >
-      <div className="hud-label mb-0.5">TARGET</div>
+      <span className="console-corner tl" />
+      <span className="console-corner tr" />
+      <span className="console-corner bl" />
+      <span className="console-corner br" />
       <div
-        className="font-bold truncate"
-        style={{ color: hpColor, fontSize: 14, maxWidth: 210 }}
+        className="font-bold truncate text-center"
+        style={{
+          color: hpColor, fontSize: 15, letterSpacing: "0.08em",
+          fontFamily: "var(--font-display)", textShadow: "0 1px 2px #000",
+        }}
       >
         {target.name}
       </div>
-      <div className="text-dim mt-0.5 mb-2 truncate" style={{ fontSize: 11, maxWidth: 210 }}>
-        {target.detail}
-      </div>
       {entity && (
-        <div>
-          <div className="flex items-center gap-1.5">
-            <span className="hud-label w-5 shrink-0">HP</span>
-            <div
-              className="flex-1 overflow-hidden"
-              style={{ height: 8, background: "rgba(255,255,255,0.07)", borderRadius: 2 }}
-            >
-              <div
-                style={{
-                  height: "100%",
-                  width: hpPct + "%",
-                  background: `linear-gradient(90deg, ${hpColor}66, ${hpColor})`,
-                  boxShadow: "0 0 4px " + hpColor,
-                  transition: "width 0.15s ease-out",
-                  borderRadius: 2,
-                }}
-              />
-            </div>
-            <span
-              className="tabular-nums shrink-0"
-              style={{ color: hpColor, fontSize: 11, minWidth: 60, textAlign: "right" }}
-            >
-              {Math.round(hp)}/{Math.round(hpMax)}
-            </span>
+        <div
+          className="relative overflow-hidden"
+          style={{
+            height: 15, marginTop: 6,
+            background: "rgba(0,0,0,0.55)",
+            border: `1px solid ${hpColor}55`,
+          }}
+        >
+          <div
+            style={{
+              position: "absolute", inset: 0,
+              width: hpPct + "%",
+              background: `linear-gradient(90deg, ${hpColor}55, ${hpColor})`,
+              boxShadow: "0 0 6px " + hpColor,
+              transition: "width 0.15s ease-out",
+            }}
+          />
+          <div
+            className="absolute inset-0 flex items-center justify-center tabular-nums font-bold"
+            style={{ fontSize: 10.5, color: "#fff", textShadow: "0 1px 2px #000", letterSpacing: "0.04em" }}
+          >
+            {Math.round(hp)}/{Math.round(hpMax)}
           </div>
         </div>
       )}
