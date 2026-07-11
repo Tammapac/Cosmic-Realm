@@ -14,6 +14,22 @@ import { initHardpointEditor, toggleHardpointEditor, isEditorActive } from "./de
 import { DIRECTIONS_32 } from "./debug/hardpointTypes";
 import { has3DModel, is3DReady, updateShip3D, setCameraZoom, beginFrame, markActive, endFrame, render3DLayer, getShipHardpointPositions, getShipMuzzleWorldPositionsAt, updateEngineGlow, updateNebulaBackground, removeShip3D, preload3DModels, getLoadingProgress, debugEnumerateAllMuzzles } from "./three-ship-layer";
 import { setStationCameraZoom, beginStationFrame, updateStationOnly, endStationFrame, renderStation3DLayer, removeStation3D, initStation3DLayer } from "./three-station-layer";
+// Second, independent instance of the ship layer (separate module via query
+// suffix): renders ENEMY ships — with the same outline + bloom pipeline — to
+// an offscreen canvas composited as a Pixi sprite BELOW names/health bars/
+// projectiles/player. See vite-env.d.ts.
+import {
+  init3DLayer as initEnemy3DLayer,
+  destroy3DLayer as destroyEnemy3DLayer,
+  has3DModel as enemyHas3DModel,
+  is3DReady as enemyIs3DReady,
+  updateShip3D as updateEnemyShip3D,
+  setCameraZoom as setEnemyCameraZoom,
+  beginFrame as beginEnemyFrame,
+  markActive as markEnemyActive,
+  endFrame as endEnemyFrame,
+  render3DLayer as renderEnemy3DLayer,
+} from "./three-ship-layer?instance=enemy";
 import { state } from "./store";
 import { effectiveStats, getDebugSpawnBuffer } from "./loop";
 import {
@@ -70,6 +86,12 @@ let debugMuzzleLabels: PIXI.Container | null = null;
 let stationSprite: PIXI.Sprite | null = null;
 let stationTexture: PIXI.Texture | null = null;
 let stationBaseTexture: PIXI.BaseTexture | null = null;
+
+// Enemy 3D pass (second ship-layer instance) composited inside worldLayer
+let enemyShipCanvas: HTMLCanvasElement | null = null;
+let enemyShipSprite: PIXI.Sprite | null = null;
+let enemyShipTexture: PIXI.Texture | null = null;
+let enemyShipBaseTexture: PIXI.BaseTexture | null = null;
 
 let effectManager: EffectManager | null = null;
 let lastRenderTime = 0;
@@ -1535,6 +1557,25 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
   // Insert between bgLayer (index 0) and worldLayer (index 1)
   app.stage.addChildAt(stationSprite, 1);
 
+  // Enemy 3D pass: offscreen ship-layer instance → Pixi sprite INSIDE
+  // worldLayer, right below the 2D enemy layer (which holds names/health
+  // bars/fallback bodies). Result: enemy models render above stations and
+  // asteroids but below names, projectiles, effects and the player, who
+  // stays on the top DOM canvas. The sprite is screen-sized; each frame it
+  // is counter-scaled against the world transform so it stays screen-aligned.
+  enemyShipCanvas = document.createElement("canvas");
+  enemyShipCanvas.width = window.innerWidth;
+  enemyShipCanvas.height = window.innerHeight;
+  initEnemy3DLayer(enemyShipCanvas);
+  enemyShipBaseTexture = new PIXI.BaseTexture(enemyShipCanvas, {
+    scaleMode: PIXI.SCALE_MODES.NEAREST,
+    alphaMode: PIXI.ALPHA_MODES.UNPACK,
+  });
+  enemyShipTexture = new PIXI.Texture(enemyShipBaseTexture);
+  enemyShipSprite = new PIXI.Sprite(enemyShipTexture);
+  enemyShipSprite.anchor.set(0.5, 0.5);
+  worldLayer.addChildAt(enemyShipSprite, worldLayer.getChildIndex(enemyLayer));
+
   // Initialize hardpoint editor (F9 to toggle)
   initHardpointEditor(app, state.player?.shipClass || "skimmer");
 
@@ -1563,6 +1604,20 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
 
 export function destroyPixiRenderer(): void {
   if (!app) return;
+
+  // Tear down the enemy 3D pass (sprite + texture + its ship-layer instance)
+  if (enemyShipSprite) {
+    enemyShipSprite.parent?.removeChild(enemyShipSprite);
+    enemyShipSprite.destroy();
+    enemyShipSprite = null;
+  }
+  if (enemyShipTexture) {
+    enemyShipTexture.destroy(true);
+    enemyShipTexture = null;
+    enemyShipBaseTexture = null;
+  }
+  destroyEnemy3DLayer();
+  enemyShipCanvas = null;
 
   // Tear down the station sprite + texture (the Three.js layer keeps its own lifecycle)
   if (stationSprite) {
@@ -1672,8 +1727,10 @@ export function pixiRender(): void {
   // ── 3D Layer frame start ──
   setCameraZoom(zoom);
   setStationCameraZoom(zoom);
+  setEnemyCameraZoom(zoom);
   beginFrame();
   beginStationFrame();
+  beginEnemyFrame();
 
   // ── Background ──────────────────────────────────────────────────────
   renderBackground(w, h, cam);
@@ -1743,6 +1800,7 @@ export function pixiRender(): void {
   // ── 3D Layer cleanup + render ──
   endFrame();
   endStationFrame();
+  endEnemyFrame();
   // updateNebulaBackground(cam.x, cam.y); — disabled, using sprite layers
   renderStation3DLayer();
   // Push updated Three.js station pixels into the Pixi sprite texture
@@ -1751,6 +1809,20 @@ export function pixiRender(): void {
   if (stationSprite && stationSprite.width !== app!.screen.width) {
     stationSprite.width = app!.screen.width;
     stationSprite.height = app!.screen.height;
+  }
+  // Enemy 3D pass: render offscreen, sync pixels, and counter-transform the
+  // sprite against worldLayer (pivot=cam, scale=zoom) so it stays screen-aligned.
+  renderEnemy3DLayer();
+  if (enemyShipBaseTexture && enemyShipCanvas) {
+    if (enemyShipBaseTexture.width !== enemyShipCanvas.width || enemyShipBaseTexture.height !== enemyShipCanvas.height) {
+      enemyShipBaseTexture.setRealSize(enemyShipCanvas.width, enemyShipCanvas.height);
+    }
+    enemyShipBaseTexture.update();
+  }
+  if (enemyShipSprite) {
+    enemyShipSprite.position.set(cam.x, cam.y);
+    enemyShipSprite.width = w / zoom;
+    enemyShipSprite.height = h / zoom;
   }
   render3DLayer();
 
@@ -2268,12 +2340,12 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
       for (let ci = 4; ci < e.id.length; ci++) h = (h + e.id.charCodeAt(ci)) | 0;
       enemyModelKey = PIRATE_SHIP_MODELS[h % PIRATE_SHIP_MODELS.length];
     }
-    const enemyUse3D = !!enemyModelKey && has3DModel(enemyModelKey) && is3DReady(enemyModelKey);
+    const enemyUse3D = !!enemyModelKey && enemyHas3DModel(enemyModelKey) && enemyIs3DReady(enemyModelKey);
     if (enemyUse3D) {
       data.body.visible = false;
       if (data.coreGlow) data.coreGlow.visible = false;
-      updateShip3D("enemy:" + e.id, enemyModelKey, e.pos.x, e.pos.y, e.angle, e.size / 15.2, cam.x, cam.y);
-      markActive("enemy:" + e.id);
+      updateEnemyShip3D("enemy:" + e.id, enemyModelKey, e.pos.x, e.pos.y, e.angle, e.size / 15.2, cam.x, cam.y);
+      markEnemyActive("enemy:" + e.id);
     } else {
       data.body.visible = true;
       if (data.coreGlow) data.coreGlow.visible = true;
