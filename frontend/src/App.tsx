@@ -664,9 +664,9 @@ function LoadingScreen({ onReady }: { onReady: () => void }) {
       }}>
         COSMIC REALM
       </div>
-      {/* Progress bar on the PNG GUI top loading-bar frame. Fill insets are
-          measured from the art's dark channel so the amber never overlaps
-          the metal frame (channel: L4.4 R2.1 T25.9 B31.5 % + safety). */}
+      {/* Progress bar on the PNG GUI top loading-bar frame. Fill insets
+          match the art's TRUE black channel (a thin slit: rows 23-28 of 54
+          → T42.6/B48.1%) so the amber never touches the metal frame. */}
       <div style={{
         position: "relative",
         width: "min(480px, 80vw)",
@@ -676,12 +676,12 @@ function LoadingScreen({ onReady }: { onReady: () => void }) {
         filter: "drop-shadow(0 4px 16px rgba(0,0,0,0.7))",
       }}>
         <div style={{
-          position: "absolute", left: "4.6%", right: "2.4%", top: "28%", bottom: "34%",
+          position: "absolute", left: "4.6%", right: "2.4%", top: "42.6%", bottom: "48.1%",
           overflow: "hidden",
         }}>
           <div style={{
             width: `${progress}%`, height: "100%",
-            background: "linear-gradient(180deg, #ffd580 0%, #f7a832 45%, #b36a12 100%)",
+            background: "linear-gradient(180deg, #ffd580 0%, #f7a832 55%, #b36a12 100%)",
             boxShadow: "0 0 8px #f7a832aa",
             transition: "width 0.3s ease-out",
           }} />
