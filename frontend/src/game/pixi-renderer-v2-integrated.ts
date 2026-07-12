@@ -30,7 +30,7 @@ import {
   endFrame as endEnemyFrame,
   render3DLayer as renderEnemy3DLayer,
 } from "./three-ship-layer?instance=enemy";
-import { enemyModelKey as sharedEnemyModelKey, shipHullRadius } from "../../../lib/hitbox";
+import { enemyModelKey as sharedEnemyModelKey, enemySizeScale as sharedEnemySizeScale, shipHullRadius } from "../../../lib/hitbox";
 import { state } from "./store";
 import { effectiveStats, getDebugSpawnBuffer } from "./loop";
 import {
@@ -1475,7 +1475,7 @@ function shipLabelHtml(
   const dot = faction
     ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${faction.color};margin-right:4px;vertical-align:middle;box-shadow:0 0 4px ${faction.color};" title="${faction.tag}"></span>`
     : "";
-  const rankImg = `<img src="/assets/ui/ranks/rank_${String(rank.index + 1).padStart(2, "0")}.png" style="height:12px;width:auto;vertical-align:middle;margin-left:5px;filter:drop-shadow(0 1px 1px #000);" title="${rank.name}"/>`;
+  const rankImg = `<img src="/assets/ui/ranks/rank_${String(rank.index + 1).padStart(2, "0")}.png" style="height:19px;width:auto;vertical-align:middle;margin-left:6px;filter:drop-shadow(0 1px 2px #000) drop-shadow(0 0 3px rgba(0,0,0,0.8));" title="${rank.name}"/>`;
   const bar = hullPct != null
     ? `<div style="width:46px;height:3px;background:rgba(0,0,0,0.55);margin:0 auto 3px;"><div style="width:${Math.round(hullPct * 100)}%;height:100%;background:#44ff66;"></div></div>`
     : "";
@@ -2436,15 +2436,22 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
     data.healthBar.drawRect(0, 0, barW * pct, 4);
     data.healthBar.endFill();
 
-    // Name (update every frame to catch changes)
+    // Name — constant screen size at any zoom (counter-scaled against the
+    // world transform) and offset by the ship's silhouette radius so it
+    // clears the hull. Red for every enemy; bosses keep their amber flair.
+    const zoomN = state.cameraZoom;
+    const eHullKey = sharedEnemyModelKey(e.type, e.id);
+    const rWorldN = eHullKey
+      ? shipHullRadius(eHullKey, sharedEnemySizeScale(e.size)) * 0.66
+      : e.size + 10;
+    data.nameText.scale.set(1 / zoomN);
     if (e.isBoss) {
       data.nameText.text = `◆ ${(e.name || "DREADNOUGHT").toUpperCase()} ◆`;
       data.nameText.style.fill = "#ff8a4e";
-      data.nameText.position.set(0, -e.size - 18);
+      data.nameText.position.set(0, -(rWorldN + 14 / zoomN));
     } else if (e.name) {
       data.nameText.text = e.name;
-      data.nameText.style.fill = e.color;
-      data.nameText.position.set(0, -e.size - 16);
+      data.nameText.position.set(0, -(rWorldN + 10 / zoomN));
     } else {
       data.nameText.text = "";
     }

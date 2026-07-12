@@ -60,7 +60,7 @@ function AvatarConsole({
   player, rank, nextRank, expNeeded, clsName, cargoUsed,
 }: {
   player: any;
-  rank: { color: string; symbol: string; pips: number; name: string; minHonor: number };
+  rank: { index: number; color: string; symbol: string; pips: number; name: string; minHonor: number };
   nextRank: { minHonor: number } | undefined;
   expNeeded: number;
   clsName: string;
@@ -157,14 +157,15 @@ function AvatarConsole({
           gap: 1, cursor: "default",
         }}
       >
-        <div style={{ color: rank.color, fontSize: 32, lineHeight: 1, textShadow: `0 0 12px ${rank.color}, 0 0 26px ${rank.color}66` }}>
-          {rank.symbol}
-        </div>
-        <div className="flex gap-[3px]" style={{ margin: "3px 0 1px" }}>
-          {Array.from({ length: rank.pips }).map((_, i) => (
-            <div key={i} style={{ width: 4, height: 4, background: rank.color, borderRadius: 1, boxShadow: `0 0 4px ${rank.color}` }} />
-          ))}
-        </div>
+        <img
+          src={`/assets/ui/ranks/rank_${String(rank.index + 1).padStart(2, "0")}.png`}
+          alt=""
+          draggable={false}
+          style={{
+            height: 34, width: "auto", maxWidth: "82%", objectFit: "contain",
+            filter: `drop-shadow(0 0 8px ${rank.color}66) drop-shadow(0 1px 2px #000)`,
+          }}
+        />
         <div
           className="font-bold text-center"
           style={{
