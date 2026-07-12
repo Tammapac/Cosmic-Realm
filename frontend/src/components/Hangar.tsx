@@ -675,7 +675,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
   return (
     <div
       className="grid gap-3 p-4"
-      style={{ gridTemplateColumns: "216px minmax(0, 1fr) 272px", height: "100%", minHeight: 0 }}
+      style={{ gridTemplateColumns: "200px minmax(0, 1fr) 288px", height: "100%", minHeight: 0 }}
     >
       {/* LEFT — hex ship dock + active stats + inspect pane (DarkOrbit ship panel) */}
       <div className="flex flex-col gap-3 min-h-0">
@@ -687,7 +687,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
             padding: "22px 6px 14px",
           }}
         >
-          <ShipPreview shipId={player.shipClass} color={cls.color} size={166} />
+          <ShipPreview shipId={player.shipClass} color={cls.color} size={156} />
           <div
             className="text-[12px] font-bold tracking-widest truncate"
             style={{ color: cls.color, fontFamily: "var(--font-display)", maxWidth: "92%", textShadow: `0 0 8px ${cls.color}66` }}
