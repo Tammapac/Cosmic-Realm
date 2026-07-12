@@ -122,3 +122,14 @@ Kept on file from the asset research (2026-07-07); usable for future maps:
   Animated projectile/impact frames: bolt, charged, crossed, pulse, spark, wave, hit (packed into horizontal strips).
 - **Pixel Art Spells** — DevWizard — CC0 (public domain) — https://opengameart.org/content/pixel-art-spells
   Animated 16px spell projectiles; "orb.png" strip (Magic Orb) used for energy-ball shots. Credit appreciated but not required.
+
+## Environment backgrounds (v3, all zones)
+- **NASA imagery** (nebulae, galaxies) — source material for Layer2/Layer3/Layer7
+  background art in `frontend/public/bg/*/`. Public domain per NASA Media Usage
+  Guidelines (images.nasa.gov); heavily processed (duotone palette grading,
+  alpha shaping, pixelation) — no endorsement implied. Source IDs recorded in
+  `scripts/nasa_cache/manifest.json`.
+- **Procedural art** — starfields, star clusters, cosmic dust, asteroids
+  (`scripts/gen-environments.py`) and Blender-rendered landmark structures
+  (monoliths, gates, temple ring, mining rig, crystal cluster, scrap station,
+  wreck silhouettes of our own ship models): original, generated in-house.
