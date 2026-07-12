@@ -1473,15 +1473,17 @@ function shipLabelHtml(
   extra: string,
 ): string {
   const dot = faction
-    ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${faction.color};margin-right:4px;vertical-align:middle;box-shadow:0 0 4px ${faction.color};" title="${faction.tag}"></span>`
+    ? `<span style="flex:none;width:8px;height:8px;border-radius:50%;background:${faction.color};box-shadow:0 0 4px ${faction.color};" title="${faction.tag}"></span>`
     : "";
-  const rankImg = `<img src="/assets/ui/ranks/rank_${String(rank.index + 1).padStart(2, "0")}.png" style="height:19px;width:auto;vertical-align:middle;margin-left:6px;filter:drop-shadow(0 1px 2px #000) drop-shadow(0 0 3px rgba(0,0,0,0.8));" title="${rank.name}"/>`;
+  // Fixed landscape badge box so every rank insignia renders at a readable,
+  // consistent size directly right of the name.
+  const rankImg = `<img src="/assets/ui/ranks/rank_${String(rank.index + 1).padStart(2, "0")}.png" style="flex:none;height:16px;width:28px;object-fit:contain;filter:drop-shadow(0 1px 2px #000) drop-shadow(0 0 3px rgba(0,0,0,0.8));" title="${rank.name}"/>`;
   const bar = hullPct != null
     ? `<div style="width:46px;height:3px;background:rgba(0,0,0,0.55);margin:0 auto 3px;"><div style="width:${Math.round(hullPct * 100)}%;height:100%;background:#44ff66;"></div></div>`
     : "";
-  return `<div style="position:absolute;left:${Math.round(sx)}px;top:${Math.round(syTop)}px;transform:translate(-50%,0);pointer-events:none;text-align:center;">
+  return `<div style="position:absolute;left:${Math.round(sx)}px;top:${Math.round(syTop)}px;transform:translate(-50%,0);pointer-events:none;">
     ${bar}
-    <div style="font-family:'Kenney Future Narrow','Courier New',monospace;font-size:13px;font-weight:bold;color:#e8f0ff;text-shadow:0 0 3px #000,0 1px 2px #000;white-space:nowrap;letter-spacing:0.05em;">${dot}${escapeHtml(name)}${rankImg}${extra}</div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:5px;font-family:'Kenney Future Narrow','Courier New',monospace;font-size:13px;font-weight:bold;color:#e8f0ff;text-shadow:0 0 3px #000,0 1px 2px #000;white-space:nowrap;letter-spacing:0.05em;">${dot}<span>${escapeHtml(name)}</span>${rankImg}${extra}</div>
   </div>`;
 }
 
