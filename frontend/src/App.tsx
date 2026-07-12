@@ -22,6 +22,7 @@ import SettingsMenu from "./components/SettingsMenu";
 import { AdminPanel } from "./components/AdminPanel";
 import { DUNGEONS, STATIONS, PORTALS, ZONES, MODULE_DEFS, RESOURCES, SHIP_CLASSES, ENEMY_DEFS, type EnemyType, type DungeonId } from "./game/types";
 import { travelToZone, state as gameState } from "./game/store";
+import { enemyModelKey, enemySizeScale, shipHullRadius } from "../../lib/hitbox";
 import AuthScreen from "./components/AuthScreen";
 import { hasToken, getPlayer, clearToken } from "./net/api";
 import {
@@ -120,12 +121,31 @@ function GameCanvas() {
     };
   };
 
+  // Generous enemy picking: the clickable area follows the rendered
+  // silhouette radius (+15% and a flat margin) instead of the old tiny
+  // size-based circle, and the NEAREST enemy wins so overlapping ships
+  // don't steal each other's clicks.
+  const pickEnemyAt = (wx: number, wy: number) => {
+    let best: (typeof state.enemies)[number] | null = null;
+    let bestD = Infinity;
+    for (const en of state.enemies) {
+      const key = enemyModelKey(en.type, en.id);
+      const r = Math.max(
+        44,
+        (key ? shipHullRadius(key, enemySizeScale(en.size)) : en.size + 14) * 1.15 + 12,
+      );
+      const d = Math.hypot(en.pos.x - wx, en.pos.y - wy);
+      if (d < r && d < bestD) { bestD = d; best = en; }
+    }
+    return best;
+  };
+
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement | HTMLDivElement>) => {
     if (state.dockedAt) return;
     const { x: wx, y: wy } = screenToWorld(e);
 
     // Check if clicking on enemy — lock target (stays locked), do NOT auto-attack
-    const enemy = state.enemies.find((en) => Math.hypot(en.pos.x - wx, en.pos.y - wy) < Math.max(24, en.size + 14));
+    const enemy = pickEnemyAt(wx, wy);
     if (enemy) {
       state.selectedWorldTarget = {
         kind: "enemy",
@@ -196,7 +216,7 @@ function GameCanvas() {
   const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement | HTMLDivElement>) => {
     if (state.dockedAt) return;
     const { x: wx, y: wy } = screenToWorld(e);
-    const enemy = state.enemies.find((en) => Math.hypot(en.pos.x - wx, en.pos.y - wy) < Math.max(24, en.size + 14));
+    const enemy = pickEnemyAt(wx, wy);
     if (enemy) {
       state.selectedWorldTarget = {
         kind: "enemy",
