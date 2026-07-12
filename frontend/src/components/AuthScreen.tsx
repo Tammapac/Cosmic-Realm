@@ -105,9 +105,13 @@ export default function AuthScreen({ onAuth }: Props) {
       <style>{`
         @keyframes authTwinkle { 0%, 100% { opacity: 0.15; } 50% { opacity: 0.7; } }
         .auth-zone { position: absolute; background: transparent; border: none; cursor: pointer;
-          transition: filter 0.12s, box-shadow 0.12s; border-radius: 6px; }
-        .auth-zone:hover { box-shadow: 0 0 18px rgba(247,168,50,0.45); }
-        .auth-zone:active { filter: brightness(1.2); }
+          transition: filter 0.12s, box-shadow 0.12s, background 0.12s, transform 0.1s; border-radius: 6px; }
+        .auth-zone:hover {
+          background: radial-gradient(ellipse at center, rgba(247,168,50,0.30) 0%, rgba(247,168,50,0.10) 55%, transparent 75%);
+          box-shadow: 0 0 26px rgba(247,168,50,0.55);
+          filter: brightness(1.12);
+        }
+        .auth-zone:active { filter: brightness(1.3); transform: scale(0.97); }
         .auth-input::placeholder { color: rgba(247,168,50,0.35); }
       `}</style>
 

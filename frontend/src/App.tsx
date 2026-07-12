@@ -17,6 +17,7 @@ import { GameTooltip } from "./components/GameTooltip";
 import { Hotbar } from "./components/Hotbar";
 import { InventoryPanel } from "./components/InventoryPanel";
 import { SkillTreePanel } from "./components/SkillTreePanel";
+import { BossBar } from "./components/BossBar";
 import { QuestTracker } from "./components/QuestTracker";
 import SettingsMenu from "./components/SettingsMenu";
 import { AdminPanel } from "./components/AdminPanel";
@@ -663,24 +664,25 @@ function LoadingScreen({ onReady }: { onReady: () => void }) {
       }}>
         COSMIC REALM
       </div>
-      {/* Progress bar on the PNG GUI loading-bar frame (amber fill inside
-          the bar's dark channel, frame art on top of nothing but itself) */}
+      {/* Progress bar on the PNG GUI top loading-bar frame. Fill insets are
+          measured from the art's dark channel so the amber never overlaps
+          the metal frame (channel: L4.4 R2.1 T25.9 B31.5 % + safety). */}
       <div style={{
         position: "relative",
-        width: "min(460px, 80vw)",
-        aspectRatio: "620 / 95",
-        backgroundImage: "url(/assets/ui/loading-bar.png)",
+        width: "min(480px, 80vw)",
+        aspectRatio: "567 / 54",
+        backgroundImage: "url(/assets/ui/loading-bar.png?v=2)",
         backgroundSize: "100% 100%",
         filter: "drop-shadow(0 4px 16px rgba(0,0,0,0.7))",
       }}>
         <div style={{
-          position: "absolute", left: "5%", right: "5%", top: "35%", bottom: "35%",
+          position: "absolute", left: "4.6%", right: "2.4%", top: "28%", bottom: "34%",
           overflow: "hidden",
         }}>
           <div style={{
             width: `${progress}%`, height: "100%",
             background: "linear-gradient(180deg, #ffd580 0%, #f7a832 45%, #b36a12 100%)",
-            boxShadow: "0 0 10px #f7a832aa",
+            boxShadow: "0 0 8px #f7a832aa",
             transition: "width 0.3s ease-out",
           }} />
         </div>
@@ -1089,6 +1091,7 @@ function GameApp() {
       <CargoOverlay />
       <InventoryPanel />
       <SkillTreePanel />
+      <BossBar />
       <IdleRewardModal />
       <FactionPicker />
       </div>
