@@ -653,32 +653,41 @@ function LoadingScreen({ onReady }: { onReady: () => void }) {
       </div>
       <style>{`
         @keyframes twinkle { 0%, 100% { opacity: 0.2; } 50% { opacity: 0.8; } }
-        @keyframes pulse { 0%, 100% { text-shadow: 0 0 10px #4ee2ff44; } 50% { text-shadow: 0 0 25px #4ee2ff88, 0 0 50px #4ee2ff44; } }
+        @keyframes pulse { 0%, 100% { text-shadow: 0 0 10px #f7a83244; } 50% { text-shadow: 0 0 25px #f7a83288, 0 0 50px #f7a83244; } }
       `}</style>
       <div style={{
-        fontSize: 32, letterSpacing: 12, color: "#4ee2ff",
-        fontFamily: "'Courier New', monospace", fontWeight: "bold",
+        fontSize: 34, letterSpacing: 12, color: "#f7a832",
+        fontFamily: "var(--font-display, 'Courier New', monospace)", fontWeight: "bold",
         animation: "pulse 3s ease-in-out infinite",
-        marginBottom: 40, textAlign: "center",
+        marginBottom: 42, textAlign: "center",
       }}>
         COSMIC REALM
       </div>
+      {/* Progress bar on the PNG GUI loading-bar frame (amber fill inside
+          the bar's dark channel, frame art on top of nothing but itself) */}
       <div style={{
-        width: 280, height: 4, background: "#0a1428",
-        borderRadius: 2, overflow: "hidden",
-        border: "1px solid #4ee2ff33",
+        position: "relative",
+        width: "min(460px, 80vw)",
+        aspectRatio: "620 / 95",
+        backgroundImage: "url(/assets/ui/loading-bar.png)",
+        backgroundSize: "100% 100%",
+        filter: "drop-shadow(0 4px 16px rgba(0,0,0,0.7))",
       }}>
         <div style={{
-          width: `${progress}%`, height: "100%",
-          background: "linear-gradient(90deg, #4ee2ff, #44ffcc)",
-          borderRadius: 2,
-          transition: "width 0.3s ease-out",
-          boxShadow: "0 0 8px #4ee2ff88",
-        }} />
+          position: "absolute", left: "5%", right: "5%", top: "35%", bottom: "35%",
+          overflow: "hidden",
+        }}>
+          <div style={{
+            width: `${progress}%`, height: "100%",
+            background: "linear-gradient(180deg, #ffd580 0%, #f7a832 45%, #b36a12 100%)",
+            boxShadow: "0 0 10px #f7a832aa",
+            transition: "width 0.3s ease-out",
+          }} />
+        </div>
       </div>
       <div style={{
-        marginTop: 12, fontSize: 11, letterSpacing: 3,
-        color: "#4ee2ff88", fontFamily: "'Courier New', monospace",
+        marginTop: 14, fontSize: 12, letterSpacing: 4,
+        color: "#f7a832aa", fontFamily: "var(--font-display, 'Courier New', monospace)",
       }}>
         LOADING SYSTEMS... {progress}%
       </div>
