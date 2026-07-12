@@ -262,29 +262,30 @@ export function ClanPanel() {
     <div
       className="absolute inset-0 z-50 flex items-center justify-center"
       style={{ background: "rgba(2,4,12,0.88)" }}
+      onClick={(e) => { if (e.target === e.currentTarget) { state.showClan = false; bump(); } }}
     >
-      <div className="panel" style={{ width: 480 }}>
-        {/* Header */}
+      <div className="panel-framed" style={{ position: "relative", width: 500, filter: "drop-shadow(0 10px 40px rgba(0,0,0,0.8))" }}>
+        {/* title in the window's amber glass band */}
         <div
-          className="flex items-center justify-between px-4 py-3"
-          style={{ borderBottom: "1px solid var(--border-soft)" }}
+          style={{
+            position: "absolute", top: -37, left: "12%", right: "12%", height: 28,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontFamily: "var(--font-display)", fontSize: 15, fontWeight: 800,
+            letterSpacing: "0.32em", color: "#3a2000",
+            textShadow: "0 1px 0 rgba(255,255,255,0.25)", userSelect: "none",
+          }}
         >
-          <div
-            className="font-bold tracking-widest glow-cyan"
-            style={{ color: "var(--accent-cyan)", fontSize: 13 }}
-          >
-            ⚑ CLAN COMMAND
-          </div>
-          <button
-            className="gbtn gbtn-red"
-            style={{ padding: "3px 8px", fontSize: 11 }}
-            onClick={() => { state.showClan = false; bump(); }}
-          >
-            ✕
-          </button>
+          CLAN COMMAND
         </div>
+        <button
+          className="gbtn gbtn-red"
+          style={{ position: "absolute", top: -38, right: -16, padding: "2px 8px", fontSize: 11 }}
+          onClick={() => { state.showClan = false; bump(); }}
+        >
+          ✕
+        </button>
 
-        <div className="p-4">
+        <div className="p-2">
           {player.clan ? (
             <div>
               <div
@@ -493,38 +494,40 @@ export function GalaxyMap() {
     <div
       className="absolute inset-0 z-50 flex items-center justify-center"
       style={{ background: "rgba(2,4,12,0.93)" }}
+      onClick={(e) => { if (e.target === e.currentTarget) { state.showMap = false; bump(); } }}
     >
       <div
-        className="panel"
+        className="panel-framed"
         style={{
-          width: "min(96vw, 820px)",
-          maxHeight: "92vh",
+          position: "relative",
+          width: "min(96vw, 840px)",
+          maxHeight: "90vh",
           display: "flex",
           flexDirection: "column",
-          boxShadow: "0 0 40px rgba(78,226,255,0.08)",
+          filter: "drop-shadow(0 10px 40px rgba(0,0,0,0.8))",
         }}
       >
-        {/* Header */}
+        {/* title in the window's amber glass band */}
         <div
-          className="flex items-center justify-between px-4 py-3"
-          style={{ borderBottom: "1px solid var(--border-soft)", flexShrink: 0 }}
+          style={{
+            position: "absolute", top: -37, left: "16%", right: "16%", height: 28,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontFamily: "var(--font-display)", fontSize: 15, fontWeight: 800,
+            letterSpacing: "0.32em", color: "#3a2000",
+            textShadow: "0 1px 0 rgba(255,255,255,0.25)", userSelect: "none",
+          }}
         >
-          <div
-            className="font-bold tracking-widest glow-cyan"
-            style={{ color: "var(--accent-cyan)", fontSize: 13, letterSpacing: "0.25em" }}
-          >
-            ★ GALAXY MAP
-          </div>
-          <button
-            className="gbtn gbtn-red"
-            style={{ padding: "3px 10px", fontSize: 11 }}
-            onClick={() => { state.showMap = false; bump(); }}
-          >
-            ✕
-          </button>
+          GALAXY MAP
         </div>
+        <button
+          className="gbtn gbtn-red"
+          style={{ position: "absolute", top: -38, right: -16, padding: "2px 8px", fontSize: 11 }}
+          onClick={() => { state.showMap = false; bump(); }}
+        >
+          ✕
+        </button>
 
-        <div style={{ overflowY: "auto", flex: 1, padding: "12px" }}>
+        <div style={{ overflowY: "auto", flex: 1, padding: "4px 6px" }}>
           <div style={{ position: "relative" }}>
             <svg viewBox="0 0 760 530" style={{ width: "100%", height: "auto" }}>
               {/* Faction territory backgrounds */}

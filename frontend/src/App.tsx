@@ -558,21 +558,32 @@ function CargoOverlay() {
   return (
     <div
       className="fixed z-50"
-      style={{ top: 80, right: 16, width: 340, pointerEvents: "auto" }}
+      style={{ top: 92, right: 20, width: 360, pointerEvents: "auto" }}
     >
-      <div className="panel" style={{ maxHeight: "calc(100vh - 160px)", overflow: "hidden", display: "flex", flexDirection: "column", boxShadow: "0 0 30px rgba(78,226,255,0.15)" }}>
-        <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "var(--border-soft)" }}>
-          <div>
-            <div className="text-cyan tracking-widest text-sm font-bold">CARGO HOLD</div>
-            <div className="text-mute text-[12px]">{used}/{maxCargo} units</div>
-          </div>
-          <div className="text-right">
-            <div className="text-amber font-bold text-[14px]">{player.cargo.reduce((s: number, c: any) => s + ((RESOURCES as any)[c.resourceId]?.basePrice ?? 0) * c.qty, 0).toLocaleString()}cr</div>
-            <button
-              className="text-mute hover:text-bright text-[11px] tracking-widest"
-              onClick={() => { state.showCargo = false; bump(); }}
-            >[J] CLOSE</button>
-          </div>
+      <div className="panel-framed" style={{ position: "relative", maxHeight: "calc(100vh - 180px)", display: "flex", flexDirection: "column", filter: "drop-shadow(0 8px 30px rgba(0,0,0,0.75))" }}>
+        {/* title in the window's amber glass band */}
+        <div
+          style={{
+            position: "absolute", top: -37, left: "10%", right: "10%", height: 28,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontFamily: "var(--font-display)", fontSize: 14, fontWeight: 800,
+            letterSpacing: "0.28em", color: "#3a2000",
+            textShadow: "0 1px 0 rgba(255,255,255,0.25)", userSelect: "none",
+          }}
+        >
+          CARGO HOLD
+        </div>
+        <button
+          className="gbtn gbtn-red"
+          title="Close (J)"
+          style={{ position: "absolute", top: -38, right: -14, padding: "2px 8px", fontSize: 11 }}
+          onClick={() => { state.showCargo = false; bump(); }}
+        >
+          ✕
+        </button>
+        <div className="flex items-center justify-between px-2 pb-2 border-b" style={{ borderColor: "var(--border-soft)" }}>
+          <div className="text-mute text-[12px] tracking-widest">{used}/{maxCargo} UNITS</div>
+          <div className="text-amber font-bold text-[14px]">{player.cargo.reduce((s: number, c: any) => s + ((RESOURCES as any)[c.resourceId]?.basePrice ?? 0) * c.qty, 0).toLocaleString()}cr</div>
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: 8 }}>
           {player.cargo.length === 0 ? (
