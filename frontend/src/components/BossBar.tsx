@@ -4,12 +4,24 @@ import { useGame } from "../game/store";
 // shown top-center whenever a boss is alive in the current zone. The red
 // fill sits inside the art's dark channel (measured: L3.1 R2.7 T40 B32.6 %
 // + safety) so it never overlaps the metal frame; the amber gem stays free.
+// Bar appears only when the player is close enough to the boss to matter
+// (roughly one screen and a bit beyond).
+const BOSS_BAR_RANGE = 1600;
+
 export function BossBar() {
   useGame((s) => s.tick);
   const enemies = useGame((s) => s.enemies);
   const docked = useGame((s) => s.dockedAt);
+  const player = useGame((s) => s.player);
   if (docked) return null;
-  const boss = enemies.find((e) => e.isBoss && e.hull > 0);
+  // nearest living boss within range
+  let boss: (typeof enemies)[number] | null = null;
+  let bestD = BOSS_BAR_RANGE;
+  for (const e of enemies) {
+    if (!e.isBoss || e.hull <= 0) continue;
+    const d = Math.hypot(e.pos.x - player.pos.x, e.pos.y - player.pos.y);
+    if (d < bestD) { bestD = d; boss = e; }
+  }
   if (!boss) return null;
   const pct = Math.max(0, Math.min(100, (boss.hull / Math.max(1, boss.hullMax)) * 100));
 
