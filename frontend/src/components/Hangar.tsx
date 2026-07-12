@@ -7,8 +7,7 @@ import {
 } from "../game/types";
 import type { HangarTab } from "../game/store";
 import { effectiveStats } from "../game/loop";
-import { isRolledItem, lootItemColor, lootItemName, lootSellPrice, lootTipText } from "../game/loot-ui";
-import { affixLine } from "../../../lib/loot/loot";
+import { isRolledItem, lootItemColor, lootSellPrice, lootTipText } from "../game/loot-ui";
 import { buySkillRank, resetSkills } from "../game/store";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { GameButton } from "./GameButton";
@@ -581,6 +580,8 @@ function LoadoutTab({ stationId }: { stationId: string }) {
   const [filter, setFilter] = useState<ModuleSlot | "all">("all");
   const [showShop, setShowShop] = useState(false);
   const [showAmmoPopup, setShowAmmoPopup] = useState(false);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [sellMode, setSellMode] = useState(false);
   const [hoverEquip, setHoverEquip] = useState<{ slot: ModuleSlot; index: number; def: ModuleDef | null } | null>(null);
   const [hoveredShopDefId, setHoveredShopDefId] = useState<string | null>(null);
   const hoveredShopDef = hoveredShopDefId ? MODULE_DEFS[hoveredShopDefId] ?? null : null;
@@ -627,80 +628,84 @@ function LoadoutTab({ stationId }: { stationId: string }) {
     return bestId;
   }, [showShop, shopOffer, player.equipped, player.inventory]);
 
-  const visibleInv = player.inventory.filter((it) => {
-    if (filter === "all") return true;
-    return MODULE_DEFS[it.defId]?.slot === filter;
-  });
+  const SLOT_ORDER: Record<ModuleSlot, number> = { weapon: 0, generator: 1, module: 2 };
+  const visibleInv = player.inventory
+    .filter((it) => {
+      if (filter === "all") return true;
+      return MODULE_DEFS[it.defId]?.slot === filter;
+    })
+    .slice()
+    .sort((a, b) => {
+      const da = MODULE_DEFS[a.defId], db = MODULE_DEFS[b.defId];
+      if (!da || !db) return 0;
+      if (da.slot !== db.slot) return SLOT_ORDER[da.slot] - SLOT_ORDER[db.slot];
+      return db.tier - da.tier;
+    });
 
-  const renderSlotRow = (slot: ModuleSlot, label: string, color: string) => {
+  // DarkOrbit-style collapsible equipment category (dark header strip + slot cells)
+  const renderSlotSection = (slot: ModuleSlot, label: string, color: string) => {
     const compareDef =
       showShop && hoveredShopDef?.slot === slot ? hoveredShopDef
       : !showShop && hoveredInvDef?.slot === slot ? hoveredInvDef
       : null;
     const filled = player.equipped[slot].filter(Boolean).length;
+    const isCollapsed = !!collapsed[slot];
     return (
       <div>
-        <div className="dob-hdr">
-          <span style={{ color }}>▼ {label}</span>
+        <button
+          type="button"
+          className="dob-hdr"
+          style={{ width: "100%", cursor: "pointer" }}
+          onClick={() => setCollapsed((c) => ({ ...c, [slot]: !c[slot] }))}
+        >
+          <span style={{ color }}>{isCollapsed ? "▶" : "▼"} {label}</span>
           <span style={{ color: "#8f96a6" }}>{filled}/{player.equipped[slot].length}</span>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, 54px)", gap: 6, padding: "8px 2px 2px" }}>
-          {player.equipped[slot].map((id, i) => (
-            <SlotCell key={`${slot}-${i}`} slot={slot} index={i} instanceId={id} compareWithDef={compareDef} onHover={setHoverEquip} />
-          ))}
-        </div>
+        </button>
+        {!isCollapsed && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, 54px)", gap: 6, padding: "8px 2px 6px" }}>
+            {player.equipped[slot].map((id, i) => (
+              <SlotCell key={`${slot}-${i}`} slot={slot} index={i} instanceId={id} compareWithDef={compareDef} onHover={setHoverEquip} />
+            ))}
+          </div>
+        )}
       </div>
     );
   };
 
   return (
-    <div className="grid gap-4 p-5" style={{ gridTemplateColumns: "1fr 1fr" }}>
-      {/* LEFT — equipped slots + stats summary */}
-      <div className="space-y-4 overflow-y-auto" style={{ maxHeight: "calc(820px - 120px)" }}>
-        <div className="flex items-center justify-between gap-2 min-w-0">
-          <div className="section-header truncate">
-            LOADOUT · {cls.name.toUpperCase()}
-          </div>
+    <div
+      className="grid gap-3 p-4"
+      style={{ gridTemplateColumns: "216px minmax(0, 1fr) 272px", height: "100%", minHeight: 0 }}
+    >
+      {/* LEFT — hex ship dock + active stats + inspect pane (DarkOrbit ship panel) */}
+      <div className="flex flex-col gap-3 min-h-0">
+        <div
+          className="shrink-0 flex flex-col items-center"
+          style={{
+            background: "url(/assets/ui/atlas/hex-plate.png)",
+            backgroundSize: "100% 100%",
+            padding: "22px 6px 14px",
+          }}
+        >
+          <ShipPreview shipId={player.shipClass} color={cls.color} size={166} />
           <div
-            className="font-bold tabular-nums shrink-0 whitespace-nowrap"
-            style={{ color: "var(--accent-amber)", fontSize: 13 }}
+            className="text-[12px] font-bold tracking-widest truncate"
+            style={{ color: cls.color, fontFamily: "var(--font-display)", maxWidth: "92%", textShadow: `0 0 8px ${cls.color}66` }}
           >
+            {cls.name.toUpperCase()}
+          </div>
+          <div className="tabular-nums font-bold" style={{ color: "var(--accent-amber)", fontSize: 12 }}>
             {player.credits.toLocaleString()} CR
           </div>
         </div>
-        {renderSlotRow("weapon",    "WEAPONS",    "#ff5c6c")}
-        {renderSlotRow("generator", "GENERATORS", "#4ee2ff")}
-        {renderSlotRow("module",    "MODULES",    "#ff5cf0")}
-        {/* hovered module detail — fixed pane, nothing overlaps */}
-        <div style={{ background: "linear-gradient(180deg, rgba(22,22,28,0.92), rgba(13,13,17,0.92))", border: "1px solid #33353e", padding: "10px 12px", minHeight: 92 }}>
-          {hoverEquip?.def ? (
-            <>
-              <div className="flex items-center gap-2 mb-1 min-w-0">
-                <div className="shrink-0 flex items-center justify-center"
-                  style={{ width: 26, height: 26, background: `${hoverEquip.def.color}22`, border: `1px solid ${hoverEquip.def.color}`, color: hoverEquip.def.color, fontSize: 14 }}>
-                  {hoverEquip.def.glyph}
-                </div>
-                <span className="text-[13px] font-bold tracking-widest truncate" style={{ color: RARITY_COLOR[hoverEquip.def.rarity] }}>{hoverEquip.def.name}</span>
-                <span className="text-[11px] uppercase shrink-0" style={{ color: "#8f96a6" }}>{hoverEquip.slot} #{hoverEquip.index + 1} · {hoverEquip.def.rarity}</span>
-              </div>
-              <div className="text-[12px] leading-tight mb-1" style={{ color: "#b8bdca" }}>{hoverEquip.def.description}</div>
-              {modStatPills(hoverEquip.def.stats)}
-              <div className="text-[10px] mt-1.5 tracking-widest" style={{ color: "#8f96a6" }}>CLICK SLOT TO UNEQUIP</div>
-            </>
-          ) : hoverEquip ? (
-            <div className="text-[12px] italic" style={{ color: "#8f96a6" }}>Empty {hoverEquip.slot} slot · equip a module from the inventory list</div>
-          ) : (
-            <div className="text-[12px] italic" style={{ color: "#8f96a6" }}>Hover an equipped slot to inspect it · click a slot to unequip</div>
-          )}
-        </div>
-        <div
-          className="panel p-4"
-          style={{ borderColor: "rgba(247,168,50,0.25)" }}
-        >
-          <div className="dob-hdr" style={{ margin: "-16px -16px 12px" }}>
+
+        <div className="console-sq shrink-0" style={{ padding: 10 }}>
+          <div className="console-corner tl" /><div className="console-corner tr" />
+          <div className="console-corner bl" /><div className="console-corner br" />
+          <div className="dob-hdr" style={{ margin: "-10px -10px 10px" }}>
             <span>▼ ACTIVE STATS</span>
           </div>
-          <div className="grid grid-cols-4 gap-x-4 gap-y-3">
+          <div className="grid grid-cols-3 gap-x-3 gap-y-2.5">
             <Stat label="DMG"  v={Math.round(stats.damage)} />
             <Stat label="RATE" v={+stats.fireRate.toFixed(2)} />
             <Stat label="CRIT" v={`${Math.round(stats.critChance * 100)}%`} />
@@ -712,144 +717,194 @@ function LoadoutTab({ stationId }: { stationId: string }) {
             <Stat label="ABS"  v={`${Math.round(Math.min(0.95, 0.5 + (stats.shieldAbsorb ?? 0)) * 100)}%`} />
           </div>
         </div>
+
+        {/* hovered equipped-module inspect pane */}
+        <div
+          className="flex-1 min-h-0 overflow-y-auto"
+          style={{ background: "linear-gradient(180deg, rgba(22,22,28,0.92), rgba(13,13,17,0.92))", border: "1px solid #33353e", padding: "8px 10px", minHeight: 76 }}
+        >
+          {hoverEquip?.def ? (
+            <>
+              <div className="flex items-center gap-2 mb-1 min-w-0">
+                <div className="shrink-0 flex items-center justify-center"
+                  style={{ width: 24, height: 24, background: `${hoverEquip.def.color}22`, border: `1px solid ${hoverEquip.def.color}`, color: hoverEquip.def.color, fontSize: 13 }}>
+                  {hoverEquip.def.glyph}
+                </div>
+                <span className="text-[12px] font-bold tracking-widest truncate" style={{ color: RARITY_COLOR[hoverEquip.def.rarity] }}>{hoverEquip.def.name}</span>
+              </div>
+              <div className="text-[10px] uppercase mb-1" style={{ color: "#8f96a6" }}>{hoverEquip.slot} #{hoverEquip.index + 1} · {hoverEquip.def.rarity}</div>
+              {modStatPills(hoverEquip.def.stats)}
+              <div className="text-[9px] mt-1.5 tracking-widest" style={{ color: "#8f96a6" }}>CLICK SLOT TO UNEQUIP</div>
+            </>
+          ) : hoverEquip ? (
+            <div className="text-[11px] italic" style={{ color: "#8f96a6" }}>Empty {hoverEquip.slot} slot · click a module in the inventory grid to equip it</div>
+          ) : (
+            <div className="text-[11px] italic" style={{ color: "#8f96a6" }}>Hover an equipped slot to inspect it · click a slot to unequip</div>
+          )}
+        </div>
       </div>
 
-      {/* RIGHT — inventory + shop toggle */}
-      <div className="space-y-3 flex flex-col">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-3">
-            <div className="section-header">▶ {showShop ? "MODULE MARKET" : `INVENTORY (${player.inventory.length})`}</div>
-            {showShop && <span className="text-[12px] tracking-widest" style={{ color: "#ffd24a88" }}>hover to compare</span>}
-            {!showShop && <span className="text-[12px] tracking-widest" style={{ color: "#ffd24a88" }}>hover to compare</span>}
-          </div>
-          <div className="flex gap-2 shrink-0">
-            <GameButton style={{ fontSize: 13 }} onClick={() => { setShowShop((v) => !v); setHoveredShopDefId(null); setHoveredInvInstanceId(null); }}>
-              {showShop ? "Inventory" : `Shop @ ${station.name}`}
-            </GameButton>
-            <GameButton style={{ fontSize: 13 }} onClick={() => setShowAmmoPopup((v) => !v)}>
-              {showAmmoPopup ? "✕ Ammo" : "⟁ Ammo"}
-            </GameButton>
-          </div>
+      {/* MIDDLE — equipped categories under DarkOrbit header strips */}
+      <div className="flex flex-col min-h-0">
+        <div className="flex items-center justify-between gap-2 mb-2 shrink-0 min-w-0">
+          <div className="section-header truncate">LOADOUT · {cls.name.toUpperCase()}</div>
+          <span className="text-[10px] tracking-widest shrink-0" style={{ color: "#ffd24a88" }}>HOVER TO COMPARE</span>
         </div>
-        <div className="flex gap-2">
+        <div className="overflow-y-auto min-h-0 flex-1 space-y-2 pr-1">
+          {renderSlotSection("weapon",    "LASERS / WEAPONS",     "#ff5c6c")}
+          {renderSlotSection("generator", "GENERATORS / SHIELDS", "#4ee2ff")}
+          {renderSlotSection("module",    "EXTRAS / MODULES",     "#ff5cf0")}
+        </div>
+      </div>
+
+      {/* RIGHT — dense inventory / shop icon grid + console action plate */}
+      <div className="flex flex-col min-h-0">
+        <div
+          className="dob-hdr shrink-0"
+          style={sellMode && !showShop ? { borderLeftColor: "#ff5c6c" } : undefined}
+        >
+          <span style={sellMode && !showShop ? { color: "#ff8a93" } : undefined}>
+            {showShop ? "▼ SHOP" : sellMode ? "▼ SELL MODE" : `▼ INVENTORY (${player.inventory.length})`}
+          </span>
+          <span className="tabular-nums" style={{ color: "var(--accent-amber)" }}>{player.credits.toLocaleString()} CR</span>
+        </div>
+        <div className="flex gap-1 my-2 shrink-0">
           {(["all", "weapon", "generator", "module"] as const).map((f) => (
-            <GameButton key={f} gold={filter === f} style={{ fontSize: 12, opacity: filter === f ? 1 : 0.7 }} onClick={() => setFilter(f)}>{f.toUpperCase()}</GameButton>
+            <button
+              key={f}
+              className={`gbtn ${filter === f ? "gbtn-gold" : ""}`}
+              style={{ padding: "3px 0", fontSize: 10, flex: 1, letterSpacing: "0.08em", opacity: filter === f ? 1 : 0.75 }}
+              onClick={() => setFilter(f)}
+            >
+              {f === "all" ? "ALL" : f === "weapon" ? "WPN" : f === "generator" ? "GEN" : "MOD"}
+            </button>
           ))}
         </div>
 
         <div
-          className="space-y-2 overflow-y-auto flex-1"
-          style={{ maxHeight: 580 }}
+          className="console-sq overflow-y-auto min-h-0 flex-1"
+          style={{ padding: 8 }}
           onMouseLeave={() => { setHoveredShopDefId(null); setHoveredInvInstanceId(null); }}
         >
-          {showShop ? (
-            shopOffer.filter(d => filter === "all" || d.slot === filter).map((def) => {
-              const canAfford = player.credits >= def.price;
-              const isHovered = hoveredShopDefId === def.id;
-              const isBestUpgrade = bestUpgradeDefId === def.id;
-              return (
-                <div key={def.id} className="panel p-2 flex items-start gap-2"
-                  title={moduleTipText(def, { action: canAfford ? "BUY AT STATION" : "NOT ENOUGH CREDITS" })}
-                  style={{ borderColor: isBestUpgrade || isHovered ? "#ffd24a" : "#33353e", borderLeft: `3px solid ${RARITY_COLOR[def.rarity]}`, transition: "border-color 0.1s" }}
-                  onMouseEnter={() => setHoveredShopDefId(def.id)}>
-                  <div className="flex items-center justify-center"
-                    style={{ width: 28, height: 28, background: `${def.color}22`, border: `1px solid ${def.color}`, color: def.color, fontSize: 14 }}>
-                    {def.glyph}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <div className="text-[13px] font-bold tracking-widest" style={{ color: RARITY_COLOR[def.rarity] }}>{def.name}</div>
-                      <span className="text-[13px] uppercase" style={{ color: RARITY_COLOR[def.rarity] }}>· {def.rarity}</span>
-                      {isBestUpgrade && (
-                        <span
-                          className="text-[13px] font-bold tracking-widest px-1.5 py-0.5"
-                          style={{ color: "#ffd24a", background: "#ffd24a18", border: "1px solid #ffd24a88", borderRadius: 2 }}
-                        >
-                          ★ BEST UPGRADE
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-mute text-[12px] leading-tight">{def.description}</div>
-                    {modStatPills(def.stats)}
-                    {def.weaponKind === "rocket" && <RocketAmmoBadge />}
-                  </div>
-                  <button className="gbtn gbtn-gold"
-                    style={{ padding: "2px 8px", fontSize: 13 }}
-                    disabled={!canAfford}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, 48px)", gap: 5, justifyContent: "center", alignContent: "start" }}>
+            {showShop ? (
+              shopOffer.filter((d) => filter === "all" || d.slot === filter).map((def) => {
+                const canAfford = player.credits >= def.price;
+                const isBestUpgrade = bestUpgradeDefId === def.id;
+                return (
+                  <div
+                    key={def.id}
+                    className="sw-slot equip-cell"
+                    title={moduleTipText(def, { action: canAfford ? `CLICK TO BUY — ${def.price.toLocaleString()} CR` : `NOT ENOUGH CREDITS (${def.price.toLocaleString()} CR)` })}
+                    style={{
+                      width: 48, height: 48,
+                      boxShadow: `inset 0 0 0 1px ${RARITY_COLOR[def.rarity]}88${isBestUpgrade ? ", 0 0 8px rgba(255,210,74,0.55)" : ""}`,
+                      cursor: canAfford ? "pointer" : "not-allowed",
+                      opacity: canAfford ? 1 : 0.5,
+                    }}
+                    onMouseEnter={() => setHoveredShopDefId(def.id)}
                     onClick={() => {
                       if (!canAfford) return;
                       state.player.credits -= def.price;
                       addInventoryItem(def.id);
                       pushNotification(`Bought ${def.name}`, "good");
                       save(); bump();
-                    }}>
-                    {def.price.toLocaleString()}cr
-                  </button>
-                </div>
-              );
-            })
-          ) : (
-            visibleInv.length === 0 ? (
-              <div className="text-mute text-sm italic">No modules. Buy from the shop or run a dungeon.</div>
-            ) : visibleInv.map((it) => {
-              const def = MODULE_DEFS[it.defId];
-              const isEquipped =
-                player.equipped.weapon.includes(it.instanceId) ||
-                player.equipped.generator.includes(it.instanceId) ||
-                player.equipped.module.includes(it.instanceId);
-              const slotArr = player.equipped[def.slot];
-              const targetIdx = slotArr.findIndex((x) => x === null);
-              return (
-                <div key={it.instanceId} className="panel p-2 flex items-start gap-2"
-                  title={lootTipText(it, { action: isEquipped ? "CURRENTLY EQUIPPED" : "EQUIP OR SELL" })}
-                  style={{ borderColor: hoveredInvInstanceId === it.instanceId ? "#ffd24a" : "#33353e", borderLeft: `3px solid ${isRolledItem(it) ? lootItemColor(it, def) : RARITY_COLOR[def.rarity]}`, transition: "border-color 0.1s" }}
-                  onMouseEnter={() => setHoveredInvInstanceId(!isEquipped ? it.instanceId : null)}>
-                  <div className="flex items-center justify-center"
-                    style={{ width: 28, height: 28, background: `${def.color}22`, border: `1px solid ${def.color}`, color: def.color, fontSize: 14 }}>
-                    {def.glyph}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <div className="text-[13px] font-bold tracking-widest" style={{ color: isRolledItem(it) ? lootItemColor(it, def) : RARITY_COLOR[def.rarity] }}>
-                        {isRolledItem(it) ? lootItemName(it, def) : def.name}
-                        {isRolledItem(it) && <span className="text-mute font-normal"> · i{it.ilvl ?? 1}</span>}
-                      </div>
-                      <span className="text-[13px] uppercase text-mute">· {def.slot}</span>
-                      {isEquipped && <span className="text-[13px] uppercase" style={{ color: "#5cff8a" }}>· equipped</span>}
-                    </div>
-                    <div className="text-mute text-[12px] leading-tight">{def.description}</div>
-                    {modStatPills(def.stats)}
-                    {isRolledItem(it) && (it.affixes?.length ?? 0) > 0 && (
-                      <div className="text-[11px] leading-tight" style={{ color: lootItemColor(it, def) }}>
-                        {(it.affixes ?? []).map((r) => affixLine(r as any)).join("  ·  ")}
-                      </div>
+                    }}
+                  >
+                    <span style={{ color: def.color, fontSize: 17, lineHeight: 1, textShadow: `0 0 8px ${def.color}` }}>{def.glyph}</span>
+                    <span className="equip-tier" style={{ color: RARITY_COLOR[def.rarity] }}>{"▪".repeat(Math.min(5, def.tier))}</span>
+                    {isBestUpgrade && (
+                      <span style={{ position: "absolute", top: 0, right: 3, fontSize: 10, color: "#ffd24a", textShadow: "0 0 6px #ffd24a" }}>★</span>
                     )}
-                    {def.weaponKind === "rocket" && <RocketAmmoBadge />}
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    {!isEquipped && (
-                      <button className="gbtn gbtn-gold"
-                        style={{ padding: "2px 6px", fontSize: 13 }}
-                        disabled={targetIdx < 0}
-                        onClick={() => {
-                          const slotArr2 = state.player.equipped[def.slot];
-                          let idx = slotArr2.findIndex((x) => x === null);
-                          if (idx < 0) idx = 0; // overwrite first slot if all full
-                          equipModule(it.instanceId, def.slot, idx);
-                        }}>
-                        {targetIdx >= 0 ? `Equip → #${targetIdx + 1}` : "Replace #1"}
-                      </button>
+                    {def.weaponKind === "rocket" && (
+                      <span style={{ position: "absolute", top: 0, left: 4, fontSize: 8, color: "#ff8a4e" }}>⟁</span>
                     )}
-                    <button className="gbtn"
-                      style={{ padding: "2px 6px", fontSize: 13 }}
-                      onClick={() => sellInventoryItem(it.instanceId)}>
-                      Sell {lootSellPrice(it, def).toLocaleString()}cr
-                    </button>
                   </div>
-                </div>
-              );
-            })
+                );
+              })
+            ) : (
+              visibleInv.map((it) => {
+                const def = MODULE_DEFS[it.defId];
+                if (!def) return null;
+                const isEquipped =
+                  player.equipped.weapon.includes(it.instanceId) ||
+                  player.equipped.generator.includes(it.instanceId) ||
+                  player.equipped.module.includes(it.instanceId);
+                const color = isRolledItem(it) ? lootItemColor(it, def) : RARITY_COLOR[def.rarity];
+                const targetIdx = player.equipped[def.slot].findIndex((x) => x === null);
+                const action = sellMode
+                  ? `CLICK TO SELL — ${lootSellPrice(it, def).toLocaleString()} CR${isEquipped ? " (UNEQUIPS FIRST)" : ""}`
+                  : isEquipped ? "CURRENTLY EQUIPPED"
+                  : targetIdx >= 0 ? `CLICK TO EQUIP → ${def.slot.toUpperCase()} #${targetIdx + 1}`
+                  : `CLICK TO EQUIP — REPLACES ${def.slot.toUpperCase()} #1`;
+                return (
+                  <div
+                    key={it.instanceId}
+                    className="sw-slot equip-cell"
+                    title={lootTipText(it, { action })}
+                    style={{
+                      width: 48, height: 48,
+                      boxShadow: `inset 0 0 0 1px ${color}88${sellMode ? ", inset 0 0 10px rgba(255,60,80,0.35)" : ""}`,
+                      cursor: sellMode || !isEquipped ? "pointer" : "default",
+                      opacity: isEquipped && !sellMode ? 0.55 : 1,
+                    }}
+                    onMouseEnter={() => setHoveredInvInstanceId(!isEquipped && !sellMode ? it.instanceId : null)}
+                    onClick={() => {
+                      if (sellMode) { sellInventoryItem(it.instanceId); return; }
+                      if (isEquipped) return;
+                      let idx = state.player.equipped[def.slot].findIndex((x) => x === null);
+                      if (idx < 0) idx = 0; // overwrite first slot if all full
+                      equipModule(it.instanceId, def.slot, idx);
+                    }}
+                  >
+                    <span style={{ color: def.color, fontSize: 17, lineHeight: 1, textShadow: `0 0 8px ${def.color}` }}>{def.glyph}</span>
+                    <span className="equip-tier" style={{ color }}>{"▪".repeat(Math.min(5, def.tier))}</span>
+                    {isEquipped && (
+                      <span style={{ position: "absolute", top: 1, right: 4, fontSize: 8, fontWeight: 700, color: "#5cff8a", textShadow: "0 0 5px #5cff8a" }}>E</span>
+                    )}
+                    {def.weaponKind === "rocket" && (
+                      <span style={{ position: "absolute", top: 0, left: 4, fontSize: 8, color: "#ff8a4e" }}>⟁</span>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+          {!showShop && visibleInv.length === 0 && (
+            <div className="text-mute text-[11px] italic p-2">No modules. Open the shop below or run a dungeon.</div>
           )}
+        </div>
+
+        {/* console action plate (DarkOrbit: VERKAUFEN / SCHNELLKAUF / REPAIR) */}
+        <div className="console-sq shrink-0" style={{ marginTop: 8, padding: "9px 10px" }}>
+          <div className="console-corner tl" /><div className="console-corner tr" />
+          <div className="console-corner bl" /><div className="console-corner br" />
+          <div className="flex flex-col gap-1.5">
+            <button
+              className={`gbtn ${sellMode ? "gbtn-red" : ""}`}
+              style={{ padding: "4px 0", fontSize: 11, width: "100%", letterSpacing: "0.14em" }}
+              disabled={showShop}
+              title={showShop ? "Switch to inventory to sell modules" : "Toggle sell mode — click inventory modules to sell them"}
+              onClick={() => setSellMode((v) => !v)}
+            >
+              {sellMode ? "✕ EXIT SELL MODE" : "SELL"}
+            </button>
+            <button
+              className="gbtn gbtn-gold"
+              style={{ padding: "4px 0", fontSize: 11, width: "100%", letterSpacing: "0.14em" }}
+              title={showShop ? "Back to your inventory" : `Buy modules at ${station.name}`}
+              onClick={() => { setShowShop((v) => !v); setSellMode(false); setHoveredShopDefId(null); setHoveredInvInstanceId(null); }}
+            >
+              {showShop ? "INVENTORY" : "SHOP"}
+            </button>
+            <button
+              className="gbtn"
+              style={{ padding: "4px 0", fontSize: 11, width: "100%", letterSpacing: "0.14em" }}
+              onClick={() => setShowAmmoPopup((v) => !v)}
+            >
+              ⟁ AMMO
+            </button>
+          </div>
         </div>
       </div>
       {showAmmoPopup && (
