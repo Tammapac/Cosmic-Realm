@@ -197,6 +197,13 @@ function loadTemplate(url: string): void {
           m.alphaMap = null;
           m.blending = THREE.NormalBlending;
           m.premultipliedAlpha = false;
+          // Matte hull: the Tripo exports come in glossy/metallic, and the
+          // slow spin sweeps specular highlights across the hull — a constant
+          // shimmer that doesn't fit the game's flat pixel-art look. High
+          // roughness + low metalness kills the gloss while keeping shading.
+          if (m.roughness !== undefined) m.roughness = Math.max(0.88, m.roughness);
+          if (m.metalness !== undefined) m.metalness = Math.min(0.08, m.metalness);
+          if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.25;
           m.needsUpdate = true;
         }
       });
