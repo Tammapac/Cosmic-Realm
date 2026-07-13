@@ -1963,40 +1963,52 @@ type BgZoneCfg = {
   lm?: { wx: number; wy: number; speed: number; size: number; alpha: number; spin?: number };
 };
 const BG_ZONE_CFG: Record<string, BgZoneCfg> = {
+  // Every zone carries a painted landmark (Layer8, v4 pixel art — no 3D renders):
+  // spin only where rotation is plausible (rings/gates), positions away from planets.
   // Earth faction (1-x)
-  "1-1": { fill: "#060e2e", wx:  1200, wy:  -900, pSpeed: 0.14, pSize: 4915, glow: "#3366cc" },
+  "1-1": { fill: "#060e2e", wx:  1200, wy:  -900, pSpeed: 0.14, pSize: 4915, glow: "#3366cc",
+           lm: { wx:  3400, wy:  2200, speed: 0.28, size: 460, alpha: 0.85, spin: 0.0015 } },
   // wx/wy deliberately spread across different quadrants/distances so each map's
   // planet appears somewhere else; pSize varies (bigger, unique planets since v4).
-  "1-2": { fill: "#120832", wx: -3800, wy: -2200, pSpeed: 0.16, pSize: 1104, glow: "#7722aa" },
-  "1-3": { fill: "#200610", wx:  4600, wy:  1500, pSpeed: 0.20, pSize: 912, glow: "#cc2233" },
+  "1-2": { fill: "#120832", wx: -3800, wy: -2200, pSpeed: 0.16, pSize: 1104, glow: "#7722aa",
+           lm: { wx:  3200, wy:  2800, speed: 0.30, size: 470, alpha: 0.88 } },
+  "1-3": { fill: "#200610", wx:  4600, wy:  1500, pSpeed: 0.20, pSize: 912, glow: "#cc2233",
+           lm: { wx: -3400, wy: -2600, speed: 0.30, size: 500, alpha: 0.88, spin: 0.002 } },
   "1-4": { fill: "#030e12", wx:   900, wy:  4200, pSpeed: 0.22, pSize: 744, glow: "#006655",
            lm: { wx: -3400, wy: -2600, speed: 0.30, size: 420, alpha: 0.85 } },
   "1-5": { fill: "#160c04", wx: -2600, wy:  3400, pSpeed: 0.18, pSize: 1008, glow: "#cc6600",
            lm: { wx:  3600, wy: -1800, speed: 0.28, size: 560, alpha: 0.9 } },
   // Mars faction (2-x)
-  "2-1": { fill: "#1a0802", wx:  3200, wy: -3800, pSpeed: 0.17, pSize: 1080, glow: "#cc4400" },
-  "2-2": { fill: "#1c0a02", wx: -4800, wy:   800, pSpeed: 0.22, pSize: 816, glow: "#884422" },
+  "2-1": { fill: "#1a0802", wx:  3200, wy: -3800, pSpeed: 0.17, pSize: 1080, glow: "#cc4400",
+           lm: { wx: -3000, wy:  3200, speed: 0.30, size: 520, alpha: 0.88 } },
+  "2-2": { fill: "#1c0a02", wx: -4800, wy:   800, pSpeed: 0.22, pSize: 816, glow: "#884422",
+           lm: { wx:  3400, wy: -3000, speed: 0.28, size: 540, alpha: 0.9 } },
   "2-3": { fill: "#16040e", wx:  1800, wy:  2600, pSpeed: 0.19, pSize: 960, glow: "#aa0033",
-           lm: { wx: -3200, wy: -3000, speed: 0.32, size: 520, alpha: 0.8, spin: 0.004 } },
-  "2-4": { fill: "#16021a", wx: -1200, wy: -4600, pSpeed: 0.21, pSize: 888, glow: "#660066" },
-  "2-5": { fill: "#0a0220", wx:  5200, wy:  -700, pSpeed: 0.15, pSize: 1200, glow: "#5500cc" },
+           lm: { wx: -3200, wy: -3000, speed: 0.32, size: 520, alpha: 0.85 } },
+  "2-4": { fill: "#16021a", wx: -1200, wy: -4600, pSpeed: 0.21, pSize: 888, glow: "#660066",
+           lm: { wx:  3000, wy:  2600, speed: 0.30, size: 480, alpha: 0.88 } },
+  "2-5": { fill: "#0a0220", wx:  5200, wy:  -700, pSpeed: 0.15, pSize: 1200, glow: "#5500cc",
+           lm: { wx: -3600, wy:  3000, speed: 0.26, size: 520, alpha: 0.9 } },
   // Venus faction (3-x)
-  "3-1": { fill: "#0a1606", wx: -3400, wy: -3600, pSpeed: 0.18, pSize: 1032, glow: "#44aa22" },
-  "3-2": { fill: "#0e1a04", wx:  2400, wy:  4400, pSpeed: 0.21, pSize: 840, glow: "#88cc00" },
+  "3-1": { fill: "#0a1606", wx: -3400, wy: -3600, pSpeed: 0.18, pSize: 1032, glow: "#44aa22",
+           lm: { wx:  3200, wy:  3000, speed: 0.30, size: 480, alpha: 0.85, spin: -0.0015 } },
+  "3-2": { fill: "#0e1a04", wx:  2400, wy:  4400, pSpeed: 0.21, pSize: 840, glow: "#88cc00",
+           lm: { wx: -3200, wy: -3000, speed: 0.30, size: 520, alpha: 0.88 } },
   "3-3": { fill: "#0a1800", wx: -5000, wy:  2000, pSpeed: 0.16, pSize: 1128, glow: "#22cc44",
            lm: { wx:  3000, wy: -3400, speed: 0.30, size: 440, alpha: 0.9 } },
-  "3-4": { fill: "#041206", wx:   700, wy: -3000, pSpeed: 0.23, pSize: 768, glow: "#00aa66" },
+  "3-4": { fill: "#041206", wx:   700, wy: -3000, pSpeed: 0.23, pSize: 768, glow: "#00aa66",
+           lm: { wx: -3600, wy:  2800, speed: 0.30, size: 460, alpha: 0.88 } },
   "3-5": { fill: "#081402", wx:  3800, wy:  2900, pSpeed: 0.19, pSize: 984, glow: "#66dd00",
-           lm: { wx: -3600, wy: -2400, speed: 0.26, size: 620, alpha: 0.85, spin: 0.002 } },
+           lm: { wx: -3600, wy: -2400, speed: 0.26, size: 620, alpha: 0.85 } },
   // Danger zones (4-x)
   "4-1": { fill: "#180408", wx: -2000, wy:  4800, pSpeed: 0.18, pSize: 1056, glow: "#ff2244",
            lm: { wx:  3800, wy: -3200, speed: 0.30, size: 500, alpha: 0.85 } },
   "4-2": { fill: "#1a0206", wx:  4400, wy: -2600, pSpeed: 0.20, pSize: 936, glow: "#ff4400",
-           lm: { wx: -3400, wy:  2600, speed: 0.32, size: 640, alpha: 0.85, spin: 0.003 } },
+           lm: { wx: -3400, wy:  2600, speed: 0.32, size: 640, alpha: 0.85 } },
   "4-3": { fill: "#160008", wx: -4400, wy: -1400, pSpeed: 0.16, pSize: 1152, glow: "#cc0066",
            lm: { wx:  3200, wy:  3400, speed: 0.30, size: 540, alpha: 0.9 } },
   "4-4": { fill: "#120010", wx:  1400, wy:  3800, pSpeed: 0.22, pSize: 852, glow: "#aa00cc",
-           lm: { wx: -3000, wy: -3600, speed: 0.34, size: 460, alpha: 0.85, spin: -0.005 } },
+           lm: { wx: -3000, wy: -3600, speed: 0.34, size: 460, alpha: 0.85 } },
   "4-5": { fill: "#0e0016", wx:  -900, wy: -5200, pSpeed: 0.17, pSize: 1032, glow: "#6600ff",
            lm: { wx:  2800, wy:  3000, speed: 0.24, size: 760, alpha: 0.9, spin: 0.0015 } },
   // Debug
@@ -2155,14 +2167,14 @@ function _bgBuildLayers(zone: string, w: number, h: number): void {
   const base = `/bg/${label}`;
 
   const urls = [
-    `${base}/Layer1_${label}.png?v=3`,
-    `${base}/Layer2_${label}.png?v=3`,
-    `${base}/Layer3_${label}.png?v=3`,
+    `${base}/Layer1_${label}.png?v=4`,
+    `${base}/Layer2_${label}.png?v=4`,
+    `${base}/Layer3_${label}.png?v=4`,  // zone effect: veins/aurora/streams/plasma/...
     `${base}/Layer4_${label}.png`,      // planet — preserved original art
-    `${base}/Layer5_${label}.png?v=3`,  // space dust / haze (optional, tiled)
-    `${base}/Layer6_${label}.png?v=3`,  // foreground debris / asteroids (optional, tiled)
-    `${base}/Layer7_${label}.png`,      // distant galaxies (optional, tiled)
-    `${base}/Layer8_${label}.png`,      // large landmark silhouette (optional sprite)
+    `${base}/Layer5_${label}.png?v=4`,  // cosmic dust + glow regions (tiled)
+    `${base}/Layer6_${label}.png?v=4`,  // foreground debris / belt lanes (tiled)
+    `${base}/Layer7_${label}.png?v=4`,  // distant galaxies (tiled)
+    `${base}/Layer8_${label}.png?v=4`,  // painted landmark (sprite)
   ];
 
   console.log("[bg] loading zone", zone, "label", label);
@@ -2248,10 +2260,12 @@ function renderBackground(w: number, h: number, cam: { x: number; y: number }): 
   }
 
   if (_bgNebulaTopTile) {
+    // L3 zone effect (veins/aurora/streams/plasma): slow alpha breathing makes
+    // the energy layer feel alive without ever pulling focus from combat
     _bgNebulaTopTile.width = w; _bgNebulaTopTile.height = h;
     _bgNebulaTopTile.tilePosition.x = Math.round((-cam.x * 0.08 + _bgDriftX * 0.2) * res) / res;
     _bgNebulaTopTile.tilePosition.y = Math.round((-cam.y * 0.08 + _bgDriftY * 0.2) * res) / res;
-    _bgNebulaTopTile.alpha = 0.2;
+    _bgNebulaTopTile.alpha = 0.26 + 0.05 * Math.sin(t * 0.21);
   }
 
   if (_bgDustTile) {

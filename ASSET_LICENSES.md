@@ -51,7 +51,9 @@ Add an entry here whenever external art, audio, or fonts are brought into the re
 - **Source URL:** https://opengameart.org/content/warped-space-shooter
 - **License:** CC0 1.0 Universal (Public Domain) — https://creativecommons.org/publicdomain/zero/1.0/
 - **Commercial use:** allowed. **Attribution:** not required (given here as courtesy).
-- Used in: `Layer6_*.png` (asteroid sprites recomposited into sparse seamless debris tiles) — all maps
+- Used in: `Layer6_*.png` in v3 maps (asteroid sprites recomposited into debris tiles).
+  Since env v4 (2026-07) `Layer6_*.png` is fully procedural original art; entry kept
+  for history/provenance.
 
 The original `license.txt` shipped inside the "Space Background" pack states:
 > Artwork created by Luis Zuno (@ansimuz)
@@ -123,13 +125,20 @@ Kept on file from the asset research (2026-07-07); usable for future maps:
 - **Pixel Art Spells** — DevWizard — CC0 (public domain) — https://opengameart.org/content/pixel-art-spells
   Animated 16px spell projectiles; "orb.png" strip (Magic Orb) used for energy-ball shots. Credit appreciated but not required.
 
-## Environment backgrounds (v3, all zones)
-- **NASA imagery** (nebulae, galaxies) — source material for Layer2/Layer3/Layer7
-  background art in `frontend/public/bg/*/`. Public domain per NASA Media Usage
-  Guidelines (images.nasa.gov); heavily processed (duotone palette grading,
-  alpha shaping, pixelation) — no endorsement implied. Source IDs recorded in
-  `scripts/nasa_cache/manifest.json`.
-- **Procedural art** — starfields, star clusters, cosmic dust, asteroids
-  (`scripts/gen-environments.py`) and Blender-rendered landmark structures
-  (monoliths, gates, temple ring, mining rig, crystal cluster, scrap station,
-  wreck silhouettes of our own ship models): original, generated in-house.
+## Environment backgrounds (v4, all zones)
+- **NASA imagery** (nebulae, galaxies, star clusters, supernova filaments) —
+  source material for Layer2/Layer3/Layer7 background art in
+  `frontend/public/bg/*/`. Public domain per NASA Media Usage Guidelines
+  (images.nasa.gov); heavily processed (multi-patch soft-mask composition,
+  tritone palette grading, alpha shaping, pixelation) — no endorsement implied.
+  Source IDs + per-file license notes recorded in `scripts/nasa_cache/manifest.json`
+  (expanded 2026-07 with Crab/Veil filaments, Carina/Bubble/Lagoon nebulae,
+  Sombrero + Antennae galaxies, Westerlund-2 cluster).
+- **Procedural art** — starfields, star clusters, milky bands, cosmic dust,
+  glow regions, light veins, auroras, energy streams, plasma clouds, debris
+  fields, asteroid belts, asteroids and ALL Layer8 landmark paintings (ring
+  stations, ancient gates, monoliths, crystal formations, capital-ship wrecks,
+  mining rigs, biomech masses, citadels, beacons, temple ruins): original 2D
+  pixel art generated in-house by `scripts/gen-environments.py`.
+  The earlier Blender-rendered 3D landmark decorations were removed in v4 and
+  replaced by these painted landmarks.
