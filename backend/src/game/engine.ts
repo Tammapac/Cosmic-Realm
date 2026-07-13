@@ -377,6 +377,18 @@ export function computeStats(playerData: any): EffectiveStats {
   // Cargo skill
   cargoMax = Math.floor(cargoMax * (1 + sk("ut-cargo") * 0.15) * (1 + (mod.cargoBonus ?? 0)));
 
+  // Attribute points (pilot dossier): stored as reserved attr-* keys in the
+  // skills jsonb. Budget is 2/level — spending beyond it (client tampering)
+  // is scaled back down here so the server stays authoritative.
+  const atv = (k: string) => Math.min(80, Math.max(0, Number(playerData.skills?.[k] ?? 0)));
+  const atSpent = atv("attr-fire") + atv("attr-res") + atv("attr-shd") + atv("attr-thr");
+  const atBudget = Math.max(0, (playerData.level ?? 1) * 2);
+  const atScale = atSpent > atBudget && atSpent > 0 ? atBudget / atSpent : 1;
+  damage *= 1 + atv("attr-fire") * 0.01 * atScale;
+  hullMax *= 1 + atv("attr-res") * 0.015 * atScale;
+  shieldMax *= 1 + atv("attr-shd") * 0.015 * atScale;
+  speed *= 1 + atv("attr-thr") * 0.005 * atScale;
+
   return {
     damage, speed, hullMax, shieldMax, shieldRegen,
     fireRate, critChance, damageReduction: Math.min(0.8, damageReduction),

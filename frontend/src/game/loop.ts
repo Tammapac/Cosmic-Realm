@@ -343,6 +343,17 @@ export function effectiveStats(): {
     if (faction.bonus.lootBonus) lootBonus += faction.bonus.lootBonus;
   }
 
+  // Attribute points (pilot dossier, stored as reserved attr-* skill keys) —
+  // mirrors the server's computeStats so displayed and authoritative stats agree
+  const atv = (k: string) => Math.min(80, Math.max(0, (p.skills as any)[k] ?? 0));
+  const atSpent = atv("attr-fire") + atv("attr-res") + atv("attr-shd") + atv("attr-thr");
+  const atBudget = Math.max(0, p.level * 2);
+  const atScale = atSpent > atBudget && atSpent > 0 ? atBudget / atSpent : 1;
+  damage *= 1 + atv("attr-fire") * 0.01 * atScale;
+  hullMax *= 1 + atv("attr-res") * 0.015 * atScale;
+  shieldMax *= 1 + atv("attr-shd") * 0.015 * atScale;
+  speed *= 1 + atv("attr-thr") * 0.005 * atScale;
+
   damageReduction = Math.min(0.8, damageReduction);
   shieldAbsorb = 0.5 + shieldAbsorb;
 

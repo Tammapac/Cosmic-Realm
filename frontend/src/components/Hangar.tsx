@@ -7,7 +7,8 @@ import {
 } from "../game/types";
 import type { HangarTab } from "../game/store";
 import { effectiveStats } from "../game/loop";
-import { isRolledItem, lootItemColor, lootSellPrice, lootTipText } from "../game/loot-ui";
+import { isRolledItem, lootItemColor, lootItemName, lootSellPrice, lootTipText } from "../game/loot-ui";
+import { affixLine, resolveAffixStats } from "../../../lib/loot/loot";
 import { buySkillRank, resetSkills } from "../game/store";
 import { useState, useMemo, useEffect, useRef } from "react";
 import { GameButton } from "./GameButton";
@@ -611,6 +612,8 @@ function LoadoutTab({ stationId }: { stationId: string }) {
   const [showAmmoPopup, setShowAmmoPopup] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [sellMode, setSellMode] = useState(false);
+  // rich comparison card anchored next to the hovered inventory/shop cell
+  const [cardHover, setCardHover] = useState<{ kind: "inv" | "shop"; id: string; x: number; y: number } | null>(null);
   const [hoverEquip, setHoverEquip] = useState<{ slot: ModuleSlot; index: number; def: ModuleDef | null } | null>(null);
   const [hoveredShopDefId, setHoveredShopDefId] = useState<string | null>(null);
   const hoveredShopDef = hoveredShopDefId ? MODULE_DEFS[hoveredShopDefId] ?? null : null;
@@ -813,7 +816,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
         <div
           className="console-sq overflow-y-auto min-h-0 flex-1"
           style={{ padding: 8 }}
-          onMouseLeave={() => { setHoveredShopDefId(null); setHoveredInvInstanceId(null); }}
+          onMouseLeave={() => { setHoveredShopDefId(null); setHoveredInvInstanceId(null); setCardHover(null); }}
         >
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, 48px)", gap: 5, justifyContent: "center", alignContent: "start" }}>
             {showShop ? (
@@ -824,14 +827,18 @@ function LoadoutTab({ stationId }: { stationId: string }) {
                   <div
                     key={def.id}
                     className="sw-slot equip-cell"
-                    title={moduleTipText(def, { action: canAfford ? `CLICK TO BUY — ${def.price.toLocaleString()} CR` : `NOT ENOUGH CREDITS (${def.price.toLocaleString()} CR)` })}
                     style={{
                       width: 48, height: 48,
                       boxShadow: `inset 0 0 0 1px ${RARITY_COLOR[def.rarity]}88${isBestUpgrade ? ", 0 0 8px rgba(255,210,74,0.55)" : ""}`,
                       cursor: canAfford ? "pointer" : "not-allowed",
                       opacity: canAfford ? 1 : 0.5,
                     }}
-                    onMouseEnter={() => setHoveredShopDefId(def.id)}
+                    onMouseEnter={(e) => {
+                      const rc = e.currentTarget.getBoundingClientRect();
+                      setHoveredShopDefId(def.id);
+                      setCardHover({ kind: "shop", id: def.id, x: rc.left, y: rc.top });
+                    }}
+                    onMouseLeave={() => setCardHover(null)}
                     onClick={() => {
                       if (!canAfford) return;
                       state.player.credits -= def.price;
@@ -870,14 +877,18 @@ function LoadoutTab({ stationId }: { stationId: string }) {
                   <div
                     key={it.instanceId}
                     className="sw-slot equip-cell"
-                    title={lootTipText(it, { action })}
                     style={{
                       width: 48, height: 48,
                       boxShadow: `inset 0 0 0 1px ${color}88${sellMode ? ", inset 0 0 10px rgba(255,60,80,0.35)" : ""}`,
                       cursor: sellMode || !isEquipped ? "pointer" : "default",
                       opacity: isEquipped && !sellMode ? 0.55 : 1,
                     }}
-                    onMouseEnter={() => setHoveredInvInstanceId(!isEquipped && !sellMode ? it.instanceId : null)}
+                    onMouseEnter={(e) => {
+                      const rc = e.currentTarget.getBoundingClientRect();
+                      setHoveredInvInstanceId(!isEquipped && !sellMode ? it.instanceId : null);
+                      setCardHover({ kind: "inv", id: it.instanceId, x: rc.left, y: rc.top });
+                    }}
+                    onMouseLeave={() => setCardHover(null)}
                     onClick={() => {
                       if (sellMode) { sellInventoryItem(it.instanceId); return; }
                       if (isEquipped) return;
@@ -936,6 +947,122 @@ function LoadoutTab({ stationId }: { stationId: string }) {
           </div>
         </div>
       </div>
+      {/* rich item comparison card — MMORPG style, anchored beside the cell */}
+      {cardHover && (() => {
+        let def: ModuleDef | undefined;
+        let item: (typeof player.inventory)[number] | null = null;
+        if (cardHover.kind === "shop") {
+          def = MODULE_DEFS[cardHover.id];
+        } else {
+          item = player.inventory.find((m) => m.instanceId === cardHover.id) ?? null;
+          def = item ? MODULE_DEFS[item.defId] : undefined;
+        }
+        if (!def) return null;
+        const nameColor = item && isRolledItem(item) ? lootItemColor(item, def) : RARITY_COLOR[def.rarity];
+        const displayName = item && isRolledItem(item) ? lootItemName(item, def) : def.name;
+        // candidate stats = base def stats + rolled affix bonuses
+        const combined = (it2: typeof item, d2: ModuleDef): ModuleStats => {
+          const s: any = { ...d2.stats };
+          if (it2 && isRolledItem(it2)) {
+            for (const [k, v] of Object.entries(resolveAffixStats(it2 as any))) {
+              if (k === "fireRate") s.fireRate = (s.fireRate ?? 1) * (v as number);
+              else s[k] = (s[k] ?? 0) + (v as number);
+            }
+          }
+          return s;
+        };
+        const cand = combined(item, def);
+        // comparison target: the item this would replace (first free slot →
+        // empty comparison, else equipped #1)
+        const slotArr = player.equipped[def.slot];
+        const freeIdx = slotArr.findIndex((x) => x === null);
+        const eqId = freeIdx >= 0 ? null : slotArr[0];
+        const eqItem = eqId ? player.inventory.find((m) => m.instanceId === eqId) ?? null : null;
+        const eqDef = eqItem ? MODULE_DEFS[eqItem.defId] : null;
+        const eqStats: ModuleStats = eqItem && eqDef ? combined(eqItem, eqDef) : {};
+        const isSame = item != null && eqId === item.instanceId;
+        const diffs = computeStatDiff(eqStats, cand);
+        const CARD_W = 288;
+        const left = Math.max(8, cardHover.x - CARD_W - 14 > 8 ? cardHover.x - CARD_W - 14 : cardHover.x + 62);
+        const top = Math.max(8, Math.min(cardHover.y - 20, window.innerHeight - 380));
+        const isEquippedNow = item != null && (
+          player.equipped.weapon.includes(item.instanceId) ||
+          player.equipped.generator.includes(item.instanceId) ||
+          player.equipped.module.includes(item.instanceId));
+        return (
+          <div
+            className="console-sq"
+            style={{ position: "fixed", left, top, width: CARD_W, zIndex: 90, pointerEvents: "none", padding: "10px 12px" }}
+          >
+            <div className="console-corner tl" /><div className="console-corner tr" />
+            <div className="console-corner bl" /><div className="console-corner br" />
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="shrink-0 flex items-center justify-center"
+                style={{ width: 30, height: 30, background: `${def.color}22`, border: `1px solid ${def.color}`, color: def.color, fontSize: 15 }}>
+                {def.glyph}
+              </div>
+              <div className="min-w-0">
+                <div className="font-bold tracking-wide text-[13px] truncate" style={{ color: nameColor, fontFamily: "var(--font-display)" }}>
+                  {displayName}
+                </div>
+                <div className="text-[10px] uppercase" style={{ color: "#8f96a6" }}>
+                  T{def.tier} {def.rarity} · {def.slot}
+                  {item && isRolledItem(item) && <span> · i{(item as any).ilvl ?? 1}</span>}
+                  {isEquippedNow && <span style={{ color: "#5cff8a" }}> · equipped</span>}
+                </div>
+              </div>
+            </div>
+            <div className="text-[11px] leading-tight mt-1.5" style={{ color: "#b8bdca" }}>{def.description}</div>
+            <div className="mt-1.5">{modStatPills(cand)}</div>
+            {item && isRolledItem(item) && ((item as any).affixes?.length ?? 0) > 0 && (
+              <div className="text-[10.5px] leading-snug mt-1" style={{ color: nameColor }}>
+                {((item as any).affixes ?? []).map((rr: any) => affixLine(rr)).join("  ·  ")}
+              </div>
+            )}
+            {/* comparison block: green gains, red losses */}
+            {!isSame && (
+              <div className="mt-2 pt-1.5" style={{ borderTop: "1px solid #33353e" }}>
+                <div className="text-[10px] tracking-widest mb-1" style={{ color: "#8f96a6" }}>
+                  {eqDef ? `VS EQUIPPED · ${eqItem && isRolledItem(eqItem) ? lootItemName(eqItem, eqDef) : eqDef.name}` : "VS EMPTY SLOT"}
+                </div>
+                {diffs.length === 0 ? (
+                  <div className="text-[11px] italic" style={{ color: "#8f96a6" }}>identical stats</div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+                    {diffs.map((d2) => (
+                      <div key={d2.label} className="flex items-center justify-between text-[11.5px] tabular-nums">
+                        <span style={{ color: "#8f96a6" }}>{d2.label}</span>
+                        <span className="font-bold" style={{ color: d2.delta > 0 ? "#5cff8a" : "#ff5c6c" }}>
+                          {d2.delta > 0 ? "▲" : "▼"} {d2.formatted}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="flex items-center justify-between mt-2 pt-1.5 text-[11px]" style={{ borderTop: "1px solid #33353e" }}>
+              {cardHover.kind === "shop" ? (
+                <>
+                  <span style={{ color: player.credits >= def.price ? "var(--accent-amber)" : "#ff5c6c" }} className="font-bold tabular-nums">
+                    {def.price.toLocaleString()} CR
+                  </span>
+                  <span style={{ color: "#8f96a6" }}>{player.credits >= def.price ? "CLICK TO BUY" : "NOT ENOUGH CREDITS"}</span>
+                </>
+              ) : (
+                <>
+                  <span style={{ color: "var(--accent-amber)" }} className="tabular-nums">
+                    SELLS {item ? lootSellPrice(item, def).toLocaleString() : 0} CR
+                  </span>
+                  <span style={{ color: sellMode ? "#ff8a93" : "#8f96a6" }}>
+                    {sellMode ? "CLICK TO SELL" : isEquippedNow ? "EQUIPPED" : "CLICK TO EQUIP"}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })()}
       {showAmmoPopup && (
         <div
           style={{

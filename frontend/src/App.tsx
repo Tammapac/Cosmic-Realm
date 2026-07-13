@@ -17,6 +17,7 @@ import { GameTooltip } from "./components/GameTooltip";
 import { Hotbar } from "./components/Hotbar";
 import { InventoryPanel } from "./components/InventoryPanel";
 import { SkillTreePanel } from "./components/SkillTreePanel";
+import { PlayerStatsPanel } from "./components/PlayerStatsPanel";
 import { BossBar } from "./components/BossBar";
 import { QuestTracker } from "./components/QuestTracker";
 import SettingsMenu from "./components/SettingsMenu";
@@ -950,7 +951,7 @@ function GameApp() {
       } else if (e.key === "Escape") {
         if (state.showSettings) {
           state.showSettings = false;
-        } else if (state.showMap || state.showClan || state.showAmmoSelector || state.showRocketAmmoSelector || state.showFullZoneMap || state.showInventory || state.showSkillTree) {
+        } else if (state.showMap || state.showClan || state.showAmmoSelector || state.showRocketAmmoSelector || state.showFullZoneMap || state.showInventory || state.showSkillTree || state.showPlayerStats) {
           state.showMap = false;
           state.showClan = false;
           state.showAmmoSelector = false;
@@ -958,6 +959,7 @@ function GameApp() {
           state.showFullZoneMap = false;
           state.showInventory = false;
           state.showSkillTree = false;
+          state.showPlayerStats = false;
         } else {
           state.showSettings = true;
         }
@@ -1102,6 +1104,7 @@ function GameApp() {
       <CargoOverlay />
       <InventoryPanel />
       <SkillTreePanel />
+      <PlayerStatsPanel />
       <BossBar />
       <IdleRewardModal />
       <FactionPicker />

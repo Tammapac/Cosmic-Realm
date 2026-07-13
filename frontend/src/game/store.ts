@@ -90,6 +90,7 @@ export type GameState = {
   logoutCountdown: boolean;
   showFactionPicker: boolean;
   showSkillTree: boolean;
+  showPlayerStats: boolean;
   showMissions: boolean;
   showCargo: boolean;
   showInventory: boolean;
@@ -498,6 +499,7 @@ export const state: GameState = {
   logoutCountdown: false,
   showFactionPicker: initialPlayer.faction === null,
   showSkillTree: false,
+  showPlayerStats: false,
   showMissions: false,
   paused: false,
   notifications: [],
@@ -1335,9 +1337,44 @@ export function resetSkills(): void {
   const p = state.player;
   if (p.credits < 2000) { pushNotification("Respec costs 2000cr", "bad"); return; }
   p.credits -= 2000;
-  p.skills = {};
+  // attribute points (attr-* keys, pilot dossier) survive a skill respec
+  const kept: Record<string, number> = {};
+  for (const [k, v] of Object.entries(p.skills)) {
+    if (k.startsWith("attr-") && typeof v === "number") kept[k] = v;
+  }
+  p.skills = kept as any;
   p.skillPoints = Math.max(0, p.level - 1);
   pushNotification(`Skills reset · ${p.skillPoints} pts available`, "good");
+  save(); bump();
+}
+
+// ── ATTRIBUTES (pilot dossier stat points) ────────────────────────────────
+// Stored as reserved attr-* keys inside player.skills (persists through the
+// existing skills jsonb; the server's computeStats reads and budget-clamps
+// them). Budget: 2 points per level.
+export const ATTRIBUTES = [
+  { id: "attr-fire", name: "FIREPOWER",  desc: "+1% damage per point",     color: "#ff5c6c", icon: "⌖" },
+  { id: "attr-res",  name: "RESILIENCE", desc: "+1.5% max hull per point", color: "#5cff8a", icon: "⬢" },
+  { id: "attr-shd",  name: "SHIELDING",  desc: "+1.5% max shield per point", color: "#4ee2ff", icon: "◈" },
+  { id: "attr-thr",  name: "THRUST",     desc: "+0.5% speed per point",    color: "#ffd24a", icon: "≫" },
+] as const;
+
+export function attrValue(id: string): number {
+  return Math.max(0, ((state.player.skills as any)[id] as number) ?? 0);
+}
+export function attrSpent(): number {
+  return ATTRIBUTES.reduce((a, d) => a + attrValue(d.id), 0);
+}
+export function attrBudget(): number {
+  return Math.max(0, state.player.level * 2);
+}
+export function buyAttribute(id: string): void {
+  if (!ATTRIBUTES.some((a) => a.id === id)) return;
+  if (attrSpent() >= attrBudget()) {
+    pushNotification("No attribute points available — level up!", "bad");
+    return;
+  }
+  (state.player.skills as any)[id] = attrValue(id) + 1;
   save(); bump();
 }
 
