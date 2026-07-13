@@ -133,8 +133,23 @@ Kept on file from the asset research (2026-07-07); usable for future maps:
 - **License:** CC0 1.0 Universal (Public Domain)
 - **Commercial use:** allowed. **Attribution:** not required (given here as courtesy).
 - Used in: `bg/*/ast1..4_*.png` in env v4.1 only (replaced in v4.2 by ansimuz
-  pixel-art asteroids); originals kept in `scripts/asset_src/kenney_meteors/`
-  for future use.
+  pixel-art asteroids; originals in `scripts/asset_src/kenney_meteors/`).
+  Since Phase 11 the pack's UFO + wing/engine part sprites (originals in
+  `scripts/asset_src/kenney_parts/`) are reworked into decor sprites
+  (`bg/decor/ksat_*.png`, `bg/decor/kdeb_*.png` — abandoned satellites and
+  floating metal debris, steel-tinted/pixelated/outlined by `scripts/gen-decor.py`).
+
+## Decor sprite library `frontend/public/bg/decor/` (Phase 11)
+- **Procedural original art** — ~100 painted pixel-art decor sprites
+  (satellites, debris, hull fragments, pipes, pylons, platforms, machinery,
+  containers, drones, beacons, ruins, gate fragments, monolith shards,
+  engines, dishes, crystals, biomech pods) and FX sprites (glow dots, rings,
+  rifts, shimmer patches), generated in-house by `scripts/gen-decor.py`.
+- **NASA imagery** — `fx_puff_*.png` nebula fragments derive from the same
+  public-domain source pool as the background nebulae (see below).
+- **Kenney "Space Shooter Redux" (CC0)** — `ksat_*.png` / `kdeb_*.png`
+  reworked UFO + part sprites (see the pack's entry above).
+- Per-zone placement manifests: `bg/<zone>/decor_<zone>.json` (generated).
 
 ## Environment backgrounds (v4, all zones)
 - **NASA imagery** (nebulae, galaxies, star clusters, supernova filaments) —

@@ -2064,6 +2064,64 @@ let _bgMotes: { spr: PIXI.Sprite; u: number; v: number; s: number; ph: number }[
 let _bgDriftX = 0;
 let _bgDriftY = 0;
 
+// ── decor system (Phase 11 world enrichment) ────────────────────────────────
+// World-anchored decorative sprites loaded from per-zone manifests
+// (/bg/<label>/decor_<label>.json) referencing a shared sprite library
+// (/bg/decor/*.png). Each item carries its own parallax band and a subtle
+// ambient animation (spin / pulse / blink / drift). Purely additive — the
+// existing background layers are untouched.
+interface BgDecorItem {
+  spr: PIXI.Sprite;
+  wx: number; wy: number; par: number;
+  an: string; sp: number; ph: number;
+  baseA: number; baseR: number;
+}
+let _bgDecor: BgDecorItem[] = [];
+let _bgDecorContainer: PIXI.Container | null = null;
+// Shared library textures — cached for the whole session, never destroyed
+const _decorTexCache = new Map<string, PIXI.Texture>();
+
+function _bgBuildDecor(zone: string, label: string): void {
+  fetch(`/bg/${label}/decor_${label}.json?v=1`)
+    .then((res) => (res.ok ? res.json() : null))
+    .catch(() => null)
+    .then(async (man: { items: any[] } | null) => {
+      if (!man || !man.items || _bgZoneActive !== zone || !bgGraphics) return;
+      const names = [...new Set(man.items.map((it) => it.t as string))];
+      await Promise.all(names.map((n) => {
+        if (_decorTexCache.has(n)) return Promise.resolve();
+        return (PIXI.Texture as any).fromURL(`/bg/decor/${n}.png?v=1`, { scaleMode: PIXI.SCALE_MODES.NEAREST })
+          .then((t: PIXI.Texture) => { _decorTexCache.set(n, t); })
+          .catch(() => {});
+      }));
+      if (_bgZoneActive !== zone || !bgGraphics) return;
+      const container = new PIXI.Container();
+      // just below bgGraphics: above all bg tiles, below the rotating
+      // foreground asteroids (inserted later at the same index)
+      bgLayer.addChildAt(container, bgLayer.getChildIndex(bgGraphics));
+      _bgDecorContainer = container;
+      man.items.forEach((it, i) => {
+        const tex = _decorTexCache.get(it.t);
+        if (!tex) return;
+        const spr = new PIXI.Sprite(tex);
+        spr.anchor.set(0.5);
+        spr.scale.set(it.s ?? 1);
+        spr.rotation = it.r ?? 0;
+        spr.alpha = it.a ?? 1;
+        const tint = (it.c ?? "#ffffff") as string;
+        if (tint !== "#ffffff") spr.tint = PIXI.utils.string2hex(tint);
+        if (it.t.startsWith("fx_")) spr.blendMode = PIXI.BLEND_MODES.ADD;
+        container.addChild(spr);
+        _bgDecor.push({
+          spr, wx: it.x, wy: it.y, par: it.p ?? 0.35,
+          an: it.an ?? "none", sp: it.sp ?? 0,
+          ph: ((i * 0.61803) % 1) * Math.PI * 2,
+          baseA: it.a ?? 1, baseR: it.r ?? 0,
+        });
+      });
+    });
+}
+
 // Deterministic per-zone RNG so asteroid layouts are stable across sessions
 function _bgSeededRng(label: string): () => number {
   let h = 2166136261 >>> 0;
@@ -2089,6 +2147,13 @@ function _bgDestroyLayers(): void {
   }
   for (const a of _bgAstSprites) destroyTex(a.spr);
   for (const m of _bgMotes) { m.spr.parent?.removeChild(m.spr); m.spr.destroy({ texture: false, baseTexture: false }); } // motes share the glow texture
+  // decor sprites go, the shared library textures stay cached
+  if (_bgDecorContainer) {
+    _bgDecorContainer.parent?.removeChild(_bgDecorContainer);
+    _bgDecorContainer.destroy({ children: true, texture: false, baseTexture: false });
+    _bgDecorContainer = null;
+  }
+  _bgDecor = [];
   _bgAstSprites = [];
   _bgMotes = [];
   _bgFillSprite = null; _bgStarsTile = null; _bgGalaxyTile = null; _bgNebulaTile = null;
@@ -2210,6 +2275,9 @@ function _bgBuildLayers(zone: string, w: number, h: number): void {
     if (_bgZoneActive !== zone) return;
     _bgBuildSprites(zone, w, h, sTex as PIXI.Texture, nTex as PIXI.Texture, pTex as PIXI.Texture, dTex as PIXI.Texture, dustTex as PIXI.Texture, debrisTex as PIXI.Texture, galaxyTex as PIXI.Texture, landmarkTex as PIXI.Texture, app ? app.renderer.resolution : 1);
   });
+
+  // World-anchored decor (satellites, wrecks, ruins, crystals, anomalies, ...)
+  _bgBuildDecor(zone, label);
 
   // Rotating foreground asteroids (ast1..4_<label>.png, optional per map).
   // Individual sprites so each can spin — a baked tile can't rotate its contents.
@@ -2339,6 +2407,41 @@ function renderBackground(w: number, h: number, cam: { x: number; y: number }): 
     const lscale = lm.size / Math.max(1, _bgLandmarkSprite.texture.width);
     _bgLandmarkSprite.scale.set(lscale);
     if (lm.spin) _bgLandmarkSprite.rotation = t * lm.spin * Math.PI * 2;
+  }
+
+  if (_bgDecor.length > 0) {
+    // World-anchored decor: per-item parallax + subtle ambient animation.
+    // Offscreen items are hidden (position math is cheap, rendering isn't free).
+    const M3 = 180;
+    for (const dd of _bgDecor) {
+      const sx = w / 2 + (dd.wx - cam.x) * dd.par;
+      const sy = h / 2 + (dd.wy - cam.y) * dd.par;
+      if (sx < -M3 || sx > w + M3 || sy < -M3 || sy > h + M3) {
+        dd.spr.visible = false;
+        continue;
+      }
+      dd.spr.visible = true;
+      let px = sx, py = sy;
+      switch (dd.an) {
+        case "spin":
+          dd.spr.rotation = dd.baseR + t * dd.sp;
+          break;
+        case "pulse":
+          dd.spr.alpha = dd.baseA * (0.72 + 0.28 * Math.sin(t * dd.sp * 2 + dd.ph));
+          break;
+        case "blink": {
+          const on = ((t * dd.sp + dd.ph) % 1.7) < 0.22;
+          dd.spr.alpha = on ? dd.baseA : dd.baseA * 0.12;
+          break;
+        }
+        case "drift":
+          px += Math.sin(t * 0.35 * (0.5 + dd.sp) + dd.ph) * 7;
+          py += Math.cos(t * 0.28 * (0.5 + dd.sp) + dd.ph * 1.7) * 6;
+          break;
+      }
+      dd.spr.x = px;
+      dd.spr.y = py;
+    }
   }
 
   if (_bgMotes.length > 0) {
