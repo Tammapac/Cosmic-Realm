@@ -43,28 +43,45 @@ def tup(c, mul=1.0):
     return tuple(int(min(255, v * mul)) for v in c)
 
 # ── shared finishing: shade, rim light, emissive glow, outline, pixelate ────
-def finish(im, em=None, glow="#ffd27a", pixel=2, outline=True):
+def finish(im, em=None, glow="#ffd27a", pixel=2, outline=True, extrude=3, squash=0.82):
+    # 2.5D thickness: stack darkened copies of the silhouette below the body —
+    # the object reads as a slab under the game's tilted camera instead of a
+    # flat paper cutout.
+    if extrude > 0:
+        src = np.asarray(im).astype(np.float32)
+        side = src.copy()
+        side[..., :3] *= 0.34
+        side_im = Image.fromarray(side.astype(np.uint8), "RGBA")
+        stack = Image.new("RGBA", (im.width, im.height + extrude), (0, 0, 0, 0))
+        for k in range(extrude, 0, -1):
+            stack.alpha_composite(side_im, (0, k))
+        stack.alpha_composite(im, (0, 0))
+        im = stack
+        if em is not None:
+            em2 = Image.new("L", (im.width, im.height), 0)
+            em2.paste(em, (0, 0))
+            em = em2
     arr = np.asarray(im).astype(np.float32)
     h, w = arr.shape[:2]
     yi, xi = np.mgrid[0:h, 0:w]
     y, x = yi.astype(np.float32), xi.astype(np.float32)
     op = arr[..., 3] > 40
     # top-left key light with surface noise, quantized into value bands with
-    # a 2x2 ordered dither — classic pixel-art ramps instead of a flat wash
-    shade = 1.18 - ((x + y * 1.35) / (w + h * 1.35)) * 0.62
+    # a 2x2 ordered dither. Range tuned dark — decor sits BEHIND gameplay.
+    shade = 1.06 - ((x + y * 1.5) / (w + h * 1.5)) * 0.72
     shade += np.random.uniform(-0.055, 0.055, (h, w)).astype(np.float32)
     bayer = np.array([[0.0, 0.5], [0.75, 0.25]], dtype=np.float32)
     dth = bayer[yi % 2, xi % 2]
-    q = np.floor(np.clip(shade, 0.35, 1.25) * 5 + dth) / 5
-    arr[..., :3] = np.clip(arr[..., :3] * q[..., None] * 1.05, 0, 255)
+    q = np.floor(np.clip(shade, 0.24, 1.02) * 5 + dth) / 5
+    arr[..., :3] = np.clip(arr[..., :3] * q[..., None] * 0.92, 0, 255)
     # inner ambient occlusion: darken the 1px band along bottom/right edges
     ao = np.zeros_like(op)
     ao[:-1, :-1] = op[:-1, :-1] & (~op[1:, :-1] | ~op[:-1, 1:])
-    arr[..., :3][ao] = arr[..., :3][ao] * 0.55
-    # rim light along top/left silhouette
+    arr[..., :3][ao] = arr[..., :3][ao] * 0.5
+    # rim light along top/left silhouette — dimmed, space is dark
     rim = np.zeros_like(op)
     rim[1:, 1:] = op[1:, 1:] & (~op[:-1, 1:] | ~op[1:, :-1])
-    arr[..., :3][rim] = np.clip(arr[..., :3][rim] * 1.7 + 26, 0, 230)
+    arr[..., :3][rim] = np.clip(arr[..., :3][rim] * 1.45 + 16, 0, 178)
     im = Image.fromarray(arr.astype(np.uint8), "RGBA")
     if em is not None:
         lum = np.asarray(em, dtype=np.float32) / 255
@@ -87,6 +104,9 @@ def finish(im, em=None, glow="#ffd27a", pixel=2, outline=True):
         er[1:-1, 1:-1] = (~solid[1:-1, 1:-1]) & (solid[:-2, 1:-1] | solid[2:, 1:-1] | solid[1:-1, :-2] | solid[1:-1, 2:])
         a[er] = [8, 7, 7, 255]
     out = Image.fromarray(a, "RGBA")
+    # tilt foreshortening: compress screen-Y like the game's 2.5D camera
+    if squash != 1:
+        out = out.resize((out.width, max(2, int(out.height * squash))), Image.NEAREST)
     return out.resize((out.width * pixel, out.height * pixel), Image.NEAREST)
 
 def canvas(w, h):
@@ -374,15 +394,12 @@ def kenney_rework(name, src_path, r, target=34):
     arr = np.asarray(im).astype(np.float32)
     solid = arr[..., 3] > 110
     lum = (arr[..., 0] * 0.35 + arr[..., 1] * 0.45 + arr[..., 2] * 0.2) / 255.0
-    rgb = (STEEL[None, None] * (0.5 + lum[..., None] * 0.9))
+    rgb = (STEEL[None, None] * (0.42 + lum[..., None] * 0.72))
     out = np.zeros_like(arr)
     out[..., :3] = np.clip(rgb, 0, 255)
     out[..., 3] = np.where(solid, 255, 0)
-    er = np.zeros_like(solid)
-    er[1:-1, 1:-1] = (~solid[1:-1, 1:-1]) & (solid[:-2, 1:-1] | solid[2:, 1:-1] | solid[1:-1, :-2] | solid[1:-1, 2:])
-    out[er] = [8, 7, 7, 255]
     img = Image.fromarray(out.astype(np.uint8), "RGBA")
-    return img.resize((img.width * 2, img.height * 2), Image.NEAREST)
+    return finish(img, None, pixel=2, outline=True, extrude=2, squash=0.85)
 
 # ── build the library ────────────────────────────────────────────────────────
 LIB: dict[str, list[str]] = {}
@@ -484,10 +501,10 @@ def spinish(r, p=0.6, lo=0.02, hi=0.12):
 def c_mining_outpost(r, cx, cy, z):
     out = [item(r, pick(r, "mach"), cx, cy, r.uniform(1.4, 1.9), r.uniform(-0.3, 0.3), 1, "#ffffff", 0.4)]
     for i in range(r.randint(2, 3)):
-        out.append(item(r, pick(r, "pipe"), cx + r.gauss(0, 90), cy + r.gauss(0, 60), r.uniform(1, 1.5), r.uniform(0, 6.3), 0.95, "#ffffff", 0.4))
+        out.append(item(r, pick(r, "pipe"), cx + r.gauss(0, 90), cy + r.gauss(0, 60), r.uniform(1, 1.5), r.uniform(-0.8, 0.8), 0.95, "#ffffff", 0.4))
     for i in range(r.randint(2, 4)):
         an, sp = spinish(r, 0.5)
-        out.append(item(r, pick(r, "cont"), cx + r.gauss(0, 120), cy + r.gauss(0, 90), r.uniform(0.9, 1.4), r.uniform(0, 6.3), 0.95, "#ffffff", 0.4, an, sp))
+        out.append(item(r, pick(r, "cont"), cx + r.gauss(0, 120), cy + r.gauss(0, 90), r.uniform(0.9, 1.4), r.uniform(-0.6, 0.6), 0.95, "#ffffff", 0.4, an, sp))
     out.append(item(r, pick(r, "buoy"), cx + r.gauss(0, 140), cy + r.gauss(0, 100), 1.2, 0, 1, "#ffffff", 0.42, "blink", r.uniform(0.5, 1.1)))
     out.append(item(r, pick(r, "drone"), cx + r.gauss(0, 100), cy + r.gauss(0, 80), 1, 0, 1, "#ffffff", 0.44, "drift", r.uniform(0.3, 0.7)))
     return out
@@ -495,8 +512,7 @@ def c_mining_outpost(r, cx, cy, z):
 def c_battlefield(r, cx, cy, z):
     out = []
     for i in range(r.randint(2, 3)):
-        an, sp = spinish(r, 0.7, 0.01, 0.05)
-        out.append(item(r, pick(r, "hull"), cx + r.gauss(0, 160), cy + r.gauss(0, 120), r.uniform(1.2, 1.9), r.uniform(0, 6.3), 0.95, "#ffffff", r.uniform(0.36, 0.44), an, sp))
+        out.append(item(r, pick(r, "hull"), cx + r.gauss(0, 160), cy + r.gauss(0, 120), r.uniform(1.2, 1.9), r.uniform(-0.5, 0.5), 0.95, "#ffffff", r.uniform(0.36, 0.44), "drift", r.uniform(0.2, 0.5)))
     for i in range(r.randint(6, 10)):
         an, sp = spinish(r, 0.8)
         cat = r.choice(["deb", "kdeb", "engine"])
@@ -529,7 +545,7 @@ def c_crystal_field(r, cx, cy, z):
 def c_bio_nest(r, cx, cy, z):
     out = []
     for i in range(r.randint(4, 6)):
-        out.append(item(r, pick(r, "bio"), cx + r.gauss(0, 130), cy + r.gauss(0, 100), r.uniform(1, 1.8), r.uniform(0, 6.3), 0.95, z["acc"], r.uniform(0.36, 0.44), "pulse", r.uniform(0.25, 0.6)))
+        out.append(item(r, pick(r, "bio"), cx + r.gauss(0, 130), cy + r.gauss(0, 100), r.uniform(1, 1.8), r.uniform(-0.5, 0.5), 0.95, z["acc"], r.uniform(0.36, 0.44), "pulse", r.uniform(0.25, 0.6)))
     out.append(item(r, pick(r, "fx_puff"), cx, cy, r.uniform(1.4, 2), r.uniform(0, 6.3), 0.3, z["acc"], 0.3, "drift", 0.2))
     return out
 
@@ -547,7 +563,7 @@ def c_outpost(r, cx, cy, z):
     for i in range(2):
         cat = "ksat" if (LIB.get("ksat") and r.random() < 0.5) else "sat"
         an, sp = spinish(r, 0.6, 0.01, 0.05)
-        out.append(item(r, pick(r, cat), cx + r.gauss(0, 130), cy + r.gauss(0, 90), r.uniform(0.9, 1.3), r.uniform(0, 6.3), 1, "#ffffff", 0.42, an, sp))
+        out.append(item(r, pick(r, cat), cx + r.gauss(0, 130), cy + r.gauss(0, 90), r.uniform(0.9, 1.3), r.uniform(-0.4, 0.4), 1, "#ffffff", 0.42, "none", 0))
     out.append(item(r, pick(r, "dish"), cx + r.gauss(0, 110), cy + r.gauss(0, 70), r.uniform(1, 1.4), r.uniform(-0.4, 0.4), 1, "#ffffff", 0.42))
     out.append(item(r, pick(r, "buoy"), cx + r.gauss(0, 150), cy + r.gauss(0, 100), 1.1, 0, 1, "#ffffff", 0.44, "blink", r.uniform(0.6, 1.2)))
     for i in range(2):
@@ -561,7 +577,7 @@ def c_graveyard(r, cx, cy, z):
         cat = r.choice(["deb", "kdeb", "engine", "pipe", "cont"])
         out.append(item(r, pick(r, cat), cx + r.gauss(0, 240), cy + r.gauss(0, 180), r.uniform(0.7, 1.3), r.uniform(0, 6.3), r.uniform(0.75, 0.95), "#ffffff", r.uniform(0.32, 0.44), an, sp))
     if r.random() < 0.7:
-        out.append(item(r, pick(r, "hull"), cx + r.gauss(0, 150), cy + r.gauss(0, 120), r.uniform(1.3, 1.8), r.uniform(0, 6.3), 0.9, "#ffffff", 0.38, "spin", r.choice([-1, 1]) * 0.02))
+        out.append(item(r, pick(r, "hull"), cx + r.gauss(0, 150), cy + r.gauss(0, 120), r.uniform(1.3, 1.8), r.uniform(-0.5, 0.5), 0.9, "#ffffff", 0.38, "drift", r.uniform(0.2, 0.5)))
     return out
 
 def c_energy_farm(r, cx, cy, z):
@@ -579,7 +595,7 @@ def c_comm_post(r, cx, cy, z):
     out = [item(r, pick(r, "dish"), cx, cy, r.uniform(1.3, 1.7), r.uniform(-0.3, 0.3), 1, "#ffffff", 0.42)]
     cat = "ksat" if (LIB.get("ksat") and r.random() < 0.5) else "sat"
     an, sp = spinish(r, 0.7, 0.01, 0.05)
-    out.append(item(r, pick(r, cat), cx + r.gauss(0, 110), cy + r.gauss(0, 80), r.uniform(0.9, 1.2), r.uniform(0, 6.3), 1, "#ffffff", 0.42, an, sp))
+    out.append(item(r, pick(r, cat), cx + r.gauss(0, 110), cy + r.gauss(0, 80), r.uniform(0.9, 1.2), r.uniform(-0.4, 0.4), 1, "#ffffff", 0.42, "none", 0))
     out.append(item(r, pick(r, "buoy"), cx + r.gauss(0, 130), cy + r.gauss(0, 90), 1.1, 0, 1, "#ffffff", 0.44, "blink", r.uniform(0.5, 1.2)))
     return out
 
@@ -602,14 +618,19 @@ def gen_zone(label, z):
                 break
         centers.append((cx, cy))
         items += RECIPES[story](r, cx, cy, z)
-    # scattered singles fill the space between clusters
+    # scattered singles fill the space between clusters. Only amorphous
+    # scrap may rotate freely — upright structures keep the tilt axis so the
+    # baked 2.5D depth reads correctly.
+    FLAT_CATS = {"deb", "kdeb", "cont", "pipe", "engine"}
     for _ in range(r.randint(22, 30)):
         cat = r.choice(z["fill"])
         if not LIB.get(cat):
             continue
-        an, sp = spinish(r, 0.55, 0.01, 0.1)
+        flat = cat in FLAT_CATS
+        an, sp = spinish(r, 0.55, 0.01, 0.1) if flat else ("none", 0)
+        rot = r.uniform(0, 6.3) if flat else r.uniform(-0.3, 0.3)
         items.append(item(r, pick(r, cat), r.uniform(-WORLD, WORLD), r.uniform(-WORLD, WORLD),
-                          r.uniform(0.6, 1.5), r.uniform(0, 6.3), r.uniform(0.7, 1),
+                          r.uniform(0.6, 1.5), rot, r.uniform(0.7, 1),
                           "#ffffff", r.uniform(*STRUCT_PAR), an, sp))
     # ambient fx: puffs, glows, shimmer patches
     for _ in range(z["fx"]):

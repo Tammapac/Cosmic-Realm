@@ -2082,7 +2082,7 @@ let _bgDecorContainer: PIXI.Container | null = null;
 const _decorTexCache = new Map<string, PIXI.Texture>();
 
 function _bgBuildDecor(zone: string, label: string): void {
-  fetch(`/bg/${label}/decor_${label}.json?v=2`)
+  fetch(`/bg/${label}/decor_${label}.json?v=3`)
     .then((res) => (res.ok ? res.json() : null))
     .catch(() => null)
     .then(async (man: { items: any[] } | null) => {
@@ -2090,7 +2090,7 @@ function _bgBuildDecor(zone: string, label: string): void {
       const names = [...new Set(man.items.map((it) => it.t as string))];
       await Promise.all(names.map((n) => {
         if (_decorTexCache.has(n)) return Promise.resolve();
-        return (PIXI.Texture as any).fromURL(`/bg/decor/${n}.png?v=2`, { scaleMode: PIXI.SCALE_MODES.NEAREST })
+        return (PIXI.Texture as any).fromURL(`/bg/decor/${n}.png?v=3`, { scaleMode: PIXI.SCALE_MODES.NEAREST })
           .then((t: PIXI.Texture) => { _decorTexCache.set(n, t); })
           .catch(() => {});
       }));
