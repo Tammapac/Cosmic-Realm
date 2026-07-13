@@ -2930,13 +2930,22 @@ export function onEnemyAttack(data: EnemyAttackEvent): void {
   const F = (a: number, dm: number, c: string, size: number, wk: string, spd: number, ttl: number, homing = false) =>
     fireProjectile("enemy", x, y, a, dm, c, size, { weaponKind: wk as any, speedMul: spd, ttl, homing, renderOnly: rOnly });
 
-  // Muzzle flash at enemy position
+  // Muzzle pulse at the enemy's gun: bright white core, colored bloom that
+  // expands+fades, and a small expanding ring — reads as a distinct "pop"
+  // on every volley without flooding the screen.
   state.particles.push({
     id: `emf-${Math.random().toString(36).slice(2, 8)}`,
     pos: { x, y },
-    vel: { x: 0, y: 0 }, ttl: 0.2, maxTtl: 0.2,
-    color: projColor, size: 70, kind: "flash",
+    vel: { x: 0, y: 0 }, ttl: 0.26, maxTtl: 0.26,
+    color: projColor, size: 84, kind: "flash",
   });
+  state.particles.push({
+    id: `emfc-${Math.random().toString(36).slice(2, 8)}`,
+    pos: { x, y },
+    vel: { x: 0, y: 0 }, ttl: 0.12, maxTtl: 0.12,
+    color: "#ffffff", size: 34, kind: "flash",
+  });
+  emitRing(x, y, projColor, 16);
 
   const n = _volleyN(data.enemyId);
   const isBoss = srcEnemy?.isBoss ?? false;

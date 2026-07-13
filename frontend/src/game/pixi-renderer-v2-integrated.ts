@@ -2797,20 +2797,9 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
         } else {
           effectManager.spawnMuzzleFlash(pr.pos.x, pr.pos.y, angle, weaponType, color);
         }
-      } else if (!pr.fromPlayer && pr.ttl > 2.1) {
-        // Enemy muzzle pulse: a small colored flash + white core at the gun,
-        // shrinking/fading over ~0.2s. Minimal — two short-lived particles.
-        state.particles.push({
-          id: `emf-${Math.random().toString(36).slice(2, 8)}`,
-          pos: { x: pr.pos.x, y: pr.pos.y }, vel: { x: 0, y: 0 },
-          ttl: 0.22, maxTtl: 0.22, color: pr.color, size: 28, kind: "flash",
-        });
-        state.particles.push({
-          id: `emf2-${Math.random().toString(36).slice(2, 8)}`,
-          pos: { x: pr.pos.x, y: pr.pos.y }, vel: { x: 0, y: 0 },
-          ttl: 0.12, maxTtl: 0.12, color: "#ffffff", size: 14, kind: "flash",
-        });
       }
+      // (enemy muzzle pulse is emitted by onEnemyAttack in loop.ts — the
+      // authoritative per-volley fire point, so multi-shot fans pulse once)
     }
 
     data.sprite.visible = true;
@@ -2871,10 +2860,12 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
   // At 60fps, a 2-frame refresh (~33ms) is imperceptible for a soft glow.
   if (!projectileGlowGraphics) {
     projectileGlowGraphics = new PIXI.Graphics();
+    projectileGlowGraphics.blendMode = PIXI.BLEND_MODES.ADD;
     projectileLayer.addChildAt(projectileGlowGraphics, 0);
   }
   if (!projectileBehindGlowGraphics) {
     projectileBehindGlowGraphics = new PIXI.Graphics();
+    projectileBehindGlowGraphics.blendMode = PIXI.BLEND_MODES.ADD;
     projectileBehindLayer.addChildAt(projectileBehindGlowGraphics, 0);
   }
   _projGlowFrameParity = (_projGlowFrameParity + 1) & 1;
@@ -2889,21 +2880,24 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
       const glowR = 3 + pr.size * 0.5;
       const glowTarget = pr.vel.y < 0 ? projectileGlowGraphics : projectileBehindGlowGraphics;
       const enemyShot = !pr.fromPlayer;
-      glowTarget.beginFill(color, enemyShot ? 0.1 : 0.06);
-      glowTarget.drawCircle(pr.pos.x, pr.pos.y, glowR * 1.5);
+      glowTarget.beginFill(color, enemyShot ? 0.16 : 0.06);
+      glowTarget.drawCircle(pr.pos.x, pr.pos.y, glowR * (enemyShot ? 1.9 : 1.5));
       glowTarget.endFill();
-      glowTarget.beginFill(color, enemyShot ? 0.2 : 0.15);
+      glowTarget.beginFill(color, enemyShot ? 0.32 : 0.15);
       glowTarget.drawCircle(pr.pos.x, pr.pos.y, glowR * 0.6);
       glowTarget.endFill();
       if (enemyShot) {
-        // transparent tapered trace behind enemy shots — two fading segments
+        // transparent tapered light-trace behind enemy shots (additive):
+        // three segments, wide+bright at the bolt fading to nothing
         const spd = Math.hypot(pr.vel.x, pr.vel.y) || 1;
         const ux = pr.vel.x / spd, uy = pr.vel.y / spd;
-        const L = Math.min(44, spd * 0.1);
-        glowTarget.lineStyle(Math.max(1.5, pr.size * 0.5), color, 0.14);
-        glowTarget.moveTo(pr.pos.x - ux * 4, pr.pos.y - uy * 4);
-        glowTarget.lineTo(pr.pos.x - ux * L * 0.45, pr.pos.y - uy * L * 0.45);
-        glowTarget.lineStyle(Math.max(1, pr.size * 0.3), color, 0.06);
+        const L = Math.min(70, spd * 0.14);
+        glowTarget.lineStyle(Math.max(2.5, pr.size * 0.9), color, 0.3);
+        glowTarget.moveTo(pr.pos.x - ux * 3, pr.pos.y - uy * 3);
+        glowTarget.lineTo(pr.pos.x - ux * L * 0.35, pr.pos.y - uy * L * 0.35);
+        glowTarget.lineStyle(Math.max(1.6, pr.size * 0.55), color, 0.16);
+        glowTarget.lineTo(pr.pos.x - ux * L * 0.68, pr.pos.y - uy * L * 0.68);
+        glowTarget.lineStyle(1, color, 0.07);
         glowTarget.lineTo(pr.pos.x - ux * L, pr.pos.y - uy * L);
         glowTarget.lineStyle(0);
       }
