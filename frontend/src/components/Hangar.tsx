@@ -338,7 +338,16 @@ function BountiesTab() {
                       <span className="text-[11px] font-bold px-1 shrink-0" style={{ background: tierColor + "22", color: tierColor, border: `1px solid ${tierColor}55` }}>T{q.tier ?? 1}</span>
                       <span className="text-amber text-[13px] font-bold tracking-wide truncate">{q.title}</span>
                     </div>
-                    <div className="text-cyan text-[12px] mt-1">{q.killCount}× {q.killType} · {ZONES[q.zone as keyof typeof ZONES]?.name ?? q.zone}</div>
+                    <div className="text-cyan text-[12px] mt-1 flex items-center gap-1.5">
+                      <span>{q.killCount}× {q.killType}</span>
+                      <span
+                        className="font-bold tabular-nums px-1 shrink-0"
+                        style={{ color: "#ffd24a", background: "#ffd24a18", border: "1px solid #ffd24a66", fontSize: 11, fontFamily: "var(--font-display)" }}
+                      >
+                        {ZONES[q.zone as keyof typeof ZONES]?.label ?? "?"}
+                      </span>
+                      <span className="truncate">{ZONES[q.zone as keyof typeof ZONES]?.name ?? q.zone}</span>
+                    </div>
                     <div className="flex gap-3 text-[12px] mt-0.5">
                       <span className="text-amber">+{q.rewardCredits.toLocaleString()}cr</span>
                       <span style={{ color: "#ff5cf0" }}>+{q.rewardExp.toLocaleString()}xp</span>
@@ -372,8 +381,15 @@ function BountiesTab() {
                     {q.progress}/{q.killCount}
                   </span>
                 </div>
-                <div className="text-dim text-[12px] mt-1 mb-2 truncate">
-                  {q.killType}s in {ZONES[q.zone as keyof typeof ZONES]?.name ?? q.zone}
+                <div className="text-dim text-[12px] mt-1 mb-2 flex items-center gap-1.5 min-w-0">
+                  <span className="shrink-0">{q.killType}s in</span>
+                  <span
+                    className="font-bold tabular-nums px-1 shrink-0"
+                    style={{ color: "#ffd24a", background: "#ffd24a18", border: "1px solid #ffd24a66", fontSize: 11, fontFamily: "var(--font-display)" }}
+                  >
+                    {ZONES[q.zone as keyof typeof ZONES]?.label ?? "?"}
+                  </span>
+                  <span className="truncate">{ZONES[q.zone as keyof typeof ZONES]?.name ?? q.zone}</span>
                 </div>
                 <div className="bar mb-2">
                   <div className="bar-fill" style={{
