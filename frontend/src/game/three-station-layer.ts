@@ -137,8 +137,12 @@ export function initStation3DLayer(width?: number, height?: number): HTMLCanvasE
 
   scene = new THREE.Scene();
 
-  camera = new THREE.OrthographicCamera(-w / 2, w / 2, h / 2, -h / 2, 0.1, 2000);
-  camera.position.set(0, 500, 0);
+  // Camera sits far above the tallest possible station so the near plane can
+  // never slice a model open (the new station GLBs are tall: y ≈ maxDim, and
+  // near-plane clipping made them look hollow/see-through). Orthographic, so
+  // the height changes nothing but the clip range.
+  camera = new THREE.OrthographicCamera(-w / 2, w / 2, h / 2, -h / 2, 0.1, 20000);
+  camera.position.set(0, 8000, 0);
   camera.lookAt(0, 0, 0);
   camera.up.set(0, 0, -1);
 
@@ -213,8 +217,12 @@ export function updateStationOnly(
   const screenY = (worldY - camY) * cameraZoom;
   st.wrapper.position.set(screenX, 0, screenY);
 
+  // Constant screen size: stations ignore the mouse-wheel zoom entirely.
+  // Position still tracks the world (anchored via camX/camY above) — only
+  // the scale is zoom-independent, so zooming can never blow a station up
+  // into the camera.
   const targetPixels = 1843;
-  const finalScale = (targetPixels * cameraZoom) / st.maxDim;
+  const finalScale = targetPixels / st.maxDim;
   st.wrapper.scale.setScalar(finalScale);
 
   st.model.rotation.y = -(performance.now() / 1000 / 300) * Math.PI * 2;
