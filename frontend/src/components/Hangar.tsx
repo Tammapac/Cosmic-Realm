@@ -179,8 +179,8 @@ export function Hangar({ stationId }: { stationId: string }) {
         <div className="flex flex-1 min-h-0">
           {/* left navigation */}
           <div className="sw-nav">
-            <div className="sec-hdr" style={{ margin: "0 -4px 8px" }}>
-              STATION SERVICES
+            <div className="dob-hdr" style={{ margin: "0 0 8px" }}>
+              <span>STATION SERVICES</span>
             </div>
             {(station.kind === "factory" ? FACTORY_TABS : TABS).map((t) => (
               <button
@@ -234,7 +234,7 @@ function StationInfoRail({ station }: { station: (typeof STATIONS)[number] }) {
   ];
   return (
     <div className="sw-rail">
-      <div className="sec-hdr" style={{ margin: "0 -6px 8px" }}>PILOT CONSOLE</div>
+      <div className="dob-hdr" style={{ margin: "0 0 8px" }}><span>PILOT CONSOLE</span></div>
       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
         {rows.map((r) => (
           <div key={r.label} className="flex items-center justify-between gap-2" style={{ fontSize: 11 }}>
@@ -246,7 +246,7 @@ function StationInfoRail({ station }: { station: (typeof STATIONS)[number] }) {
         ))}
       </div>
       <div className="sw-hr" style={{ margin: "10px 0" }} />
-      <div className="sec-hdr" style={{ margin: "0 -6px 6px" }}>STATION</div>
+      <div className="dob-hdr" style={{ margin: "0 0 6px" }}><span>STATION</span></div>
       <div style={{ fontSize: 10, lineHeight: 1.5, color: "var(--text-mute)" }}>
         <span style={{ color: "var(--accent-cyan)" }}>{station.name}</span>
         {" — "}
@@ -299,50 +299,55 @@ function BountiesTab() {
   const tierColors: Record<number, string> = { 1: "#5cff8a", 2: "#4ee2ff", 3: "#ffcc44", 4: "#ff8a4e", 5: "#ff5c6c", 6: "#ff5cf0", 7: "#aa44ff", 8: "#ff4466", 9: "#ffffff" };
 
   return (
-    <div className="p-4 space-y-4">
-      <div>
-        <div className="section-header">★ BOUNTY BOARD</div>
-        <div className="text-mute mt-2 mb-1" style={{ fontSize: 11 }}>Kill contracts available across all sectors. Repeatable.</div>
+    <div className="p-4 space-y-3 flex flex-col" style={{ height: "100%", minHeight: 0 }}>
+      <div className="dob-hdr shrink-0">
+        <span>★ BOUNTY BOARD</span>
+        <span style={{ color: "#8f96a6" }}>KILL CONTRACTS · REPEATABLE</span>
       </div>
 
       {/* Tier filter */}
-      <div className="flex gap-2 flex-wrap">
-        <button className={"btn " + (tierFilter === 0 ? "btn-primary" : "")} style={{ padding: "4px 10px", fontSize: 12 }} onClick={() => setTierFilter(0)}>ALL</button>
+      <div className="flex gap-1.5 flex-wrap shrink-0">
+        <button className={`gbtn ${tierFilter === 0 ? "gbtn-gold" : ""}`} style={{ padding: "4px 14px", fontSize: 11 }} onClick={() => setTierFilter(0)}>ALL</button>
         {tiers.map(t => (
-          <button key={t} className={"btn " + (tierFilter === t ? "btn-primary" : "")} style={{ padding: "4px 10px", fontSize: 12, borderColor: tierColors[t] ?? "#888" }} onClick={() => setTierFilter(t)}>
+          <button
+            key={t}
+            className={`gbtn ${tierFilter === t ? "gbtn-gold" : ""}`}
+            style={{ padding: "4px 12px", fontSize: 11, color: tierColors[t] ?? "#888", opacity: tierFilter === 0 || tierFilter === t ? 1 : 0.6 }}
+            onClick={() => setTierFilter(t)}
+          >
             T{t}
           </button>
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-3 flex-1 min-h-0">
         {/* Available bounties */}
-        <div>
-          <div className="section-header mb-3">AVAILABLE ({filtered.length})</div>
-          <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+        <div className="flex flex-col min-h-0">
+          <div className="dob-hdr shrink-0" style={{ marginBottom: 8 }}>
+            <span>AVAILABLE</span>
+            <span style={{ color: "#8f96a6" }}>{filtered.length}</span>
+          </div>
+          <div className="space-y-2 overflow-y-auto min-h-0 flex-1 pr-1">
             {filtered.map((q) => {
               const has = player.activeQuests.find((x: any) => x.id === q.id);
               const tierColor = tierColors[q.tier ?? 1] ?? "#888";
               return (
-                <div key={q.id} className="panel p-3" style={{ borderLeft: `2px solid ${tierColor}` }}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-bold px-1 rounded" style={{ background: tierColor + "22", color: tierColor }}>T{q.tier ?? 1}</span>
-                        <span className="text-amber glow-amber text-sm font-bold">{q.title}</span>
-                      </div>
-                      <div className="text-dim text-[13px] mt-1 mb-2">{q.description}</div>
-                      <div className="flex gap-3 text-[13px] flex-wrap">
-                        <span className="text-cyan">{q.killCount}x {q.killType} in {ZONES[q.zone as keyof typeof ZONES]?.name ?? q.zone}</span>
-                        <span className="text-amber">+{q.rewardCredits.toLocaleString()}cr</span>
-                        <span className="text-magenta">+{q.rewardExp.toLocaleString()}xp</span>
-                        <span className="text-green">+{q.rewardHonor} honor</span>
-                      </div>
+                <div key={q.id} className="panel p-3 flex items-center gap-3" style={{ borderLeft: `3px solid ${tierColor}` }}>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-[11px] font-bold px-1 shrink-0" style={{ background: tierColor + "22", color: tierColor, border: `1px solid ${tierColor}55` }}>T{q.tier ?? 1}</span>
+                      <span className="text-amber text-[13px] font-bold tracking-wide truncate">{q.title}</span>
                     </div>
-                    <button className="gbtn gbtn-gold" disabled={!!has} onClick={() => accept(q)}>
-                      {has ? "Active" : "Accept"}
-                    </button>
+                    <div className="text-cyan text-[12px] mt-1">{q.killCount}× {q.killType} · {ZONES[q.zone as keyof typeof ZONES]?.name ?? q.zone}</div>
+                    <div className="flex gap-3 text-[12px] mt-0.5">
+                      <span className="text-amber">+{q.rewardCredits.toLocaleString()}cr</span>
+                      <span style={{ color: "#ff5cf0" }}>+{q.rewardExp.toLocaleString()}xp</span>
+                      <span style={{ color: "#c8a0ff" }}>+{q.rewardHonor} honor</span>
+                    </div>
                   </div>
+                  <button className="gbtn gbtn-gold shrink-0" style={{ padding: "6px 14px", fontSize: 11 }} disabled={!!has} onClick={() => accept(q)}>
+                    {has ? "ACTIVE" : "ACCEPT"}
+                  </button>
                 </div>
               );
             })}
@@ -350,17 +355,25 @@ function BountiesTab() {
         </div>
 
         {/* Active quests */}
-        <div>
-          <div className="section-header mb-3">ACTIVE QUESTS ({player.activeQuests.length}/5)</div>
-          <div className="space-y-2">
+        <div className="flex flex-col min-h-0">
+          <div className="dob-hdr shrink-0" style={{ marginBottom: 8 }}>
+            <span>ACTIVE CONTRACTS</span>
+            <span style={{ color: "#8f96a6" }}>{player.activeQuests.length}/5</span>
+          </div>
+          <div className="space-y-2 overflow-y-auto min-h-0 flex-1 pr-1">
             {player.activeQuests.length === 0 && (
-              <div className="text-mute text-sm italic">No active quests. Take a contract from the board.</div>
+              <div className="text-mute text-sm italic">No active contracts. Take one from the board.</div>
             )}
             {player.activeQuests.map((q: any) => (
               <div key={q.id} className="panel p-3">
-                <div className="text-amber glow-amber text-sm font-bold">{q.title}</div>
-                <div className="text-dim text-[13px] mt-1 mb-2">
-                  {q.progress}/{q.killCount} {q.killType}s eliminated in {ZONES[q.zone as keyof typeof ZONES]?.name ?? q.zone}
+                <div className="flex items-center justify-between gap-2 min-w-0">
+                  <span className="text-amber text-[13px] font-bold tracking-wide truncate">{q.title}</span>
+                  <span className="text-[12px] tabular-nums shrink-0" style={{ color: q.completed ? "#5cff8a" : "#8f96a6" }}>
+                    {q.progress}/{q.killCount}
+                  </span>
+                </div>
+                <div className="text-dim text-[12px] mt-1 mb-2 truncate">
+                  {q.killType}s in {ZONES[q.zone as keyof typeof ZONES]?.name ?? q.zone}
                 </div>
                 <div className="bar mb-2">
                   <div className="bar-fill" style={{
@@ -369,8 +382,8 @@ function BountiesTab() {
                     boxShadow: "0 0 6px #ff5cf0",
                   }} />
                 </div>
-                <button className="gbtn w-full" disabled={!q.completed} onClick={() => turnIn(q)}>
-                  {q.completed ? "Turn In" : "In Progress"}
+                <button className={`gbtn w-full ${q.completed ? "gbtn-gold" : ""}`} style={{ padding: "5px 0", fontSize: 11 }} disabled={!q.completed} onClick={() => turnIn(q)}>
+                  {q.completed ? "✓ TURN IN" : "IN PROGRESS"}
                 </button>
               </div>
             ))}
@@ -1216,81 +1229,93 @@ function DronesTab() {
   };
 
   return (
-    <div className="p-5 grid grid-cols-2 gap-5">
-      <div>
-        <div className="text-cyan tracking-widest mb-4" style={{ fontSize: 14 }}>
-          ▶ DRONE BAY — {player.drones.length}/{totalSlots} SLOTS
+    <div className="p-4 grid grid-cols-2 gap-3" style={{ height: "100%", minHeight: 0 }}>
+      <div className="flex flex-col min-h-0">
+        <div className="dob-hdr shrink-0" style={{ marginBottom: 8 }}>
+          <span>✦ DRONE BAY</span>
+          <span style={{ color: "#8f96a6" }}>{player.drones.length}/{totalSlots} SLOTS</span>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2 overflow-y-auto min-h-0 flex-1 pr-1">
           {player.drones.length === 0 && (
             <div className="text-mute italic text-sm">No drones deployed.</div>
           )}
           {player.drones.map((d) => {
             const def = DRONE_DEFS[d.kind];
             return (
-              <div key={d.id} className="panel p-4 flex items-center gap-4">
+              <div key={d.id} className="panel p-3 flex items-center gap-3">
                 <div
                   className="flex items-center justify-center text-xl shrink-0"
-                  style={{ width: 48, height: 48, background: `${def.color}22`, border: `1px solid ${def.color}`, color: def.color }}
+                  style={{ width: 44, height: 44, background: `${def.color}22`, border: `1px solid ${def.color}`, color: def.color }}
                 >
                   ✦
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-bold tracking-widest mb-1" style={{ color: def.color, fontSize: 14 }}>{def.name}</div>
-                  <div className="text-dim text-[13px] flex gap-3">
+                  <div className="font-bold tracking-widest truncate" style={{ color: def.color, fontSize: 13 }}>{def.name}</div>
+                  <div className="text-dim text-[12px] flex gap-2.5 flex-wrap">
                     {def.damageBonus > 0 && <span style={{ color: "#ff5c6c" }}>+{def.damageBonus} dmg</span>}
                     {def.shieldBonus > 0 && <span style={{ color: "#4ee2ff" }}>+{def.shieldBonus} shd</span>}
                     {def.hullBonus > 0 && <span style={{ color: "#5cff8a" }}>+{def.hullBonus} hp</span>}
                   </div>
                 </div>
-                <div className="flex flex-col gap-2 items-end">
-                  <div className="flex gap-1.5">
+                <div className="flex flex-col gap-1.5 items-stretch shrink-0" style={{ width: 138 }}>
+                  <div className="flex gap-1">
                     {(["orbit", "forward", "defensive"] as DroneMode[]).map((m) => (
-                      <GameButton
+                      <button
                         key={m}
-                        style={{ fontSize: 13, padding: "4px 8px", color: d.mode === m ? def.color : "var(--text-dim)", opacity: d.mode === m ? 1 : 0.6 }}
+                        className={`gbtn ${d.mode === m ? "gbtn-gold" : ""}`}
+                        style={{ fontSize: 10, padding: "3px 0", flex: 1, opacity: d.mode === m ? 1 : 0.7 }}
+                        title={m === "orbit" ? "Orbit: circle the ship" : m === "forward" ? "Forward: advance toward the target" : "Defensive: hold close, short range"}
                         onClick={() => setMode(d.id, m)}
                       >
                         {m === "orbit" ? "ORB" : m === "forward" ? "FWD" : "DEF"}
-                      </GameButton>
+                      </button>
                     ))}
                   </div>
-                  <GameButton style={{ fontSize: 13, color: "#ff5c6c" }} onClick={() => scrap(d.id)}>✕ Scrap</GameButton>
+                  <button className="gbtn gbtn-red" style={{ fontSize: 10, padding: "3px 0" }} onClick={() => scrap(d.id)}>
+                    ✕ SCRAP · +{Math.floor(DRONE_DEFS[d.kind].price * 0.5).toLocaleString()}cr
+                  </button>
                 </div>
               </div>
             );
           })}
         </div>
-        <div className="text-mute text-[12px] mt-2 italic">
-          Modes: ORBIT (default circle), FORWARD (advance to mid-target), DEFENSIVE (hold close, short range).
+        <div className="text-mute text-[11px] mt-2 italic shrink-0">
+          ORB circles the ship · FWD advances to mid-target · DEF holds close at short range.
         </div>
       </div>
 
-      <div>
-        <div className="text-cyan tracking-widest mb-4" style={{ fontSize: 14 }}>▶ DRONE CATALOG</div>
-        <div className="space-y-2">
+      <div className="flex flex-col min-h-0">
+        <div className="dob-hdr shrink-0" style={{ marginBottom: 8 }}>
+          <span>✦ DRONE CATALOG</span>
+          <span style={{ color: "var(--accent-amber)" }} className="tabular-nums">{player.credits.toLocaleString()} CR</span>
+        </div>
+        <div className="space-y-2 overflow-y-auto min-h-0 flex-1 pr-1">
           {Object.values(DRONE_DEFS).map((def) => {
             const price = dronePrice(def.id);
             const owned = player.drones.filter((d) => d.kind === def.id).length;
             return (
               <div key={def.id} className="panel p-3">
-                <div className="flex items-center justify-between mb-1">
-                  <div className="font-bold text-sm" style={{ color: def.color }}>{def.name}</div>
-                  <div className="text-amber text-sm font-bold">{price.toLocaleString()}cr {owned > 0 && <span className="text-mute text-[12px]">(x{owned} owned)</span>}</div>
+                <div className="flex items-center justify-between gap-2 mb-1 min-w-0">
+                  <div className="font-bold text-[13px] tracking-wide truncate" style={{ color: def.color }}>
+                    {def.name}
+                    {owned > 0 && <span className="text-mute font-normal text-[11px]"> · ×{owned} owned</span>}
+                  </div>
+                  <div className="text-amber text-[13px] font-bold tabular-nums shrink-0">{price.toLocaleString()}cr</div>
                 </div>
-                <div className="text-dim text-[13px] mb-2">{def.description}</div>
-                <div className="flex gap-3 text-[13px] mb-2">
-                  {def.damageBonus > 0 && <span className="text-red">+{def.damageBonus} dmg</span>}
-                  {def.shieldBonus > 0 && <span className="text-cyan">+{def.shieldBonus} shield</span>}
-                  {def.hullBonus > 0 && <span className="text-green">+{def.hullBonus} hull</span>}
+                <div className="text-dim text-[12px] mb-1.5">{def.description}</div>
+                <div className="flex gap-3 text-[12px] mb-2 flex-wrap">
+                  {def.damageBonus > 0 && <span style={{ color: "#ff5c6c" }}>+{def.damageBonus} dmg</span>}
+                  {def.shieldBonus > 0 && <span style={{ color: "#4ee2ff" }}>+{def.shieldBonus} shield</span>}
+                  {def.hullBonus > 0 && <span style={{ color: "#5cff8a" }}>+{def.hullBonus} hull</span>}
                   {def.fireRate > 0 && <span className="text-amber">{def.fireRate.toFixed(1)} shots/s</span>}
                 </div>
                 <button
                   className="gbtn gbtn-gold w-full"
+                  style={{ padding: "5px 0", fontSize: 11 }}
                   disabled={player.credits < price || slotsLeft <= 0}
                   onClick={() => buy(def.id)}
                 >
-                  {slotsLeft <= 0 ? "No slots" : `Deploy · ${price.toLocaleString()}cr`}
+                  {slotsLeft <= 0 ? "NO SLOTS FREE" : `DEPLOY · ${price.toLocaleString()}cr`}
                 </button>
               </div>
             );
@@ -1368,58 +1393,38 @@ save(); bump();
     }
   };
 
+  const MARKET_COLS = "minmax(150px, 2fr) 88px 55px 105px 104px 148px";
+
   return (
     <div className="p-4">
       {isTrade && (
         <>
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <div className="text-cyan tracking-widest text-sm">▶ COMMODITY EXCHANGE</div>
-              <div className="text-mute text-[13px]">
-                Buy low at one station, sell high at another. Different stations specialize in different resources.
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                className="gbtn"
-                style={{ padding: "4px 10px", fontSize: 11, whiteSpace: "nowrap" }}
-                onClick={sellAll}
-              >
+          <div className="dob-hdr mb-2">
+            <span>◆ COMMODITY EXCHANGE</span>
+            <span className="flex items-center gap-2">
+              <button className="gbtn gbtn-gold" style={{ padding: "3px 12px", fontSize: 10 }} onClick={sellAll}>
                 SELL ALL CARGO
               </button>
-              <div
-                className="text-right"
-                style={{
-                  background: "rgba(255,210,74,0.07)",
-                  border: "1px solid rgba(255,210,74,0.2)",
-                  padding: "3px 8px",
-                  borderRadius: 2,
-                  minWidth: 90,
-                }}
-              >
-                <div className="hud-label">CREDITS</div>
-                <div
-                  className="font-bold tabular-nums whitespace-nowrap"
-                  style={{ color: "var(--accent-amber)", fontSize: 13 }}
-                >
-                  {player.credits.toLocaleString()}cr
-                </div>
-              </div>
-            </div>
+              <span className="tabular-nums font-bold" style={{ color: "var(--accent-amber)" }}>
+                {player.credits.toLocaleString()} CR
+              </span>
+            </span>
+          </div>
+          <div className="text-mute text-[12px] mb-2">
+            Buy low here, sell high elsewhere — stations specialize in different resources. ▼ green price = cheap, ▲ red = expensive.
           </div>
 
-          <div className="grid gap-2 px-2 py-1 text-[12px] tracking-widest text-mute border-b" style={{ borderColor: "var(--border-soft)", gridTemplateColumns: "2fr 50px 55px 45px 40px 90px 160px" }}>
+          <div className="grid gap-2 px-2 py-1.5 text-[11px] tracking-widest text-mute" style={{ background: "linear-gradient(180deg, #24252d 0%, #15161b 100%)", border: "1px solid #33353e", gridTemplateColumns: MARKET_COLS }}>
             <div>RESOURCE</div>
-            <div className="text-right">BASE</div>
-            <div className="text-right">HERE</div>
-            <div className="text-right">±</div>
-            <div className="text-right">QTY</div>
-            <div className="text-center">BEST SELL</div>
-            <div className="text-center">TRADE</div>
+            <div className="text-right">PRICE HERE</div>
+            <div className="text-right">OWNED</div>
+            <div className="text-center">BEST SELL AT</div>
+            <div className="text-center">BUY</div>
+            <div className="text-center">SELL</div>
           </div>
 
-          <div className="space-y-1 mt-1">
-            {allRes.map((r) => {
+          <div className="mt-1">
+            {allRes.map((r, rowIdx) => {
               const price = stationPrice(stationId, r.id);
               const diff = ((price - r.basePrice) / r.basePrice) * 100;
               const have = player.cargo.find((c) => c.resourceId === r.id)?.qty ?? 0;
@@ -1435,54 +1440,57 @@ save(); bump();
               const dirColor = dir === "up" ? "#ff5c6c" : dir === "down" ? "#5cff8a" : "#666";
               const profitVsHere = bestStation ? bestStation.price - price : 0;
               return (
-                <div key={r.id} className="grid gap-2 items-center px-2 py-1.5 hover:bg-white/5 border-b" style={{ borderColor: "var(--border-soft)", gridTemplateColumns: "2fr 50px 55px 45px 40px 90px 160px" }}>
-                  <div className="flex items-center gap-2">
+                <div
+                  key={r.id}
+                  className="grid gap-2 items-center px-2 py-2 hover:bg-white/5 border-b"
+                  style={{ borderColor: "var(--border-soft)", gridTemplateColumns: MARKET_COLS, background: rowIdx % 2 === 0 ? "rgba(255,255,255,0.02)" : "transparent" }}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
                     <div
-                      className="flex items-center justify-center"
-                      style={{ width: 22, height: 22, background: `${r.color}22`, border: `1px solid ${r.color}`, color: r.color, fontSize: 12 }}
+                      className="flex items-center justify-center shrink-0"
+                      style={{ width: 26, height: 26, background: `${r.color}22`, border: `1px solid ${r.color}`, color: r.color, fontSize: 13 }}
                     >
                       {r.glyph}
                     </div>
-                    <div>
-                      <div className="text-bright text-[13px]">{r.name}</div>
-                      <div className="text-mute text-[11px] truncate" style={{ maxWidth: 160 }}>{r.description}</div>
+                    <div className="min-w-0">
+                      <div className="text-bright text-[13px] truncate">{r.name}</div>
+                      <div className="text-mute text-[11px] truncate">base {r.basePrice}cr</div>
                     </div>
                   </div>
-                  <div className="text-right text-mute text-[13px] tabular-nums">{r.basePrice}</div>
-                  <div className="text-right font-bold tabular-nums flex items-center justify-end gap-1" style={{ color: diff < 0 ? "#5cff8a" : diff > 0 ? "#ff5c6c" : "var(--text-dim)" }}>
-                    <span style={{ color: dirColor, fontSize: 9.5 }}>{dirIcon}</span>
-                    {price}
+                  <div className="text-right">
+                    <div className="font-bold tabular-nums text-[14px] flex items-center justify-end gap-1" style={{ color: diff < 0 ? "#5cff8a" : diff > 0 ? "#ff5c6c" : "var(--text-dim)" }}>
+                      <span style={{ color: dirColor, fontSize: 9 }}>{dirIcon}</span>
+                      {price}
+                    </div>
+                    <div className="text-[10px] tabular-nums" style={{ color: diff < 0 ? "#5cff8a" : "#ff5c6c" }}>
+                      {diff > 0 ? "+" : ""}{diff.toFixed(0)}% vs base
+                    </div>
                   </div>
-                  <div className="text-right text-[12px] tabular-nums" style={{ color: diff < 0 ? "#5cff8a" : "#ff5c6c" }}>
-                    {diff > 0 ? "+" : ""}{diff.toFixed(0)}%
-                  </div>
-                  <div className="text-right text-cyan text-[13px] tabular-nums">{have}</div>
-                  <div className="text-center text-[11px]" title={bestStation ? `${bestStation.name} (${(ZONES as any)[bestStation.zone]?.label ?? bestStation.zone}) — ${(ZONES as any)[bestStation.zone]?.name ?? ""} — pays ${bestStation.price}cr` : ""}>
+                  <div className="text-right text-cyan text-[14px] font-bold tabular-nums">{have}</div>
+                  <div className="text-center text-[11px]" title={bestStation ? `${bestStation.name} (${(ZONES as any)[bestStation.zone]?.label ?? bestStation.zone}) pays ${bestStation.price}cr` : ""}>
                     {bestStation && profitVsHere > 0 ? (
                       <div>
-                        <div style={{ color: "#5cff8a", fontWeight: "bold" }}>+{profitVsHere}cr</div>
-                        <div className="text-mute truncate" style={{ maxWidth: 85, fontSize: 10 }}>{bestStation.name}</div>
-                        <div className="text-cyan" style={{ fontSize: 10 }}>[{(ZONES as any)[bestStation.zone]?.label ?? "?"}]</div>
+                        <div style={{ color: "#5cff8a", fontWeight: "bold" }}>+{profitVsHere}cr/u</div>
+                        <div className="text-mute truncate" style={{ maxWidth: 100, fontSize: 10, margin: "0 auto" }}>
+                          {bestStation.name} [{(ZONES as any)[bestStation.zone]?.label ?? "?"}]
+                        </div>
                       </div>
                     ) : (
-                      <span style={{ color: "#ffd24a" }}>BEST</span>
+                      <span style={{ color: "#ffd24a", fontWeight: "bold" }}>BEST HERE</span>
                     )}
                   </div>
                   <div className="flex gap-1 justify-center">
-                    <GameButton style={{ fontSize: 12, padding: "2px 8px" }} onClick={() => buy(r.id, 1)}>+1</GameButton>
-                    <GameButton style={{ fontSize: 12, padding: "2px 8px" }} onClick={() => buy(r.id, 10)}>+10</GameButton>
-                    <GameButton style={{ fontSize: 12, padding: "2px 8px" }} disabled={have <= 0} onClick={() => sell(r.id, 1)}>-1</GameButton>
-                    <button className="gbtn" style={{ padding: "2px 5px", fontSize: 12 }} disabled={have < 10} onClick={() => sell(r.id, 10)}>-10</button>
-                    <button className="gbtn" style={{ padding: "2px 5px", fontSize: 12 }} disabled={have <= 0} onClick={() => sell(r.id, have)}>All</button>
+                    <button className="gbtn gbtn-gold" style={{ padding: "5px 0", fontSize: 11, flex: 1 }} disabled={player.credits < price} onClick={() => buy(r.id, 1)}>+1</button>
+                    <button className="gbtn gbtn-gold" style={{ padding: "5px 0", fontSize: 11, flex: 1 }} disabled={player.credits < price * 10} onClick={() => buy(r.id, 10)}>+10</button>
+                  </div>
+                  <div className="flex gap-1 justify-center">
+                    <button className="gbtn" style={{ padding: "5px 0", fontSize: 11, flex: 1 }} disabled={have <= 0} onClick={() => sell(r.id, 1)}>−1</button>
+                    <button className="gbtn" style={{ padding: "5px 0", fontSize: 11, flex: 1 }} disabled={have < 10} onClick={() => sell(r.id, 10)}>−10</button>
+                    <button className="gbtn" style={{ padding: "5px 0", fontSize: 11, flex: 1 }} disabled={have <= 0} onClick={() => sell(r.id, have)}>ALL</button>
                   </div>
                 </div>
               );
             })}
-          </div>
-
-          <div className="mt-3 text-mute text-[13px] italic">
-            Prices fluctuate over time — watch the arrows for trends. Buy when low (green arrow down), sell when high.
-            The BEST SELL column shows potential profit if you sell at a different station.
           </div>
         </>
       )}
@@ -1495,8 +1503,8 @@ save(); bump();
       )}
 
       {/* Consumables Shop */}
-      <div className="mt-5">
-        <div className="text-cyan tracking-widest text-sm mb-2">▶ CONSUMABLES SHOP</div>
+      <div className="mt-4">
+        <div className="dob-hdr mb-2"><span>◆ CONSUMABLES SHOP</span></div>
         <div className="grid grid-cols-1 gap-1">
           {(Object.keys(CONSUMABLE_DEFS) as ConsumableId[]).map((cid) => {
             const def = CONSUMABLE_DEFS[cid];
@@ -1794,7 +1802,7 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
 
   return (
     <div className="p-5 space-y-4 max-w-2xl">
-      <div className="text-cyan tracking-widest text-sm mb-2">▶ STATION SERVICES</div>
+      <div className="dob-hdr mb-2"><span>✚ STATION SERVICES</span></div>
 
       <div className="panel p-4 flex items-center gap-4">
         <div className="text-3xl text-green">✚</div>
@@ -1901,33 +1909,28 @@ function SkillsTab() {
 
   return (
     <div className="p-4 space-y-3">
-      {/* Tech Lab header */}
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="tracking-widest" style={{ color: "var(--accent-cyan)", fontSize: 13, fontFamily: "var(--font-display)", textShadow: "0 0 8px rgba(56,214,245,0.5)" }}>
-            ◢ TECH LAB
-          </div>
-          <div className="text-mute" style={{ fontSize: 10, marginTop: 2 }}>
-            Research ship technologies. 1 research point per level.
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="panel" style={{ padding: "4px 12px", textAlign: "center" }}>
-            <div className="hud-label" style={{ fontSize: 9.5 }}>POINTS</div>
-            <div className="text-amber font-bold tabular-nums" style={{ fontSize: 15, lineHeight: 1.1 }}>{player.skillPoints}</div>
-          </div>
+      {/* Skill tree header — DarkOrbit pilot-sheet style strip */}
+      <div className="dob-hdr">
+        <span>✦ PILOT SKILL TREE</span>
+        <span className="flex items-center gap-2">
+          <span className="tabular-nums" style={{ color: "var(--accent-amber)" }}>
+            {player.skillPoints} POINTS
+          </span>
           <button
             className="gbtn gbtn-red"
-            style={{ padding: "4px 10px", fontSize: 10 }}
+            style={{ padding: "3px 10px", fontSize: 10 }}
             onClick={() => { if (confirm("Reset skills for 2000cr?")) resetSkills(); }}
           >
             RESPEC · 2000cr
           </button>
-        </div>
+        </span>
+      </div>
+      <div className="text-mute" style={{ fontSize: 11 }}>
+        1 skill point per level. Click a node to invest — higher nodes unlock when the one before is skilled.
       </div>
 
       {/* Skill trees — one node graph per branch, connectors light up along researched paths */}
-      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(310px, 1fr))" }}>
+      <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(330px, 1fr))" }}>
         {branches.map((b) => {
           const nodes = branchNodes[b.id];
           const maxRow = Math.max(...nodes.map((n) => n.pos.row));
@@ -1936,10 +1939,15 @@ function SkillsTab() {
             cx: PAD_X + n.pos.col * COL_W + NODE_S / 2,
             cy: PAD_Y + n.pos.row * ROW_H + NODE_S / 2,
           });
+          const spent = nodes.reduce((a, n) => a + (player.skills[n.id] ?? 0), 0);
+          const total = nodes.reduce((a, n) => a + n.maxRank, 0);
           return (
-            <div key={b.id} className="panel" style={{ borderColor: `${b.color}44` }}>
-              <div className="section-header" style={{ color: b.color }}>
-                {b.name} SYSTEMS
+            <div key={b.id} className="console-sq" style={{ padding: 10 }}>
+              <div className="console-corner tl" /><div className="console-corner tr" />
+              <div className="console-corner bl" /><div className="console-corner br" />
+              <div className="dob-hdr" style={{ margin: "-10px -10px 4px", borderLeftColor: b.color }}>
+                <span style={{ color: b.color }}>{b.name} SYSTEMS</span>
+                <span className="tabular-nums" style={{ color: "#8f96a6" }}>{spent}/{total}</span>
               </div>
               <div style={{ position: "relative", height: H }}>
                 {/* dependency connectors */}
@@ -1951,24 +1959,34 @@ function SkillsTab() {
                     const c = center(n);
                     const lit = (player.skills[p.id] ?? 0) > 0;
                     return (
-                      <line
-                        key={n.id}
-                        x1={a.cx} y1={a.cy} x2={c.cx} y2={c.cy}
-                        stroke={lit ? b.color : "rgba(135,152,178,0.28)"}
-                        strokeWidth={2}
-                        strokeDasharray={lit ? undefined : "4 4"}
-                        opacity={lit ? 0.8 : 1}
-                      />
+                      <g key={n.id}>
+                        {lit && (
+                          <line x1={a.cx} y1={a.cy} x2={c.cx} y2={c.cy}
+                            stroke={b.color} strokeWidth={5} opacity={0.22} />
+                        )}
+                        <line
+                          x1={a.cx} y1={a.cy} x2={c.cx} y2={c.cy}
+                          stroke={lit ? b.color : "rgba(135,152,178,0.3)"}
+                          strokeWidth={lit ? 2.5 : 2}
+                          strokeDasharray={lit ? undefined : "4 4"}
+                          opacity={lit ? 0.9 : 1}
+                        />
+                      </g>
                     );
                   })}
                 </svg>
-                {/* nodes */}
+                {/* nodes — circular, with a rank ring that fills like an MMORPG talent */}
                 {nodes.map((n) => {
                   const cur = player.skills[n.id] ?? 0;
                   const reqMet = !n.requires || (player.skills[n.requires] ?? 0) > 0;
                   const canBuy = cur < n.maxRank && reqMet && player.skillPoints >= n.cost;
                   const maxed = cur >= n.maxRank;
                   const rim = maxed ? "var(--accent-gold)" : cur > 0 ? b.color : reqMet ? "#7d8ea8" : "#39445a";
+                  const pct = cur / n.maxRank;
+                  const ringColor = maxed ? "#ffd24a" : b.color;
+                  const ring = pct > 0
+                    ? `conic-gradient(${ringColor} ${pct * 360}deg, rgba(52,62,84,0.85) ${pct * 360}deg)`
+                    : "conic-gradient(rgba(52,62,84,0.85) 360deg, rgba(52,62,84,0.85) 0)";
                   return (
                     <button
                       key={n.id}
@@ -1985,49 +2003,56 @@ function SkillsTab() {
                         top: PAD_Y + n.pos.row * ROW_H,
                         width: NODE_S,
                         height: NODE_S,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 19,
-                        lineHeight: 1,
-                        color: cur > 0 ? b.color : reqMet ? "var(--text-dim)" : "#55617a",
-                        background: cur > 0
-                          ? `radial-gradient(circle at 50% 35%, ${b.color}30 0%, rgba(10,16,30,0.95) 70%)`
-                          : "radial-gradient(circle at 50% 35%, rgba(60,80,120,0.35) 0%, rgba(10,16,30,0.95) 75%)",
-                        border: `2px solid ${rim}`,
+                        borderRadius: "50%",
+                        padding: 3,
+                        background: ring,
+                        border: `1px solid ${rim}`,
                         boxShadow: cur > 0
-                          ? `0 0 10px ${b.color}66, inset 0 0 8px ${b.color}22`
-                          : "inset 0 1px 0 rgba(255,255,255,0.10), 0 0 0 1px rgba(0,0,0,0.6)",
+                          ? `0 0 12px ${b.color}55, 0 0 0 1px rgba(0,0,0,0.7)`
+                          : "0 0 0 1px rgba(0,0,0,0.7)",
                         cursor: canBuy ? "pointer" : "default",
-                        opacity: reqMet ? 1 : 0.55,
-                        padding: 0,
+                        opacity: reqMet ? 1 : 0.5,
                       }}
                     >
-                      {n.icon}
+                      <span
+                        style={{
+                          width: "100%", height: "100%",
+                          borderRadius: "50%",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 20, lineHeight: 1,
+                          color: cur > 0 ? b.color : reqMet ? "var(--text-dim)" : "#55617a",
+                          background: cur > 0
+                            ? `radial-gradient(circle at 50% 32%, ${b.color}2e 0%, rgba(9,14,26,0.98) 72%)`
+                            : "radial-gradient(circle at 50% 32%, rgba(60,80,120,0.32) 0%, rgba(9,14,26,0.98) 78%)",
+                        }}
+                      >
+                        {reqMet ? n.icon : "🔒"}
+                      </span>
                       {/* rank badge */}
                       <span
                         className="tabular-nums"
                         style={{
                           position: "absolute",
-                          bottom: -15,
+                          bottom: -16,
                           left: "50%",
                           transform: "translateX(-50%)",
                           fontSize: 10,
                           fontWeight: 700,
                           letterSpacing: "0.06em",
+                          fontFamily: "var(--font-display)",
                           color: maxed ? "var(--accent-gold)" : cur > 0 ? b.color : "var(--text-mute)",
                           textShadow: "0 1px 2px #000",
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {reqMet ? `${cur}/${n.maxRank}` : "🔒"}
+                        {maxed ? "MAX" : `${cur}/${n.maxRank}`}
                       </span>
                       {canBuy && (
                         <span
                           style={{
                             position: "absolute",
-                            top: -4, right: -4,
-                            width: 8, height: 8,
+                            top: -3, right: -3,
+                            width: 9, height: 9,
                             background: "var(--accent-green)",
                             boxShadow: "0 0 6px var(--accent-green)",
                             borderRadius: "50%",
@@ -2098,11 +2123,11 @@ function SkillsTab() {
 }
 
 // tree layout metrics
-const NODE_S = 42;
-const COL_W = 92;
-const ROW_H = 74;
-const PAD_X = 14;
-const PAD_Y = 14;
+const NODE_S = 50;
+const COL_W = 100;
+const ROW_H = 88;
+const PAD_X = 16;
+const PAD_Y = 18;
 
 // Best-effort "what it changes" line: multiply the leading +N[%] of a
 // "... per rank" description by the rank count.
