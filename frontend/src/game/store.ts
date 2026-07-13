@@ -474,7 +474,7 @@ export const state: GameState = {
   others: makeOthers(initialPlayer.zone),
   npcShips: [],
   chat: [
-    { id: "c0", channel: "system", from: "SYSTEM", text: "Welcome to Stellar Frontier, Captain.", time: Date.now() },
+    { id: "c0", channel: "system", from: "SYSTEM", text: "Welcome to Cosmic Realm, Captain.", time: Date.now() },
     { id: "c1", channel: "local", from: "Aurora", text: "anyone running nebula bounties?", time: Date.now() },
     { id: "c2", channel: "local", from: "VoidPilot", text: "lfg crimson dread, need 2 more", time: Date.now() },
   ],
