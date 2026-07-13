@@ -20,13 +20,16 @@ import { MOVEMENT, NETCODE } from "../../../lib/game-constants";
 import { resolveAffixStats, itemDisplayName, rarityColor } from "../../../lib/loot/loot";
 import { shipHitTestSwept, enemyModelKey, enemySizeScale } from "../../../lib/hitbox";
 
-// Silhouette hit test (matches the server): projectile travel vs ship hull.
+// Silhouette hit test for the VISUAL impact (damage stays server-side with
+// its own inflate). The client uses a deflated hull (0.7) so projectiles fly
+// past the rim and burst visibly inside the ship body, toward its middle —
+// impacts on the outermost silhouette edge read as "shooting the bottom/rim".
 function projHitsEnemyHull(pr: Projectile, e: Enemy, dt: number): boolean {
   const key = enemyModelKey(e.type, e.id);
   if (!key) return Math.hypot(pr.pos.x - e.pos.x, pr.pos.y - e.pos.y) < e.size + 4;
   return shipHitTestSwept(
     key, e.pos.x, e.pos.y, e.angle, enemySizeScale(e.size),
-    pr.pos.x - pr.vel.x * dt, pr.pos.y - pr.vel.y * dt, pr.pos.x, pr.pos.y, 1.06,
+    pr.pos.x - pr.vel.x * dt, pr.pos.y - pr.vel.y * dt, pr.pos.x, pr.pos.y, 0.7,
   );
 }
 
@@ -1901,7 +1904,11 @@ function tickWorld(dt: number): void {
           if (_dbgHpR) console.log(`[HP:local] rocket[${ri}] GLB=(${rox.toFixed(1)},${roy.toFixed(1)}) hpCount=${_rocketHpList.length}`);
           const rocketBaseDmg = stats.damage * rocketDmgMul * 2.5;
           const rDmg = Math.round(rocketBaseDmg);
-          fireProjectile("player", rox, roy, ang, rDmg, rocketColor, 5, {
+          // Aim each rocket from its launch hardpoint at the target's center —
+          // firing along the ship heading made wing-mounted rockets fly a
+          // parallel line past the enemy's middle until homing caught up.
+          const rAng = Math.atan2(atkTarget.pos.y - roy, atkTarget.pos.x - rox);
+          fireProjectile("player", rox, roy, rAng, rDmg, rocketColor, 5, {
             weaponKind: "rocket",
             homing: true,
             speedMul: 1.18,
@@ -2077,11 +2084,16 @@ function tickWorld(dt: number): void {
     }
     // Homing steering (rockets) — renderOnly rockets must not home toward local targets
     if (pr.homing && pr.fromPlayer && !pr.renderOnly && state.enemies.length > 0) {
-      let target: Enemy | null = null;
-      let bestD = 9999;
-      for (const e of state.enemies) {
-        const d = distance(pr.pos.x, pr.pos.y, e.pos.x, e.pos.y);
-        if (d < bestD) { bestD = d; target = e; }
+      // Rockets home on the LOCKED attack target's center first; only when
+      // there is no lock (e.g. salvo consumable) do they pick the nearest.
+      let target: Enemy | null =
+        (state.attackTargetId && state.enemies.find((e) => e.id === state.attackTargetId)) || null;
+      if (!target) {
+        let bestD = 9999;
+        for (const e of state.enemies) {
+          const d = distance(pr.pos.x, pr.pos.y, e.pos.x, e.pos.y);
+          if (d < bestD) { bestD = d; target = e; }
+        }
       }
       if (target) {
         const desiredAng = Math.atan2(target.pos.y - pr.pos.y, target.pos.x - pr.pos.x);
@@ -2089,7 +2101,7 @@ function tickWorld(dt: number): void {
         let diff = desiredAng - curAng;
         while (diff > Math.PI) diff -= Math.PI * 2;
         while (diff < -Math.PI) diff += Math.PI * 2;
-        const turnRate = 3.5 * dt;
+        const turnRate = 4.5 * dt;
         const newAng = curAng + Math.sign(diff) * Math.min(Math.abs(diff), turnRate);
         const spd = Math.sqrt(pr.vel.x * pr.vel.x + pr.vel.y * pr.vel.y);
         pr.vel.x = Math.cos(newAng) * spd;
