@@ -125,6 +125,15 @@ Kept on file from the asset research (2026-07-07); usable for future maps:
 - **Pixel Art Spells** — DevWizard — CC0 (public domain) — https://opengameart.org/content/pixel-art-spells
   Animated 16px spell projectiles; "orb.png" strip (Magic Orb) used for energy-ball shots. Credit appreciated but not required.
 
+### Source: "Space Shooter Redux" (meteor sprites)
+- **Author:** Kenney — https://kenney.nl
+- **Source URL:** https://kenney.nl/assets/space-shooter-redux (mirror: https://opengameart.org/content/space-shooter-redux)
+- **License:** CC0 1.0 Universal (Public Domain)
+- **Commercial use:** allowed. **Attribution:** not required (given here as courtesy).
+- Used in: `bg/*/ast1..4_*.png` since env v4.1 — the 8 big meteor sprites,
+  zone-tinted, pixelated and outlined by `scripts/gen-environments.py`
+  (originals kept in `scripts/asset_src/kenney_meteors/`).
+
 ## Environment backgrounds (v4, all zones)
 - **NASA imagery** (nebulae, galaxies, star clusters, supernova filaments) —
   source material for Layer2/Layer3/Layer7 background art in

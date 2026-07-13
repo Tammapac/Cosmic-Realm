@@ -1035,46 +1035,41 @@ def make_landmark(label, b, out):
     arr = LM[b["lm"]](r, c["hull"], c["glow"], c["glow2"])
     save_png(out, arr)
 
-# ── asteroids (rotating foreground sprites) ─────────────────────────────────
+# ── asteroids (rotating foreground sprites) ─────────────────────────────────────────
+# Kenney "Space Shooter Redux" meteor sprites (CC0), reworked to the game
+# style: zone-tinted, pixelated 2x, hard black silhouette outline, fully
+# opaque — crisper than the old flat procedural rocks.
+METEOR_DIR = os.path.join(ROOT, "scripts", "asset_src", "kenney_meteors")
+METEORS = sorted(os.listdir(METEOR_DIR)) if os.path.isdir(METEOR_DIR) else []
+
 def make_asteroids(label, b, out_prefix):
     r = rng_for(label, "ast")
-    base = hex_rgb(b["dust"]) * 0.55 + np.array([70, 66, 62], dtype=np.float32) * 0.45
+    tint = hex_rgb(b["dust"]) * 0.5 + np.array([120, 114, 108], dtype=np.float32) * 0.5
+    picks = METEORS[:]
+    r.shuffle(picks)
     for idx in range(1, 5):
-        sz = r.randint(56, 78)
-        im = Image.new("RGBA", (sz, sz), (0, 0, 0, 0))
-        d = ImageDraw.Draw(im)
-        cx = sz / 2
-        pts = []
-        n = r.randint(9, 13)
-        for i in range(n):
-            ang = math.tau * i / n
-            rad = (sz / 2 - 3) * (0.72 + r.random() * 0.28)
-            pts.append((cx + math.cos(ang) * rad, cx + math.sin(ang) * rad))
-        rock = tuple((base * (0.9 + r.random() * 0.2)).astype(int))
-        d.polygon(pts, fill=rock + (255,))
+        src = Image.open(os.path.join(METEOR_DIR, picks[(idx - 1) % len(picks)])).convert("RGBA")
+        base_px = r.randint(30, 40)  # pixel-art resolution before 2x NEAREST
+        im = src.rotate(r.uniform(0, 360), expand=True, resample=Image.BICUBIC)
+        im = im.resize((base_px, base_px), Image.LANCZOS)
         arr = np.asarray(im).astype(np.float32)
-        y, x = np.mgrid[0:sz, 0:sz].astype(np.float32)
-        shade = 1.15 - ((x + y) / (2 * sz)) * 0.55
-        arr[..., :3] = np.clip(arr[..., :3] * shade[..., None], 0, 255)
-        im = Image.fromarray(arr.astype(np.uint8), "RGBA")
-        d = ImageDraw.Draw(im)
-        for _ in range(r.randint(3, 6)):
-            crx, cry = r.randint(8, sz - 8), r.randint(8, sz - 8)
-            crr = r.randint(2, 5)
-            if im.getpixel((crx, cry))[3] > 0:
-                dark = tuple((base * 0.55).astype(int))
-                d.ellipse([crx - crr, cry - crr, crx + crr, cry + crr], fill=dark + (255,))
-                d.arc([crx - crr, cry - crr, crx + crr, cry + crr], 200, 340,
-                      fill=tuple((base * 1.35).clip(0, 255).astype(int)) + (255,))
-        a = np.asarray(im)
-        edge = (a[..., 3] > 0)
-        er = np.zeros_like(edge)
-        er[1:-1, 1:-1] = edge[1:-1, 1:-1] & ~(edge[:-2, 1:-1] & edge[2:, 1:-1] & edge[1:-1, :-2] & edge[1:-1, 2:])
-        a = a.copy()
-        a[er] = [10, 8, 8, 255]
-        im = Image.fromarray(a, "RGBA").resize((sz * 2, sz * 2), Image.NEAREST)
+        # binary alpha (kills the soft semi-transparent rim), keep crater
+        # shading, push the meteor's hue toward the zone rock tint
+        alpha = arr[..., 3]
+        solid = alpha > 110
+        lum = (arr[..., 0] * 0.35 + arr[..., 1] * 0.45 + arr[..., 2] * 0.2) / 255.0
+        lum = np.clip(lum * 1.25, 0, 1)  # meteors are dark; lift midtones a bit
+        rgb = tint[None, None] * (0.45 + lum[..., None] * 0.95)
+        out = np.zeros_like(arr)
+        out[..., :3] = np.clip(rgb, 0, 255)
+        out[..., 3] = np.where(solid, 255, 0)
+        # hard black silhouette outline (matches the ships/stations outline pass)
+        er = np.zeros_like(solid)
+        er[1:-1, 1:-1] = solid[1:-1, 1:-1] & ~(solid[:-2, 1:-1] & solid[2:, 1:-1] & solid[1:-1, :-2] & solid[1:-1, 2:])
+        out[er] = [8, 7, 7, 255]
+        im = Image.fromarray(out.astype(np.uint8), "RGBA").resize((base_px * 2, base_px * 2), Image.NEAREST)
         im.save(f"{out_prefix}{idx}_{label}.png", optimize=True)
-    print(f"  ast1-4_{label} done")
+    print(f"  ast1-4_{label} done ({len(METEORS)} meteor sources)")
 
 # ── main ────────────────────────────────────────────────────────────────────
 only = set(sys.argv[1:])

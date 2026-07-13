@@ -2227,7 +2227,8 @@ function _bgBuildLayers(zone: string, w: number, h: number): void {
       const spr = new PIXI.Sprite(valid[Math.floor(rnd() * valid.length)]);
       spr.anchor.set(0.5);
       spr.scale.set(0.4 + rnd() * 1.2);
-      spr.alpha = 0.5 + rnd() * 0.45;
+      // solid rocks — the old 0.5-0.95 alpha made asteroids look like ghosts
+      spr.alpha = 0.94 + rnd() * 0.06;
       // insert just below bgGraphics so asteroids stay part of the background stack
       bgLayer.addChildAt(spr, bgLayer.getChildIndex(bgGraphics));
       _bgAstSprites.push({
