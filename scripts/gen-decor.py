@@ -32,8 +32,8 @@ CACHE = os.path.join(ROOT, "scripts", "nasa_cache")
 KPARTS = os.path.join(ROOT, "scripts", "asset_src", "kenney_parts")
 os.makedirs(DECOR, exist_ok=True)
 
-STEEL = np.array([132, 140, 158], dtype=np.float32)   # neutral hull tone
-STEEL_D = np.array([84, 90, 104], dtype=np.float32)
+STEEL = np.array([96, 102, 118], dtype=np.float32)    # neutral hull tone (dark, cool)
+STEEL_D = np.array([56, 60, 72], dtype=np.float32)
 
 def hex_rgb(h):
     h = h.lstrip("#")
@@ -46,13 +46,25 @@ def tup(c, mul=1.0):
 def finish(im, em=None, glow="#ffd27a", pixel=2, outline=True):
     arr = np.asarray(im).astype(np.float32)
     h, w = arr.shape[:2]
-    y, x = np.mgrid[0:h, 0:w].astype(np.float32)
-    shade = 1.14 - ((x + y) / (w + h)) * 0.42
-    arr[..., :3] = np.clip(arr[..., :3] * shade[..., None], 0, 255)
+    yi, xi = np.mgrid[0:h, 0:w]
+    y, x = yi.astype(np.float32), xi.astype(np.float32)
     op = arr[..., 3] > 40
+    # top-left key light with surface noise, quantized into value bands with
+    # a 2x2 ordered dither — classic pixel-art ramps instead of a flat wash
+    shade = 1.18 - ((x + y * 1.35) / (w + h * 1.35)) * 0.62
+    shade += np.random.uniform(-0.055, 0.055, (h, w)).astype(np.float32)
+    bayer = np.array([[0.0, 0.5], [0.75, 0.25]], dtype=np.float32)
+    dth = bayer[yi % 2, xi % 2]
+    q = np.floor(np.clip(shade, 0.35, 1.25) * 5 + dth) / 5
+    arr[..., :3] = np.clip(arr[..., :3] * q[..., None] * 1.05, 0, 255)
+    # inner ambient occlusion: darken the 1px band along bottom/right edges
+    ao = np.zeros_like(op)
+    ao[:-1, :-1] = op[:-1, :-1] & (~op[1:, :-1] | ~op[:-1, 1:])
+    arr[..., :3][ao] = arr[..., :3][ao] * 0.55
+    # rim light along top/left silhouette
     rim = np.zeros_like(op)
     rim[1:, 1:] = op[1:, 1:] & (~op[:-1, 1:] | ~op[1:, :-1])
-    arr[..., :3][rim] = np.clip(arr[..., :3][rim] * 1.8 + 30, 0, 255)
+    arr[..., :3][rim] = np.clip(arr[..., :3][rim] * 1.7 + 26, 0, 230)
     im = Image.fromarray(arr.astype(np.uint8), "RGBA")
     if em is not None:
         lum = np.asarray(em, dtype=np.float32) / 255
@@ -93,7 +105,7 @@ def p_satellite(r):
     for sx in (-1, 1):                                                          # solar wings
         x0 = cx + sx * 6
         x1 = cx + sx * (14 + r.randint(0, 4))
-        d.rectangle([min(x0, x1), cy - 3, max(x0, x1), cy + 3], fill=tup(np.array([70, 90, 140], np.float32)))
+        d.rectangle([min(x0, x1), cy - 3, max(x0, x1), cy + 3], fill=tup(np.array([46, 60, 98], np.float32)))
         for gx in range(min(x0, x1) + 1, max(x0, x1), 3):
             d.line([gx, cy - 3, gx, cy + 3], fill=tup(STEEL_D))
     d.line([cx, cy - 4, cx, cy - 10], fill=tup(STEEL), width=1)                  # mast
@@ -254,8 +266,8 @@ def p_crystal(r):
         wd = r.randint(3, 5)
         tx, ty = cx + math.cos(a) * ln, cy + math.sin(a) * ln
         nx, ny = -math.sin(a), math.cos(a)
-        d.polygon([(cx - nx * wd, cy - ny * wd), (tx, ty), (cx, cy)], fill=(205, 215, 235, 255))
-        d.polygon([(cx + nx * wd, cy + ny * wd), (tx, ty), (cx, cy)], fill=(120, 130, 158, 255))
+        d.polygon([(cx - nx * wd, cy - ny * wd), (tx, ty), (cx, cy)], fill=(168, 178, 202, 255))
+        d.polygon([(cx + nx * wd, cy + ny * wd), (tx, ty), (cx, cy)], fill=(88, 96, 120, 255))
         ed.line([cx, cy - 2, tx, ty], fill=150, width=2)
         ed.point((tx, ty), fill=255)
     d.ellipse([cx - 7, cy - 4, cx + 7, cy + 3], fill=tup(STEEL_D))
@@ -263,8 +275,8 @@ def p_crystal(r):
 
 def p_biopod(r):
     im, d, em, ed = canvas(22, 20)
-    d.ellipse([3, 5, 19, 17], fill=(52, 44, 58, 255))
-    d.ellipse([6, 8, 12, 13], fill=(72, 60, 80, 255))
+    d.ellipse([3, 5, 19, 17], fill=(38, 32, 44, 255))
+    d.ellipse([6, 8, 12, 13], fill=(54, 45, 62, 255))
     for _ in range(r.randint(2, 4)):
         px, py = r.randint(6, 16), r.randint(7, 15)
         ed.ellipse([px - 1, py - 1, px + 1, py + 1], fill=255)
@@ -299,7 +311,7 @@ def p_fx_puff(r):
     mask = np.clip(1 - np.sqrt(((x - cxy) / cxy) ** 2 + ((y - cxy) / cxy) ** 2), 0, 1) ** 1.6
     a = (lum * mask) ** 1.25
     rgb = np.full((size, size, 3), 255, np.float32)
-    out = Image.fromarray(np.concatenate([rgb, a[..., None] * 210], axis=2).astype(np.uint8), "RGBA")
+    out = Image.fromarray(np.concatenate([rgb, a[..., None] * 158], axis=2).astype(np.uint8), "RGBA")
     small = out.resize((size // 2, size // 2), Image.BILINEAR).resize((size, size), Image.NEAREST)
     return small
 
@@ -308,7 +320,7 @@ def p_fx_glow(r):
     im = Image.new("L", (size, size), 0)
     d = ImageDraw.Draw(im)
     c = size // 2
-    for rad, ga in ((c - 1, 40), (int(c * 0.6), 90), (int(c * 0.28), 200)):
+    for rad, ga in ((c - 1, 26), (int(c * 0.6), 62), (int(c * 0.28), 150)):
         d.ellipse([c - rad, c - rad, c + rad, c + rad], fill=ga)
     im = im.filter(ImageFilter.GaussianBlur(size * 0.09))
     rgb = Image.new("L", im.size, 255)
@@ -321,7 +333,7 @@ def p_fx_ring(r):
     c = size // 2
     rr = r.randint(22, 30)
     ry = int(rr * r.uniform(0.5, 1.0))
-    d.ellipse([c - rr, c - ry, c + rr, c + ry], outline=230, width=2)
+    d.ellipse([c - rr, c - ry, c + rr, c + ry], outline=185, width=2)
     im = im.filter(ImageFilter.GaussianBlur(1.6))
     rgb = Image.new("L", im.size, 255)
     out = Image.merge("RGBA", (rgb, rgb, rgb, im))
@@ -350,7 +362,7 @@ def p_fx_shimmer(r):
     for _ in range(r.randint(16, 26)):
         px = int(r.gauss(size / 2, size / 5)) % size
         py = int(r.gauss(size / 2, size / 5)) % size
-        d.point((px, py), fill=(255, 255, 255, r.randint(120, 255)))
+        d.point((px, py), fill=(235, 240, 255, r.randint(90, 200)))
     return im
 
 # ── Kenney pack rework: abandoned satellites + metal debris ─────────────────
@@ -376,6 +388,7 @@ def kenney_rework(name, src_path, r, target=34):
 LIB: dict[str, list[str]] = {}
 def build_lib():
     r = random.Random("decor-lib-v1")
+    np.random.seed(20260713)
     painters = [
         ("sat", p_satellite, 6), ("deb", p_debris, 10), ("hull", p_hull, 6),
         ("pipe", p_pipe, 5), ("pylon", p_pylon, 4), ("plat", p_platform, 4),
@@ -489,7 +502,7 @@ def c_battlefield(r, cx, cy, z):
         cat = r.choice(["deb", "kdeb", "engine"])
         out.append(item(r, pick(r, cat), cx + r.gauss(0, 220), cy + r.gauss(0, 170), r.uniform(0.6, 1.3), r.uniform(0, 6.3), r.uniform(0.8, 1), "#ffffff", r.uniform(0.34, 0.46), an, sp))
     for i in range(r.randint(3, 5)):
-        out.append(item(r, pick(r, "fx_glow"), cx + r.gauss(0, 200), cy + r.gauss(0, 150), r.uniform(0.4, 0.8), 0, r.uniform(0.3, 0.5), z["acc"], 0.34, "pulse", r.uniform(0.4, 1.0)))
+        out.append(item(r, pick(r, "fx_glow"), cx + r.gauss(0, 200), cy + r.gauss(0, 150), r.uniform(0.4, 0.8), 0, r.uniform(0.22, 0.38), z["acc"], 0.34, "pulse", r.uniform(0.4, 1.0)))
     return out
 
 def c_ruins(r, cx, cy, z):
@@ -501,7 +514,7 @@ def c_ruins(r, cx, cy, z):
     if r.random() < 0.8:
         an, sp = spinish(r, 0.6, 0.01, 0.04)
         out.append(item(r, pick(r, "gatefrag"), cx + r.gauss(0, 120), cy + r.gauss(0, 90), r.uniform(1.4, 2), r.uniform(0, 6.3), 0.95, "#ffffff", 0.38, an, sp))
-    out.append(item(r, pick(r, "fx_glow"), cx, cy, r.uniform(0.8, 1.2), 0, 0.32, z["acc2"], 0.36, "pulse", 0.3))
+    out.append(item(r, pick(r, "fx_glow"), cx, cy, r.uniform(0.8, 1.2), 0, 0.24, z["acc2"], 0.36, "pulse", 0.3))
     return out
 
 def c_crystal_field(r, cx, cy, z):
@@ -510,20 +523,20 @@ def c_crystal_field(r, cx, cy, z):
         an = "pulse" if r.random() < 0.4 else "none"
         out.append(item(r, pick(r, "cry"), cx + r.gauss(0, 200), cy + r.gauss(0, 150), r.uniform(0.8, 1.8), r.uniform(-0.5, 0.5), r.uniform(0.85, 1), z["acc"], r.uniform(0.34, 0.44), an, r.uniform(0.3, 0.8)))
     for i in range(2):
-        out.append(item(r, pick(r, "fx_glow"), cx + r.gauss(0, 160), cy + r.gauss(0, 120), r.uniform(0.7, 1.1), 0, 0.35, z["acc"], 0.34, "pulse", r.uniform(0.3, 0.6)))
+        out.append(item(r, pick(r, "fx_glow"), cx + r.gauss(0, 160), cy + r.gauss(0, 120), r.uniform(0.7, 1.1), 0, 0.26, z["acc"], 0.34, "pulse", r.uniform(0.3, 0.6)))
     return out
 
 def c_bio_nest(r, cx, cy, z):
     out = []
     for i in range(r.randint(4, 6)):
         out.append(item(r, pick(r, "bio"), cx + r.gauss(0, 130), cy + r.gauss(0, 100), r.uniform(1, 1.8), r.uniform(0, 6.3), 0.95, z["acc"], r.uniform(0.36, 0.44), "pulse", r.uniform(0.25, 0.6)))
-    out.append(item(r, pick(r, "fx_puff"), cx, cy, r.uniform(1.4, 2), r.uniform(0, 6.3), 0.4, z["acc"], 0.3, "drift", 0.2))
+    out.append(item(r, pick(r, "fx_puff"), cx, cy, r.uniform(1.4, 2), r.uniform(0, 6.3), 0.3, z["acc"], 0.3, "drift", 0.2))
     return out
 
 def c_anomaly(r, cx, cy, z):
-    out = [item(r, pick(r, "fx_ring"), cx, cy, r.uniform(1.2, 2), r.uniform(0, 6.3), 0.55, z["acc2"], 0.3, "pulse", r.uniform(0.3, 0.7))]
-    out.append(item(r, pick(r, "fx_rift"), cx + r.gauss(0, 60), cy + r.gauss(0, 50), r.uniform(1, 1.6), r.uniform(0, 6.3), 0.6, z["acc"], 0.3, "pulse", r.uniform(0.4, 0.9)))
-    out.append(item(r, pick(r, "fx_glow"), cx, cy, r.uniform(0.9, 1.4), 0, 0.4, z["acc"], 0.3, "pulse", 0.5))
+    out = [item(r, pick(r, "fx_ring"), cx, cy, r.uniform(1.2, 2), r.uniform(0, 6.3), 0.45, z["acc2"], 0.3, "pulse", r.uniform(0.3, 0.7))]
+    out.append(item(r, pick(r, "fx_rift"), cx + r.gauss(0, 60), cy + r.gauss(0, 50), r.uniform(1, 1.6), r.uniform(0, 6.3), 0.5, z["acc"], 0.3, "pulse", r.uniform(0.4, 0.9)))
+    out.append(item(r, pick(r, "fx_glow"), cx, cy, r.uniform(0.9, 1.4), 0, 0.3, z["acc"], 0.3, "pulse", 0.5))
     for i in range(r.randint(2, 4)):
         an, sp = spinish(r, 1, 0.05, 0.2)
         out.append(item(r, pick(r, "deb"), cx + r.gauss(0, 110), cy + r.gauss(0, 90), r.uniform(0.5, 0.9), r.uniform(0, 6.3), 0.85, "#ffffff", 0.32, an, sp))
@@ -559,7 +572,7 @@ def c_energy_farm(r, cx, cy, z):
         px = cx + math.cos(ang) * (i - n / 2) * 110 + r.gauss(0, 20)
         py = cy + math.sin(ang) * (i - n / 2) * 110 + r.gauss(0, 20)
         out.append(item(r, pick(r, "pylon"), px, py, r.uniform(1.1, 1.5), r.uniform(-0.15, 0.15), 1, "#ffffff", 0.4))
-        out.append(item(r, pick(r, "fx_glow"), px, py - 34, 0.4, 0, 0.5, z["acc"], 0.4, "pulse", r.uniform(0.5, 1.1)))
+        out.append(item(r, pick(r, "fx_glow"), px, py - 34, 0.4, 0, 0.4, z["acc"], 0.4, "pulse", r.uniform(0.5, 1.1)))
     return out
 
 def c_comm_post(r, cx, cy, z):
@@ -602,11 +615,11 @@ def gen_zone(label, z):
     for _ in range(z["fx"]):
         roll = r.random()
         if roll < 0.45:
-            tex, a, an, sp = pick(r, "fx_puff"), r.uniform(0.22, 0.4), "drift", r.uniform(0.1, 0.3)
+            tex, a, an, sp = pick(r, "fx_puff"), r.uniform(0.16, 0.3), "drift", r.uniform(0.1, 0.3)
         elif roll < 0.75:
-            tex, a, an, sp = pick(r, "fx_glow"), r.uniform(0.25, 0.45), "pulse", r.uniform(0.2, 0.6)
+            tex, a, an, sp = pick(r, "fx_glow"), r.uniform(0.18, 0.34), "pulse", r.uniform(0.2, 0.6)
         else:
-            tex, a, an, sp = pick(r, "fx_shimmer"), r.uniform(0.5, 0.8), "pulse", r.uniform(0.3, 0.8)
+            tex, a, an, sp = pick(r, "fx_shimmer"), r.uniform(0.4, 0.62), "pulse", r.uniform(0.3, 0.8)
         tint = z["acc"] if r.random() < 0.65 else z["acc2"]
         items.append(item(r, tex, r.uniform(-WORLD, WORLD), r.uniform(-WORLD, WORLD),
                           r.uniform(0.8, 2.2), r.uniform(0, 6.3), a, tint, r.uniform(*FX_PAR), an, sp))
