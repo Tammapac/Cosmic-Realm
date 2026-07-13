@@ -855,6 +855,26 @@ function getEnemyTex(e: Enemy): PIXI.Texture {
 
   state.selectedWorldTarget = savedTarget;
 
+  // Black silhouette outline — the 2D fallback body gets the same pixel-art
+  // treatment as the 3D outline pass, so enemies never show up outline-less
+  // while their GLB is still loading (or if it failed).
+  const img = ctx.getImageData(0, 0, canvasSz, canvasSz);
+  const d = img.data;
+  const opaque = (x: number, y: number) =>
+    x >= 0 && y >= 0 && x < canvasSz && y < canvasSz && d[(y * canvasSz + x) * 4 + 3] > 96;
+  for (let pass = 0; pass < 2; pass++) {
+    const mark: number[] = [];
+    for (let y = 0; y < canvasSz; y++) {
+      for (let x = 0; x < canvasSz; x++) {
+        const i = y * canvasSz + x;
+        if (d[i * 4 + 3] > 96) continue;
+        if (opaque(x - 1, y) || opaque(x + 1, y) || opaque(x, y - 1) || opaque(x, y + 1)) mark.push(i);
+      }
+    }
+    for (const i of mark) { d[i * 4] = 0; d[i * 4 + 1] = 0; d[i * 4 + 2] = 0; d[i * 4 + 3] = 255; }
+  }
+  ctx.putImageData(img, 0, 0);
+
   tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
   texCache.set(key, tex);
   return tex;

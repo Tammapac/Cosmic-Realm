@@ -17,6 +17,111 @@ let camera: THREE.OrthographicCamera | null = null;
 let initialized = false;
 let stationCanvas: HTMLCanvasElement | null = null;
 
+// Silhouette outline + emissive bloom pass — same pixel-art treatment the
+// ship layers get (three-ship-layer.ts): stations render into an offscreen
+// target, then a fullscreen blit paints 1 buffer-pixel of black wherever a
+// transparent pixel touches an opaque one, and adds blurred bright-pass
+// bloom so lit windows/lamps bleed light.
+let outlineRT: THREE.WebGLRenderTarget | null = null;
+let outlineScene: THREE.Scene | null = null;
+let outlineCamera: THREE.OrthographicCamera | null = null;
+let outlineMat: THREE.ShaderMaterial | null = null;
+let bloomRTA: THREE.WebGLRenderTarget | null = null;
+let bloomRTB: THREE.WebGLRenderTarget | null = null;
+let brightMat: THREE.ShaderMaterial | null = null;
+let blurMat: THREE.ShaderMaterial | null = null;
+let fsQuad: THREE.Mesh | null = null;
+
+const OUTLINE_FRAG = `
+uniform sampler2D tDiffuse;
+uniform sampler2D tBloom;
+uniform vec2 texel;
+varying vec2 vUv;
+void main() {
+  vec4 c = texture2D(tDiffuse, vUv);
+  if (c.a < 0.5) {
+    float n = texture2D(tDiffuse, vUv + vec2(texel.x, 0.0)).a;
+    n = max(n, texture2D(tDiffuse, vUv - vec2(texel.x, 0.0)).a);
+    n = max(n, texture2D(tDiffuse, vUv + vec2(0.0, texel.y)).a);
+    n = max(n, texture2D(tDiffuse, vUv - vec2(0.0, texel.y)).a);
+    if (n > 0.5) c = vec4(0.0, 0.0, 0.0, 1.0);
+  }
+  vec3 b = texture2D(tBloom, vUv).rgb * 0.85;
+  c.rgb += b;
+  c.a = max(c.a, min(1.0, (b.r + b.g + b.b) * 1.4));
+  gl_FragColor = c;
+  #include <colorspace_fragment>
+}`;
+
+const BRIGHT_FRAG = `
+uniform sampler2D tDiffuse;
+varying vec2 vUv;
+void main() {
+  vec4 c = texture2D(tDiffuse, vUv);
+  float l = max(max(c.r, c.g), c.b) * c.a;
+  float f = smoothstep(0.72, 0.95, l);
+  gl_FragColor = vec4(c.rgb * f, 1.0);
+}`;
+
+const BLUR_FRAG = `
+uniform sampler2D tDiffuse;
+uniform vec2 dir;
+varying vec2 vUv;
+void main() {
+  vec3 acc = texture2D(tDiffuse, vUv).rgb * 0.227027;
+  acc += texture2D(tDiffuse, vUv + dir * 1.3846).rgb * 0.3162162;
+  acc += texture2D(tDiffuse, vUv - dir * 1.3846).rgb * 0.3162162;
+  acc += texture2D(tDiffuse, vUv + dir * 3.2308).rgb * 0.0702703;
+  acc += texture2D(tDiffuse, vUv - dir * 3.2308).rgb * 0.0702703;
+  gl_FragColor = vec4(acc, 1.0);
+}`;
+
+const QUAD_VERT = `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
+
+function setupOutlinePass(bufW: number, bufH: number): void {
+  const hw = Math.max(1, Math.floor(bufW / 2));
+  const hh = Math.max(1, Math.floor(bufH / 2));
+  outlineRT = new THREE.WebGLRenderTarget(bufW, bufH, { depthBuffer: true, format: THREE.RGBAFormat });
+  bloomRTA = new THREE.WebGLRenderTarget(hw, hh, { depthBuffer: false, format: THREE.RGBAFormat });
+  bloomRTB = new THREE.WebGLRenderTarget(hw, hh, { depthBuffer: false, format: THREE.RGBAFormat });
+  bloomRTA.texture.minFilter = bloomRTA.texture.magFilter = THREE.LinearFilter;
+  bloomRTB.texture.minFilter = bloomRTB.texture.magFilter = THREE.LinearFilter;
+  brightMat = new THREE.ShaderMaterial({
+    uniforms: { tDiffuse: { value: outlineRT.texture } },
+    vertexShader: QUAD_VERT, fragmentShader: BRIGHT_FRAG,
+    blending: THREE.NoBlending, depthTest: false, depthWrite: false,
+  });
+  blurMat = new THREE.ShaderMaterial({
+    uniforms: { tDiffuse: { value: null }, dir: { value: new THREE.Vector2() } },
+    vertexShader: QUAD_VERT, fragmentShader: BLUR_FRAG,
+    blending: THREE.NoBlending, depthTest: false, depthWrite: false,
+  });
+  outlineMat = new THREE.ShaderMaterial({
+    uniforms: {
+      tDiffuse: { value: outlineRT.texture },
+      tBloom: { value: bloomRTA.texture },
+      texel: { value: new THREE.Vector2(1 / bufW, 1 / bufH) },
+    },
+    vertexShader: QUAD_VERT, fragmentShader: OUTLINE_FRAG,
+    blending: THREE.NoBlending, depthTest: false, depthWrite: false, transparent: true,
+  });
+  outlineScene = new THREE.Scene();
+  outlineCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  fsQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), outlineMat);
+  fsQuad.frustumCulled = false;
+  outlineScene.add(fsQuad);
+}
+
+function resizeOutlinePass(bufW: number, bufH: number): void {
+  if (!outlineRT || !outlineMat) return;
+  outlineRT.setSize(bufW, bufH);
+  const hw = Math.max(1, Math.floor(bufW / 2));
+  const hh = Math.max(1, Math.floor(bufH / 2));
+  if (bloomRTA) bloomRTA.setSize(hw, hh);
+  if (bloomRTB) bloomRTB.setSize(hw, hh);
+  (outlineMat.uniforms.texel.value as THREE.Vector2).set(1 / bufW, 1 / bufH);
+}
+
 const activeStations = new Map<string, Station3D>();
 let cameraZoom = 1;
 const activeThisFrame = new Set<string>();
@@ -135,6 +240,9 @@ export function initStation3DLayer(width?: number, height?: number): HTMLCanvasE
   renderer.setClearColor(0x000000, 0); // Transparent — Pixi composites this over its bgLayer
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
+  const dbSize = renderer.getDrawingBufferSize(new THREE.Vector2());
+  setupOutlinePass(dbSize.x, dbSize.y);
+
   scene = new THREE.Scene();
 
   // Camera sits far above the tallest possible station so the near plane can
@@ -174,6 +282,8 @@ function onResize(): void {
   } else {
     renderer.setSize(w, h, false);
   }
+  const dbSize = renderer.getDrawingBufferSize(new THREE.Vector2());
+  resizeOutlinePass(dbSize.x, dbSize.y);
   camera.left = -w / 2;
   camera.right = w / 2;
   camera.top = h / 2;
@@ -240,7 +350,36 @@ export function endStationFrame(): void {
 
 export function renderStation3DLayer(): void {
   if (!renderer || !scene || !camera) return;
-  renderer.render(scene, camera);
+  if (outlineRT && outlineScene && outlineCamera && fsQuad && brightMat && blurMat && outlineMat && bloomRTA && bloomRTB) {
+    // Pass 1: stations → offscreen target
+    renderer.setRenderTarget(outlineRT);
+    renderer.clear();
+    renderer.render(scene, camera);
+
+    // Pass 2: bloom — extract bright emissives, blur H+V twice at half res
+    fsQuad.material = brightMat;
+    renderer.setRenderTarget(bloomRTA);
+    renderer.render(outlineScene, outlineCamera);
+    fsQuad.material = blurMat;
+    const bw = bloomRTA.width, bh = bloomRTA.height;
+    for (let i = 0; i < 2; i++) {
+      blurMat.uniforms.tDiffuse.value = bloomRTA.texture;
+      (blurMat.uniforms.dir.value as THREE.Vector2).set(1 / bw, 0);
+      renderer.setRenderTarget(bloomRTB);
+      renderer.render(outlineScene, outlineCamera);
+      blurMat.uniforms.tDiffuse.value = bloomRTB.texture;
+      (blurMat.uniforms.dir.value as THREE.Vector2).set(0, 1 / bh);
+      renderer.setRenderTarget(bloomRTA);
+      renderer.render(outlineScene, outlineCamera);
+    }
+
+    // Pass 3: blit with 1px black outline + additive bloom
+    fsQuad.material = outlineMat;
+    renderer.setRenderTarget(null);
+    renderer.render(outlineScene, outlineCamera);
+  } else {
+    renderer.render(scene, camera);
+  }
 }
 
 export function removeStation3D(id: string): void {
@@ -252,6 +391,12 @@ export function removeStation3D(id: string): void {
 }
 
 export function destroyStation3DLayer(): void {
+  if (outlineRT) { outlineRT.dispose(); outlineRT = null; outlineScene = null; outlineCamera = null; outlineMat = null; }
+  if (bloomRTA) { bloomRTA.dispose(); bloomRTA = null; }
+  if (bloomRTB) { bloomRTB.dispose(); bloomRTB = null; }
+  brightMat = null;
+  blurMat = null;
+  fsQuad = null;
   if (renderer) {
     window.removeEventListener("resize", onResize);
     renderer.dispose();
