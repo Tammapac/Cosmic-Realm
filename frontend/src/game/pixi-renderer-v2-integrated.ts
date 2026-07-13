@@ -2788,7 +2788,7 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
       // the double-flash offset and drops the legacy weaponMountIndex logic.
       // Only for freshly fired projectiles (ttl > 1.2s = just spawned) so
       // resumed-flight projectiles don't emit spurious flashes.
-      if (effectManager && pr.ttl > 1.2) {
+      if (effectManager && pr.fromPlayer && pr.ttl > 1.2) {
         const angle = Math.atan2(pr.vel.y, pr.vel.x);
         const weaponType = pr.weaponKind === "rocket" ? "rocket" : "laser";
         const color = PIXI.utils.string2hex(pr.color);
@@ -2797,6 +2797,19 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
         } else {
           effectManager.spawnMuzzleFlash(pr.pos.x, pr.pos.y, angle, weaponType, color);
         }
+      } else if (!pr.fromPlayer && pr.ttl > 2.1) {
+        // Enemy muzzle pulse: a small colored flash + white core at the gun,
+        // shrinking/fading over ~0.2s. Minimal — two short-lived particles.
+        state.particles.push({
+          id: `emf-${Math.random().toString(36).slice(2, 8)}`,
+          pos: { x: pr.pos.x, y: pr.pos.y }, vel: { x: 0, y: 0 },
+          ttl: 0.22, maxTtl: 0.22, color: pr.color, size: 28, kind: "flash",
+        });
+        state.particles.push({
+          id: `emf2-${Math.random().toString(36).slice(2, 8)}`,
+          pos: { x: pr.pos.x, y: pr.pos.y }, vel: { x: 0, y: 0 },
+          ttl: 0.12, maxTtl: 0.12, color: "#ffffff", size: 14, kind: "flash",
+        });
       }
     }
 
@@ -2875,12 +2888,25 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
       if (isRocket) continue;
       const glowR = 3 + pr.size * 0.5;
       const glowTarget = pr.vel.y < 0 ? projectileGlowGraphics : projectileBehindGlowGraphics;
-      glowTarget.beginFill(color, 0.06);
+      const enemyShot = !pr.fromPlayer;
+      glowTarget.beginFill(color, enemyShot ? 0.1 : 0.06);
       glowTarget.drawCircle(pr.pos.x, pr.pos.y, glowR * 1.5);
       glowTarget.endFill();
-      glowTarget.beginFill(color, 0.15);
+      glowTarget.beginFill(color, enemyShot ? 0.2 : 0.15);
       glowTarget.drawCircle(pr.pos.x, pr.pos.y, glowR * 0.6);
       glowTarget.endFill();
+      if (enemyShot) {
+        // transparent tapered trace behind enemy shots — two fading segments
+        const spd = Math.hypot(pr.vel.x, pr.vel.y) || 1;
+        const ux = pr.vel.x / spd, uy = pr.vel.y / spd;
+        const L = Math.min(44, spd * 0.1);
+        glowTarget.lineStyle(Math.max(1.5, pr.size * 0.5), color, 0.14);
+        glowTarget.moveTo(pr.pos.x - ux * 4, pr.pos.y - uy * 4);
+        glowTarget.lineTo(pr.pos.x - ux * L * 0.45, pr.pos.y - uy * L * 0.45);
+        glowTarget.lineStyle(Math.max(1, pr.size * 0.3), color, 0.06);
+        glowTarget.lineTo(pr.pos.x - ux * L, pr.pos.y - uy * L);
+        glowTarget.lineStyle(0);
+      }
     }
   }
 
