@@ -261,14 +261,19 @@ export function initStation3DLayer(width?: number, height?: number): HTMLCanvasE
   camera.lookAt(0, 0, 0);
   camera.up.set(0, 0, -1);
 
-  const ambient = new THREE.AmbientLight(0x303050, 0.2);
+  // Station lighting is deliberately dimmer and cooler than the ship layer:
+  // the warm 2.6-intensity sun lit the big hull plates so bright they crossed
+  // the bloom threshold and shimmered — a light source that read as alien to
+  // the dark galaxy. Cool starlight key + faint blue fill keeps stations
+  // moody and embedded in the scene.
+  const ambient = new THREE.AmbientLight(0x2a2c48, 0.45);
   scene.add(ambient);
 
-  const sun = new THREE.DirectionalLight(0xfff8f0, 2.6);
+  const sun = new THREE.DirectionalLight(0xcfd9ff, 1.15);
   sun.position.set(100, 300, -80);
   scene.add(sun);
 
-  const fill = new THREE.DirectionalLight(0x6699ff, 0.7);
+  const fill = new THREE.DirectionalLight(0x6699ff, 0.4);
   fill.position.set(-80, 150, 100);
   scene.add(fill);
 
