@@ -117,7 +117,12 @@ for (const [key, rel] of Object.entries(MODELS)) {
 
   const size = [max[0] - min[0], max[1] - min[1], max[2] - min[2]];
   const maxDim = Math.max(...size);
-  let hull = convexHull(pts2d);
+  // Hull coords are emitted relative to the bbox CENTER — the renderer
+  // centers each model's pivot on the same bbox center, so entity pos =
+  // visual center = hull center (origin-at-base GLBs no longer offset).
+  const cx = (min[0] + max[0]) / 2;
+  const cz = (min[2] + max[2]) / 2;
+  let hull = convexHull(pts2d.map(([x, z]) => [x - cx, z - cz]));
   hull = simplifyHull(hull, 14);
   const r = Math.max(...hull.map(([x, z]) => Math.hypot(x, z)));
   out[key] = {

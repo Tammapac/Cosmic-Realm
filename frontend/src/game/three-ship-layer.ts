@@ -572,15 +572,30 @@ function loadModel(shipClass: string): void {
           }
         }
       });
-      // Keep authored animation clips (glow pulses, spinning rings, limb sway)
-      model.userData.animations = gltf.animations ?? [];
       const box = new THREE.Box3().setFromObject(model);
       const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
       const maxDim = Math.max(size.x, size.y, size.z);
 
-      // Collect hardpoints from the GLB model
-      const hardpoints = collectHardpoints(model, shipClass);
-      model.userData.hardpoints = hardpoints;
+      // Center the pivot on the mesh bounding-box center. GLB exports (Tripo)
+      // put the origin at the mesh BASE, and the wrapper tilt bleeds that Y
+      // offset into screen-Y — the visible ship floated above the entity
+      // position/hitbox, so shots seemed to strike the model's bottom edge.
+      // With the pivot centered, entity pos = visual center = hull center
+      // (ship-hulls are generated about the same bbox center) and heading
+      // rotation spins the ship around its middle.
+      const inner = model;
+      const pivot = new THREE.Group();
+      inner.position.sub(center);
+      pivot.add(inner);
+
+      // Keep authored animation clips (glow pulses, spinning rings, limb sway)
+      pivot.userData.animations = gltf.animations ?? [];
+
+      // Collect hardpoints from the GLB model (via the centered pivot so
+      // captured local coords carry the centering offset)
+      const hardpoints = collectHardpoints(pivot, shipClass);
+      pivot.userData.hardpoints = hardpoints;
 
       // Snapshot model-local hardpoint positions with the template at the origin
       // and no rotation/scale applied. Store (x, y, z) — model-Y is needed by
@@ -588,7 +603,7 @@ function loadModel(shipClass: string): void {
       // X mixes model-Y into screen-Z. Node names are kept parallel to the
       // coord arrays so debug tools can identify which GLB node produced each
       // muzzle.
-      model.updateMatrixWorld(true);
+      pivot.updateMatrixWorld(true);
       const _localTmp = new THREE.Vector3();
       const localHardpoints: ModelLocalHardpoints = {
         muzzles: [], weapons: [], thrusters: [],
@@ -609,11 +624,11 @@ function loadModel(shipClass: string): void {
         localHardpoints.thrusters.push({ x: _localTmp.x, y: _localTmp.y, z: _localTmp.z });
         localHardpoints.thrusterNames.push(hp.name || "(unnamed)");
       }
-      model.userData.localHardpoints = localHardpoints;
+      pivot.userData.localHardpoints = localHardpoints;
 
       // Store raw size for scaling later
-      model.userData.maxDim = maxDim;
-      loadedModels.set(shipClass, model);
+      pivot.userData.maxDim = maxDim;
+      loadedModels.set(shipClass, pivot);
       loadingModels.delete(shipClass);
       console.log("[Three.js] GLB LOADED:", shipClass, "maxDim:", maxDim.toFixed(2), "bbox:", size.x.toFixed(2), size.y.toFixed(2), size.z.toFixed(2));
     },
