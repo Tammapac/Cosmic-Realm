@@ -1,13 +1,15 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { PIXELATE_3D, PIXELATE_3D_SCALE } from "./renderer-config";
+import { STATIONS } from "./types";
 
 // Effective downscale factor for the fake pixel-art render mode (1 = off).
 // The Pixi stationSprite stretches this canvas back to screen size with
 // NEAREST filtering, producing the pixelated look.
 const PIX_SCALE = PIXELATE_3D ? Math.max(1, PIXELATE_3D_SCALE) : 1;
 
-interface Station3D { wrapper: THREE.Group; model: THREE.Group; }
+interface Station3D { wrapper: THREE.Group; model: THREE.Group; maxDim: number; }
+interface StationTemplate { group: THREE.Group; maxDim: number; }
 
 let renderer: THREE.WebGLRenderer | null = null;
 let scene: THREE.Scene | null = null;
@@ -16,32 +18,72 @@ let initialized = false;
 let stationCanvas: HTMLCanvasElement | null = null;
 
 const activeStations = new Map<string, Station3D>();
-let stationTemplate: THREE.Group | null = null;
-let stationMaxDim = 1;
-let stationLoading = false;
 let cameraZoom = 1;
 const activeThisFrame = new Set<string>();
 
-function loadStationGLB(): void {
-  if (stationTemplate || stationLoading) return;
-  stationLoading = true;
+// ── model pools ────────────────────────────────────────────────────────────
+// Stations pick from the spacestation pool, factories from the factory pool.
+// Models are assigned round-robin within each zone (offset by a zone hash) so
+// every map mixes different models and no zone shows the same model twice.
+const STATION_MODEL_URLS = [
+  "/models/stations/spacestation1.glb",
+  "/models/stations/spacestation2.glb",
+  "/models/stations/spacestation3.glb",
+];
+const FACTORY_MODEL_URLS = [
+  "/models/stations/factorystation.glb",
+  "/models/stations/factorystation2.glb",
+];
+
+function strHash(s: string): number {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+
+// stationId → model url, computed once from static STATIONS data
+const stationModelUrl = new Map<string, string>();
+{
+  const byZone = new Map<string, { id: string; kind: string }[]>();
+  for (const st of STATIONS) {
+    const arr = byZone.get(st.zone) ?? [];
+    arr.push({ id: st.id, kind: st.kind });
+    byZone.set(st.zone, arr);
+  }
+  for (const [zone, sts] of byZone) {
+    let si = strHash(zone) % STATION_MODEL_URLS.length;
+    let fi = strHash(zone) % FACTORY_MODEL_URLS.length;
+    for (const st of sts) {
+      if (st.kind === "factory") {
+        stationModelUrl.set(st.id, FACTORY_MODEL_URLS[fi % FACTORY_MODEL_URLS.length]);
+        fi++;
+      } else {
+        stationModelUrl.set(st.id, STATION_MODEL_URLS[si % STATION_MODEL_URLS.length]);
+        si++;
+      }
+    }
+  }
+}
+
+const templates = new Map<string, StationTemplate>();
+const templateLoading = new Set<string>();
+
+function loadTemplate(url: string): void {
+  if (templates.has(url) || templateLoading.has(url)) return;
+  templateLoading.add(url);
   const loader = new GLTFLoader();
   loader.load(
-    "/models/Station.glb",
+    url,
     (gltf) => {
       const model = gltf.scene;
       const box = new THREE.Box3().setFromObject(model);
       const size = box.getSize(new THREE.Vector3());
-      stationMaxDim = Math.max(size.x, size.y, size.z);
+      const maxDim = Math.max(size.x, size.y, size.z);
       // Force all materials to fully opaque — walk EVERY descendant, not just meshes
-      let matCount = 0;
-      let originalTransparentCount = 0;
       model.traverse((child: any) => {
         if (!child.material) return;
         const materials = Array.isArray(child.material) ? child.material : [child.material];
         for (const m of materials) {
-          matCount++;
-          if (m.transparent) originalTransparentCount++;
           m.transparent = false;
           m.opacity = 1;
           m.depthWrite = true;
@@ -53,15 +95,14 @@ function loadStationGLB(): void {
           m.needsUpdate = true;
         }
       });
-      console.log("[Station3D] materials patched:", matCount, "originally transparent:", originalTransparentCount);
-      stationTemplate = model;
-      stationLoading = false;
-      console.log("[Station3D] GLB loaded, maxDim:", stationMaxDim.toFixed(2));
+      templates.set(url, { group: model, maxDim });
+      templateLoading.delete(url);
+      console.log("[Station3D] loaded", url, "maxDim:", maxDim.toFixed(2));
     },
     undefined,
     (err) => {
-      console.error("[Station3D] GLB load failed:", err);
-      stationLoading = false;
+      console.error("[Station3D] GLB load failed:", url, err);
+      templateLoading.delete(url);
     }
   );
 }
@@ -153,16 +194,18 @@ export function updateStationOnly(
   camY: number,
 ): void {
   if (!scene) return;
-  if (!stationTemplate) { loadStationGLB(); return; }
+  const url = stationModelUrl.get(id) ?? STATION_MODEL_URLS[strHash(id) % STATION_MODEL_URLS.length];
+  const tpl = templates.get(url);
+  if (!tpl) { loadTemplate(url); return; }
 
   let st = activeStations.get(id);
   if (!st) {
-    const model = stationTemplate.clone();
+    const model = tpl.group.clone();
     const wrapper = new THREE.Group();
     wrapper.rotation.x = -0.6;
     wrapper.add(model);
     scene.add(wrapper);
-    st = { wrapper, model };
+    st = { wrapper, model, maxDim: tpl.maxDim };
     activeStations.set(id, st);
   }
 
@@ -171,7 +214,7 @@ export function updateStationOnly(
   st.wrapper.position.set(screenX, 0, screenY);
 
   const targetPixels = 1843;
-  const finalScale = (targetPixels * cameraZoom) / stationMaxDim;
+  const finalScale = (targetPixels * cameraZoom) / st.maxDim;
   st.wrapper.scale.setScalar(finalScale);
 
   st.model.rotation.y = -(performance.now() / 1000 / 300) * Math.PI * 2;
@@ -209,7 +252,8 @@ export function destroyStation3DLayer(): void {
   scene = null;
   camera = null;
   activeStations.clear();
-  stationTemplate = null;
+  templates.clear();
+  templateLoading.clear();
   stationCanvas = null;
   initialized = false;
 }
