@@ -1035,41 +1035,58 @@ def make_landmark(label, b, out):
     arr = LM[b["lm"]](r, c["hull"], c["glow"], c["glow2"])
     save_png(out, arr)
 
-# ── asteroids (rotating foreground sprites) ─────────────────────────────────────────
-# Kenney "Space Shooter Redux" meteor sprites (CC0), reworked to the game
-# style: zone-tinted, pixelated 2x, hard black silhouette outline, fully
-# opaque — crisper than the old flat procedural rocks.
-METEOR_DIR = os.path.join(ROOT, "scripts", "asset_src", "kenney_meteors")
-METEORS = sorted(os.listdir(METEOR_DIR)) if os.path.isdir(METEOR_DIR) else []
+# ── asteroids (rotating foreground sprites) ─────────────────────────────────
+# ansimuz "Warped Space Shooter" asteroid sprites (CC0) — authored pixel art
+# with crater shading, dithering and a baked dark outline. Variety comes from
+# pixel-perfect 90-degree rotations + mirroring; zone identity from a hue
+# swap that keeps the original shading ramps intact.
+AST_DIR = os.path.join(ROOT, "scripts", "asset_src", "ansimuz_asteroids")
+AST_BIG = os.path.join(AST_DIR, "asteroid.png")
+AST_SMALL = os.path.join(AST_DIR, "asteroid-small.png")
+
+def _hue_shift(im, tint_hex, sat_blend=0.35):
+    """Replace hue with the zone tint's hue, keep value (shading) untouched."""
+    import colorsys
+    tr, tg, tb = (float(v) / 255 for v in hex_rgb(tint_hex))
+    th, ts, _tv = colorsys.rgb_to_hsv(tr, tg, tb)
+    hsv = np.asarray(im.convert("RGBA")).astype(np.float32)
+    a = hsv[..., 3:4]
+    rgbf = hsv[..., :3] / 255.0
+    mx = rgbf.max(axis=2); mn = rgbf.min(axis=2)
+    v = mx
+    sat = np.where(mx > 0, (mx - mn) / np.maximum(mx, 1e-6), 0)
+    new_s = np.clip(sat * (1 - sat_blend) + ts * sat_blend, 0, 1)
+    # HSV→RGB with constant hue th
+    i = int(th * 6) % 6
+    f = th * 6 - int(th * 6)
+    p2 = v * (1 - new_s)
+    q = v * (1 - f * new_s)
+    t = v * (1 - (1 - f) * new_s)
+    if   i == 0: r2, g2, b2 = v, t, p2
+    elif i == 1: r2, g2, b2 = q, v, p2
+    elif i == 2: r2, g2, b2 = p2, v, t
+    elif i == 3: r2, g2, b2 = p2, q, v
+    elif i == 4: r2, g2, b2 = t, p2, v
+    else:        r2, g2, b2 = v, p2, q
+    out = np.concatenate([np.stack([r2, g2, b2], axis=2) * 255, a], axis=2)
+    return Image.fromarray(out.astype(np.uint8), "RGBA")
 
 def make_asteroids(label, b, out_prefix):
     r = rng_for(label, "ast")
-    tint = hex_rgb(b["dust"]) * 0.5 + np.array([120, 114, 108], dtype=np.float32) * 0.5
-    picks = METEORS[:]
-    r.shuffle(picks)
-    for idx in range(1, 5):
-        src = Image.open(os.path.join(METEOR_DIR, picks[(idx - 1) % len(picks)])).convert("RGBA")
-        base_px = r.randint(30, 40)  # pixel-art resolution before 2x NEAREST
-        im = src.rotate(r.uniform(0, 360), expand=True, resample=Image.BICUBIC)
-        im = im.resize((base_px, base_px), Image.LANCZOS)
-        arr = np.asarray(im).astype(np.float32)
-        # binary alpha (kills the soft semi-transparent rim), keep crater
-        # shading, push the meteor's hue toward the zone rock tint
-        alpha = arr[..., 3]
-        solid = alpha > 110
-        lum = (arr[..., 0] * 0.35 + arr[..., 1] * 0.45 + arr[..., 2] * 0.2) / 255.0
-        lum = np.clip(lum * 1.25, 0, 1)  # meteors are dark; lift midtones a bit
-        rgb = tint[None, None] * (0.45 + lum[..., None] * 0.95)
-        out = np.zeros_like(arr)
-        out[..., :3] = np.clip(rgb, 0, 255)
-        out[..., 3] = np.where(solid, 255, 0)
-        # hard black silhouette outline (matches the ships/stations outline pass)
-        er = np.zeros_like(solid)
-        er[1:-1, 1:-1] = solid[1:-1, 1:-1] & ~(solid[:-2, 1:-1] & solid[2:, 1:-1] & solid[1:-1, :-2] & solid[1:-1, 2:])
-        out[er] = [8, 7, 7, 255]
-        im = Image.fromarray(out.astype(np.uint8), "RGBA").resize((base_px * 2, base_px * 2), Image.NEAREST)
-        im.save(f"{out_prefix}{idx}_{label}.png", optimize=True)
-    print(f"  ast1-4_{label} done ({len(METEORS)} meteor sources)")
+    big = Image.open(AST_BIG).convert("RGBA")
+    small = Image.open(AST_SMALL).convert("RGBA")
+    variants = []
+    for k in range(4):
+        v = big.rotate(k * 90, expand=True)
+        variants.append(v)
+        variants.append(v.transpose(Image.FLIP_LEFT_RIGHT))
+    r.shuffle(variants)
+    picks = variants[:3] + [small.rotate(r.choice([0, 90, 180, 270]), expand=True)]
+    for idx, spr in enumerate(picks, start=1):
+        tinted = _hue_shift(spr, b["dust"])
+        out = tinted.resize((tinted.width * 2, tinted.height * 2), Image.NEAREST)
+        out.save(f"{out_prefix}{idx}_{label}.png", optimize=True)
+    print(f"  ast1-4_{label} done (ansimuz pixel-art set)")
 
 # ── main ────────────────────────────────────────────────────────────────────
 only = set(sys.argv[1:])

@@ -51,9 +51,11 @@ Add an entry here whenever external art, audio, or fonts are brought into the re
 - **Source URL:** https://opengameart.org/content/warped-space-shooter
 - **License:** CC0 1.0 Universal (Public Domain) — https://creativecommons.org/publicdomain/zero/1.0/
 - **Commercial use:** allowed. **Attribution:** not required (given here as courtesy).
-- Used in: `Layer6_*.png` in v3 maps (asteroid sprites recomposited into debris tiles).
-  Since env v4 (2026-07) `Layer6_*.png` is fully procedural original art; entry kept
-  for history/provenance.
+- Used in: `Layer6_*.png` in v3 maps (asteroid sprites recomposited into debris tiles;
+  since env v4 that layer is procedural original art). Since v4.2 the pack's
+  `asteroid.png` / `asteroid-small.png` drive the rotating foreground asteroids
+  `bg/*/ast1..4_*.png` (pixel-perfect rotations/mirrors, zone hue shift by
+  `scripts/gen-environments.py`; originals in `scripts/asset_src/ansimuz_asteroids/`).
 
 The original `license.txt` shipped inside the "Space Background" pack states:
 > Artwork created by Luis Zuno (@ansimuz)
@@ -130,9 +132,9 @@ Kept on file from the asset research (2026-07-07); usable for future maps:
 - **Source URL:** https://kenney.nl/assets/space-shooter-redux (mirror: https://opengameart.org/content/space-shooter-redux)
 - **License:** CC0 1.0 Universal (Public Domain)
 - **Commercial use:** allowed. **Attribution:** not required (given here as courtesy).
-- Used in: `bg/*/ast1..4_*.png` since env v4.1 — the 8 big meteor sprites,
-  zone-tinted, pixelated and outlined by `scripts/gen-environments.py`
-  (originals kept in `scripts/asset_src/kenney_meteors/`).
+- Used in: `bg/*/ast1..4_*.png` in env v4.1 only (replaced in v4.2 by ansimuz
+  pixel-art asteroids); originals kept in `scripts/asset_src/kenney_meteors/`
+  for future use.
 
 ## Environment backgrounds (v4, all zones)
 - **NASA imagery** (nebulae, galaxies, star clusters, supernova filaments) —

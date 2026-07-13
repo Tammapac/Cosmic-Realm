@@ -2213,7 +2213,7 @@ function _bgBuildLayers(zone: string, w: number, h: number): void {
 
   // Rotating foreground asteroids (ast1..4_<label>.png, optional per map).
   // Individual sprites so each can spin — a baked tile can't rotate its contents.
-  const astUrls = [1, 2, 3, 4].map(i => `${base}/ast${i}_${label}.png`);
+  const astUrls = [1, 2, 3, 4].map(i => `${base}/ast${i}_${label}.png?v=5`);
   Promise.all(astUrls.map(u =>
     (PIXI.Texture as any).fromURL(u, { scaleMode: PIXI.SCALE_MODES.NEAREST })
       .catch(() => null)
