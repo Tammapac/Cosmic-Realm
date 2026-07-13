@@ -327,12 +327,12 @@ export function updateStationOnly(
   const screenY = (worldY - camY) * cameraZoom;
   st.wrapper.position.set(screenX, 0, screenY);
 
-  // Constant screen size: stations ignore the mouse-wheel zoom entirely.
-  // Position still tracks the world (anchored via camX/camY above) — only
-  // the scale is zoom-independent, so zooming can never blow a station up
-  // into the camera.
+  // Stations scale with the camera zoom like every other world object. The
+  // camera sits at y=8000 (far above the tallest station at max zoom 2.5),
+  // so zooming in can never push a model through the near plane — the hull
+  // always renders solid, top to bottom.
   const targetPixels = 1843;
-  const finalScale = targetPixels / st.maxDim;
+  const finalScale = (targetPixels * cameraZoom) / st.maxDim;
   st.wrapper.scale.setScalar(finalScale);
 
   st.model.rotation.y = -(performance.now() / 1000 / 300) * Math.PI * 2;
