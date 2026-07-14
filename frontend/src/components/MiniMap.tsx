@@ -196,14 +196,17 @@ export function MiniMap() {
     );
   }
 
-  // Frame geometry (atlas/map-frame.png, 298x306): inner transparent window
-  // spans x 25..272 (247w), y 43..282 (239h) — center (148.5, 162.5).
-  // The radar square must COVER the whole window (no see-through gaps), so it
-  // is sized slightly beyond the larger window dimension; the overflow hides
-  // under the opaque frame art drawn on top.
-  const k = SIZE / 251;
-  const FW = 298 * k;
-  const FH = 306 * k;
+  // Frame geometry — extracted minimap_frame.png (native 144×145, 1:1 from the
+  // reference). Radar window measured as fractions of the frame:
+  //   center (0.4861, 0.4759), diameter 0.8889 of frame width.
+  // The radar SVG sits under the frame art, sized to cover the window; overflow
+  // hides beneath the opaque housing drawn on top.
+  const MM_NAT = 144;
+  const k = SIZE / (MM_NAT * 0.8889);           // scale so radar ≈ SIZE
+  const FW = MM_NAT * k;
+  const FH = 145 * k;
+  const RADAR_CX = 0.4861 * FW;
+  const RADAR_CY = 0.4759 * FH;
 
   return (
     <div
@@ -252,16 +255,18 @@ export function MiniMap() {
           {(zone as any)?.label ?? "?"}
         </span>
       </div>
-      {/* radar sits under the frame art, centered in the frame window */}
+      {/* radar sits under the frame art, centered in the frame's radar window */}
       <div
         style={{
           position: "absolute",
-          left: 148.5 * k - SIZE / 2,
-          top: 162.5 * k - SIZE / 2,
+          left: RADAR_CX - SIZE / 2,
+          top: RADAR_CY - SIZE / 2,
           width: SIZE,
           height: SIZE,
           zIndex: 1,
           pointerEvents: "auto",
+          borderRadius: "50%",
+          overflow: "hidden",
         }}
       >
         <svg
@@ -364,47 +369,27 @@ export function MiniMap() {
         <circle cx={SIZE / 2} cy={SIZE / 2} r={3} fill="#4ee2ff" stroke="#fff" strokeWidth={0.5} />
         </svg>
       </div>
-      {/* octagonal frame art ON TOP of the radar (clicks pass through) */}
+      {/* extracted minimap housing ON TOP of the radar (clicks pass through) */}
       <img
-        src="/assets/ui/atlas/map-frame.png"
+        src="/assets/ui/exact/minimap_frame@2x.png"
         alt=""
         aria-hidden
         style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 2 }}
       />
+      {/* zoom controls overlaid on the baked button row (left pair = zoom −/+) */}
       <div
-        className="flex items-center justify-between gap-1"
-        style={{ position: "absolute", left: "12%", right: "12%", top: FH - 4, pointerEvents: "auto" }}
+        style={{ position: "absolute", left: "6%", top: FH * 0.90, display: "flex", gap: FW * 0.03, zIndex: 3, pointerEvents: "auto" }}
       >
         <button
-          className="leading-none transition-colors duration-150"
-          style={{
-            background: "rgba(78,226,255,0.08)",
-            border: "1px solid rgba(78,226,255,0.2)",
-            color: "#4ee2ff",
-            cursor: "pointer",
-            borderRadius: 2,
-            fontSize: 11,
-            padding: "1px 6px",
-          }}
+          className="leading-none"
+          title="Zoom out minimap"
+          style={{ width: FW * 0.11, height: FW * 0.11, background: "transparent", border: "none", color: "#4ee2ff", cursor: "pointer", fontSize: FW * 0.075, padding: 0 }}
           onClick={(e) => { e.stopPropagation(); state.minimapScale = Math.max(0.5, state.minimapScale - 0.25); bump(); }}
         >−</button>
-        <span
-          className="tracking-widest select-none"
-          style={{ color: "var(--text-mute)", fontSize: 8, letterSpacing: "0.2em" }}
-        >
-          M · MAP
-        </span>
         <button
-          className="leading-none transition-colors duration-150"
-          style={{
-            background: "rgba(78,226,255,0.08)",
-            border: "1px solid rgba(78,226,255,0.2)",
-            color: "#4ee2ff",
-            cursor: "pointer",
-            borderRadius: 2,
-            fontSize: 11,
-            padding: "1px 6px",
-          }}
+          className="leading-none"
+          title="Zoom in minimap"
+          style={{ width: FW * 0.11, height: FW * 0.11, background: "transparent", border: "none", color: "#4ee2ff", cursor: "pointer", fontSize: FW * 0.075, padding: 0 }}
           onClick={(e) => { e.stopPropagation(); state.minimapScale = Math.min(3, state.minimapScale + 0.25); bump(); }}
         >+</button>
       </div>
