@@ -3,21 +3,42 @@ import { useGame, useConsumable, state, bump, pushNotification, setHotbarSlot, g
 import { effectiveStats } from "../game/loop";
 import { CONSUMABLE_DEFS, ConsumableId, ROCKET_AMMO_TYPE_DEFS, LASER_AMMO_TYPE_ORDER, RocketAmmoType, ROCKET_MISSILE_TYPE_DEFS, ROCKET_MISSILE_TYPE_ORDER, RocketMissileType } from "../game/types";
 
-// SkillsLine tray (PNG GUI pack, orange variant) — native 710x225.
-// Measured geometry: 9 slots 61px @ x 68 + i*65, y 102; icon strip y 62-92
-// with the "+" glyph left and the lightning glyph right baked into the art.
-// Displayed vertically squashed (KY) so the bar sits flatter on screen;
-// x coordinates stay native, y coordinates/heights are scaled.
-const KY = 0.75;
-const TRAY_W = 710;
-const TRAY_H = Math.round(225 * KY);
-const SLOT_S = 61;
-const SLOT_H = Math.round(SLOT_S * KY);
-const SLOT_Y = Math.round(102 * KY);
-const slotX = (i: number) => 68 + i * 65;
+// ── Redesigned HUD (Cosmic Realm reference) ──────────────────────────────────
+// The bottom HUD is one console housing (console.png) containing a segmented
+// energy bar strip across the top and a row of 9 slots below, flanked by a
+// circular SHIELD gauge (left, cyan) and HULL gauge (right, red). Assets are
+// the coherent AI-generated UI kit in /assets/ui/redesign/. All game logic is
+// unchanged — only the visual layer is the new kit.
+const UI = "/assets/ui/redesign";
+// console.png native geometry (from the kit renderer, console meta):
+//   native W=656, H=128, pad=12, OUTER=4, bar_h=24, slot=64, gap=6, slots=9
+// The console has NO baked slot wells — the game draws its 9 slot frames in the
+// open bay, so these constants map the game slots onto the console's bay exactly.
+const NAT_W = 656, NAT_H = 128, NAT_PAD = 12, NAT_OUTER = 4;
+const NAT_BAR_H = 24, NAT_SLOT = 64, NAT_GAP = 6;
+const N_SLOTS = 9;
+const CONSOLE_SCALE = 1.28;
+const CONSOLE_W = Math.round(NAT_W * CONSOLE_SCALE);
+const CONSOLE_H = Math.round(NAT_H * CONSOLE_SCALE);
+const K = CONSOLE_SCALE;
+// slot grid: bay starts at (OUTER+pad) native, each slot NAT_SLOT wide
+const SLOT_S = Math.round(NAT_SLOT * K);
+const SLOT_GAP = Math.round(NAT_GAP * K);
+const SLOT_X0 = Math.round((NAT_OUTER + NAT_PAD) * K);
+const SLOT_Y = Math.round((NAT_OUTER + NAT_PAD + NAT_BAR_H + 8) * K); // below the bar strip
+const SLOT_H = SLOT_S;
+const slotX = (i: number) => SLOT_X0 + i * (SLOT_S + SLOT_GAP);
+// bar strip geometry inside the console top
+const BAR_X = Math.round((NAT_OUTER + NAT_PAD) * K);
+const BAR_Y = Math.round((NAT_OUTER + NAT_PAD) * K);
+const BAR_W = Math.round((N_SLOTS * NAT_SLOT + (N_SLOTS - 1) * NAT_GAP) * K);
+const BAR_H = Math.round(NAT_BAR_H * K);
+// circular gauges
+const GAUGE = 148;
 
 const HP_COLOR = "#5cff8a";
 const SH_COLOR = "#4ee2ff";
+const HULL_RING = "#ff6b6b";
 
 export function Hotbar() {
   const hotbar = useGame((s) => s.player.hotbar);
@@ -116,59 +137,70 @@ export function Hotbar() {
     setAssignSlot(null);
   };
 
+  const shieldPct = Math.max(0, Math.min(100, (player.shield / Math.max(1, es.shieldMax)) * 100));
+  const hullPct = Math.max(0, Math.min(100, (player.hull / Math.max(1, es.hullMax)) * 100));
+
   return (
     <div
       style={{
         position: "fixed",
-        bottom: 4,
+        bottom: 6,
         left: "50%",
         transform: "translateX(-50%)",
-        width: TRAY_W,
-        height: TRAY_H,
+        width: CONSOLE_W,
+        height: CONSOLE_H,
         zIndex: 50,
         pointerEvents: "none",
-        filter: "drop-shadow(0 4px 12px rgba(0,0,0,0.7))",
+        filter: "drop-shadow(0 4px 14px rgba(0,0,0,0.75))",
       }}
     >
-      {/* tray art (GUI pack, SkillsLine orange variant) */}
+      {/* console housing (bar strip + slot grid), from the redesigned UI kit */}
       <img
-        src="/assets/ui/atlas/hotbar-tray2.png"
+        src={`${UI}/console.png`}
         alt=""
         aria-hidden
         style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
       />
 
-      {/* segmented HP / shield tick bars in the top strip ("+" and lightning are baked in the art) */}
-      <TickBar
-        left={102} width={244}
-        value={player.hull} max={es.hullMax} color={HP_COLOR}
+      {/* ── flanking SHIELD gauge (left) ── */}
+      <CircleGauge
+        side="left" pct={shieldPct} ring={SH_COLOR}
+        img={`${UI}/master_circle_shield.png`}
+        title={`Shield ${Math.round(player.shield)}/${Math.round(es.shieldMax)}`}
+      />
+      {/* ── flanking HULL gauge (right) ── */}
+      <CircleGauge
+        side="right" pct={hullPct} ring={HULL_RING}
+        img={`${UI}/master_circle_hull.png`}
         title={`Hull ${Math.round(player.hull)}/${Math.round(es.hullMax)}`}
       />
+
+      {/* segmented energy bar strip across the console top (shield fill) */}
       <TickBar
-        left={368} width={250}
+        left={BAR_X} width={BAR_W}
         value={player.shield} max={es.shieldMax} color={SH_COLOR}
         title={`Shield ${Math.round(player.shield)}/${Math.round(es.shieldMax)}`}
       />
 
-      {/* attack toggle, docked to the tray's left wing */}
+      {/* attack toggle, docked left of the console under the shield gauge */}
       <button
         onClick={toggleAttack}
         onMouseDown={(e) => e.preventDefault()}
         title={selectedTarget?.kind === "enemy" ? (isAttacking ? "Stop attacking" : `Attack ${selectedTarget.name}`) : "Select an enemy first"}
         style={{
           position: "absolute",
-          left: -74,
-          top: Math.round((102 + 30.5) * KY) - 29,
-          width: 58,
-          height: 58,
+          left: -GAUGE - 6,
+          top: CONSOLE_H - 54,
+          width: 52,
+          height: 52,
           border: `2px solid ${isAttacking ? "#ff5c6c" : attackOnCooldown ? "#7a1a22" : "#ff3b4d"}`,
           background: isAttacking ? "#3a0a10" : attackOnCooldown ? "#14040a" : "#24070b",
           borderRadius: "50%",
           color: attackOnCooldown ? "#7a3a44" : "#ffb3bb",
           fontFamily: "var(--font-display)",
           fontWeight: "bold",
-          fontSize: 11,
-          letterSpacing: "0.1em",
+          fontSize: 10,
+          letterSpacing: "0.08em",
           cursor: attackOnCooldown ? "not-allowed" : "pointer",
           boxShadow: isAttacking ? "0 0 14px #ff3b4d, 0 0 28px #ff3b4d44" : attackOnCooldown ? "none" : "0 0 10px #ff3b4d55",
           overflow: "hidden",
@@ -310,22 +342,24 @@ export function Hotbar() {
   );
 }
 
-/** Segmented vertical-tick bar drawn inside the tray's top strip. */
+/** Segmented energy bar drawn inside the console's top bar strip. Fill runs
+ *  green→cyan (shield). "+"/lightning endcaps sit in the console art. */
 function TickBar({ left, width, value, max, color, title }: { left: number; width: number; value: number; max: number; color: string; title: string }) {
   const pct = Math.max(0, Math.min(100, (value / Math.max(1, max)) * 100));
-  const ticks = (c: string) => `repeating-linear-gradient(90deg, ${c} 0px, ${c} 4px, transparent 4px, transparent 7px)`;
+  const ticks = (c: string) => `repeating-linear-gradient(90deg, ${c} 0px, ${c} 5px, transparent 5px, transparent 8px)`;
   return (
     <div
       title={title}
       style={{
         position: "absolute",
         left,
-        top: Math.round(64 * KY),
+        top: BAR_Y,
         width,
-        height: Math.round(26 * KY),
-        background: ticks(`${color}22`),
+        height: BAR_H,
+        background: ticks(`${color}18`),
         overflow: "hidden",
         pointerEvents: "auto",
+        borderRadius: 3,
       }}
     >
       <div
@@ -333,11 +367,58 @@ function TickBar({ left, width, value, max, color, title }: { left: number; widt
           position: "absolute",
           inset: 0,
           width: `${pct}%`,
-          background: ticks(color),
-          filter: `drop-shadow(0 0 3px ${color})`,
+          background: ticks(pct > 50 ? color : "#5cff8a"),
+          filter: `drop-shadow(0 0 4px ${color})`,
           transition: "width 0.15s linear",
         }}
       />
+    </div>
+  );
+}
+
+/** Circular shield/hull gauge flanking the console. Static ring art from the
+ *  UI kit; the % fill arc + label are drawn here over the hollow center. */
+function CircleGauge({ side, pct, ring, img, title }: {
+  side: "left" | "right"; pct: number; ring: string; img: string; title: string;
+}) {
+  const R = GAUGE / 2;
+  const CIRC = 2 * Math.PI * (R * 0.62);
+  const off = CIRC * (1 - pct / 100);
+  return (
+    <div
+      title={title}
+      style={{
+        position: "absolute",
+        [side]: -GAUGE - 2,
+        top: (CONSOLE_H - GAUGE) / 2,
+        width: GAUGE,
+        height: GAUGE,
+        pointerEvents: "auto",
+      }}
+    >
+      <img src={img} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
+      {/* fill arc over the hollow center */}
+      <svg width={GAUGE} height={GAUGE} style={{ position: "absolute", inset: 0, transform: "rotate(-90deg)" }}>
+        <circle
+          cx={R} cy={R} r={R * 0.62}
+          fill="none" stroke={ring} strokeWidth={5}
+          strokeDasharray={CIRC} strokeDashoffset={off}
+          strokeLinecap="round"
+          style={{ filter: `drop-shadow(0 0 5px ${ring})`, transition: "stroke-dashoffset 0.2s linear" }}
+        />
+      </svg>
+      {/* % + label */}
+      <div style={{
+        position: "absolute", inset: 0, display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center", pointerEvents: "none",
+      }}>
+        <div style={{ fontSize: 22, fontWeight: "bold", color: ring, fontFamily: "var(--font-display)", textShadow: `0 0 8px ${ring}88, 0 1px 2px #000` }}>
+          {Math.round(pct)}%
+        </div>
+        <div style={{ fontSize: 9, letterSpacing: "0.16em", color: `${ring}cc`, fontFamily: "var(--font-display)", marginTop: 1 }}>
+          {side === "left" ? "SHIELD" : "HULL"}
+        </div>
+      </div>
     </div>
   );
 }
@@ -357,6 +438,12 @@ function TraySlot({ left, keyLabel, glyph, color, sub, count, active, title, onC
   cooldownText?: number | null;
   children?: React.ReactNode;
 }) {
+  const [hovered, setHovered] = useState(false);
+  const slotArt = active
+    ? `${UI}/master_slot_active.png`
+    : hovered
+      ? `${UI}/master_slot_hover.png`
+      : `${UI}/master_slot_normal.png`;
   return (
     <div style={{ position: "absolute", left, top: SLOT_Y, width: SLOT_S, height: SLOT_H, pointerEvents: "auto" }}>
       <div
@@ -372,12 +459,14 @@ function TraySlot({ left, keyLabel, glyph, color, sub, count, active, title, onC
           cursor: "pointer",
           position: "relative",
           fontFamily: "'Courier New', monospace",
-          boxShadow: active ? `inset 0 0 10px ${color}55, 0 0 10px ${color}66` : "none",
-          transition: "box-shadow 0.1s",
+          transition: "filter 0.1s",
+          filter: active ? `drop-shadow(0 0 6px ${color}66)` : "none",
         }}
-        onMouseEnter={(e) => { if (!active) (e.currentTarget as HTMLElement).style.boxShadow = `inset 0 0 8px ${color}44`; }}
-        onMouseLeave={(e) => { if (!active) (e.currentTarget as HTMLElement).style.boxShadow = "none"; }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
       >
+        {/* kit slot frame art */}
+        <img src={slotArt} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }} />
         {cooldownPct > 0 && (
           <div
             style={{
