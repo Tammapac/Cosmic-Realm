@@ -10,31 +10,35 @@ import { CONSUMABLE_DEFS, ConsumableId, ROCKET_AMMO_TYPE_DEFS, LASER_AMMO_TYPE_O
 // the coherent AI-generated UI kit in /assets/ui/redesign/. All game logic is
 // unchanged — only the visual layer is the new kit.
 const UI = "/assets/ui/redesign";
-// console.png native geometry (from the kit renderer, console meta):
-//   native W=656, H=128, pad=12, OUTER=4, bar_h=24, slot=64, gap=6, slots=9
-// The console has NO baked slot wells — the game draws its 9 slot frames in the
-// open bay, so these constants map the game slots onto the console's bay exactly.
-const NAT_W = 656, NAT_H = 128, NAT_PAD = 12, NAT_OUTER = 4;
-const NAT_BAR_H = 24, NAT_SLOT = 64, NAT_GAP = 6;
+// Detailed FLUX-generated HUD (reference fidelity): a gunmetal hotbar housing
+// (flux_hotbar_frame) with a gunmetal bar frame (flux_bar_frame) overlapping
+// its top, a row of 9 detailed slot frames, flanked by rich double-ring shield
+// (cyan) and hull (red) gauges. All game logic unchanged.
+const CONSOLE_W = 840;
+const HB_ASPECT = 421 / 720;                 // flux_hotbar_frame native
+const CONSOLE_H = Math.round(CONSOLE_W * HB_ASPECT);   // ≈ 491
 const N_SLOTS = 9;
-const CONSOLE_SCALE = 1.28;
-const CONSOLE_W = Math.round(NAT_W * CONSOLE_SCALE);
-const CONSOLE_H = Math.round(NAT_H * CONSOLE_SCALE);
-const K = CONSOLE_SCALE;
-// slot grid: bay starts at (OUTER+pad) native, each slot NAT_SLOT wide
-const SLOT_S = Math.round(NAT_SLOT * K);
-const SLOT_GAP = Math.round(NAT_GAP * K);
-const SLOT_X0 = Math.round((NAT_OUTER + NAT_PAD) * K);
-const SLOT_Y = Math.round((NAT_OUTER + NAT_PAD + NAT_BAR_H + 8) * K); // below the bar strip
+// slot row inside the housing
+const SLOT_MARGIN = Math.round(CONSOLE_W * 0.06);
+const SLOT_ROW_W = CONSOLE_W - SLOT_MARGIN * 2;
+const SLOT_S = Math.round((SLOT_ROW_W / N_SLOTS) * 0.84);
+const SLOT_GAP = Math.round((SLOT_ROW_W - SLOT_S * N_SLOTS) / (N_SLOTS - 1));
+const SLOT_X0 = SLOT_MARGIN;
+const SLOT_Y = Math.round(CONSOLE_H * 0.46);
 const SLOT_H = SLOT_S;
 const slotX = (i: number) => SLOT_X0 + i * (SLOT_S + SLOT_GAP);
-// bar strip geometry inside the console top
-const BAR_X = Math.round((NAT_OUTER + NAT_PAD) * K);
-const BAR_Y = Math.round((NAT_OUTER + NAT_PAD) * K);
-const BAR_W = Math.round((N_SLOTS * NAT_SLOT + (N_SLOTS - 1) * NAT_GAP) * K);
-const BAR_H = Math.round(NAT_BAR_H * K);
+// bar frame (overlaps the housing top)
+const BAR_W = Math.round(CONSOLE_W * 0.82);
+const BAR_FRAME_H = Math.round(BAR_W * (144 / 900));   // flux_bar_frame native
+const BAR_X = Math.round((CONSOLE_W - BAR_W) / 2);
+const BAR_Y = Math.round(CONSOLE_H * 0.06);
+// energy fill channel inside the bar frame
+const FILL_X = BAR_X + Math.round(BAR_W * 0.075);
+const FILL_Y = BAR_Y + Math.round(BAR_FRAME_H * 0.34);
+const FILL_W = Math.round(BAR_W * 0.85);
+const FILL_H = Math.round(BAR_FRAME_H * 0.30);
 // circular gauges
-const GAUGE = 148;
+const GAUGE = 150;
 
 const HP_COLOR = "#5cff8a";
 const SH_COLOR = "#4ee2ff";
@@ -154,30 +158,37 @@ export function Hotbar() {
         filter: "drop-shadow(0 4px 14px rgba(0,0,0,0.75))",
       }}
     >
-      {/* console housing (bar strip + slot grid), from the redesigned UI kit */}
+      {/* detailed gunmetal hotbar housing (FLUX, reference fidelity) */}
       <img
-        src={`${UI}/console.png`}
+        src={`${UI}/flux_hotbar_frame.png`}
         alt=""
         aria-hidden
         style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
+      />
+      {/* bar frame overlapping the housing top */}
+      <img
+        src={`${UI}/flux_bar_frame.png`}
+        alt=""
+        aria-hidden
+        style={{ position: "absolute", left: BAR_X, top: BAR_Y, width: BAR_W, height: BAR_FRAME_H, pointerEvents: "none" }}
       />
 
       {/* ── flanking SHIELD gauge (left) ── */}
       <CircleGauge
         side="left" pct={shieldPct} ring={SH_COLOR}
-        img={`${UI}/master_circle_shield.png`}
+        img={`${UI}/flux_shield_circle.png`}
         title={`Shield ${Math.round(player.shield)}/${Math.round(es.shieldMax)}`}
       />
       {/* ── flanking HULL gauge (right) ── */}
       <CircleGauge
         side="right" pct={hullPct} ring={HULL_RING}
-        img={`${UI}/master_circle_hull.png`}
+        img={`${UI}/flux_hull_circle.png`}
         title={`Hull ${Math.round(player.hull)}/${Math.round(es.hullMax)}`}
       />
 
-      {/* segmented energy bar strip across the console top (shield fill) */}
+      {/* segmented energy fill inside the bar frame channel (shield) */}
       <TickBar
-        left={BAR_X} width={BAR_W}
+        left={FILL_X} top={FILL_Y} width={FILL_W} height={FILL_H}
         value={player.shield} max={es.shieldMax} color={SH_COLOR}
         title={`Shield ${Math.round(player.shield)}/${Math.round(es.shieldMax)}`}
       />
@@ -342,9 +353,9 @@ export function Hotbar() {
   );
 }
 
-/** Segmented energy bar drawn inside the console's top bar strip. Fill runs
- *  green→cyan (shield). "+"/lightning endcaps sit in the console art. */
-function TickBar({ left, width, value, max, color, title }: { left: number; width: number; value: number; max: number; color: string; title: string }) {
+/** Segmented energy bar drawn inside the bar-frame channel. Fill runs
+ *  green→cyan (shield). "+"/lightning endcaps are baked into the bar art. */
+function TickBar({ left, top, width, height, value, max, color, title }: { left: number; top: number; width: number; height: number; value: number; max: number; color: string; title: string }) {
   const pct = Math.max(0, Math.min(100, (value / Math.max(1, max)) * 100));
   const ticks = (c: string) => `repeating-linear-gradient(90deg, ${c} 0px, ${c} 5px, transparent 5px, transparent 8px)`;
   return (
@@ -353,10 +364,10 @@ function TickBar({ left, width, value, max, color, title }: { left: number; widt
       style={{
         position: "absolute",
         left,
-        top: BAR_Y,
+        top,
         width,
-        height: BAR_H,
-        background: ticks(`${color}18`),
+        height,
+        background: ticks(`${color}12`),
         overflow: "hidden",
         pointerEvents: "auto",
         borderRadius: 3,
@@ -440,10 +451,10 @@ function TraySlot({ left, keyLabel, glyph, color, sub, count, active, title, onC
 }) {
   const [hovered, setHovered] = useState(false);
   const slotArt = active
-    ? `${UI}/master_slot_active.png`
+    ? `${UI}/flux_slot_active.png`
     : hovered
-      ? `${UI}/master_slot_hover.png`
-      : `${UI}/master_slot_normal.png`;
+      ? `${UI}/flux_slot_hover.png`
+      : `${UI}/flux_slot_normal.png`;
   return (
     <div style={{ position: "absolute", left, top: SLOT_Y, width: SLOT_S, height: SLOT_H, pointerEvents: "auto" }}>
       <div
