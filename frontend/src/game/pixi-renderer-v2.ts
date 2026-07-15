@@ -605,6 +605,17 @@ export function destroyPixiRenderer(): void {
 // MAIN RENDER LOOP
 // ══════════════════════════════════════════════════════════════════════════
 
+/** The Pixi UI layer (renders above the world) — host for the PixiJS HUD overlay. */
+export function getHudLayer(): PIXI.Container | null {
+  return uiLayer ?? null;
+}
+
+/** Current renderer screen size in CSS px (for HUD layout). */
+export function getScreenSize(): { w: number; h: number } | null {
+  if (!app) return null;
+  return { w: app.screen.width, h: app.screen.height };
+}
+
 export function pixiRender(): void {
   if (!app) return;
 

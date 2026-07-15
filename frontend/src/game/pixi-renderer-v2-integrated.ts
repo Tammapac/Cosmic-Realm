@@ -1630,6 +1630,18 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
 
   initStars(app.screen.width, app.screen.height);
   lastZone = "";
+
+  // Mount the PixiJS HUD overlay onto the uiLayer (lazy import to avoid cycle).
+  try { mountHudSafe(); } catch (e) { console.error("[HUD] mount error", e); }
+}
+
+// ── PixiJS HUD overlay hooks (dynamically imported to avoid an import cycle) ──
+let _hudApi: { mountHud: () => void; updateHud: (dt: number) => void; unmountHud: () => void } | null = null;
+function mountHudSafe() {
+  import("./hud/hudManager").then((m) => { _hudApi = m; m.mountHud(); });
+}
+function updateHudSafe(dt: number) {
+  if (_hudApi) { try { _hudApi.updateHud(dt); } catch (e) { /* non-fatal */ } }
 }
 
 export function destroyPixiRenderer(): void {
@@ -1715,6 +1727,17 @@ let _perfFrameCount = 0;
 let _perfLastReport = 0;
 let _perfWorstFrame = 0;
 
+/** The Pixi UI layer (renders above the world) — host for the PixiJS HUD overlay. */
+export function getHudLayer(): PIXI.Container | null {
+  return uiLayer ?? null;
+}
+
+/** Current renderer screen size in CSS px (for HUD layout). */
+export function getScreenSize(): { w: number; h: number } | null {
+  if (!app) return null;
+  return { w: app.screen.width, h: app.screen.height };
+}
+
 export function pixiRender(): void {
   if (!app) return;
   // Skip heavy game render when hardpoint editor is active
@@ -1723,6 +1746,7 @@ export function pixiRender(): void {
   const now = performance.now();
   const dt = Math.min(0.1, (now - lastRenderTime) / 1000);
   lastRenderTime = now;
+  updateHudSafe(dt);
 
   const _perfEnabled = typeof window !== "undefined" && (window as any).__DEBUG_PERF;
   const _perfFrameStart = _perfEnabled ? now : 0;

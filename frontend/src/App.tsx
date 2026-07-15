@@ -14,7 +14,7 @@ import { FactionPicker } from "./components/FactionPicker";
 import { IdleRewardModal } from "./components/IdleRewardModal";
 import { EventBanners } from "./components/EventBanners";
 import { GameTooltip } from "./components/GameTooltip";
-import { Hotbar } from "./components/Hotbar";
+// import { Hotbar } from "./components/Hotbar"; // disabled: PixiJS HUD hotbar
 import { InventoryPanel } from "./components/InventoryPanel";
 import { SkillTreePanel } from "./components/SkillTreePanel";
 import { PlayerStatsPanel } from "./components/PlayerStatsPanel";
@@ -1100,7 +1100,9 @@ function GameApp() {
       >
         <DockPrompt />
       </div>
-      <Hotbar />
+      {/* Hotbar + shield/hull circles are now rendered by the PixiJS HUD overlay
+          (game/hud). React Hotbar disabled during the HUD reconstruction. */}
+      {/* <Hotbar /> */}
       <CargoOverlay />
       <InventoryPanel />
       <SkillTreePanel />
