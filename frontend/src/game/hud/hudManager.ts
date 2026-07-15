@@ -27,10 +27,13 @@ export function mountHud(): void {
   root.name = "hud-overlay";
   layer.addChild(root);
 
-  // Section 1 (proof): hotbar + flanking shield/hull circular displays.
-  sections = [new HotbarSection()];
+  // Section 1 is rendered by the React Hotbar (retextured to the UIEXAMPLE2
+  // pixel-art assets) so all icons/hover/active/cooldown/dropdown functionality
+  // is preserved. The PixiJS HotbarSection is kept for reference but not mounted.
+  sections = [];
   for (const s of sections) root.addChild(s.container);
   mounted = true;
+  void HotbarSection;
 }
 
 export function updateHud(dt: number): void {

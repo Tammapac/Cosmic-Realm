@@ -3,37 +3,36 @@ import { useGame, useConsumable, state, bump, pushNotification, setHotbarSlot, g
 import { effectiveStats } from "../game/loop";
 import { CONSUMABLE_DEFS, ConsumableId, ROCKET_AMMO_TYPE_DEFS, LASER_AMMO_TYPE_ORDER, RocketAmmoType, ROCKET_MISSILE_TYPE_DEFS, ROCKET_MISSILE_TYPE_ORDER, RocketMissileType } from "../game/types";
 
-// ── Lower HUD — FLUX-reconstructed frames (richer metal) ─────────────────────
-// The console housing + circular gauges are reconstructed with FLUX+ControlNet
-// +Redux from the reference (Documentation/FLUX_RECONSTRUCTION_PIPELINE.md) for
-// premium metal/material, then cleanly cut to transparent PNGs. The hotbar frame
-// (hotbar.png, native 912×188) has a segmented energy channel + 9 slot cells;
-// the flanking SHIELD (cyan) and HULL (red) gauges are separate circular assets.
-// Slots use the sharp pixel-exact extraction (FLUX blurs tiny cells). Live
-// fill/%/icons are drawn over the static art. All game logic unchanged.
-const UI = "/assets/ui/flux";
-const CONSOLE_NAT_W = 912, CONSOLE_NAT_H = 188;
-const CONSOLE_W = 812;                                 // on-screen width
+// ── Lower HUD — UIEXAMPLE2 pixel-art reconstruction ──────────────────────────
+// Frames reconstructed from StyleReferences/UIEXAMPLE2.jpg via the ComfyUI FLUX
+// pipeline (FLUX + ControlNet Union + Redux + BiRefNet), matching the reference
+// pixel-art style, cut to transparent PNGs. hotbar_frame.png (688×153) has an
+// empty segmented energy channel + 8 beveled slot cells; the flanking SHIELD
+// (cyan) and HULL (red) rings are separate circular assets. Live fill/%/icons/
+// cooldowns are drawn over the static art. All game logic unchanged.
+const UI = "/assets/ui/hud-reference";
+const CONSOLE_NAT_W = 688, CONSOLE_NAT_H = 153;
+const CONSOLE_W = 620;                                 // on-screen width
 const K = CONSOLE_W / CONSOLE_NAT_W;
-const CONSOLE_H = Math.round(CONSOLE_NAT_H * K);       // ≈ 167
-const N_SLOTS = 9;
-// energy channel (measured on the FLUX hotbar): x 0.11–0.96, y 0.15–0.40
-const FILL_X = Math.round(CONSOLE_W * 0.115);
-const FILL_Y = Math.round(CONSOLE_H * 0.16);
-const FILL_W = Math.round(CONSOLE_W * (0.955 - 0.115));
-const FILL_H = Math.round(CONSOLE_H * (0.38 - 0.16));
-// slot row: even 9-cell grid across the measured span (x 0.045→0.955, y 0.44–0.82)
-const SLOT_SPAN0 = 0.028, SLOT_SPAN1 = 0.972;
+const CONSOLE_H = Math.round(CONSOLE_NAT_H * K);       // ≈ 138
+const N_SLOTS = 8;
+// energy channel (measured on hotbar_frame): x 0.12–0.90, y 0.22–0.37
+const FILL_X = Math.round(CONSOLE_W * 0.125);
+const FILL_Y = Math.round(CONSOLE_H * 0.235);
+const FILL_W = Math.round(CONSOLE_W * (0.895 - 0.125));
+const FILL_H = Math.round(CONSOLE_H * (0.365 - 0.235));
+// slot row: even 8-cell grid across the measured span (x 0.02→0.98, y 0.47–0.85)
+const SLOT_SPAN0 = 0.025, SLOT_SPAN1 = 0.975;
 const SLOT_PITCH = CONSOLE_W * (SLOT_SPAN1 - SLOT_SPAN0) / N_SLOTS;
-const SLOT_S = Math.round(SLOT_PITCH * 0.9);
-const SLOT_H = Math.round(CONSOLE_H * (0.82 - 0.44));
-const SLOT_Y = Math.round(CONSOLE_H * 0.44);
+const SLOT_S = Math.round(SLOT_PITCH * 0.80);
+const SLOT_H = Math.round(CONSOLE_H * (0.84 - 0.47));
+const SLOT_Y = Math.round(CONSOLE_H * 0.47);
 const slotX = (i: number) => Math.round(CONSOLE_W * SLOT_SPAN0 + i * SLOT_PITCH + (SLOT_PITCH - SLOT_S) / 2);
-// flanking circular gauges (separate square assets, ~130 ref px on-screen)
-const GAUGE = 132;                                    // diameter on-screen
+// flanking circular gauges (separate square assets)
+const GAUGE = 138;                                    // diameter on-screen
 const GAUGE_CY = Math.round(CONSOLE_H * 0.5);         // vertical center on console
-const SHIELD_CX = -Math.round(GAUGE * 0.52);          // left of console
-const HULL_CX = CONSOLE_W + Math.round(GAUGE * 0.52); // right of console
+const SHIELD_CX = -Math.round(GAUGE * 0.46);          // left of console
+const HULL_CX = CONSOLE_W + Math.round(GAUGE * 0.46); // right of console
 
 const HP_COLOR = "#5cff8a";
 const SH_COLOR = "#4ee2ff";
@@ -155,7 +154,7 @@ export function Hotbar() {
     >
       {/* console housing — extracted 1:1 from the reference */}
       <img
-        src={`${UI}/hotbar.png`}
+        src={`${UI}/hotbar_frame.png`}
         alt=""
         aria-hidden
         style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", imageRendering: "auto" }}
@@ -164,13 +163,13 @@ export function Hotbar() {
       {/* ── flanking SHIELD gauge (left) ── */}
       <CircleGauge
         cx={SHIELD_CX} pct={shieldPct} ring={SH_COLOR} label="SHIELD"
-        img={`${UI}/shield.png`}
+        img={`${UI}/shield_ring.png`}
         title={`Shield ${Math.round(player.shield)}/${Math.round(es.shieldMax)}`}
       />
       {/* ── flanking HULL gauge (right) ── */}
       <CircleGauge
         cx={HULL_CX} pct={hullPct} ring={HULL_RING} label="HULL"
-        img={`${UI}/hull.png`}
+        img={`${UI}/hull_ring.png`}
         title={`Hull ${Math.round(player.hull)}/${Math.round(es.hullMax)}`}
       />
 
@@ -288,8 +287,9 @@ export function Hotbar() {
         )}
       </TraySlot>
 
-      {/* slots 3-9 — consumables (hotbar 0-6): click to use, right-click / empty click to assign */}
-      {hotbar.slice(0, 7).map((id, i) => {
+      {/* slots 3-8 — consumables (hotbar 0-5): click to use, right-click / empty click to assign.
+          8 slots total (laser + rockets + 6 consumables) to match UIEXAMPLE2. */}
+      {hotbar.slice(0, 6).map((id, i) => {
         const def = id ? CONSUMABLE_DEFS[id] : null;
         const count = id ? (consumables[id] ?? 0) : 0;
         const cd = cooldowns[i] ?? 0;
