@@ -3,37 +3,29 @@ import { useGame, useConsumable, state, bump, pushNotification, setHotbarSlot, g
 import { effectiveStats } from "../game/loop";
 import { CONSUMABLE_DEFS, ConsumableId, ROCKET_AMMO_TYPE_DEFS, LASER_AMMO_TYPE_ORDER, RocketAmmoType, ROCKET_MISSILE_TYPE_DEFS, ROCKET_MISSILE_TYPE_ORDER, RocketMissileType } from "../game/types";
 
-// ── Lower HUD — UIEXAMPLE2 pixel-art reconstruction ──────────────────────────
-// Frames reconstructed from StyleReferences/UIEXAMPLE2.jpg via the ComfyUI FLUX
-// pipeline (FLUX + ControlNet Union + Redux + BiRefNet), matching the reference
-// pixel-art style, cut to transparent PNGs. hotbar_frame.png (688×153) has an
-// empty segmented energy channel + 8 beveled slot cells; the flanking SHIELD
-// (cyan) and HULL (red) rings are separate circular assets. Live fill/%/icons/
-// cooldowns are drawn over the static art. All game logic unchanged.
-const UI = "/assets/ui/hud-reference";
-const CONSOLE_NAT_W = 688, CONSOLE_NAT_H = 153;
-const CONSOLE_W = 620;                                 // on-screen width
-const K = CONSOLE_W / CONSOLE_NAT_W;
-const CONSOLE_H = Math.round(CONSOLE_NAT_H * K);       // ≈ 138
-const N_SLOTS = 8;
-// energy channel (measured on hotbar_frame): x 0.12–0.90, y 0.22–0.37
-const FILL_X = Math.round(CONSOLE_W * 0.125);
-const FILL_Y = Math.round(CONSOLE_H * 0.235);
-const FILL_W = Math.round(CONSOLE_W * (0.895 - 0.125));
-const FILL_H = Math.round(CONSOLE_H * (0.365 - 0.235));
-// slot row: even 8-cell grid across the measured span (x 0.02→0.98, y 0.47–0.85)
-const SLOT_SPAN0 = 0.025, SLOT_SPAN1 = 0.975;
-const SLOT_PITCH = CONSOLE_W * (SLOT_SPAN1 - SLOT_SPAN0) / N_SLOTS;
-const SLOT_S = Math.round(SLOT_PITCH * 0.80);
-const SLOT_H = Math.round(CONSOLE_H * (0.84 - 0.47));
-const SLOT_Y = Math.round(CONSOLE_H * 0.47);
-const slotX = (i: number) => Math.round(CONSOLE_W * SLOT_SPAN0 + i * SLOT_PITCH + (SLOT_PITCH - SLOT_S) / 2);
-// flanking circular gauges (separate square assets)
-const GAUGE = 138;                                    // diameter on-screen
-const GAUGE_CY = Math.round(CONSOLE_H * 0.5);         // vertical center on console
-const SHIELD_CX = -Math.round(GAUGE * 0.46);          // left of console
-const HULL_CX = CONSOLE_W + Math.round(GAUGE * 0.46); // right of console
-
+// ── Lower HUD — Asset-Kit (StyleReferences/Asset_Baukasten.png) ──────────────
+// The hotbar frame, status bars and slots are the ACTUAL kit parts, extracted
+// to transparent PNGs (Kit/extract.py) — one coherent source, guaranteed
+// consistent style. hotkey_bar.png is the 12-cell kit hotbar (native 527×70);
+// the game's abilities occupy the first N cells (measured even grid). HP + Shield
+// kit bars sit above. Live fill/%/icons/cooldowns are drawn over the static art.
+const UI = "/assets/ui/kit";
+const HB_NAT_W = 527, HB_NAT_H = 70;                  // hotkey_bar native
+const CONSOLE_W = 780;                                // on-screen width
+const K = CONSOLE_W / HB_NAT_W;
+const CONSOLE_H = Math.round(HB_NAT_H * K);           // ≈ 104
+const N_CELLS = 12;                                   // kit hotbar has 12 cells
+const N_SLOTS = 8;                                    // game abilities shown
+// measured cell dividers (fraction of width): 0.006 .. 0.983, pitch ~0.082.
+const CELL0 = 0.043, CELL_PITCH = 0.0817;             // center of cell i = CELL0 + i*pitch
+const SLOT_S = Math.round(CONSOLE_W * CELL_PITCH * 0.86);
+const SLOT_H = SLOT_S;
+const SLOT_Y = Math.round(CONSOLE_H * 0.5 - SLOT_H / 2 + CONSOLE_H * 0.02);
+const cellCenterX = (i: number) => CONSOLE_W * (CELL0 + i * CELL_PITCH);
+const slotX = (i: number) => Math.round(cellCenterX(i) - SLOT_S / 2);
+// HP + Shield kit bars, stacked above the hotbar
+const BAR_W = Math.round(CONSOLE_W * 0.44);
+const BAR_H = Math.round(BAR_W * (21 / 181));         // bar aspect
 const HP_COLOR = "#5cff8a";
 const SH_COLOR = "#4ee2ff";
 const HULL_RING = "#ff6b6b";
@@ -152,32 +144,24 @@ export function Hotbar() {
         filter: "drop-shadow(0 4px 14px rgba(0,0,0,0.75))",
       }}
     >
-      {/* console housing — extracted 1:1 from the reference */}
+      {/* HP + Shield kit bars, stacked above the hotbar */}
+      <KitBar
+        img={`${UI}/bar_health.png`} left={6} top={-BAR_H * 2 - 6}
+        width={BAR_W} height={BAR_H} pct={hullPct} color={HULL_RING}
+        title={`Hull ${Math.round(player.hull)}/${Math.round(es.hullMax)}`}
+      />
+      <KitBar
+        img={`${UI}/bar_shield.png`} left={CONSOLE_W - BAR_W - 6} top={-BAR_H * 2 - 6}
+        width={BAR_W} height={BAR_H} pct={shieldPct} color={SH_COLOR}
+        title={`Shield ${Math.round(player.shield)}/${Math.round(es.shieldMax)}`}
+      />
+
+      {/* kit hotbar frame (12 cells) */}
       <img
-        src={`${UI}/hotbar_frame.png`}
+        src={`${UI}/hotkey_bar.png`}
         alt=""
         aria-hidden
         style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", imageRendering: "auto" }}
-      />
-
-      {/* ── flanking SHIELD gauge (left) ── */}
-      <CircleGauge
-        cx={SHIELD_CX} pct={shieldPct} ring={SH_COLOR} label="SHIELD"
-        img={`${UI}/shield_ring.png`}
-        title={`Shield ${Math.round(player.shield)}/${Math.round(es.shieldMax)}`}
-      />
-      {/* ── flanking HULL gauge (right) ── */}
-      <CircleGauge
-        cx={HULL_CX} pct={hullPct} ring={HULL_RING} label="HULL"
-        img={`${UI}/hull_ring.png`}
-        title={`Hull ${Math.round(player.hull)}/${Math.round(es.hullMax)}`}
-      />
-
-      {/* segmented energy fill drawn over the console channel (shield) */}
-      <TickBar
-        left={FILL_X} top={FILL_Y} width={FILL_W} height={FILL_H}
-        value={player.shield} max={es.shieldMax}
-        title={`Shield ${Math.round(player.shield)}/${Math.round(es.shieldMax)}`}
       />
 
       {/* attack toggle, docked left of the console under the shield gauge */}
@@ -187,7 +171,7 @@ export function Hotbar() {
         title={selectedTarget?.kind === "enemy" ? (isAttacking ? "Stop attacking" : `Attack ${selectedTarget.name}`) : "Select an enemy first"}
         style={{
           position: "absolute",
-          left: SHIELD_CX - GAUGE / 2 - 30,
+          left: -58,
           top: CONSOLE_H - 50,
           width: 48,
           height: 48,
@@ -344,6 +328,25 @@ export function Hotbar() {
 /** Energy fill drawn over the console channel, using the extracted segment
  *  tiles (green then blue, exactly like the reference). The tiles are repeated
  *  horizontally and clipped to the fill percentage. */
+/** Kit status bar (health/shield/energy/xp). The kit PNG already holds the
+ *  colored fill at 100%; we clip its visible width to `pct` so it depletes,
+ *  keeping the end-caps by overlaying the full frame at low opacity behind. */
+function KitBar({ img, left, top, width, height, pct, color, title }: {
+  img: string; left: number; top: number; width: number; height: number; pct: number; color: string; title: string;
+}) {
+  const p = Math.max(0, Math.min(100, pct));
+  return (
+    <div title={title} style={{ position: "absolute", left, top, width, height, pointerEvents: "auto" }}>
+      {/* empty frame behind (dim) so the capsule ends stay visible when low */}
+      <img src={img} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", filter: "grayscale(0.7) brightness(0.5)", pointerEvents: "none" }} />
+      {/* filled bar, clipped to pct */}
+      <div style={{ position: "absolute", inset: 0, width: `${p}%`, overflow: "hidden", transition: "width 0.2s linear" }}>
+        <img src={img} alt="" aria-hidden style={{ position: "absolute", left: 0, top: 0, width, height, maxWidth: "none", pointerEvents: "none", filter: `drop-shadow(0 0 3px ${color}66)` }} />
+      </div>
+    </div>
+  );
+}
+
 function TickBar({ left, top, width, height, value, max, title }: { left: number; top: number; width: number; height: number; value: number; max: number; title: string }) {
   const pct = Math.max(0, Math.min(100, (value / Math.max(1, max)) * 100));
   const fillW = Math.round((width * pct) / 100);
@@ -369,55 +372,6 @@ function TickBar({ left, top, width, height, value, max, title }: { left: number
         <div style={{ position: "absolute", left: 0, top: 0, height: "100%", width: greenEnd, background: tile("bar_fill_green"), imageRendering: "pixelated" }} />
         {/* blue run */}
         <div style={{ position: "absolute", left: greenEnd, top: 0, height: "100%", width: width - greenEnd, background: tile("bar_fill_blue"), imageRendering: "pixelated" }} />
-      </div>
-    </div>
-  );
-}
-
-/** Circular shield/hull gauge flanking the console. Static ring art extracted
- *  from the reference; the live % fill arc + label are drawn over the hollow
- *  center. Positioned by its center-x (cx) relative to the console. */
-function CircleGauge({ cx, pct, ring, label, img, title }: {
-  cx: number; pct: number; ring: string; label: string; img: string; title: string;
-}) {
-  const R = GAUGE / 2;
-  const ARC_R = R * 0.66;          // traces on top of the FLUX energy ring
-  const CIRC = 2 * Math.PI * ARC_R;
-  const off = CIRC * (1 - pct / 100);
-  return (
-    <div
-      title={title}
-      style={{
-        position: "absolute",
-        left: cx - R,
-        top: GAUGE_CY - R,
-        width: GAUGE,
-        height: GAUGE,
-        pointerEvents: "auto",
-      }}
-    >
-      <img src={img} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }} />
-      {/* fill arc over the hollow center */}
-      <svg width={GAUGE} height={GAUGE} style={{ position: "absolute", inset: 0, transform: "rotate(-90deg)" }}>
-        <circle
-          cx={R} cy={R} r={ARC_R}
-          fill="none" stroke={ring} strokeWidth={4}
-          strokeDasharray={CIRC} strokeDashoffset={off}
-          strokeLinecap="round"
-          style={{ filter: `drop-shadow(0 0 5px ${ring})`, transition: "stroke-dashoffset 0.2s linear" }}
-        />
-      </svg>
-      {/* % + label */}
-      <div style={{
-        position: "absolute", inset: 0, display: "flex", flexDirection: "column",
-        alignItems: "center", justifyContent: "center", pointerEvents: "none",
-      }}>
-        <div style={{ fontSize: Math.round(GAUGE * 0.19), fontWeight: "bold", color: ring, fontFamily: "var(--font-display)", textShadow: `0 0 8px ${ring}88, 0 1px 2px #000`, lineHeight: 1 }}>
-          {Math.round(pct)}%
-        </div>
-        <div style={{ fontSize: Math.round(GAUGE * 0.075), letterSpacing: "0.16em", color: `${ring}cc`, fontFamily: "var(--font-display)", marginTop: 2 }}>
-          {label}
-        </div>
       </div>
     </div>
   );
@@ -464,9 +418,9 @@ function TraySlot({ left, keyLabel, glyph, color, sub, count, active, title, onC
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >
-        {/* extracted gold active-border overlay (only when active) */}
+        {/* kit cyan slot frame as the active highlight (only when active) */}
         {active && (
-          <img src={`${UI}/slot_active_overlay.png`} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 1 }} />
+          <img src={`${UI}/slot_cyan.png`} alt="" aria-hidden style={{ position: "absolute", inset: "-12%", width: "124%", height: "124%", pointerEvents: "none", zIndex: 1 }} />
         )}
         {cooldownPct > 0 && (
           <div
