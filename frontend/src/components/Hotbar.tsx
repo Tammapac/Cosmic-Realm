@@ -3,37 +3,37 @@ import { useGame, useConsumable, state, bump, pushNotification, setHotbarSlot, g
 import { effectiveStats } from "../game/loop";
 import { CONSUMABLE_DEFS, ConsumableId, ROCKET_AMMO_TYPE_DEFS, LASER_AMMO_TYPE_ORDER, RocketAmmoType, ROCKET_MISSILE_TYPE_DEFS, ROCKET_MISSILE_TYPE_ORDER, RocketMissileType } from "../game/types";
 
-// ── Lower HUD — EXACT reference reconstruction ───────────────────────────────
-// Every asset is extracted 1:1 from StyleReferences/exampleui.png (see
-// Documentation/UI_EXTRACTION.md). The bottom HUD is ONE console housing
-// (console_frame.png, native 441×94) with a segmented energy channel across the
-// top and a row of 9 slot cells below, flanked by circular SHIELD (cyan, left)
-// and HULL (red, right) gauges — exactly the reference layout. The game draws
-// the live fill/%/icons over the static extracted art. All game logic unchanged.
-const UI = "/assets/ui/exact";
-const CONSOLE_NAT_W = 441, CONSOLE_NAT_H = 94;
-const CONSOLE_W = 794;                                 // on-screen (1.8× native)
-const K = CONSOLE_W / CONSOLE_NAT_W;                   // scale factor
-const CONSOLE_H = Math.round(CONSOLE_NAT_H * K);
+// ── Lower HUD — FLUX-reconstructed frames (richer metal) ─────────────────────
+// The console housing + circular gauges are reconstructed with FLUX+ControlNet
+// +Redux from the reference (Documentation/FLUX_RECONSTRUCTION_PIPELINE.md) for
+// premium metal/material, then cleanly cut to transparent PNGs. The hotbar frame
+// (hotbar.png, native 912×188) has a segmented energy channel + 9 slot cells;
+// the flanking SHIELD (cyan) and HULL (red) gauges are separate circular assets.
+// Slots use the sharp pixel-exact extraction (FLUX blurs tiny cells). Live
+// fill/%/icons are drawn over the static art. All game logic unchanged.
+const UI = "/assets/ui/flux";
+const CONSOLE_NAT_W = 912, CONSOLE_NAT_H = 188;
+const CONSOLE_W = 812;                                 // on-screen width
+const K = CONSOLE_W / CONSOLE_NAT_W;
+const CONSOLE_H = Math.round(CONSOLE_NAT_H * K);       // ≈ 167
 const N_SLOTS = 9;
-// Internal geometry as fractions of the console asset (measured from the ref).
-// channel: L 0.0794, T 0.1489 → R 0.932, B 0.3617
-const FILL_X = Math.round(CONSOLE_W * 0.0794);
-const FILL_Y = Math.round(CONSOLE_H * 0.1489);
-const FILL_W = Math.round(CONSOLE_W * (0.932 - 0.0794));
-const FILL_H = Math.round(CONSOLE_H * (0.3617 - 0.1489));
-// slot row: cell 0 at frac (0.0295, 0.3404), pitch 0.1036 of W, size (0.1036 w, 0.4787 h)
-const SLOT_X0 = Math.round(CONSOLE_W * 0.0295);
-const SLOT_Y = Math.round(CONSOLE_H * 0.3404);
-const SLOT_PITCH = CONSOLE_W * 0.1036;
-const SLOT_S = Math.round(CONSOLE_W * 0.1036);
-const SLOT_H = Math.round(CONSOLE_H * 0.4787);
-const slotX = (i: number) => Math.round(SLOT_X0 + i * SLOT_PITCH);
-// flanking gauges: centered at frac x -0.0998 / 1.1224, y 0.4894; radius 0.1293 of W
-const GAUGE = Math.round(CONSOLE_W * 0.1293 * 2);      // diameter
-const GAUGE_CY = Math.round(CONSOLE_H * 0.4894);       // vertical center on console
-const SHIELD_CX = Math.round(CONSOLE_W * -0.0998);
-const HULL_CX = Math.round(CONSOLE_W * 1.1224);
+// energy channel (measured on the FLUX hotbar): x 0.11–0.96, y 0.15–0.40
+const FILL_X = Math.round(CONSOLE_W * 0.115);
+const FILL_Y = Math.round(CONSOLE_H * 0.16);
+const FILL_W = Math.round(CONSOLE_W * (0.955 - 0.115));
+const FILL_H = Math.round(CONSOLE_H * (0.38 - 0.16));
+// slot row: even 9-cell grid across the measured span (x 0.045→0.955, y 0.44–0.82)
+const SLOT_SPAN0 = 0.028, SLOT_SPAN1 = 0.972;
+const SLOT_PITCH = CONSOLE_W * (SLOT_SPAN1 - SLOT_SPAN0) / N_SLOTS;
+const SLOT_S = Math.round(SLOT_PITCH * 0.9);
+const SLOT_H = Math.round(CONSOLE_H * (0.82 - 0.44));
+const SLOT_Y = Math.round(CONSOLE_H * 0.44);
+const slotX = (i: number) => Math.round(CONSOLE_W * SLOT_SPAN0 + i * SLOT_PITCH + (SLOT_PITCH - SLOT_S) / 2);
+// flanking circular gauges (separate square assets, ~130 ref px on-screen)
+const GAUGE = 132;                                    // diameter on-screen
+const GAUGE_CY = Math.round(CONSOLE_H * 0.5);         // vertical center on console
+const SHIELD_CX = -Math.round(GAUGE * 0.52);          // left of console
+const HULL_CX = CONSOLE_W + Math.round(GAUGE * 0.52); // right of console
 
 const HP_COLOR = "#5cff8a";
 const SH_COLOR = "#4ee2ff";
@@ -155,7 +155,7 @@ export function Hotbar() {
     >
       {/* console housing — extracted 1:1 from the reference */}
       <img
-        src={`${UI}/console_frame@2x.png`}
+        src={`${UI}/hotbar.png`}
         alt=""
         aria-hidden
         style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", imageRendering: "auto" }}
@@ -164,13 +164,13 @@ export function Hotbar() {
       {/* ── flanking SHIELD gauge (left) ── */}
       <CircleGauge
         cx={SHIELD_CX} pct={shieldPct} ring={SH_COLOR} label="SHIELD"
-        img={`${UI}/circle_shield@2x.png`}
+        img={`${UI}/shield.png`}
         title={`Shield ${Math.round(player.shield)}/${Math.round(es.shieldMax)}`}
       />
       {/* ── flanking HULL gauge (right) ── */}
       <CircleGauge
         cx={HULL_CX} pct={hullPct} ring={HULL_RING} label="HULL"
-        img={`${UI}/circle_hull@2x.png`}
+        img={`${UI}/hull.png`}
         title={`Hull ${Math.round(player.hull)}/${Math.round(es.hullMax)}`}
       />
 
@@ -381,7 +381,8 @@ function CircleGauge({ cx, pct, ring, label, img, title }: {
   cx: number; pct: number; ring: string; label: string; img: string; title: string;
 }) {
   const R = GAUGE / 2;
-  const CIRC = 2 * Math.PI * (R * 0.62);
+  const ARC_R = R * 0.66;          // traces on top of the FLUX energy ring
+  const CIRC = 2 * Math.PI * ARC_R;
   const off = CIRC * (1 - pct / 100);
   return (
     <div
@@ -399,7 +400,7 @@ function CircleGauge({ cx, pct, ring, label, img, title }: {
       {/* fill arc over the hollow center */}
       <svg width={GAUGE} height={GAUGE} style={{ position: "absolute", inset: 0, transform: "rotate(-90deg)" }}>
         <circle
-          cx={R} cy={R} r={R * 0.62}
+          cx={R} cy={R} r={ARC_R}
           fill="none" stroke={ring} strokeWidth={4}
           strokeDasharray={CIRC} strokeDashoffset={off}
           strokeLinecap="round"
@@ -465,7 +466,7 @@ function TraySlot({ left, keyLabel, glyph, color, sub, count, active, title, onC
       >
         {/* extracted gold active-border overlay (only when active) */}
         {active && (
-          <img src={`${UI}/slot_active_overlay@2x.png`} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 1 }} />
+          <img src={`${UI}/slot_active_overlay.png`} alt="" aria-hidden style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", zIndex: 1 }} />
         )}
         {cooldownPct > 0 && (
           <div
