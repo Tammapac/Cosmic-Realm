@@ -67,56 +67,28 @@ export function InventoryPanel() {
     equipModule(it.instanceId, def.slot, idx);
   };
 
+  // HUD plate (hotbar/minimap reference language) instead of the baked
+  // inventory-frame.png art: ring frame, title band, sw-slot grid, gbtn
+  // pager. All slot logic (equip/sell/select/tooltips) unchanged.
   return (
     <div className="fixed z-50" style={{ top: 64, right: 14, width: 400, pointerEvents: "auto" }}>
-      <div
-        style={{
-          position: "relative",
-          width: "100%",
-          aspectRatio: "635 / 793",
-          backgroundImage: "url(/assets/ui/inventory-frame.png)",
-          backgroundSize: "100% 100%",
-          imageRendering: "auto",
-          filter: "drop-shadow(0 6px 24px rgba(0,0,0,0.6))",
-        }}
-        onContextMenu={(e) => e.preventDefault()}
-      >
-        {/* banner title */}
-        <div
-          style={{
-            position: "absolute", left: "16%", right: "16%", top: "4.6%", height: "6.6%",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            color: "#3a2000", fontWeight: 800, letterSpacing: "0.3em",
-            fontSize: 15, textShadow: "0 1px 0 rgba(255,255,255,0.25)",
-            userSelect: "none",
-          }}
-        >
-          INVENTORY · {items.length}
+      <div className="hud-plate" style={{ display: "flex", flexDirection: "column" }} onContextMenu={(e) => e.preventDefault()}>
+        <div className="hud-titleband" style={{ letterSpacing: "0.3em" }}>
+          <span style={{ flex: 1 }}>Inventory · {items.length}</span>
+          <button className="gbtn gbtn-red" style={{ padding: "1px 8px", fontSize: 10 }} onClick={close} title={"Close inventory (I)"}>✕</button>
         </div>
-
-        {/* close button zone (baked ⊘ icon top-right) */}
-        <button
-          onClick={close}
-          title={"Close inventory\nHotkey: I"}
-          style={{
-            position: "absolute", left: "79.5%", top: "12.6%", width: "9.5%", height: "7%",
-            background: "transparent", border: "none", cursor: "pointer",
-          }}
-        />
-
-        {/* slot grid, aligned over the baked orange frames */}
         <div
           style={{
-            position: "absolute", ...GRID,
             display: "grid",
             gridTemplateColumns: `repeat(${COLS}, 1fr)`,
             gridTemplateRows: `repeat(${ROWS}, 1fr)`,
-            columnGap: "2.2%", rowGap: "2.2%",
+            gap: 6,
+            padding: 10,
           }}
         >
           {cells.map((it, i) => {
             if (!it) {
-              return <div key={`empty-${i}`} title="Empty slot" style={{ width: "100%", height: "100%" }} />;
+              return <div key={`empty-${i}`} className="sw-slot" title="Empty slot" style={{ aspectRatio: "1", width: "100%" }} />;
             }
             const def = MODULE_DEFS[it.defId];
             const color = lootItemColor(it, def);
@@ -130,6 +102,7 @@ export function InventoryPanel() {
             return (
               <div
                 key={it.instanceId}
+                className="sw-slot"
                 title={lootTipText(it, { action })}
                 onClick={() => { setSelected(sel ? null : it.instanceId); }}
                 onDoubleClick={() => onEquipToggle(it)}
@@ -139,7 +112,8 @@ export function InventoryPanel() {
                 }}
                 style={{
                   position: "relative",
-                  width: "100%", height: "100%",
+                  aspectRatio: "1",
+                  width: "100%",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   cursor: "pointer",
                   background: `radial-gradient(ellipse at center, ${color}1c 0%, transparent 72%)`,
@@ -147,7 +121,7 @@ export function InventoryPanel() {
                     ? `inset 0 0 0 2px ${color}, inset 0 0 14px ${color}55`
                     : equipped
                       ? "inset 0 0 0 1px #5cff8a88"
-                      : "none",
+                      : undefined,
                   transition: "box-shadow 0.08s",
                 }}
               >
@@ -157,7 +131,7 @@ export function InventoryPanel() {
                 {rolled && (
                   <span style={{
                     position: "absolute", right: "7%", bottom: "4%",
-                    fontSize: 9, fontWeight: 700, color: "#ffb14a", letterSpacing: "0.05em",
+                    fontSize: 9, fontWeight: 700, color: "#9fe0ff", letterSpacing: "0.05em",
                     textShadow: "0 1px 2px #000",
                   }}>
                     {it.ilvl ?? 1}
@@ -183,39 +157,28 @@ export function InventoryPanel() {
             );
           })}
         </div>
-
-        {/* pager: click zones over the baked arrows */}
-        <button
-          onClick={() => setPage(Math.max(0, curPage - 1))}
-          disabled={curPage === 0}
-          title="Previous page"
-          style={{
-            position: "absolute", left: "27%", top: "88%", width: "12%", height: "5%",
-            background: "transparent", border: "none",
-            cursor: curPage === 0 ? "default" : "pointer",
-            opacity: curPage === 0 ? 0.3 : 1,
-          }}
-        />
-        <button
-          onClick={() => setPage(Math.min(pages - 1, curPage + 1))}
-          disabled={curPage >= pages - 1}
-          title="Next page"
-          style={{
-            position: "absolute", left: "61%", top: "88%", width: "12%", height: "5%",
-            background: "transparent", border: "none",
-            cursor: curPage >= pages - 1 ? "default" : "pointer",
-            opacity: curPage >= pages - 1 ? 0.3 : 1,
-          }}
-        />
-        <div
-          style={{
-            position: "absolute", left: "42%", width: "16%", top: "88.2%", height: "4.5%",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            color: "#ff9a2e", fontSize: 11, fontWeight: 700, letterSpacing: "0.2em",
-            userSelect: "none", pointerEvents: "none",
-          }}
-        >
-          {curPage + 1}/{pages}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, padding: "0 10px 10px" }}>
+          <button
+            className="gbtn"
+            onClick={() => setPage(Math.max(0, curPage - 1))}
+            disabled={curPage === 0}
+            title="Previous page"
+            style={{ padding: "2px 12px", fontSize: 11 }}
+          >
+            ◀
+          </button>
+          <div style={{ color: "var(--hud-cyan)", fontFamily: "var(--font-display)", fontSize: 11, fontWeight: 700, letterSpacing: "0.2em", minWidth: 44, textAlign: "center" }}>
+            {curPage + 1}/{pages}
+          </div>
+          <button
+            className="gbtn"
+            onClick={() => setPage(Math.min(pages - 1, curPage + 1))}
+            disabled={curPage >= pages - 1}
+            title="Next page"
+            style={{ padding: "2px 12px", fontSize: 11 }}
+          >
+            ▶
+          </button>
         </div>
       </div>
     </div>

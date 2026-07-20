@@ -27,63 +27,122 @@
   --text-mute: var(--hud-text-dim);
 }
 
-/* ── 2. Core panel (every window/popup body) ────────────────────────────── */
-.panel {
-  background:
-    linear-gradient(180deg, rgba(16, 26, 46, 0.94) 0%, rgba(8, 14, 26, 0.94) 55%, rgba(6, 10, 20, 0.96) 100%);
-  border: 1px solid var(--hud-border);
+/* ── 2. Core panel — EXACT HudFrame construction (the hotbar/minimap/chat
+      reference): the element's own background is a crisp accent RING, the
+      panel fill sits on an inset ::before with its own smaller clip-path,
+      scanlines on ::after, backdrop blur. isolation keeps z:-1 inside. ── */
+.panel,
+.hud-plate {
+  position: relative;
+  isolation: isolate;
+  background: var(--hud-frame-accent, rgba(78, 226, 255, 0.85));
+  border: none;
   clip-path: polygon(
-    var(--hud-cut) 0, 100% 0, 100% calc(100% - var(--hud-cut)),
-    calc(100% - var(--hud-cut)) 100%, 0 100%, 0 var(--hud-cut)
+    10px 0, 100% 0, 100% calc(100% - 10px),
+    calc(100% - 10px) 100%, 0 100%, 0 10px
   );
-  box-shadow:
-    inset 0 1px 0 var(--hud-metal-hi),
-    inset 0 -1px 0 var(--hud-metal-lo),
-    inset 0 0 34px rgba(0, 0, 0, 0.45),
-    0 0 0 1px rgba(0, 0, 0, 0.6),
-    0 6px 28px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(3px);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55);
 }
-.panel::before {
+.panel::before,
+.hud-plate::before {
   content: "";
   position: absolute;
-  inset: 0;
-  pointer-events: none;
+  inset: 1px;
+  z-index: -1;
   background:
-    repeating-linear-gradient(0deg, var(--hud-brushed-line) 0 1px, transparent 1px 3px);
-  opacity: 0.6;
+    linear-gradient(180deg, rgba(14, 22, 40, 0.92) 0%, rgba(8, 14, 26, 0.9) 100%);
+  clip-path: polygon(
+    9px 0, 100% 0, 100% calc(100% - 9px),
+    calc(100% - 9px) 100%, 0 100%, 0 9px
+  );
+}
+.panel::after,
+.hud-plate::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  z-index: 2;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(160, 220, 255, 0.028) 0 1px, transparent 1px 3px);
+  clip-path: polygon(
+    9px 0, 100% 0, 100% calc(100% - 9px),
+    calc(100% - 9px) 100%, 0 100%, 0 9px
+  );
 }
 
-/* ── 3. Framed windows (hangar, station, journals, big modals) ──────────── */
-/* The atlas border-image is gone; border widths stay so inner layout keeps
-   its inset. The frame is drawn with layered strokes + corner cuts. */
+/* Title band matching HudPanel: cyan tick + tracked uppercase title.
+   Apply to a panel's first header row. */
+.hud-titleband {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--hud-border-dim);
+  background: linear-gradient(90deg, rgba(78, 226, 255, 0.06) 0%, transparent 70%);
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--hud-cyan);
+}
+.hud-titleband::before {
+  content: "";
+  width: 2px;
+  height: 11px;
+  background: var(--hud-cyan);
+  box-shadow: var(--hud-glow-soft) var(--hud-cyan-glow);
+  flex-shrink: 0;
+}
+
+/* ── 3. Framed windows (hangar, station, journals, big modals) — same ring
+      construction, bigger cuts, wider inner inset. Border widths stay so
+      inner layouts keep their position. ── */
 .panel-framed {
+  position: relative;
+  isolation: isolate;
   border-image: none;
   border-style: solid;
   border-color: transparent;
   border-width: 44px 38px 34px 38px;
-  background:
-    linear-gradient(180deg, rgba(18, 30, 52, 0.97) 0%, rgba(9, 15, 28, 0.97) 46%, rgba(6, 10, 20, 0.98) 100%);
+  background: rgba(78, 226, 255, 0.8);
   clip-path: polygon(
     14px 0, calc(100% - 14px) 0, 100% 14px,
     100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%,
     0 calc(100% - 14px), 0 14px
   );
-  box-shadow:
-    inset 0 0 0 1px var(--hud-border),
-    inset 0 0 0 2px rgba(0, 0, 0, 0.7),
-    inset 0 2px 0 var(--hud-metal-hi),
-    inset 0 0 60px rgba(0, 0, 0, 0.5),
-    0 10px 40px rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.65), 0 0 24px rgba(78, 226, 255, 0.12);
+}
+.panel-framed::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  z-index: -1;
+  background:
+    linear-gradient(180deg, rgba(16, 28, 50, 0.97) 0%, rgba(8, 14, 26, 0.97) 46%, rgba(6, 10, 20, 0.98) 100%);
+  clip-path: polygon(
+    13px 0, calc(100% - 13px) 0, 100% 13px,
+    100% calc(100% - 13px), calc(100% - 13px) 100%, 13px 100%,
+    0 calc(100% - 13px), 0 13px
+  );
+}
+.panel-framed::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  z-index: 2;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(160, 220, 255, 0.025) 0 1px, transparent 1px 3px);
+  clip-path: polygon(
+    13px 0, calc(100% - 13px) 0, 100% 13px,
+    100% calc(100% - 13px), calc(100% - 13px) 100%, 13px 100%,
+    0 calc(100% - 13px), 0 13px
+  );
 }
 .panel-framed.panel-gold {
-  border-image: none;
-  box-shadow:
-    inset 0 0 0 1px rgba(232, 185, 77, 0.5),
-    inset 0 0 0 2px rgba(0, 0, 0, 0.7),
-    inset 0 2px 0 var(--hud-metal-hi),
-    inset 0 0 60px rgba(0, 0, 0, 0.5),
-    0 0 22px rgba(232, 185, 77, 0.12),
-    0 10px 40px rgba(0, 0, 0, 0.65);
+  background: rgba(232, 185, 77, 0.75);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.65), 0 0 24px rgba(232, 185, 77, 0.14);
 }
 
 /* ── 4. Window header strip ─────────────────────────────────────────────── */

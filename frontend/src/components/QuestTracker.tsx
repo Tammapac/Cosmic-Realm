@@ -11,7 +11,8 @@ const TYPE_GLYPHS: Record<string, string> = {
   dread:     "☠",
 };
 
-const AMBER = "#f7a832";
+// HUD accent (was amber #f7a832 in the old art-window skin)
+const AMBER = "#4ee2ff";
 
 function fmtNum(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M";
@@ -82,36 +83,17 @@ function TrackerPanel({ quests }: { quests: any[] }) {
     state.showJournal = true;
     bump();
   };
+  // HUD plate (hotbar/minimap reference language) instead of the baked
+  // quest-window.png art: cyan ring, cut corners, title band, scanlines.
   return (
     <div
-      className="absolute z-30 pointer-events-none"
-      style={{ top: 104, right: 8, width: 338, height: 406, filter: "drop-shadow(0 4px 12px rgba(0,0,0,0.6))" }}
+      className="hud-plate absolute z-30 pointer-events-none"
+      style={{ top: 104, right: 8, width: 300, maxHeight: 380, display: "flex", flexDirection: "column" }}
     >
-      <img
-        src="/assets/ui/atlas/quest-window.png"
-        alt=""
-        aria-hidden
-        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
-      />
-      {/* glass title */}
+      <div className="hud-titleband">Quests</div>
       <div
-        className="absolute text-center"
-        style={{
-          left: "18%", right: "18%", top: "4.4%",
-          fontFamily: "var(--font-display)",
-          fontSize: 13,
-          fontWeight: 700,
-          letterSpacing: "0.3em",
-          color: "#3a2504",
-          textShadow: "0 1px 0 rgba(255,235,190,0.6)",
-        }}
-      >
-        QUESTS
-      </div>
-      {/* quest title list, questexample style */}
-      <div
-        className="absolute overflow-y-auto pointer-events-auto"
-        style={{ left: "14%", right: "14%", top: "19%", bottom: "11%", paddingRight: 2 }}
+        className="overflow-y-auto pointer-events-auto"
+        style={{ padding: "6px 8px", minHeight: 0 }}
       >
         {quests.map((q) => (
           <div key={q.id} onMouseEnter={() => setHovered(q.id)} onMouseLeave={() => setHovered(null)}>
@@ -146,149 +128,90 @@ function JournalWindow() {
 
   const close = () => { state.showJournal = false; state.journalQuestId = null; bump(); };
 
+  // HUD framed window (reference language) instead of the baked journal.png
+  // art. Two columns: quest list left (natural scrolling replaces the art's
+  // baked arrow triangles), detail + reward right. All logic unchanged.
   return (
     <div
       className="fixed inset-0 flex items-center justify-center"
       style={{ zIndex: 60, background: "rgba(0,0,0,0.55)", pointerEvents: "auto" }}
       onClick={(e) => { if (e.target === e.currentTarget) close(); }}
     >
-      <div style={{ position: "relative", width: 898, height: 553, maxWidth: "96vw", filter: "drop-shadow(0 8px 30px rgba(0,0,0,0.8))" }}>
-        <img
-          src="/assets/ui/atlas/journal.png"
-          alt=""
-          aria-hidden
-          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
-        />
-        <div
-          className="absolute text-center"
-          style={{
-            left: "28%", right: "28%", top: "3.2%",
-            fontFamily: "var(--font-display)", fontSize: 19, fontWeight: 700,
-            letterSpacing: "0.42em", color: "#ffffff",
-            textShadow: "0 0 3px rgba(58,37,4,0.9), 1px 1px 0 #3a2504, -1px -1px 0 #3a250466, 0 0 10px rgba(255,255,255,0.35)",
-          }}
-        >
-          JOURNAL
+      <div className="panel" style={{ width: 880, height: 540, maxWidth: "96vw", maxHeight: "92vh", display: "flex", flexDirection: "column" }}>
+        <div className="hud-titleband" style={{ fontSize: 14, letterSpacing: "0.35em", padding: "8px 14px" }}>
+          <span style={{ flex: 1 }}>Journal</span>
+          <button className="gbtn gbtn-red" style={{ padding: "2px 10px", fontSize: 11 }} onClick={close}>✕</button>
         </div>
-        <button
-          onClick={close}
-          title="Close"
-          className="j-close"
-          style={{
-            position: "absolute",
-            left: "86.3%",
-            top: "10.5%",
-            width: 36,
-            height: 36,
-            borderRadius: "50%",
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            zIndex: 2,
-          }}
-        />
-        {/* left index — rows positioned exactly on the art's baked plates */}
-        {Array.from({ length: 12 }).map((_, i) => {
-          const q = quests[i];
-          if (!q) return null;
-          const sel = selected && q.id === selected.id;
-          return (
-            <button
-              key={q.id}
-              onClick={() => setLocalSel(q.id)}
-              className={`j-row ${sel ? "j-row--sel" : ""}`}
-              title={q.title}
-              style={{
-                position: "absolute",
-                left: `${PLATE_LEFT * 100}%`,
-                width: `${PLATE_W * 100}%`,
-                top: `${(PLATE_TOP + i * PLATE_PITCH) * 100}%`,
-                height: `${PLATE_H * 100}%`,
-                color: q.completed && !sel ? "#1d4d24" : undefined,
-              }}
-            >
-              {/* inner span truncates so the row itself never clips the wing caps */}
-              <span className="truncate" style={{ display: "block", maxWidth: "100%" }}>
-                {q.completed ? "✓ " : ""}{q.title}
-              </span>
-            </button>
-          );
-        })}
-
-        {/* scroll arrows on the art's baked ▲ / ▽ triangles */}
-        {off > 0 && (
-          <button
-            onClick={() => setOffset(Math.max(0, off - 1))}
-            title="Scroll up"
-            className="absolute"
-            style={{ left: "17.5%", width: "8%", top: "12.6%", height: "6%", background: "none", border: "none", cursor: "pointer" }}
-          />
-        )}
-        {off < maxOffset && (
-          <button
-            onClick={() => setOffset(Math.min(maxOffset, off + 1))}
-            title="Scroll down"
-            className="absolute"
-            style={{ left: "17.5%", width: "8%", top: "85.6%", height: "6.5%", background: "none", border: "none", cursor: "pointer" }}
-          />
-        )}
-
-        {/* detail title on the baked tick-strip header line */}
-        {selected && (
-          <div
-            className="absolute text-center truncate"
-            style={{
-              left: "45%", right: "25%", top: "20.6%",
-              fontFamily: "var(--font-display)", fontSize: 14, fontWeight: 700,
-              letterSpacing: "0.22em", textTransform: "uppercase",
-              color: AMBER, textShadow: `0 0 8px ${AMBER}aa, 0 0 2px ${AMBER}`,
-            }}
-          >
-            {selected.title}
+        <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+          {/* quest index — natural scrolling replaces the art's baked arrows */}
+          <div style={{ width: 240, flexShrink: 0, overflowY: "auto", padding: "8px 6px 8px 10px", borderRight: "1px solid rgba(90,130,180,0.25)" }}>
+            {activeQuests.map((q) => {
+              const sel = selected && q.id === selected.id;
+              return (
+                <button
+                  key={q.id}
+                  onClick={() => setLocalSel(q.id)}
+                  className={`j-row ${sel ? "j-row--sel" : ""}`}
+                  title={q.title}
+                  style={{
+                    position: "relative", display: "block", width: "100%", minHeight: 26,
+                    marginBottom: 4, textAlign: "left", padding: "4px 8px",
+                    color: q.completed && !sel ? "#4fae62" : undefined,
+                  }}
+                >
+                  <span className="truncate" style={{ display: "block", maxWidth: "100%" }}>
+                    {q.completed ? "✓ " : ""}{q.title}
+                  </span>
+                </button>
+              );
+            })}
           </div>
-        )}
-
-        {/* glowing body text */}
-        <div className="absolute" style={{ left: "37.5%", right: "10.5%", top: "26%", bottom: "36%", overflowY: "auto" }}>
-          {selected ? (
-            <DetailPane q={selected} />
-          ) : (
-            <div style={{ color: `${AMBER}cc`, fontFamily: "var(--font-display)", fontSize: 11, letterSpacing: "0.06em", padding: 8, textShadow: `0 0 6px ${AMBER}66` }}>
-              ACCEPT BOUNTIES AND MISSIONS AT ANY STATION, THEN TRACK THEM HERE.
+          {/* detail pane */}
+          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", padding: "10px 14px" }}>
+            {selected && (
+              <div
+                className="text-center truncate"
+                style={{
+                  fontFamily: "var(--font-display)", fontSize: 14, fontWeight: 700,
+                  letterSpacing: "0.22em", textTransform: "uppercase",
+                  color: AMBER, textShadow: `0 0 8px ${AMBER}aa, 0 0 2px ${AMBER}`,
+                  paddingBottom: 6, borderBottom: "1px solid rgba(78,226,255,0.25)",
+                }}
+              >
+                {selected.title}
+              </div>
+            )}
+            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 2px" }}>
+              {selected ? (
+                <DetailPane q={selected} />
+              ) : (
+                <div style={{ color: `${AMBER}cc`, fontFamily: "var(--font-display)", fontSize: 11, letterSpacing: "0.06em", padding: 8, textShadow: `0 0 6px ${AMBER}66` }}>
+                  ACCEPT BOUNTIES AND MISSIONS AT ANY STATION, THEN TRACK THEM HERE.
+                </div>
+              )}
             </div>
-          )}
+            {selected && (
+              <div style={{ flexShrink: 0, borderTop: "1px solid rgba(78,226,255,0.25)", paddingTop: 8 }}>
+                <div
+                  className="text-center"
+                  style={{
+                    fontFamily: "var(--font-display)", fontSize: 12, fontWeight: 700,
+                    letterSpacing: "0.3em", color: AMBER,
+                    textShadow: `0 0 8px ${AMBER}aa`, marginBottom: 6,
+                  }}
+                >
+                  REWARD
+                </div>
+                <div className="flex items-center" style={{ gap: 8 }}>
+                  <RewardCell label="CREDITS" value={fmtNum(selected.rewardCredits)} />
+                  <RewardCell label="HONOR" value={fmtNum(selected.rewardHonor)} />
+                  <RewardCell label="TIER" value={`${selected.tier ?? 1}`} />
+                  <RewardCell label="XP" value={fmtNum(selected.rewardExp)} />
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-
-        {/* REWARD header on the lower tick-strip line + values in the bottom box */}
-        {selected && (
-          <>
-            <div
-              className="absolute text-center"
-              style={{
-                left: "45%", right: "25%", top: "67.6%",
-                fontFamily: "var(--font-display)", fontSize: 13, fontWeight: 700,
-                letterSpacing: "0.3em", color: AMBER,
-                textShadow: `0 0 8px ${AMBER}aa, 0 0 2px ${AMBER}`,
-              }}
-            >
-              REWARD
-            </div>
-            {/* dark cover hides the art's baked icon sockets */}
-            <div
-              className="absolute"
-              style={{ left: "38.5%", right: "13%", top: "72.8%", height: "13.2%", background: "#0c0904" }}
-            />
-            <div
-              className="absolute flex items-center"
-              style={{ left: "38.5%", right: "13%", top: "72.8%", height: "13.2%", gap: "1%", padding: "0 1.5%" }}
-            >
-              <RewardCell label="CREDITS" value={fmtNum(selected.rewardCredits)} />
-              <RewardCell label="HONOR" value={fmtNum(selected.rewardHonor)} />
-              <RewardCell label="TIER" value={`${selected.tier ?? 1}`} />
-              <RewardCell label="XP" value={fmtNum(selected.rewardExp)} />
-            </div>
-          </>
-        )}
       </div>
     </div>
   );

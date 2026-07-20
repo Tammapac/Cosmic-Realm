@@ -16,16 +16,10 @@ const KEYBINDINGS = [
   { action: "Settings", key: "ESC" },
 ];
 
-// options.png window (PNG GUI pack) — native 809x691, interior demo controls
-// cleaned out (see options-window.png). All coordinates below are native px
-// scaled by K. Baked art kept: OPTIONS title, close icon, SAVE / EXIT buttons.
-const K = 680 / 809;
-const W = 680;
-const H = Math.round(691 * K);
-const px = (n: number) => Math.round(n * K);
-
-const AMBER = "#f7a832";
-const AMBER_DIM = "#8a5c14";
+// HUD accent (hud_preview reference) — the old options-window.png art skin
+// used amber #f7a832; the window is now a native HUD panel.
+const ACCENT = "#4ee2ff";
+const ACCENT_DIM = "#3d7f99";
 
 export default function SettingsMenu({ onClose }: { onClose: () => void }) {
   const [vol, setVol] = useState(() => getVolume());
@@ -72,11 +66,11 @@ export default function SettingsMenu({ onClose }: { onClose: () => void }) {
         fontFamily: "var(--font-display)",
         background: "transparent",
         border: "none",
-        borderBottom: tab === t ? `2px solid ${AMBER}` : "2px solid transparent",
+        borderBottom: tab === t ? `2px solid ${ACCENT}` : "2px solid transparent",
         fontSize: 12,
         letterSpacing: "0.18em",
-        color: tab === t ? AMBER : AMBER_DIM,
-        textShadow: tab === t ? `0 0 8px ${AMBER}88` : "none",
+        color: tab === t ? ACCENT : ACCENT_DIM,
+        textShadow: tab === t ? `0 0 8px ${ACCENT}88` : "none",
         transition: "color 0.12s",
       }}
     >
@@ -84,6 +78,8 @@ export default function SettingsMenu({ onClose }: { onClose: () => void }) {
     </button>
   );
 
+  // HUD framed window (reference language): title band + tab row + content
+  // + real SAVE/EXIT buttons. All settings logic unchanged.
   return (
     <div
       style={{
@@ -93,40 +89,25 @@ export default function SettingsMenu({ onClose }: { onClose: () => void }) {
       }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div style={{ position: "relative", width: W, height: H, filter: "drop-shadow(0 10px 40px rgba(0,0,0,0.8))" }}>
-        <img
-          src="/assets/ui/atlas/options-window.png"
-          alt=""
-          aria-hidden
-          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}
-        />
+      <div className="panel" style={{ width: 620, maxWidth: "94vw", maxHeight: "88vh", display: "flex", flexDirection: "column" }}>
+        <div className="hud-titleband" style={{ fontSize: 13, letterSpacing: "0.32em", padding: "8px 12px" }}>
+          <span style={{ flex: 1 }}>Options</span>
+          <button className="gbtn gbtn-red" style={{ padding: "1px 8px", fontSize: 10 }} onClick={onClose} title="Close (ESC)">✕</button>
+        </div>
 
-        {/* close — hotspot over the baked ⊘ icon */}
-        <button
-          onClick={onClose}
-          title="Close (ESC)"
-          style={{
-            position: "absolute", left: px(665), top: px(39), width: px(38), height: px(38),
-            background: "none", border: "none", cursor: "pointer", borderRadius: "50%",
-            transition: "box-shadow 0.12s",
-          }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = `0 0 12px ${AMBER}aa`; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "none"; }}
-        />
-
-        {/* tabs at the top of the interior */}
-        <div style={{ position: "absolute", left: px(150), top: px(162), width: px(510), display: "flex", justifyContent: "center", gap: 10 }}>
+        {/* tabs */}
+        <div style={{ display: "flex", justifyContent: "center", gap: 10, padding: "8px 12px 0" }}>
           {tabBtn("sound", "SOUND")}
           {tabBtn("graphics", "GRAPHICS")}
           {tabBtn("controls", "CONTROLS")}
         </div>
 
-        {/* content area inside the thin orange frame */}
+        {/* content */}
         <div
           style={{
-            position: "absolute", left: px(165), top: px(215), width: px(480), height: px(320),
-            display: "flex", flexDirection: "column", gap: px(26),
-            fontFamily: "var(--font-display)", color: "#e8c890",
+            padding: "18px 24px", minHeight: 240,
+            display: "flex", flexDirection: "column", gap: 22,
+            fontFamily: "var(--font-display)", color: "#b8d8f0",
             overflowY: tab === "controls" ? "auto" : "visible",
           }}
         >
@@ -159,10 +140,10 @@ export default function SettingsMenu({ onClose }: { onClose: () => void }) {
                         fontSize: 10,
                         letterSpacing: "0.12em",
                         textTransform: "uppercase",
-                        color: particles === level ? "#2b1c05" : AMBER_DIM,
-                        background: particles === level ? `linear-gradient(180deg, #ffd062, ${AMBER})` : "rgba(247,168,50,0.06)",
-                        border: `1px solid ${particles === level ? AMBER : "rgba(247,168,50,0.25)"}`,
-                        boxShadow: particles === level ? `0 0 10px ${AMBER}66` : "none",
+                        color: particles === level ? "#06222e" : ACCENT_DIM,
+                        background: particles === level ? `linear-gradient(180deg, #9fe8ff, ${ACCENT})` : "rgba(78,226,255,0.06)",
+                        border: `1px solid ${particles === level ? ACCENT : "rgba(78,226,255,0.25)"}`,
+                        boxShadow: particles === level ? `0 0 10px ${ACCENT}66` : "none",
                         fontWeight: particles === level ? 700 : 400,
                       }}
                     >
@@ -182,16 +163,16 @@ export default function SettingsMenu({ onClose }: { onClose: () => void }) {
                   style={{
                     display: "flex", justifyContent: "space-between", alignItems: "center",
                     padding: "4px 10px",
-                    background: "rgba(247,168,50,0.05)",
-                    boxShadow: "inset 0 0 0 1px rgba(247,168,50,0.12)",
+                    background: "rgba(78,226,255,0.05)",
+                    boxShadow: "inset 0 0 0 1px rgba(78,226,255,0.12)",
                   }}
                 >
-                  <span style={{ fontSize: 11, letterSpacing: "0.08em", color: "#d8b070" }}>{action.toUpperCase()}</span>
+                  <span style={{ fontSize: 11, letterSpacing: "0.08em", color: "#b8d8f0" }}>{action.toUpperCase()}</span>
                   <span
                     style={{
-                      fontSize: 10, color: AMBER, padding: "1px 10px",
-                      background: "rgba(247,168,50,0.1)",
-                      boxShadow: `inset 0 0 0 1px ${AMBER}44`,
+                      fontSize: 10, color: ACCENT, padding: "1px 10px",
+                      background: "rgba(78,226,255,0.1)",
+                      boxShadow: `inset 0 0 0 1px ${ACCENT}44`,
                       letterSpacing: "0.06em",
                     }}
                   >
@@ -203,9 +184,11 @@ export default function SettingsMenu({ onClose }: { onClose: () => void }) {
           )}
         </div>
 
-        {/* SAVE / EXIT — hotspots over the baked buttons */}
-        <BakedButton left={px(255)} top={px(578)} width={px(141)} height={px(78)} label="Save settings" onClick={onSave} />
-        <BakedButton left={px(422)} top={px(578)} width={px(141)} height={px(78)} label="Close" onClick={onClose} />
+        {/* SAVE / EXIT */}
+        <div style={{ display: "flex", justifyContent: "center", gap: 14, padding: "4px 12px 14px" }}>
+          <button className="gbtn gbtn-gold" style={{ padding: "7px 26px", fontSize: 12 }} onClick={onSave}>SAVE</button>
+          <button className="gbtn" style={{ padding: "7px 26px", fontSize: 12 }} onClick={onClose}>EXIT</button>
+        </div>
       </div>
     </div>
   );
@@ -214,12 +197,12 @@ export default function SettingsMenu({ onClose }: { onClose: () => void }) {
 function SettingRow({ label, value, children }: { label: string; value: string; children: React.ReactNode }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-      <span style={{ width: 138, fontSize: 12, letterSpacing: "0.14em", color: AMBER, textShadow: `0 0 6px ${AMBER}55`, flexShrink: 0 }}>
+      <span style={{ width: 138, fontSize: 12, letterSpacing: "0.14em", color: ACCENT, textShadow: `0 0 6px ${ACCENT}55`, flexShrink: 0 }}>
         {label}
       </span>
       <div style={{ flex: 1, display: "flex", alignItems: "center" }}>{children}</div>
       {value && (
-        <span style={{ width: 44, textAlign: "right", fontSize: 12, color: "#ffd67a", flexShrink: 0 }} className="tabular-nums">
+        <span style={{ width: 44, textAlign: "right", fontSize: 12, color: "#dff6ff", flexShrink: 0 }} className="tabular-nums">
           {value}
         </span>
       )}
@@ -227,7 +210,7 @@ function SettingRow({ label, value, children }: { label: string; value: string; 
   );
 }
 
-/** DarkOrbit-style tick slider: ◄ segmented ticks ►, click/drag to set. */
+/** Segmented tick slider: ◄ ticks ►, click/drag to set. */
 function TickSlider({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   const barRef = useRef<HTMLDivElement>(null);
   const dragging = useRef(false);
@@ -254,7 +237,7 @@ function TickSlider({ value, onChange }: { value: number; onChange: (v: number) 
       onClick={() => onChange(Math.max(0, Math.min(1, v + dir * 0.05)))}
       style={{
         background: "none", border: "none", cursor: "pointer", padding: "0 4px",
-        color: AMBER, fontSize: 13, lineHeight: 1, fontFamily: "var(--font-display)",
+        color: ACCENT, fontSize: 13, lineHeight: 1, fontFamily: "var(--font-display)",
       }}
     >
       {dir < 0 ? "◄" : "►"}
@@ -269,15 +252,15 @@ function TickSlider({ value, onChange }: { value: number; onChange: (v: number) 
         onPointerDown={(e) => { dragging.current = true; setFromEvent(e.clientX); }}
         style={{
           position: "relative", flex: 1, height: 18, cursor: "pointer",
-          background: ticks("rgba(247,168,50,0.16)"),
+          background: ticks("rgba(78,226,255,0.16)"),
           touchAction: "none",
         }}
       >
         <div
           style={{
             position: "absolute", inset: 0, width: `${v * 100}%`,
-            background: ticks(AMBER),
-            filter: `drop-shadow(0 0 3px ${AMBER})`,
+            background: ticks(ACCENT),
+            filter: `drop-shadow(0 0 3px ${ACCENT})`,
           }}
         />
       </div>
@@ -286,7 +269,7 @@ function TickSlider({ value, onChange }: { value: number; onChange: (v: number) 
   );
 }
 
-/** Octagonal toggle in the style of the window's baked round buttons. */
+/** Octagonal toggle in the HUD accent. */
 function OctToggle({ on, onClick }: { on: boolean; onClick: () => void }) {
   return (
     <button
@@ -296,30 +279,11 @@ function OctToggle({ on, onClick }: { on: boolean; onClick: () => void }) {
         clipPath: "polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%)",
         border: "none",
         background: on
-          ? `radial-gradient(circle at 50% 38%, #ffd062 0%, ${AMBER} 60%, #a06010 100%)`
-          : "radial-gradient(circle at 50% 38%, #3a2a10 0%, #1a1206 70%)",
-        boxShadow: on ? `0 0 14px ${AMBER}aa` : "inset 0 0 0 1px rgba(247,168,50,0.3)",
+          ? `radial-gradient(circle at 50% 38%, #9fe8ff 0%, ${ACCENT} 60%, #1a5e78 100%)`
+          : "radial-gradient(circle at 50% 38%, #10283e 0%, #081420 70%)",
+        boxShadow: on ? `0 0 14px ${ACCENT}aa` : "inset 0 0 0 1px rgba(78,226,255,0.3)",
         transition: "background 0.15s, box-shadow 0.15s",
       }}
-    />
-  );
-}
-
-/** Invisible hotspot over a button baked into the window art. */
-function BakedButton({ left, top, width, height, label, onClick }: {
-  left: number; top: number; width: number; height: number; label: string; onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      title={label}
-      style={{
-        position: "absolute", left, top, width, height,
-        background: "none", border: "none", cursor: "pointer",
-        transition: "filter 0.1s, box-shadow 0.12s",
-      }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = `inset 0 0 18px ${AMBER}55`; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.boxShadow = "none"; }}
     />
   );
 }

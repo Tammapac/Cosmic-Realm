@@ -64,6 +64,11 @@ export function SkillTreePanel() {
 
   const close = () => { state.showSkillTree = false; bump(); };
 
+  // HUD framed window (reference language) instead of the baked
+  // skills-frame.png art: title band, real tab buttons, node board with the
+  // same relative layout (positions renormalized from the art's chrome),
+  // footer with filters + respec. All skill logic unchanged.
+  const cyMap = (cy: number) => (cy - 18) * 1.28; // art % -> chrome-less board %
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
@@ -71,158 +76,131 @@ export function SkillTreePanel() {
       onClick={(e) => { if (e.target === e.currentTarget) close(); }}
     >
       <div
-        style={{
-          position: "relative",
-          width: "min(560px, 92vw, 88vh)",
-          aspectRatio: "742 / 793",
-          backgroundImage: "url(/assets/ui/skills-frame.png)",
-          backgroundSize: "100% 100%",
-          filter: "drop-shadow(0 10px 34px rgba(0,0,0,0.7))",
-          userSelect: "none",
-        }}
+        className="panel"
+        style={{ width: "min(560px, 92vw)", maxHeight: "88vh", display: "flex", flexDirection: "column", userSelect: "none" }}
         onContextMenu={(e) => e.preventDefault()}
       >
-        {/* skill points badge in the banner */}
-        <div
-          style={{
-            position: "absolute", right: "20%", top: "5.6%", height: "4.6%",
-            display: "flex", alignItems: "center",
-            color: "#3a2000", fontWeight: 800, fontSize: 13, letterSpacing: "0.08em",
-            textShadow: "0 1px 0 rgba(255,255,255,0.25)",
-          }}
-          title={`${player.skillPoints} unspent skill points\nEarn 1 per level`}
-        >
-          {player.skillPoints} SP
+        <div className="hud-titleband" style={{ fontSize: 13, letterSpacing: "0.3em", padding: "8px 12px" }}>
+          <span style={{ flex: 1 }}>Skills</span>
+          <span
+            className="tabular-nums"
+            style={{ color: "var(--hud-gold)", fontSize: 12, textShadow: "0 0 8px rgba(232,185,77,0.5)" }}
+            title={`${player.skillPoints} unspent skill points\nEarn 1 per level`}
+          >
+            {player.skillPoints} SP
+          </span>
+          <button className="gbtn gbtn-red" style={{ padding: "1px 8px", fontSize: 10, marginLeft: 8 }} onClick={close} title={"Close skill tree\nEsc also closes"}>✕</button>
         </div>
-
-        {/* close ⊘ */}
-        <button
-          className="avatar-btn"
-          onClick={close}
-          title={"Close skill tree\nEsc also closes"}
-          style={{ position: "absolute", left: "86.5%", top: "11.8%", width: "8%", height: "7%" }}
-        />
-
-        {/* baked tab labels → branch switch */}
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            className="avatar-btn"
-            onClick={() => setBranch(t.key)}
-            title={`${t.key.toUpperCase()} branch`}
-            style={{
-              position: "absolute", left: t.left, top: "14.0%", width: t.width, height: "5.2%",
-              boxShadow: branch === t.key ? `inset 0 -2px 0 ${BRANCH_COLOR[t.key]}, 0 0 10px ${BRANCH_COLOR[t.key]}44` : "none",
-              borderRadius: 2,
-            }}
-          />
-        ))}
-
-        {/* nine octagon nodes */}
-        {NODE_POS.map((pos, i) => {
-          const node = nodes[i];
-          if (!node) {
-            return (
-              <div
-                key={`empty-${i}`}
-                title="No skill in this slot"
-                style={{
-                  position: "absolute",
-                  left: `${pos.cx - NODE_W / 2}%`, top: `${pos.cy - NODE_H / 2}%`,
-                  width: `${NODE_W}%`, height: `${NODE_H}%`,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  color: "#3a3c46", fontSize: 22,
-                }}
-              >
-                ·
-              </div>
-            );
-          }
-          const rank = (player.skills as any)[node.id] ?? 0;
-          const gateOpen = !node.requires || ((player.skills as any)[node.requires] ?? 0) > 0;
-          const maxed = rank >= node.maxRank;
-          const canBuy = gateOpen && !maxed && player.skillPoints >= node.cost;
-          if (filter === "learned" && rank === 0) return null;
-          if (filter === "available" && (!canBuy || maxed)) return null;
-          const glow = maxed ? "#5cff8a" : canBuy ? color : gateOpen ? `${color}99` : "#3a3c46";
-          return (
-            <div
-              key={node.id}
-              title={skillTip(node, rank, gateOpen, player.skillPoints)}
-              onClick={() => { if (canBuy) buySkillRank(node.id); }}
+        <div style={{ display: "flex", gap: 6, padding: "8px 10px 0" }}>
+          {TABS.map((t) => (
+            <button
+              key={t.key}
+              className="gbtn"
+              onClick={() => setBranch(t.key)}
               style={{
-                position: "absolute",
-                left: `${pos.cx - NODE_W / 2}%`, top: `${pos.cy - NODE_H / 2}%`,
-                width: `${NODE_W}%`, height: `${NODE_H}%`,
-                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                gap: 1,
-                cursor: canBuy ? "pointer" : "default",
-                clipPath: "polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%)",
-                background: canBuy
-                  ? `radial-gradient(ellipse at center, ${color}26 0%, transparent 74%)`
-                  : "none",
-                animation: canBuy ? "pulse-glow 1.8s ease-in-out infinite" : "none",
-                opacity: gateOpen ? 1 : 0.45,
+                flex: 1,
+                color: branch === t.key ? BRANCH_COLOR[t.key] : undefined,
+                borderColor: branch === t.key ? BRANCH_COLOR[t.key] : undefined,
+                boxShadow: branch === t.key ? `0 0 10px ${BRANCH_COLOR[t.key]}44, inset 0 0 10px ${BRANCH_COLOR[t.key]}22` : undefined,
               }}
             >
-              <span style={{ fontSize: 26, lineHeight: 1, color: glow, textShadow: `0 0 10px ${glow}88` }}>
-                {node.icon}
-              </span>
-              <span
-                className="font-bold tabular-nums"
-                style={{ fontSize: 11, color: maxed ? "#5cff8a" : rank > 0 ? "#ffe9c4" : "#8f96a6", textShadow: "0 1px 2px #000" }}
+              {t.key.toUpperCase()}
+            </button>
+          ))}
+        </div>
+        <div style={{ position: "relative", width: "100%", aspectRatio: "742 / 620", minHeight: 0 }}>
+          {NODE_POS.map((pos, i) => {
+            const node = nodes[i];
+            if (!node) {
+              return (
+                <div
+                  key={`empty-${i}`}
+                  title="No skill in this slot"
+                  style={{
+                    position: "absolute",
+                    left: `${pos.cx - NODE_W / 2}%`, top: `${cyMap(pos.cy) - NODE_H / 2}%`,
+                    width: `${NODE_W}%`, height: `${NODE_H}%`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    color: "#2a3a54", fontSize: 22,
+                  }}
+                >
+                  ·
+                </div>
+              );
+            }
+            const rank = (player.skills as any)[node.id] ?? 0;
+            const gateOpen = !node.requires || ((player.skills as any)[node.requires] ?? 0) > 0;
+            const maxed = rank >= node.maxRank;
+            const canBuy = gateOpen && !maxed && player.skillPoints >= node.cost;
+            if (filter === "learned" && rank === 0) return null;
+            if (filter === "available" && (!canBuy || maxed)) return null;
+            const glow = maxed ? "#5cff8a" : canBuy ? color : gateOpen ? `${color}99` : "#3c5578";
+            return (
+              <div
+                key={node.id}
+                title={skillTip(node, rank, gateOpen, player.skillPoints)}
+                onClick={() => { if (canBuy) buySkillRank(node.id); }}
+                className="skill-node"
+                style={{
+                  position: "absolute",
+                  left: `${pos.cx - NODE_W / 2}%`, top: `${cyMap(pos.cy) - NODE_H / 2}%`,
+                  width: `${NODE_W}%`, height: `${NODE_H}%`,
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                  gap: 1,
+                  cursor: canBuy ? "pointer" : "default",
+                  clipPath: "polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%)",
+                  background: canBuy
+                    ? `radial-gradient(ellipse at center, ${color}26 0%, transparent 74%)`
+                    : "rgba(10, 18, 34, 0.6)",
+                  boxShadow: `inset 0 0 0 1px ${gateOpen ? "rgba(90,130,180,0.5)" : "rgba(60,90,130,0.3)"}`,
+                  animation: canBuy ? "pulse-glow 1.8s ease-in-out infinite" : "none",
+                  opacity: gateOpen ? 1 : 0.45,
+                }}
               >
-                {rank}/{node.maxRank}
-              </span>
-              {!gateOpen && <span style={{ fontSize: 9, color: "#8f96a6" }}>🔒</span>}
-            </div>
-          );
-        })}
-
-        {/* branch name + respec, floating over the bottom-center plate */}
-        <div
-          style={{
-            position: "absolute", left: "36%", width: "28%", top: "89.2%", height: "5%",
-            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-          }}
-        >
-          <div className="font-bold" style={{ fontSize: 11, letterSpacing: "0.2em", color, textShadow: `0 0 8px ${color}66, 0 1px 2px #000`, fontFamily: "var(--font-display)" }}>
+                <span style={{ fontSize: 26, lineHeight: 1, color: glow, textShadow: `0 0 10px ${glow}88` }}>
+                  {node.icon}
+                </span>
+                <span
+                  className="font-bold tabular-nums"
+                  style={{ fontSize: 11, color: maxed ? "#5cff8a" : rank > 0 ? "#dff6ff" : "#7a92b8", textShadow: "0 1px 2px #000" }}
+                >
+                  {rank}/{node.maxRank}
+                </span>
+                {!gateOpen && <span style={{ fontSize: 9, color: "#7a92b8" }}>🔒</span>}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 10px 10px" }}>
+          <button
+            className="gbtn"
+            onClick={() => setFilter(filter === "learned" ? "all" : "learned")}
+            title={"Show only learned skills\nClick again to show all"}
+            style={{ fontSize: 10, color: filter === "learned" ? "#5cff8a" : undefined, borderColor: filter === "learned" ? "#5cff8a" : undefined }}
+          >
+            LEARNED
+          </button>
+          <button
+            className="gbtn"
+            onClick={() => setFilter(filter === "available" ? "all" : "available")}
+            title={"Show only skills you can learn now\nClick again to show all"}
+            style={{ fontSize: 10, color: filter === "available" ? "var(--hud-gold)" : undefined, borderColor: filter === "available" ? "var(--hud-gold)" : undefined }}
+          >
+            AVAILABLE
+          </button>
+          <div style={{ flex: 1 }} />
+          <div className="font-bold" style={{ fontSize: 11, letterSpacing: "0.2em", color, textShadow: `0 0 8px ${color}66`, fontFamily: "var(--font-display)" }}>
             {branch.toUpperCase()}
           </div>
           <button
-            className="font-bold"
+            className="gbtn gbtn-red"
             title={"Refund all learned skills\nCosts 2,000 credits"}
             onClick={resetSkills}
-            style={{
-              background: "none", border: "none", cursor: "pointer",
-              fontSize: 9, letterSpacing: "0.14em", color: "#8f96a6", textShadow: "0 1px 2px #000",
-            }}
+            style={{ fontSize: 9 }}
           >
             RESPEC 2000 CR
           </button>
         </div>
-
-        {/* baked ACTIVE / PASSIVE plates → learned / affordable filters */}
-        <button
-          className="avatar-btn"
-          onClick={() => setFilter(filter === "learned" ? "all" : "learned")}
-          title={"Show only learned skills\nClick again to show all"}
-          style={{
-            position: "absolute", left: "12.5%", top: "88.6%", width: "22%", height: "5.8%",
-            boxShadow: filter === "learned" ? "0 0 14px rgba(92,255,138,0.5), inset 0 0 8px rgba(92,255,138,0.25)" : "none",
-            borderRadius: 4,
-          }}
-        />
-        <button
-          className="avatar-btn"
-          onClick={() => setFilter(filter === "available" ? "all" : "available")}
-          title={"Show only skills you can learn now\nClick again to show all"}
-          style={{
-            position: "absolute", left: "63.8%", top: "88.6%", width: "23%", height: "5.8%",
-            boxShadow: filter === "available" ? "0 0 14px rgba(247,168,50,0.55), inset 0 0 8px rgba(247,168,50,0.3)" : "none",
-            borderRadius: 4,
-          }}
-        />
       </div>
     </div>
   );
