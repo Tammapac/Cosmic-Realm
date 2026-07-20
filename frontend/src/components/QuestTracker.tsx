@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { CSSProperties } from "react";
+import { useDraggable } from "./useDraggable";
 import { useGame, state, bump } from "../game/store";
 import { ENEMY_DEFS, ZONES } from "../game/types";
 
@@ -78,6 +79,7 @@ export function QuestTracker() {
 
 function TrackerPanel({ quests }: { quests: any[] }) {
   const [hovered, setHovered] = useState<string | null>(null);
+  const drag = useDraggable("quest-tracker");
   const open = (id: string) => {
     state.journalQuestId = id;
     state.showJournal = true;
@@ -88,9 +90,9 @@ function TrackerPanel({ quests }: { quests: any[] }) {
   return (
     <div
       className="hud-plate absolute z-30 pointer-events-none"
-      style={{ top: 104, right: 8, width: 300, maxHeight: 380, display: "flex", flexDirection: "column" }}
+      style={{ top: 104, right: 8, width: 300, maxHeight: 380, display: "flex", flexDirection: "column", ...drag.style }}
     >
-      <div className="hud-titleband">Quests</div>
+      <div className="hud-titleband pointer-events-auto" onPointerDown={drag.handleProps.onPointerDown} style={drag.handleProps.style}>Quests</div>
       <div
         className="overflow-y-auto pointer-events-auto"
         style={{ padding: "6px 8px", minHeight: 0 }}
@@ -127,6 +129,7 @@ function JournalWindow() {
   const selected = activeQuests.find((q) => q.id === selId) ?? quests[0] ?? null;
 
   const close = () => { state.showJournal = false; state.journalQuestId = null; bump(); };
+  const drag = useDraggable("journal");
 
   // HUD framed window (reference language) instead of the baked journal.png
   // art. Two columns: quest list left (natural scrolling replaces the art's
@@ -137,8 +140,8 @@ function JournalWindow() {
       style={{ zIndex: 60, background: "rgba(0,0,0,0.55)", pointerEvents: "auto" }}
       onClick={(e) => { if (e.target === e.currentTarget) close(); }}
     >
-      <div className="panel" style={{ width: 880, height: 540, maxWidth: "96vw", maxHeight: "92vh", display: "flex", flexDirection: "column" }}>
-        <div className="hud-titleband" style={{ fontSize: 14, letterSpacing: "0.35em", padding: "8px 14px" }}>
+      <div className="panel" style={{ width: 880, height: 540, maxWidth: "96vw", maxHeight: "92vh", display: "flex", flexDirection: "column", ...drag.style }}>
+        <div className="hud-titleband" onPointerDown={drag.handleProps.onPointerDown} style={{ fontSize: 14, letterSpacing: "0.35em", padding: "8px 14px", ...drag.handleProps.style }}>
           <span style={{ flex: 1 }}>Journal</span>
           <button className="gbtn gbtn-red" style={{ padding: "2px 10px", fontSize: 11 }} onClick={close}>✕</button>
         </div>

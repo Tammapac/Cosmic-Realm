@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useDraggable } from "./useDraggable";
 import { useGame, state, bump, buySkillRank, resetSkills } from "../game/store";
 import { SKILL_NODES, type SkillBranch, type SkillNode } from "../game/types";
 
@@ -63,6 +64,7 @@ export function SkillTreePanel() {
     .sort((a, b) => a.pos.row - b.pos.row || a.pos.col - b.pos.col);
 
   const close = () => { state.showSkillTree = false; bump(); };
+  const drag = useDraggable("skilltree");
 
   // HUD framed window (reference language) instead of the baked
   // skills-frame.png art: title band, real tab buttons, node board with the
@@ -77,10 +79,10 @@ export function SkillTreePanel() {
     >
       <div
         className="panel"
-        style={{ width: "min(560px, 92vw)", maxHeight: "88vh", display: "flex", flexDirection: "column", userSelect: "none" }}
+        style={{ width: "min(560px, 92vw)", maxHeight: "88vh", display: "flex", flexDirection: "column", userSelect: "none", ...drag.style }}
         onContextMenu={(e) => e.preventDefault()}
       >
-        <div className="hud-titleband" style={{ fontSize: 13, letterSpacing: "0.3em", padding: "8px 12px" }}>
+        <div className="hud-titleband" onPointerDown={drag.handleProps.onPointerDown} style={{ fontSize: 13, letterSpacing: "0.3em", padding: "8px 12px", ...drag.handleProps.style }}>
           <span style={{ flex: 1 }}>Skills</span>
           <span
             className="tabular-nums"

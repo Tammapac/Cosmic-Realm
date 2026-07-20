@@ -1,26 +1,26 @@
 import { useGame, claimIdleReward, dismissIdleReward } from "../game/store";
+import { useDraggable } from "./useDraggable";
 
 export function IdleRewardModal() {
   const r = useGame((s) => s.pendingIdleReward);
+  const drag = useDraggable("idle-reward");
   if (!r) return null;
   const hours = Math.floor(r.secondsAway / 3600);
   const mins = Math.floor((r.secondsAway % 3600) / 60);
 
   return (
-    <div className="absolute z-[58] pointer-events-auto" style={{ right: 16, bottom: 96 }}>
+    <div className="absolute z-[58] pointer-events-auto" style={{ right: 16, bottom: 96, ...drag.style }}>
       <div
         className="panel panel-framed panel-gold"
         style={{
           width: 240,
           padding: "10px 12px",
-          borderColor: "#ffd24a88",
-          boxShadow: "0 0 18px #ffd24a33, inset 0 0 12px rgba(0,0,0,0.4)",
         }}
       >
         <div className="scanline" />
 
-        {/* Header */}
-        <div className="flex items-center justify-between mb-1.5">
+        {/* Header — drag handle */}
+        <div className="flex items-center justify-between mb-1.5" onPointerDown={drag.handleProps.onPointerDown} style={drag.handleProps.style}>
           <div
             className="font-bold tracking-widest"
             style={{ color: "var(--accent-amber)", fontSize: 10, letterSpacing: "0.2em" }}

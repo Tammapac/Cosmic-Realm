@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useDraggable } from "./useDraggable";
 import { state, bump, useGame, pushChat, pushNotification, save } from "../game/store";
 import { serverPlayerId } from "../game/loop";
 import { FAKE_CLANS } from "../game/types";
@@ -6,6 +7,7 @@ import { TopPanel } from "./TopPanel";
 
 export function SocialPanel() {
   const [collapsed, setCollapsed] = useState(false);
+  const drag = useDraggable("social");
   const others = useGame((s) => s.others);
   const player = useGame((s) => s.player);
 
@@ -21,12 +23,14 @@ export function SocialPanel() {
         zIndex: 55,
         transition: "width 0.15s, height 0.15s",
         overflow: "hidden",
+        ...drag.style,
       }}
     >
-      {/* Header */}
+      {/* Header — drag handle */}
       <div
         className="flex items-center justify-between px-2 py-1.5"
-        style={{ borderBottom: "1px solid var(--border-soft)" }}
+        onPointerDown={drag.handleProps.onPointerDown}
+        style={{ borderBottom: "1px solid var(--border-soft)", ...drag.handleProps.style }}
       >
         {!collapsed && (
           <div

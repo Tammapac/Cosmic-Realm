@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useDraggable } from "./useDraggable";
 import { getVolume, getMuted, setVolume, setMuted } from "../game/sound";
 import { state, bump, pushNotification } from "../game/store";
 
@@ -32,6 +33,7 @@ export default function SettingsMenu({ onClose }: { onClose: () => void }) {
     return localStorage.getItem("sf-particles") || "high";
   });
   const [tab, setTab] = useState<"sound" | "graphics" | "controls">("sound");
+  const drag = useDraggable("settings");
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -89,8 +91,8 @@ export default function SettingsMenu({ onClose }: { onClose: () => void }) {
       }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="panel" style={{ width: 620, maxWidth: "94vw", maxHeight: "88vh", display: "flex", flexDirection: "column" }}>
-        <div className="hud-titleband" style={{ fontSize: 13, letterSpacing: "0.32em", padding: "8px 12px" }}>
+      <div className="panel" style={{ width: 620, maxWidth: "94vw", maxHeight: "88vh", display: "flex", flexDirection: "column", ...drag.style }}>
+        <div className="hud-titleband" onPointerDown={drag.handleProps.onPointerDown} style={{ fontSize: 13, letterSpacing: "0.32em", padding: "8px 12px", ...drag.handleProps.style }}>
           <span style={{ flex: 1 }}>Options</span>
           <button className="gbtn gbtn-red" style={{ padding: "1px 8px", fontSize: 10 }} onClick={onClose} title="Close (ESC)">✕</button>
         </div>

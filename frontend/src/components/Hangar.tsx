@@ -6,6 +6,7 @@ import {
   SkillId, ZONES, getDailyFeaturedDungeon, REFINE_RECIPES, FACTORY_SPEED_BONUS, FACTORY_UPGRADE_COSTS,
 } from "../game/types";
 import type { HangarTab } from "../game/store";
+import { useDraggable } from "./useDraggable";
 import { effectiveStats } from "../game/loop";
 import { isRolledItem, lootItemColor, lootItemName, lootSellPrice, lootTipText } from "../game/loot-ui";
 import { affixLine, resolveAffixStats } from "../../../lib/loot/loot";
@@ -118,6 +119,7 @@ const FACTORY_TABS: { id: HangarTab; label: string; glyph: string }[] = [
 
 export function Hangar({ stationId }: { stationId: string }) {
   const tab = useGame((s) => s.hangarTab);
+  const drag = useDraggable("hangar");
   const station = STATIONS.find((s) => s.id === stationId);
   if (!station) return null;
 
@@ -131,13 +133,12 @@ export function Hangar({ stationId }: { stationId: string }) {
         style={{
           width: "min(1280px, 96vw)",
           height: "min(820px, 94vh)",
-          boxShadow: "0 0 60px rgba(247,168,50,0.10), 0 0 120px rgba(0,0,0,0.9), inset 0 0 40px rgba(0,0,0,0.5)",
-          border: "1px solid rgba(247,168,50,0.22)",
+          ...drag.style,
         }}
       >
         <div className="scanline" />
-        {/* Header */}
-        <div className="sw-window-header">
+        {/* Header — drag handle */}
+        <div className="sw-window-header" onPointerDown={drag.handleProps.onPointerDown} style={drag.handleProps.style}>
           <div className="min-w-0 flex items-center gap-4">
             {/* Station icon */}
             <div style={{

@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useDraggable } from "./useDraggable";
 import { useGame, state, bump, equipModule, unequipInstance, sellInventoryItem } from "../game/store";
 import { MODULE_DEFS, type ModuleItem } from "../game/types";
 import { isRolledItem, lootItemColor, lootTipText } from "../game/loot-ui";
@@ -24,6 +25,7 @@ export function InventoryPanel() {
   const tick = useGame((s) => s.tick);
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<"all" | "weapon" | "generator" | "module">("all");
+  const drag = useDraggable("inventory");
 
   const items = useMemo(() => {
     const list = [...player.inventory].filter((it) => MODULE_DEFS[it.defId]);
@@ -130,9 +132,9 @@ export function InventoryPanel() {
   };
 
   return (
-    <div className="fixed z-50" style={{ top: 64, right: 14, width: 400, pointerEvents: "auto" }}>
+    <div className="fixed z-50" style={{ top: 64, right: 14, width: 400, pointerEvents: "auto", ...drag.style }}>
       <div className="hud-plate" style={{ display: "flex", flexDirection: "column", maxHeight: "72vh" }} onContextMenu={(e) => e.preventDefault()}>
-        <div className="hud-titleband" style={{ letterSpacing: "0.3em" }}>
+        <div className="hud-titleband" onPointerDown={drag.handleProps.onPointerDown} style={{ letterSpacing: "0.3em", ...drag.handleProps.style }}>
           <span style={{ flex: 1 }}>Inventory · {items.length}</span>
           <button className="gbtn gbtn-red" style={{ padding: "1px 8px", fontSize: 10 }} onClick={close} title={"Close inventory (I)"}>✕</button>
         </div>

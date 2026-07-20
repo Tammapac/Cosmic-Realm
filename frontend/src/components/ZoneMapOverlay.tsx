@@ -1,4 +1,5 @@
 import { useGame, useGameSlow, state, bump } from "../game/store";
+import { useDraggable } from "./useDraggable";
 import { GameButton } from "./GameButton";
 import { DUNGEONS, MAP_RADIUS, STATIONS, PORTALS, ZONES, RESOURCES, ASTEROID_BELTS } from "../game/types";
 
@@ -11,6 +12,7 @@ import { DUNGEONS, MAP_RADIUS, STATIONS, PORTALS, ZONES, RESOURCES, ASTEROID_BEL
  * component was replaced by the new HUD's Minimap.
  */
 export function ZoneMapOverlay() {
+  const drag = useDraggable("zonemap");
   const player = useGame((s) => s.player);
   const showFull = useGame((s) => s.showFullZoneMap);
   const others = useGameSlow((s) => s.others);
@@ -54,12 +56,13 @@ export function ZoneMapOverlay() {
         className="panel panel-framed"
         style={{
           padding: 10,
-          boxShadow: "0 0 30px rgba(78,226,255,0.12), inset 0 0 20px rgba(0,0,0,0.5)",
+          ...drag.style,
         }}
       >
         <div
           className="flex items-center justify-between mb-2"
-          style={{ borderBottom: "1px solid rgba(78,226,255,0.08)", paddingBottom: 6 }}
+          onPointerDown={drag.handleProps.onPointerDown}
+          style={{ borderBottom: "1px solid rgba(78,226,255,0.08)", paddingBottom: 6, ...drag.handleProps.style }}
         >
           <div
             className="font-bold tracking-widest glow-cyan"

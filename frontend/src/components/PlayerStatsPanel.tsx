@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useDraggable } from "./useDraggable";
 import { state, bump, useGame, ATTRIBUTES, attrValue, attrSpent, attrBudget, buyAttribute } from "../game/store";
 import { effectiveStats } from "../game/loop";
 import { getLeaderboard } from "../net/api";
@@ -72,6 +73,7 @@ export function PlayerStatsPanel() {
   if (!show) return null;
 
   const close = () => { state.showPlayerStats = false; bump(); };
+  const drag = useDraggable("playerstats");
   const rank = rankFor(player.honor);
   const cls = SHIP_CLASSES[player.shipClass];
   const stats = effectiveStats();
@@ -85,21 +87,14 @@ export function PlayerStatsPanel() {
     >
       <div
         className="panel panel-framed panel-gold relative"
-        style={{ width: "min(680px, 94vw)", maxHeight: "88vh", display: "flex", flexDirection: "column" }}
+        style={{ width: "min(680px, 94vw)", maxHeight: "88vh", display: "flex", flexDirection: "column", ...drag.style }}
       >
-        {/* glass-band title */}
-        <div
-          style={{
-            position: "absolute", top: -37, left: "18%", right: "18%", height: 30,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            color: "#3a2000", fontWeight: 800, fontSize: 14, letterSpacing: "0.32em",
-            fontFamily: "var(--font-display)", textShadow: "0 1px 0 rgba(255,255,255,0.25)",
-            userSelect: "none", pointerEvents: "none",
-          }}
-        >
-          PILOT DOSSIER
+        {/* title band — drag handle (the old glass band floated at -37px
+            above the fat gold frame; the slim ring frame carries it inline) */}
+        <div className="hud-titleband" onPointerDown={drag.handleProps.onPointerDown} style={{ margin: "-6px -6px 8px", letterSpacing: "0.32em", ...drag.handleProps.style }}>
+          <span style={{ flex: 1 }}>Pilot Dossier</span>
+          <button className="gbtn gbtn-red" style={{ padding: "1px 8px", fontSize: 10 }} onClick={close}>✕</button>
         </div>
-        <button className="gbtn gbtn-red" style={{ position: "absolute", top: -38, right: -16, padding: "3px 10px", fontSize: 11 }} onClick={close}>✕</button>
 
         {/* identity strip */}
         <div className="flex items-center gap-3 mb-3 min-w-0">
