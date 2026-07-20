@@ -115,7 +115,7 @@ let effectManager: EffectManager | null = null;
 let lastRenderTime = 0;
 let prevEnemyIds = new Set<string>();
 let prevEnemyData = new Map<string, { x: number; y: number; size: number; type: string; isBoss?: boolean }>();
-let prevProjectileData = new Map<string, { x: number; y: number; color: number; weaponKind: string; angle: number; fromPlayer: boolean; size?: number; aoeRadius?: number }>();
+let prevProjectileData = new Map<string, { x: number; y: number; color: number; weaponKind: string; angle: number; fromPlayer: boolean; size?: number; aoeRadius?: number; ttl?: number }>();
 let prevAsteroidIds = new Set<string>();
 let prevAsteroidData = new Map<string, { x: number; y: number; size: number }>();
 let prevPlayerHull = -1;
@@ -2858,7 +2858,14 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
           // played here — onEnemyHit (loop.ts, sfx.enemyHit()) already
           // fires it from the server-confirmed hit event; playing it again
           // here would double it up.
-          if (laserSystem && laserSystem.has(id) && explosionSystem) {
+          // Natural expiry (ttl ran out — max range, or overkill-culled
+          // after the target died): the bolt just fizzles, no impact
+          // visuals. Collision removals always happen with ttl still well
+          // above zero, so a small threshold separates the two cleanly.
+          const expired = prev.ttl != null && prev.ttl <= 0.1;
+          if (expired) {
+            if (laserSystem) laserSystem.kill(id);
+          } else if (laserSystem && laserSystem.has(id) && explosionSystem) {
             // The visual dies exactly at the last authoritative position
             // (the server-corrected impact point) — no overshoot.
             laserSystem.kill(id);
@@ -2889,6 +2896,7 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
         fromPlayer: pr.fromPlayer,
         size: pr.size,
         aoeRadius: pr.aoeRadius,
+        ttl: pr.ttl,
         preset: isLaserFamily ? laserPresetFor(pr.fromPlayer, pr.weaponKind, pr.size, pr.damage) : undefined,
       } as any);
     }

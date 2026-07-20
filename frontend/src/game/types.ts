@@ -650,6 +650,10 @@ export type Projectile = {
   armorPiercing?: boolean;  // AP ammo marker
   weaponKind?: WeaponKind;
   renderOnly?: boolean;
+  // The enemy this shot was fired at (captured at fire time). Purely for
+  // overkill culling: when the target dies, in-flight shots get their ttl
+  // capped to a short grace window instead of flying on for seconds.
+  targetId?: string;
   // For remote (renderOnly) laser projectiles: id of the enemy the remote
   // shooter is aiming at. The projectile-tick redirects velocity toward this
   // enemy for the first ~0.3s of flight so remote lasers converge from the

@@ -682,7 +682,7 @@ function emitDeath(_x: number, _y: number, _color: string, _big = false, _enemyS
 function fireProjectile(
   from: "player" | "enemy" | "drone",
   x: number, y: number, angle: number, damage: number, color: string, size = 3,
-  opts?: { crit?: boolean; aoeRadius?: number; speedMul?: number; homing?: boolean; empStun?: number; armorPiercing?: boolean; weaponKind?: WeaponKind; renderOnly?: boolean; ttl?: number },
+  opts?: { crit?: boolean; aoeRadius?: number; speedMul?: number; homing?: boolean; empStun?: number; armorPiercing?: boolean; weaponKind?: WeaponKind; renderOnly?: boolean; ttl?: number; targetId?: string },
 ): void {
   const speedBase = from === "player" ? 230 : from === "drone" ? 600 : 300;
   let speed = speedBase * (opts?.speedMul ?? 1);
@@ -707,6 +707,7 @@ function fireProjectile(
     armorPiercing: opts?.armorPiercing,
     weaponKind: opts?.weaponKind,
     renderOnly: opts?.renderOnly,
+    targetId: opts?.targetId,
   });
   // Projectile visuals are driven by the Pixi renderer's own RAF loop, so we
   // only need to schedule a React re-render (for e.g. ammo counters) — no
@@ -952,6 +953,15 @@ export function stopLoop(): void {
 }
 
 const playerFireCd = { value: 0 };
+// Overkill culling: grace window (s) a shot keeps flying after its target
+// died. A target only counts as "died" when it was alive last tick and is
+// gone now — an id that was never seen locally (PvP target of a remote
+// shot, unsynced enemy) must NOT cull, so shots at unknown ids fly their
+// normal lifetime. All sets/maps are reused, no per-tick allocation.
+const OVERKILL_GRACE = 0.35;
+const _liveEnemyIds = new Set<string>();
+const _prevTickEnemyIds = new Set<string>();
+const _recentlyDeadEnemies = new Map<string, number>(); // id -> state.tick at death
 
 // Debug-only spawn buffer for the __DEBUG_MUZZLE_MARKERS overlay. Each entry
 // stays visible for a fixed TTL so the overlay can render a persistent dot at
@@ -1815,7 +1825,7 @@ function tickWorld(dt: number): void {
           const { x: ox, y: oy } = muzzlePos(0, fb.x, fb.y);
           const shotAng = aimFromMuzzle(ox, oy);
           fireProjectile("player", ox, oy, shotAng, dmg, laserColor, 6, {
-            weaponKind: "laser", speedMul: 3.2,
+            weaponKind: "laser", speedMul: 3.2, targetId: atkTarget.id,
           });
           recordDebugSpawn({ spawnX: ox, spawnY: oy, entityId: "player", ring: "muzzle", index: 0, source: "local" });
           state.particles.push({ id: `mf-${Math.random().toString(36).slice(2, 8)}`, pos: { x: ox, y: oy }, vel: { x: 0, y: 0 }, ttl: 0.25, maxTtl: 0.25, color: "#ffffff", size: 90, kind: "flash" });
@@ -1834,7 +1844,7 @@ function tickWorld(dt: number): void {
             const { x: ox, y: oy } = muzzlePos(si, fbX, fbY);
             const spreadAng = aimFromMuzzle(ox, oy) + (si - 1) * spread;
             fireProjectile("player", ox, oy, spreadAng, perPellet, laserColor, 4, {
-              weaponKind: "laser", speedMul: 1.8,
+              weaponKind: "laser", speedMul: 1.8, targetId: atkTarget.id,
             });
             recordDebugSpawn({ spawnX: ox, spawnY: oy, entityId: "player", ring: "muzzle", index: si, source: "local" });
           }
@@ -1853,7 +1863,7 @@ function tickWorld(dt: number): void {
             const { x: ox, y: oy } = muzzlePos(bi, fbX, fbY);
             const burstAng = aimFromMuzzle(ox, oy) + (Math.random() - 0.5) * 0.04;
             fireProjectile("player", ox, oy, burstAng, perBurst, laserColor, 4, {
-              weaponKind: "laser", speedMul: 2.5,
+              weaponKind: "laser", speedMul: 2.5, targetId: atkTarget.id,
             });
             recordDebugSpawn({ spawnX: ox, spawnY: oy, entityId: "player", ring: "muzzle", index: bi, source: "local" });
             state.particles.push({ id: `mf-${Math.random().toString(36).slice(2, 8)}`, pos: { x: ox, y: oy }, vel: { x: 0, y: 0 }, ttl: 0.12, maxTtl: 0.12, color: laserColor, size: 55, kind: "flash" });
@@ -1876,7 +1886,7 @@ function tickWorld(dt: number): void {
             const { x: ox, y: oy } = muzzlePos(hpBase + si, fbX, fbY);
             const shotAng = aimFromMuzzle(ox, oy) - side * 0.03;
             fireProjectile("player", ox, oy, shotAng, perShot, laserColor, 4, {
-              weaponKind: "laser", speedMul: 2.14,
+              weaponKind: "laser", speedMul: 2.14, targetId: atkTarget.id,
             });
             recordDebugSpawn({ spawnX: ox, spawnY: oy, entityId: "player", ring: "muzzle", index: hpBase + si, source: "local" });
             state.particles.push({ id: `mf-${Math.random().toString(36).slice(2, 8)}`, pos: { x: ox, y: oy }, vel: { x: 0, y: 0 }, ttl: 0.18, maxTtl: 0.18, color: laserColor, size: 70, kind: "flash" });
@@ -1923,6 +1933,7 @@ function tickWorld(dt: number): void {
             weaponKind: "rocket",
             homing: true,
             speedMul: 1.18,
+            targetId: atkTarget.id,
           });
         }
         // Muzzle flash + smoke burst at ship (radial, not directional)
@@ -2039,7 +2050,7 @@ function tickWorld(dt: number): void {
         const fireRange = d.mode === "defensive" ? 200 : 380;
         if (distance(dpos.x, dpos.y, nearest.pos.x, nearest.pos.y) < fireRange) {
           const dang = Math.atan2(nearest.pos.y - dpos.y, nearest.pos.x - dpos.x);
-          fireProjectile("drone", dpos.x, dpos.y, dang, def.damageBonus, def.color, 2);
+          fireProjectile("drone", dpos.x, dpos.y, dang, def.damageBonus, def.color, 2, { targetId: nearest.id });
           d.fireCd = 1 / def.fireRate;
         }
       }
@@ -2050,7 +2061,40 @@ function tickWorld(dt: number): void {
   updateRemoteDroneFormations(dt);
 
   // ── Projectiles update + collisions
+  // Overkill culling bookkeeping: detect enemy deaths by diffing last
+  // tick's live ids, remember them briefly (longest projectile ttl is 4s),
+  // and prune old entries.
+  _liveEnemyIds.clear();
+  for (const e of state.enemies) _liveEnemyIds.add(e.id);
+  for (const id of _prevTickEnemyIds) {
+    if (!_liveEnemyIds.has(id)) _recentlyDeadEnemies.set(id, state.tick);
+  }
+  _prevTickEnemyIds.clear();
+  for (const id of _liveEnemyIds) _prevTickEnemyIds.add(id);
+  if (_recentlyDeadEnemies.size > 0) {
+    for (const [id, t] of _recentlyDeadEnemies) {
+      if (state.tick - t > 6) _recentlyDeadEnemies.delete(id);
+    }
+  }
   state.projectiles = state.projectiles.filter((pr) => {
+    // Overkill culling: once this shot's target has died, cap the remaining
+    // lifetime to a short grace window instead of the full ttl — the shot
+    // flies on a beat (and can still clip anything crossing its path in
+    // that window), then fizzles, so a kill doesn't leave volleys of
+    // projectiles streaming into empty space. Enemy deaths are synced, so
+    // every client culls the same shots; trajectories are never changed.
+    if (pr.ttl > OVERKILL_GRACE) {
+      let targetGone = false;
+      if (pr.fromPlayer) {
+        const tid = pr.targetId ?? pr.remoteTargetId;
+        if (tid) targetGone = _recentlyDeadEnemies.has(tid);
+        else if (pr.homing && !pr.renderOnly) targetGone = state.enemies.length === 0;
+      } else {
+        // Alien shots only ever chase the local player.
+        targetGone = state.playerRespawnTimer > 0;
+      }
+      if (targetGone) pr.ttl = OVERKILL_GRACE;
+    }
     // Redirect fresh player laser projectiles toward the on-screen attack target
     // so the visual matches the enemy sprite position (not the server-side position).
     if (pr.fromPlayer && !pr.renderOnly && !pr.homing && pr.ttl > 1.2 && state.attackTargetId) {
