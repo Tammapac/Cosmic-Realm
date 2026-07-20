@@ -31,33 +31,33 @@
       reference): the element's own background is a crisp accent RING, the
       panel fill sits on an inset ::before with its own smaller clip-path,
       scanlines on ::after, backdrop blur. isolation keeps z:-1 inside. ── */
-/* Panel = navy metal fill + a real cyan border drawn DIRECTLY on the
-   element (not a z-index:-1 pseudo layer), so no inline background,
-   overflow:hidden, or stacking context can ever swallow it. The material
-   texture (brushed grain + scanline) is baked into the `background`
-   itself; the beveled corners come from clip-path. This is deliberately
-   more robust than the earlier ring-via-::before construction. */
+/* Panel = the SAME kit material as the minimap/chat/hotbar panels: a
+   9-slice cyan-metal frame with a bright light-vein (hud-window-frame.png,
+   sliced procedurally from the chat_panel look) as border-image, over a
+   dark navy interior. This is the actual reference art, not a CSS
+   approximation. `fill` paints the dark center too, so the frame reads
+   identically at any window size. !important beats component inline
+   styles that used to swallow the frame. */
 .panel,
 .hud-plate {
   position: relative;
   font-family: var(--font-display) !important;
   background:
-    repeating-linear-gradient(90deg, rgba(140, 190, 220, 0.04) 0px, rgba(140, 190, 220, 0.04) 1px, transparent 1px, transparent 3px),
-    repeating-linear-gradient(0deg, rgba(160, 220, 255, 0.03) 0px, transparent 1px, transparent 3px),
-    linear-gradient(180deg, rgba(16, 26, 46, 0.96) 0%, rgba(9, 15, 28, 0.96) 55%, rgba(6, 11, 22, 0.97) 100%) !important;
-  border: 2px solid rgba(78, 226, 255, 0.75) !important;
+    linear-gradient(180deg, rgba(11, 19, 35, 0.97) 0%, rgba(7, 12, 24, 0.98) 100%) !important;
+  /* border-image draws the kit frame in the border box; the border is
+     thin (5px) so content keeps its space, and border-image-outset pushes
+     the ART outward past the border so the beveled corners + light-vein
+     render at full size without eating layout. */
+  border-style: solid !important;
+  border-width: 5px !important;
+  border-image: url("/assets/ui/hud-window-frame.png?v=1") 48 fill stretch !important;
+  border-image-outset: 6px !important;
   border-radius: 0 !important;
-  clip-path: polygon(
-    10px 0, 100% 0, 100% calc(100% - 10px),
-    calc(100% - 10px) 100%, 0 100%, 0 10px
-  );
+  clip-path: none !important;
   backdrop-filter: blur(3px);
   box-shadow:
-    inset 0 1px 0 rgba(160, 210, 255, 0.22),
-    inset 0 -2px 6px rgba(0, 0, 0, 0.5),
-    inset 0 0 30px rgba(0, 0, 0, 0.35),
     0 6px 26px rgba(0, 0, 0, 0.6),
-    0 0 20px rgba(78, 226, 255, 0.22) !important;
+    0 0 22px rgba(78, 226, 255, 0.18) !important;
 }
 
 /* Title band matching HudPanel: cyan tick + tracked uppercase title.
@@ -87,27 +87,22 @@
 /* ── 3. Framed windows (hangar, station, journals, big modals) — same ring
       construction, bigger cuts, wider inner inset. Border widths stay so
       inner layouts keep their position. ── */
-/* Framed windows (hangar, station, big modals): same material + real
-   border, just a slightly larger corner cut. The old 12px transparent
-   border rim is gone (it only existed for the atlas border-image art). */
+/* Framed windows (hangar, station, big modals) use the identical kit
+   frame — .panel already supplies the border-image; just drop the legacy
+   atlas border-image and keep the .panel border-width. */
 .panel-framed {
-  border-width: 0 !important;
-  border: 2px solid rgba(78, 226, 255, 0.75) !important;
-  clip-path: polygon(
-    14px 0, calc(100% - 14px) 0, 100% 14px,
-    100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%,
-    0 calc(100% - 14px), 0 14px
-  );
+  border-image: url("/assets/ui/hud-window-frame.png?v=1") 48 fill stretch !important;
+  border-width: 6px !important;
+  border-image-outset: 8px !important;
+  clip-path: none !important;
 }
-/* Gold-accent variant (featured windows: hangar, dossier, loot). */
+/* Gold-accent variant (featured windows: hangar, dossier, loot) — same
+   frame recolored gold. */
 .panel-gold {
-  border-color: rgba(232, 185, 77, 0.6) !important;
+  border-image: url("/assets/ui/hud-window-frame-gold.png?v=1") 48 fill stretch !important;
   box-shadow:
-    inset 0 1px 0 rgba(255, 226, 170, 0.2),
-    inset 0 -2px 6px rgba(0, 0, 0, 0.5),
-    inset 0 0 30px rgba(0, 0, 0, 0.35),
     0 6px 26px rgba(0, 0, 0, 0.6),
-    0 0 16px rgba(232, 185, 77, 0.16) !important;
+    0 0 20px rgba(232, 185, 77, 0.18) !important;
 }
 
 /* ── 4. Window header strip ─────────────────────────────────────────────── */
@@ -158,74 +153,53 @@
   border-right-color: rgba(78, 226, 255, 0.8);
 }
 
-/* ── 6. Buttons ─────────────────────────────────────────────────────────── */
+/* ── 6. Buttons — hotkey-slot look: the actual slot_cyan.png kit frame as
+   border-image, dark interior, cyan text inside. "Buttons wie die hotkey,
+   nur mit Schrift drin." ─────────────────────────────────────────────── */
 .gbtn {
-  background: linear-gradient(180deg, #14213a 0%, #0b1322 100%);
-  border: 1px solid rgba(90, 130, 180, 0.45);
-  color: #9fe0ff;
-  text-shadow: 0 0 6px rgba(78, 226, 255, 0.3);
-  clip-path: polygon(
-    var(--hud-cut-sm) 0, 100% 0, 100% calc(100% - var(--hud-cut-sm)),
-    calc(100% - var(--hud-cut-sm)) 100%, 0 100%, 0 var(--hud-cut-sm)
-  );
-  box-shadow:
-    inset 0 0 0 1px rgba(78, 226, 255, 0.08),
-    inset 0 1px 0 var(--hud-metal-hi),
-    0 1px 3px rgba(0, 0, 0, 0.5);
+  background: linear-gradient(180deg, #0d1728 0%, #070d18 100%) !important;
+  border-style: solid !important;
+  border-width: 6px !important;
+  border-image: url("/assets/ui/kit/slot_cyan.png?v=1") 14 fill stretch !important;
+  border-radius: 0 !important;
+  clip-path: none !important;
+  color: #bfeaff !important;
+  text-shadow: 0 0 6px rgba(78, 226, 255, 0.4), 0 1px 2px #000;
+  box-shadow: none !important;
+  transition: filter 0.1s, box-shadow 0.12s;
 }
-.gbtn::before {
-  border-top-color: rgba(78, 226, 255, 0.7);
-  border-left-color: rgba(78, 226, 255, 0.7);
-}
-.gbtn::after {
-  border-bottom-color: rgba(78, 226, 255, 0.7);
-  border-right-color: rgba(78, 226, 255, 0.7);
-}
+.gbtn::before, .gbtn::after { display: none !important; }
 .gbtn:hover:not(:disabled) {
-  color: #dff6ff;
-  border-color: rgba(78, 226, 255, 0.65);
-  box-shadow:
-    inset 0 0 0 1px rgba(78, 226, 255, 0.2),
-    inset 0 0 14px rgba(78, 226, 255, 0.1),
-    0 0 10px rgba(78, 226, 255, 0.3);
+  color: #ffffff !important;
+  filter: brightness(1.25);
+  box-shadow: 0 0 12px rgba(78, 226, 255, 0.4) !important;
+}
+.gbtn:active:not(:disabled) {
+  filter: brightness(0.85);
+  transform: translateY(1px);
 }
 .gbtn:disabled {
-  color: #4a5d80;
-  border-color: rgba(60, 90, 130, 0.3);
-}
-.gbtn:disabled::before,
-.gbtn:disabled::after {
-  border-color: rgba(60, 90, 130, 0.35);
+  color: #52657f !important;
+  filter: grayscale(0.5) brightness(0.7);
 }
 .gbtn-gold {
-  color: #ffe2a8;
-  background: linear-gradient(180deg, #2c2410 0%, #171208 100%);
-  border-color: rgba(232, 185, 77, 0.6);
-  text-shadow: 0 0 6px rgba(232, 185, 77, 0.35);
-}
-.gbtn-gold::before,
-.gbtn-gold::after {
-  border-color: rgba(232, 185, 77, 0.75);
+  border-image: url("/assets/ui/kit/slot_gold.png?v=1") 14 fill stretch !important;
+  background: linear-gradient(180deg, #231a08 0%, #120c04 100%) !important;
+  color: #ffe6a8 !important;
+  text-shadow: 0 0 6px rgba(232, 185, 77, 0.45), 0 1px 2px #000;
 }
 .gbtn-gold:hover:not(:disabled) {
-  color: #fff0cc;
-  border-color: rgba(232, 185, 77, 0.7);
-  box-shadow:
-    inset 0 0 0 1px rgba(232, 185, 77, 0.2),
-    inset 0 0 14px rgba(232, 185, 77, 0.08),
-    0 0 10px rgba(232, 185, 77, 0.25);
+  color: #fff4d4 !important;
+  box-shadow: 0 0 12px rgba(232, 185, 77, 0.4) !important;
 }
 .gbtn-red {
-  color: #ff9aa4;
-  text-shadow: 0 0 6px rgba(255, 77, 94, 0.35);
-}
-.gbtn-red::before,
-.gbtn-red::after {
-  border-color: rgba(255, 77, 94, 0.7);
+  border-image: url("/assets/ui/kit/slot_red.png?v=1") 14 fill stretch !important;
+  background: linear-gradient(180deg, #26090d 0%, #140406 100%) !important;
+  color: #ffb0b8 !important;
+  text-shadow: 0 0 6px rgba(255, 77, 94, 0.45), 0 1px 2px #000;
 }
 .gbtn-red:hover:not(:disabled) {
-  color: #ffc4ca;
-  border-color: rgba(255, 77, 94, 0.6);
+  color: #ffd0d6 !important;
   box-shadow:
     inset 0 0 0 1px rgba(255, 77, 94, 0.16),
     inset 0 0 14px rgba(255, 77, 94, 0.07),
