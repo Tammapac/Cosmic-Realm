@@ -119,10 +119,11 @@ let effectManager: EffectManager | null = null;
 let lastRenderTime = 0;
 let prevEnemyIds = new Set<string>();
 let prevEnemyData = new Map<string, { x: number; y: number; size: number; type: string; isBoss?: boolean }>();
-let prevProjectileData = new Map<string, { x: number; y: number; color: number; weaponKind: string; angle: number; fromPlayer: boolean }>();
+let prevProjectileData = new Map<string, { x: number; y: number; color: number; weaponKind: string; angle: number; fromPlayer: boolean; size?: number; aoeRadius?: number }>();
 let prevAsteroidIds = new Set<string>();
 let prevAsteroidData = new Map<string, { x: number; y: number; size: number }>();
 let prevPlayerHull = -1;
+let prevPlayerRespawnTimer = 0;
 let projectileGlowGraphics: PIXI.Graphics | null = null;
 let projectileBehindGlowGraphics: PIXI.Graphics | null = null;
 
@@ -2010,6 +2011,27 @@ export function pixiRender(): void {
       effectManager.spawnDebrisBurst(p.pos.x, p.pos.y, 4, [0x556677, 0x778899, 0x667788, 0x445566]);
     }
     prevPlayerHull = currentHull;
+
+    // Player death explosion — I0Il0.prototype.killed (starblast.io live
+    // client, fetched 2026-07-20): Explosions.explode(x, y, null,
+    // max(5, ship.radius)), sound, shakeCamera(x, y, 20). loop.ts's
+    // damagePlayer() sets playerRespawnTimer=0.5 synchronously on the same
+    // hull-drop that kills the player, so the ordinary hit branch above
+    // (gated on playerRespawnTimer<=0) never fires for the death blow —
+    // this is the dedicated death call site, detected by the respawn
+    // timer's 0->active edge. ship.radius has no Cosmic Realm equivalent;
+    // shipHullRadius(shipClass, sizeScale) is the same silhouette-radius
+    // helper already used for the player's own on-screen hit ring (below,
+    // ~line 3529), so it is the closest true analogue. Sound + shake for
+    // player death are already triggered by damagePlayer() (loop.ts:
+    // sfx.explosion(true) / state.cameraShake=1) — not duplicated here,
+    // this block only owns the visual explosion.
+    if (state.playerRespawnTimer > 0 && prevPlayerRespawnTimer <= 0 && starblastExplosions) {
+      const p = state.player;
+      const radius = shipHullRadius(p.shipClass, SHIP_SIZE_SCALE[p.shipClass] ?? 1);
+      starblastExplosions.explode(p.pos.x, p.pos.y, null, Math.max(5, radius), 0, app!.screen.height, state.cameraZoom);
+    }
+    prevPlayerRespawnTimer = state.playerRespawnTimer;
   }
 
   // ── Starblast VFX systems tick ──────────────────────────────────────
@@ -3084,8 +3106,27 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
     for (const [id, prev] of prevProjectileData) {
       if (!currentProjIds.has(id)) {
         if (prev.weaponKind === "rocket") {
+          // Rocket/torpedo area detonation — projectileExplosion() (case
+          // 187/103, starblast.io live client 2026-07-20): the game's one
+          // true Explosions.blast() call site, sized off the weapon's own
+          // blast radius: blast(x, y, 3 * weapon.damage_area / 15). Cosmic
+          // Realm's rocket weapons carry that same value as aoeRadius
+          // (types.ts ROCKET stats, 18-45 px); dividing by 10 keeps the
+          // resulting power (1.8-4.5) in the same range Starblast's own
+          // damage_area values produce, well under explode()/blast()'s
+          // hard clamp of 25.
+          const power = Math.max(1, (prev.aoeRadius ?? 20) / 10);
           if (prev.fromPlayer) {
-            effectManager.spawnMiniExplosion(prev.x, prev.y);
+            if (starblastExplosions) {
+              starblastExplosions.blast(prev.x, prev.y, power, 0, app!.screen.height, state.cameraZoom);
+            } else {
+              effectManager.spawnMiniExplosion(prev.x, prev.y);
+            }
+          } else if (starblastExplosions) {
+            // Enemy rocket hit — half power, matching the existing
+            // own-kill-vs-enemy-kill asymmetry used for shake elsewhere
+            // in this file (killed() vs case-150 above).
+            starblastExplosions.blast(prev.x, prev.y, power * 0.5, 0, app!.screen.height, state.cameraZoom);
           } else {
             // Enemy rocket hit — smaller impact (just sparks + small flash)
             effectManager.spawnSparkBurst(prev.x, prev.y, Math.random() * Math.PI * 2, 8, 0xff6622);
@@ -3126,6 +3167,7 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
         angle: Math.atan2(pr.vel.y, pr.vel.x),
         fromPlayer: pr.fromPlayer,
         size: pr.size,
+        aoeRadius: pr.aoeRadius,
       } as any);
     }
   }
