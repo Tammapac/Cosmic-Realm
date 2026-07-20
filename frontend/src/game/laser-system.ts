@@ -345,16 +345,20 @@ export class LaserSystem {
     v.phase = Math.random() * Math.PI * 2;
     v.prevX = x; v.prevY = y;
     v.trailAcc = 0;
-    const tintK = Math.random() * 0.25;
+    // Color readability: the glow carries the ammo color PURE (only a tiny
+    // ±8% per-shot variation), the core is white-hot but clearly hued, the
+    // tip sits between — blue ammo reads blue, red ammo reads red at a
+    // glance instead of washing out toward white.
+    const tintK = Math.random() * 0.08;
     const family = color ?? cfg.glowColor;
     v.trailTint = color ?? cfg.trailColor;
-    v.core.tint = color != null ? jitterColor(family, 0.78) : cfg.coreTint; // near-white, hued
+    v.core.tint = color != null ? jitterColor(family, 0.45) : cfg.coreTint;
     v.core.width = cfg.coreLen * v.sizeMul;
     v.core.height = cfg.coreW * v.sizeMul;
     v.glow.tint = jitterColor(family, tintK);
     v.glow.width = v.glow.height = cfg.glowR * 2 * v.sizeMul;
-    v.glow.alpha = cfg.glowAlpha * v.brightMul;
-    v.tip.tint = jitterColor(family, 0.55);
+    v.glow.alpha = Math.min(1, cfg.glowAlpha * 1.15) * v.brightMul;
+    v.tip.tint = jitterColor(family, 0.3);
     v.tip.width = v.tip.height = cfg.tipR * 2 * v.sizeMul;
     v.cont.visible = true;
     v.cont.position.set(x, y);
@@ -438,7 +442,7 @@ export class LaserSystem {
     const m = this.acquireTransient("muzzle", this.fxLayer, muzzleTex());
     if (!m) return;
     m.life = m.maxLife = 0.05 + Math.random() * 0.05; // 50-100ms
-    m.spr.tint = jitterColor(color != null ? jitterColor(color, 0.4) : cfg.muzzleColor, Math.random() * 0.2);
+    m.spr.tint = jitterColor(color != null ? jitterColor(color, 0.15) : cfg.muzzleColor, Math.random() * 0.08);
     m.spr.rotation = angle;
     m.spr.position.set(x, y);
     m.scale0 = size / 96;
@@ -455,7 +459,7 @@ export class LaserSystem {
    *  renderer calls both so hull hits keep their bounce-off look. */
   hitAt(x: number, y: number, angle: number, preset: LaserPreset, color?: number): void {
     const cfg = PRESETS[preset];
-    const hitColor = color != null ? jitterColor(color, 0.25) : cfg.hitColor;
+    const hitColor = color != null ? jitterColor(color, 0.1) : cfg.hitColor;
     // white flash
     const f = this.acquireTransient("flash", this.fxLayer, glowTex());
     if (f) {
@@ -543,7 +547,7 @@ export class LaserSystem {
       tp.sx = (cfg.trailSpacing * 1.5 * v.sizeMul) / 64;
       tp.sy = (cfg.trailW * v.sizeMul) / 20;
     }
-    tp.alpha0 = 0.55 * v.brightMul;
+    tp.alpha0 = 0.7 * v.brightMul;
     tp.vx = 0; tp.vy = 0;
     tp.spr.alpha = tp.alpha0;
     tp.spr.scale.set(tp.scale0 * tp.sx, tp.scale0 * tp.sy);
