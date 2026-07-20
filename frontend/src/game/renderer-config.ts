@@ -12,8 +12,9 @@ export const DEBUG_OVERLAY = false;
 // Models keep their full geometry/animations — only the WebGL drawing buffer
 // is rendered at 1/PIXELATE_3D_SCALE resolution and upscaled with
 // nearest-neighbor, so they look like pixel-art objects in-game.
-// Set PIXELATE_3D to false (or scale to 1) to restore crisp rendering.
-export const PIXELATE_3D = true;
+// OFF: ships/stations render at full resolution with antialiasing, ACES
+// tone mapping and environment reflections — crisp, shiny, integrated.
+export const PIXELATE_3D = false;
 export const PIXELATE_3D_SCALE = 2.5;
 
 // Three.js Nebula Background Configuration

@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { ThreeNebulaBackground } from "./three-nebula-background";
 import {
   ENABLE_THREE_NEBULA_SHADER,
@@ -372,6 +373,15 @@ export function init3DLayer(canvas: HTMLCanvasElement): void {
     nebulaBackground.init(scene, camera, renderer);
   }
 
+  // Filmic tone mapping + environment reflections: hulls pick up soft
+  // sky/sun reflections and specular highlights roll off naturally, so the
+  // ships read as objects lit BY the scene instead of cut-in renders.
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  (scene as any).environmentIntensity = 0.65;
+
   // Lighting - enhanced dramatic contrast for stronger shading
   // Ambient: very low intensity for deeper shadows
   const ambient = new THREE.AmbientLight(0x303050, 0.2);
@@ -524,8 +534,8 @@ function loadModel(shipClass: string): void {
                 transparent: oldMat.transparent,
                 opacity: oldMat.opacity,
                 side: oldMat.side,
-                roughness: 0.6,  // Slightly shiny for specular highlights
-                metalness: 0.2,  // Bit of metallic reflection
+                roughness: 0.45, // shiny hull — env reflections pick this up
+                metalness: 0.35, // clear metallic response
               });
               mesh.material = newMat;
               oldMat.dispose();
@@ -537,8 +547,9 @@ function loadModel(shipClass: string): void {
 
             if (!isEnemy) {
               // Set good default shading properties if they exist
-              if (mat.roughness !== undefined) mat.roughness = Math.max(0.5, Math.min(0.7, mat.roughness));
-              if (mat.metalness !== undefined) mat.metalness = Math.max(0.1, Math.min(0.3, mat.metalness));
+              if (mat.roughness !== undefined) mat.roughness = Math.max(0.3, Math.min(0.6, mat.roughness));
+              if (mat.metalness !== undefined) mat.metalness = Math.max(0.25, Math.min(0.6, mat.metalness));
+              if ((mat as any).envMapIntensity !== undefined) (mat as any).envMapIntensity = 1.0;
 
               // Remove excessive emissive glow that can wash out lighting
               if (mat.emissive) mat.emissive.set(0x000000);

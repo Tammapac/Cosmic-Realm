@@ -1622,7 +1622,7 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
   // above the bg parallax but below enemies/player/projectiles/effects.
   const stationCanvas = initStation3DLayer(app.screen.width, app.screen.height);
   stationBaseTexture = new PIXI.BaseTexture(stationCanvas, {
-    scaleMode: PIXI.SCALE_MODES.NEAREST,
+    scaleMode: PIXI.SCALE_MODES.LINEAR, // crisp full-res 3D pass — no pixelated composite
     alphaMode: PIXI.ALPHA_MODES.UNPACK, // Three.js emits straight alpha; Pixi premultiplies on upload
   });
   stationTexture = new PIXI.Texture(stationBaseTexture);
@@ -1643,7 +1643,7 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
   enemyShipCanvas.height = window.innerHeight;
   initEnemy3DLayer(enemyShipCanvas);
   enemyShipBaseTexture = new PIXI.BaseTexture(enemyShipCanvas, {
-    scaleMode: PIXI.SCALE_MODES.NEAREST,
+    scaleMode: PIXI.SCALE_MODES.LINEAR, // crisp full-res 3D pass — no pixelated composite
     alphaMode: PIXI.ALPHA_MODES.UNPACK,
   });
   enemyShipTexture = new PIXI.Texture(enemyShipBaseTexture);

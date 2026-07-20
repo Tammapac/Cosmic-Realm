@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { PIXELATE_3D, PIXELATE_3D_SCALE } from "./renderer-config";
 import { STATIONS } from "./types";
 
@@ -266,6 +267,14 @@ export function initStation3DLayer(width?: number, height?: number): HTMLCanvasE
   // the bloom threshold and shimmered — a light source that read as alien to
   // the dark galaxy. Cool starlight key + faint blue fill keeps stations
   // moody and embedded in the scene.
+  // Filmic tone mapping + soft environment reflections — matches the ship
+  // layer so stations shine subtly and sit in the same light as the world.
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  (scene as any).environmentIntensity = 0.5;
+
   const ambient = new THREE.AmbientLight(0x2a2c48, 0.45);
   scene.add(ambient);
 
