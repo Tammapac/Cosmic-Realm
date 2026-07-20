@@ -2092,65 +2092,43 @@ export function pixiRender(): void {
 // BACKGROUND RENDERING — Pixellab pixel art parallax
 // ══════════════════════════════════════════════════════════════════════════
 
-// Keys are the zone labels (folder names for sprites: /bg/1-1/, /bg/1-2/, etc.)
-// Internal zone IDs (alpha, nebula, ...) are mapped to labels in _bgZoneLabel().
-// lm = optional large landmark silhouette (Layer8): world anchor + parallax +
-// display size, rendered between the planet and the debris band.
-type BgZoneCfg = {
-  fill: string; wx: number; wy: number; pSpeed: number; pSize: number; glow: string;
-  lm?: { wx: number; wy: number; speed: number; size: number; alpha: number; spin?: number };
-};
+// Keys are the zone labels (folder names: /bg/1-1/, /bg/1-2/, etc.).
+// Internal zone IDs (alpha, nebula, ...) are mapped to labels below.
+//
+// Each zone's background is ONE painted map (/bg/<label>/map_<label>.jpg,
+// 2100x1310, LINEAR-filtered — no pixel look) rendered cover-fit with a
+// small parallax factor and NO tiling, so the art never visibly repeats.
+// On top: two procedural nebula bands and the animated star field, both
+// tinted from the map's own palette (hueA/hueB extracted offline from the
+// image; fill = darkened image average, only visible behind jpeg edges).
+type BgZoneCfg = { img: string; fill: string; hueA: string; hueB: string };
 const BG_ZONE_CFG: Record<string, BgZoneCfg> = {
-  // Every zone carries a painted landmark (Layer8, v4 pixel art — no 3D renders):
-  // spin only where rotation is plausible (rings/gates), positions away from planets.
   // Earth faction (1-x)
-  "1-1": { fill: "#060e2e", wx:  1200, wy:  -900, pSpeed: 0.14, pSize: 4915, glow: "#3366cc",
-           lm: { wx:  3400, wy:  2200, speed: 0.28, size: 460, alpha: 0.85, spin: 0.0015 } },
-  // wx/wy deliberately spread across different quadrants/distances so each map's
-  // planet appears somewhere else; pSize varies (bigger, unique planets since v4).
-  "1-2": { fill: "#120832", wx: -3800, wy: -2200, pSpeed: 0.16, pSize: 1104, glow: "#7722aa",
-           lm: { wx:  3200, wy:  2800, speed: 0.30, size: 470, alpha: 0.88 } },
-  "1-3": { fill: "#200610", wx:  4600, wy:  1500, pSpeed: 0.20, pSize: 912, glow: "#cc2233",
-           lm: { wx: -3400, wy: -2600, speed: 0.30, size: 500, alpha: 0.88, spin: 0.002 } },
-  "1-4": { fill: "#030e12", wx:   900, wy:  4200, pSpeed: 0.22, pSize: 744, glow: "#006655",
-           lm: { wx: -3400, wy: -2600, speed: 0.30, size: 420, alpha: 0.85 } },
-  "1-5": { fill: "#160c04", wx: -2600, wy:  3400, pSpeed: 0.18, pSize: 1008, glow: "#cc6600",
-           lm: { wx:  3600, wy: -1800, speed: 0.28, size: 560, alpha: 0.9 } },
+  "1-1": { img: "map_1-1.jpg", fill: "#07070b", hueA: "#5e81ae", hueB: "#71508a" },
+  "1-2": { img: "map_1-2.jpg", fill: "#0b0812", hueA: "#6b82b0", hueB: "#604e7f" },
+  "1-3": { img: "map_1-3.jpg", fill: "#1f0c0d", hueA: "#c2424a", hueB: "#8a2f4f" },
+  "1-4": { img: "map_1-4.jpg", fill: "#050908", hueA: "#378b77", hueB: "#42959a" },
+  "1-5": { img: "map_1-5.jpg", fill: "#120b02", hueA: "#8c5200", hueB: "#ae7100" },
   // Mars faction (2-x)
-  "2-1": { fill: "#1a0802", wx:  3200, wy: -3800, pSpeed: 0.17, pSize: 1080, glow: "#cc4400",
-           lm: { wx: -3000, wy:  3200, speed: 0.30, size: 520, alpha: 0.88 } },
-  "2-2": { fill: "#1c0a02", wx: -4800, wy:   800, pSpeed: 0.22, pSize: 816, glow: "#884422",
-           lm: { wx:  3400, wy: -3000, speed: 0.28, size: 540, alpha: 0.9 } },
-  "2-3": { fill: "#16040e", wx:  1800, wy:  2600, pSpeed: 0.19, pSize: 960, glow: "#aa0033",
-           lm: { wx: -3200, wy: -3000, speed: 0.32, size: 520, alpha: 0.85 } },
-  "2-4": { fill: "#16021a", wx: -1200, wy: -4600, pSpeed: 0.21, pSize: 888, glow: "#660066",
-           lm: { wx:  3000, wy:  2600, speed: 0.30, size: 480, alpha: 0.88 } },
-  "2-5": { fill: "#0a0220", wx:  5200, wy:  -700, pSpeed: 0.15, pSize: 1200, glow: "#5500cc",
-           lm: { wx: -3600, wy:  3000, speed: 0.26, size: 520, alpha: 0.9 } },
+  "2-1": { img: "map_2-1.jpg", fill: "#240802", hueA: "#ad1000", hueB: "#f69200" },
+  "2-2": { img: "map_2-2.jpg", fill: "#0b0503", hueA: "#b44316", hueB: "#953c10" },
+  "2-3": { img: "map_2-3.jpg", fill: "#0c0606", hueA: "#a54039", hueB: "#41538d" },
+  "2-4": { img: "map_2-4.jpg", fill: "#121013", hueA: "#5f8793", hueB: "#6b557f" },
+  "2-5": { img: "map_2-5.jpg", fill: "#0f1317", hueA: "#75a4c7", hueB: "#5682aa" },
   // Venus faction (3-x)
-  "3-1": { fill: "#0a1606", wx: -3400, wy: -3600, pSpeed: 0.18, pSize: 1032, glow: "#44aa22",
-           lm: { wx:  3200, wy:  3000, speed: 0.30, size: 480, alpha: 0.85, spin: -0.0015 } },
-  "3-2": { fill: "#0e1a04", wx:  2400, wy:  4400, pSpeed: 0.21, pSize: 840, glow: "#88cc00",
-           lm: { wx: -3200, wy: -3000, speed: 0.30, size: 520, alpha: 0.88 } },
-  "3-3": { fill: "#0a1800", wx: -5000, wy:  2000, pSpeed: 0.16, pSize: 1128, glow: "#22cc44",
-           lm: { wx:  3000, wy: -3400, speed: 0.30, size: 440, alpha: 0.9 } },
-  "3-4": { fill: "#041206", wx:   700, wy: -3000, pSpeed: 0.23, pSize: 768, glow: "#00aa66",
-           lm: { wx: -3600, wy:  2800, speed: 0.30, size: 460, alpha: 0.88 } },
-  "3-5": { fill: "#081402", wx:  3800, wy:  2900, pSpeed: 0.19, pSize: 984, glow: "#66dd00",
-           lm: { wx: -3600, wy: -2400, speed: 0.26, size: 620, alpha: 0.85 } },
+  "3-1": { img: "map_3-1.jpg", fill: "#0b0d0e", hueA: "#77a9c1", hueB: "#7899b4" },
+  "3-2": { img: "map_3-2.jpg", fill: "#04110d", hueA: "#20704a", hueB: "#268d71" },
+  "3-3": { img: "map_3-3.jpg", fill: "#050f06", hueA: "#62aa18", hueB: "#0f9242" },
+  "3-4": { img: "map_3-4.jpg", fill: "#0c0d0a", hueA: "#8d9a5f", hueB: "#d15f97" },
+  "3-5": { img: "map_3-5.jpg", fill: "#080706", hueA: "#957d5d", hueB: "#427893" },
   // Danger zones (4-x)
-  "4-1": { fill: "#180408", wx: -2000, wy:  4800, pSpeed: 0.18, pSize: 1056, glow: "#ff2244",
-           lm: { wx:  3800, wy: -3200, speed: 0.30, size: 500, alpha: 0.85 } },
-  "4-2": { fill: "#1a0206", wx:  4400, wy: -2600, pSpeed: 0.20, pSize: 936, glow: "#ff4400",
-           lm: { wx: -3400, wy:  2600, speed: 0.32, size: 640, alpha: 0.85 } },
-  "4-3": { fill: "#160008", wx: -4400, wy: -1400, pSpeed: 0.16, pSize: 1152, glow: "#cc0066",
-           lm: { wx:  3200, wy:  3400, speed: 0.30, size: 540, alpha: 0.9 } },
-  "4-4": { fill: "#120010", wx:  1400, wy:  3800, pSpeed: 0.22, pSize: 852, glow: "#aa00cc",
-           lm: { wx: -3000, wy: -3600, speed: 0.34, size: 460, alpha: 0.85 } },
-  "4-5": { fill: "#0e0016", wx:  -900, wy: -5200, pSpeed: 0.17, pSize: 1032, glow: "#6600ff",
-           lm: { wx:  2800, wy:  3000, speed: 0.24, size: 760, alpha: 0.9, spin: 0.0015 } },
+  "4-1": { img: "map_4-1.jpg", fill: "#1d110f", hueA: "#c43e2c", hueB: "#e6893a" },
+  "4-2": { img: "map_4-2.jpg", fill: "#090605", hueA: "#9a3a26", hueB: "#e37c52" },
+  "4-3": { img: "map_4-3.jpg", fill: "#0c0d11", hueA: "#515e7e", hueB: "#815d9a" },
+  "4-4": { img: "map_4-4.jpg", fill: "#0a0910", hueA: "#7a4fb0", hueB: "#9746a6" },
+  "4-5": { img: "map_4-5.jpg", fill: "#13110e", hueA: "#a98153", hueB: "#dac882" },
   // Debug
-  "DBG": { fill: "#001a00", wx:     0, wy:     0, pSpeed: 0.20, pSize: 480, glow: "#00ff00" },
+  "DBG": { img: "map_DBG.jpg", fill: "#120b08", hueA: "#9a2911", hueB: "#ccbb56" },
 };
 
 // Maps internal zone id -> label (folder name)
@@ -2169,75 +2147,52 @@ function _bgHexRgb(hex: string): [number, number, number] {
 
 let _bgZoneActive = "";
 let _bgFillSprite: PIXI.Sprite | null = null;
-let _bgStarsTile: PIXI.TilingSprite | null = null;
-let _bgGalaxyTile: PIXI.TilingSprite | null = null;
-let _bgNebulaTile: PIXI.TilingSprite | null = null;
-let _bgPlanetSprite: PIXI.Sprite | null = null;
-let _bgNebulaTopTile: PIXI.TilingSprite | null = null;
-let _bgDustTile: PIXI.TilingSprite | null = null;
-let _bgDebrisTile: PIXI.TilingSprite | null = null;
-let _bgLandmarkSprite: PIXI.Sprite | null = null;
-let _bgAstSprites: { spr: PIXI.Sprite; u: number; v: number; rotSpeed: number; rot0: number }[] = [];
+let _bgMapSprite: PIXI.Sprite | null = null;
+let _bgNebulaTileA: PIXI.TilingSprite | null = null;
+let _bgNebulaTileB: PIXI.TilingSprite | null = null;
 let _bgMotes: { spr: PIXI.Sprite; u: number; v: number; s: number; ph: number }[] = [];
 let _bgDriftX = 0;
 let _bgDriftY = 0;
 
-// ── decor system (Phase 11 world enrichment) ────────────────────────────────
-// World-anchored decorative sprites loaded from per-zone manifests
-// (/bg/<label>/decor_<label>.json) referencing a shared sprite library
-// (/bg/decor/*.png). Each item carries its own parallax band and a subtle
-// ambient animation (spin / pulse / blink / drift). Purely additive — the
-// existing background layers are untouched.
-interface BgDecorItem {
-  spr: PIXI.Sprite;
-  wx: number; wy: number; par: number;
-  an: string; sp: number; ph: number;
-  baseA: number; baseR: number;
-}
-let _bgDecor: BgDecorItem[] = [];
-let _bgDecorContainer: PIXI.Container | null = null;
-// Shared library textures — cached for the whole session, never destroyed
-const _decorTexCache = new Map<string, PIXI.Texture>();
+// Map parallax factor: at the world edge (MAP_RADIUS = 8000) the painted
+// map shifts by 8000 * 0.045 = 360px — the cover-fit margin below always
+// reserves that much, so the jpeg edge can never scroll into view and the
+// image is never tiled/repeated.
+const _BG_MAP_PARALLAX = 0.045;
+const _BG_MAP_DRIFT_AMP = 22; // px of slow autonomous sway, also in margin
 
-function _bgBuildDecor(zone: string, label: string): void {
-  fetch(`/bg/${label}/decor_${label}.json?v=3`)
-    .then((res) => (res.ok ? res.json() : null))
-    .catch(() => null)
-    .then(async (man: { items: any[] } | null) => {
-      if (!man || !man.items || _bgZoneActive !== zone || !bgGraphics) return;
-      const names = [...new Set(man.items.map((it) => it.t as string))];
-      await Promise.all(names.map((n) => {
-        if (_decorTexCache.has(n)) return Promise.resolve();
-        return (PIXI.Texture as any).fromURL(`/bg/decor/${n}.png?v=3`, { scaleMode: PIXI.SCALE_MODES.NEAREST })
-          .then((t: PIXI.Texture) => { _decorTexCache.set(n, t); })
-          .catch(() => {});
-      }));
-      if (_bgZoneActive !== zone || !bgGraphics) return;
-      const container = new PIXI.Container();
-      // just below bgGraphics: above all bg tiles, below the rotating
-      // foreground asteroids (inserted later at the same index)
-      bgLayer.addChildAt(container, bgLayer.getChildIndex(bgGraphics));
-      _bgDecorContainer = container;
-      man.items.forEach((it, i) => {
-        const tex = _decorTexCache.get(it.t);
-        if (!tex) return;
-        const spr = new PIXI.Sprite(tex);
-        spr.anchor.set(0.5);
-        spr.scale.set(it.s ?? 1);
-        spr.rotation = it.r ?? 0;
-        spr.alpha = it.a ?? 1;
-        const tint = (it.c ?? "#ffffff") as string;
-        if (tint !== "#ffffff") spr.tint = PIXI.utils.string2hex(tint);
-        if (it.t.startsWith("fx_")) spr.blendMode = PIXI.BLEND_MODES.ADD;
-        container.addChild(spr);
-        _bgDecor.push({
-          spr, wx: it.x, wy: it.y, par: it.p ?? 0.35,
-          an: it.an ?? "none", sp: it.sp ?? 0,
-          ph: ((i * 0.61803) % 1) * Math.PI * 2,
-          baseA: it.a ?? 1, baseR: it.r ?? 0,
-        });
-      });
-    });
+// ── procedural nebula tile ──────────────────────────────────────────────────
+// One seamless soft-cloud tile shared by every zone; each zone tints two
+// TilingSprite instances of it with the map's own hueA/hueB. Blobs are
+// stamped with all 8 neighbor offsets so the tile wraps without seams, and
+// the two layers run different tile scales + drift directions so their
+// overlap never forms a visible repeat pattern.
+let _bgNebulaTexCache: PIXI.Texture | null = null;
+function _bgNebulaTex(): PIXI.Texture {
+  if (_bgNebulaTexCache) return _bgNebulaTexCache;
+  const S = 512;
+  const c = document.createElement("canvas");
+  c.width = c.height = S;
+  const ctx = c.getContext("2d")!;
+  const rnd = _bgSeededRng("nebula-tile");
+  for (let i = 0; i < 30; i++) {
+    const bx = rnd() * S, by = rnd() * S;
+    const r = S * (0.10 + rnd() * 0.22);
+    const a = 0.05 + rnd() * 0.09;
+    for (let ox = -1; ox <= 1; ox++) {
+      for (let oy = -1; oy <= 1; oy++) {
+        const g = ctx.createRadialGradient(bx + ox * S, by + oy * S, 0, bx + ox * S, by + oy * S, r);
+        g.addColorStop(0, `rgba(255,255,255,${a})`);
+        g.addColorStop(0.6, `rgba(255,255,255,${a * 0.45})`);
+        g.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, S, S);
+      }
+    }
+  }
+  _bgNebulaTexCache = PIXI.Texture.from(c, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  _bgNebulaTexCache.baseTexture.wrapMode = PIXI.WRAP_MODES.REPEAT;
+  return _bgNebulaTexCache;
 }
 
 // Deterministic per-zone RNG so asteroid layouts are stable across sessions
@@ -2252,93 +2207,61 @@ function _bgSeededRng(label: string): () => number {
 }
 
 function _bgDestroyLayers(): void {
-  // Zone-owned textures ARE destroyed (baseTexture included) — leaving them in
-  // Pixi's cache accumulated GPU memory as players warped across many zones.
-  const destroyTex = (s: PIXI.Sprite | PIXI.TilingSprite | null) => {
-    if (!s) return;
+  // The zone-owned map texture IS destroyed (baseTexture included) —
+  // leaving it in Pixi's cache would accumulate GPU memory as players warp
+  // across zones. The shared nebula tile + mote glow textures stay cached.
+  if (_bgMapSprite) {
+    _bgMapSprite.parent?.removeChild(_bgMapSprite);
+    const keep = _bgMapSprite.texture === PIXI.Texture.EMPTY;
+    _bgMapSprite.destroy({ texture: !keep, baseTexture: !keep });
+    _bgMapSprite = null;
+  }
+  if (_bgFillSprite) {
+    _bgFillSprite.parent?.removeChild(_bgFillSprite);
+    _bgFillSprite.destroy({ texture: true, baseTexture: true }); // 1px zone-fill canvas
+    _bgFillSprite = null;
+  }
+  for (const s of [_bgNebulaTileA, _bgNebulaTileB]) {
+    if (!s) continue;
     s.parent?.removeChild(s);
-    const keep = s.texture === PIXI.Texture.EMPTY || s.texture === PIXI.Texture.WHITE;
-    s.destroy({ texture: !keep, baseTexture: !keep });
-  };
-  for (const s of [_bgFillSprite, _bgStarsTile, _bgGalaxyTile, _bgNebulaTile, _bgPlanetSprite, _bgNebulaTopTile, _bgDustTile, _bgDebrisTile, _bgLandmarkSprite]) {
-    destroyTex(s);
+    s.destroy({ texture: false, baseTexture: false }); // shared nebula tile
   }
-  for (const a of _bgAstSprites) destroyTex(a.spr);
+  _bgNebulaTileA = null; _bgNebulaTileB = null;
   for (const m of _bgMotes) { m.spr.parent?.removeChild(m.spr); m.spr.destroy({ texture: false, baseTexture: false }); } // motes share the glow texture
-  // decor sprites go, the shared library textures stay cached
-  if (_bgDecorContainer) {
-    _bgDecorContainer.parent?.removeChild(_bgDecorContainer);
-    _bgDecorContainer.destroy({ children: true, texture: false, baseTexture: false });
-    _bgDecorContainer = null;
-  }
-  _bgDecor = [];
-  _bgAstSprites = [];
   _bgMotes = [];
-  _bgFillSprite = null; _bgStarsTile = null; _bgGalaxyTile = null; _bgNebulaTile = null;
-  _bgPlanetSprite = null; _bgNebulaTopTile = null; _bgDustTile = null;
-  _bgDebrisTile = null; _bgLandmarkSprite = null;
   _bgDriftX = 0; _bgDriftY = 0;
 }
 
-function _bgBuildSprites(
-  zone: string, w: number, h: number,
-  sTex: PIXI.Texture, nTex: PIXI.Texture,
-  pTex: PIXI.Texture, dTex: PIXI.Texture,
-  dustTex: PIXI.Texture, debrisTex: PIXI.Texture,
-  galaxyTex: PIXI.Texture, landmarkTex: PIXI.Texture,
-  res: number,
-): void {
+function _bgBuildSprites(zone: string, w: number, h: number, mapTex: PIXI.Texture): void {
   const label = _bgZoneIdToLabel[zone] ?? zone;
   const cfg = BG_ZONE_CFG[label] ?? BG_ZONE_CFG["1-1"];
 
-  // Insert all bg sprites at index 0 in reverse draw order. Final order:
-  // fill → stars → galaxies → nebula → nebula-top → dust → planet →
-  // landmark → debris → (asteroids/motes) → bgGraphics/starGraphics.
-  // No per-layer filters: tint/alpha are baked into the generated art —
-  // the old ColorMatrixFilters cost three full-screen passes for nothing.
+  // Insert at index 0 in reverse draw order. Final order:
+  // fill → painted map → nebula A → nebula B → motes → bgGraphics/starGraphics
+  // (the animated star field stays on top — it moves and twinkles over the map).
 
-  _bgDebrisTile = new PIXI.TilingSprite(debrisTex, w, h);
-  _bgDebrisTile.tileScale.set(1 / res);
-  bgLayer.addChildAt(_bgDebrisTile, 0);
+  const nebTex = _bgNebulaTex();
+  _bgNebulaTileB = new PIXI.TilingSprite(nebTex, w, h);
+  _bgNebulaTileB.tint = PIXI.utils.string2hex(cfg.hueB);
+  _bgNebulaTileB.blendMode = PIXI.BLEND_MODES.SCREEN;
+  _bgNebulaTileB.alpha = 0.16;
+  _bgNebulaTileB.tileScale.set(1.7); // different scale than A: overlap never repeats
+  bgLayer.addChildAt(_bgNebulaTileB, 0);
 
-  if (landmarkTex !== PIXI.Texture.EMPTY && cfg.lm) {
-    _bgLandmarkSprite = new PIXI.Sprite(landmarkTex);
-    _bgLandmarkSprite.anchor.set(0.5);
-    _bgLandmarkSprite.alpha = cfg.lm.alpha;
-    bgLayer.addChildAt(_bgLandmarkSprite, 0);
+  _bgNebulaTileA = new PIXI.TilingSprite(nebTex, w, h);
+  _bgNebulaTileA.tint = PIXI.utils.string2hex(cfg.hueA);
+  _bgNebulaTileA.blendMode = PIXI.BLEND_MODES.SCREEN;
+  _bgNebulaTileA.alpha = 0.22;
+  _bgNebulaTileA.tileScale.set(1.1);
+  bgLayer.addChildAt(_bgNebulaTileA, 0);
+
+  if (mapTex !== PIXI.Texture.EMPTY) {
+    _bgMapSprite = new PIXI.Sprite(mapTex);
+    _bgMapSprite.anchor.set(0.5);
+    bgLayer.addChildAt(_bgMapSprite, 0);
   }
 
-  _bgPlanetSprite = new PIXI.Sprite(dTex);
-  _bgPlanetSprite.anchor.set(0.5);
-  bgLayer.addChildAt(_bgPlanetSprite, 0);
-
-  _bgDustTile = new PIXI.TilingSprite(dustTex, w, h);
-  _bgDustTile.alpha = 0.16;
-  _bgDustTile.tileScale.set(1 / res);
-  bgLayer.addChildAt(_bgDustTile, 0);
-
-  _bgNebulaTopTile = new PIXI.TilingSprite(pTex, w, h);
-  _bgNebulaTopTile.alpha = 0.12;
-  _bgNebulaTopTile.tileScale.set(1 / res);
-  bgLayer.addChildAt(_bgNebulaTopTile, 0);
-
-  _bgNebulaTile = new PIXI.TilingSprite(nTex, w, h);
-  _bgNebulaTile.alpha = 0.52;
-  _bgNebulaTile.tileScale.set(1 / res);
-  bgLayer.addChildAt(_bgNebulaTile, 0);
-
-  if (galaxyTex !== PIXI.Texture.EMPTY) {
-    _bgGalaxyTile = new PIXI.TilingSprite(galaxyTex, w, h);
-    _bgGalaxyTile.alpha = 0.85;
-    _bgGalaxyTile.tileScale.set(1 / res);
-    bgLayer.addChildAt(_bgGalaxyTile, 0);
-  }
-
-  _bgStarsTile = new PIXI.TilingSprite(sTex, w, h);
-  _bgStarsTile.tileScale.set(1 / res);
-  bgLayer.addChildAt(_bgStarsTile, 0);
-
-  // Fill goes at index 0 last — pushes everything else up by 1
+  // Fill goes at index 0 last — only visible if the map fails to load.
   const fc = document.createElement("canvas"); fc.width = 1; fc.height = 1;
   const fx = fc.getContext("2d")!;
   fx.fillStyle = cfg.fill; fx.fillRect(0, 0, 1, 1);
@@ -2346,10 +2269,10 @@ function _bgBuildSprites(
   _bgFillSprite.width = w; _bgFillSprite.height = h;
   bgLayer.addChildAt(_bgFillSprite, 0);
 
-  // Ambient motes: a handful of soft glow specks drifting in the zone's
+  // Ambient motes: a handful of soft glow specks drifting in the map's
   // accent color. Shared radial texture, no filters — near-zero cost.
   const rndM = _bgSeededRng(label + "-motes");
-  const moteTint = PIXI.utils.string2hex(cfg.glow);
+  const moteTint = PIXI.utils.string2hex(cfg.hueA);
   for (let i = 0; i < 22; i++) {
     const spr = new PIXI.Sprite(getGlowTex(10));
     spr.anchor.set(0.5);
@@ -2367,71 +2290,23 @@ function _bgBuildLayers(zone: string, w: number, h: number): void {
   _bgDestroyLayers();
   _bgZoneActive = zone;
   const label = _bgZoneIdToLabel[zone] ?? zone;
-  const base = `/bg/${label}`;
-
-  const urls = [
-    `${base}/Layer1_${label}.png?v=4`,
-    `${base}/Layer2_${label}.png?v=4`,
-    `${base}/Layer3_${label}.png?v=4`,  // zone effect: veins/aurora/streams/plasma/...
-    `${base}/Layer4_${label}.png`,      // planet — preserved original art
-    `${base}/Layer5_${label}.png?v=4`,  // cosmic dust + glow regions (tiled)
-    `${base}/Layer6_${label}.png?v=4`,  // foreground debris / belt lanes (tiled)
-    `${base}/Layer7_${label}.png?v=4`,  // distant galaxies (tiled)
-    `${base}/Layer8_${label}.png?v=4`,  // painted landmark (sprite)
-  ];
+  const cfg = BG_ZONE_CFG[label] ?? BG_ZONE_CFG["1-1"];
 
   console.log("[bg] loading zone", zone, "label", label);
 
-  Promise.all(urls.map(u =>
-    (PIXI.Texture as any).fromURL(u, { scaleMode: PIXI.SCALE_MODES.NEAREST })
-      .then((t: PIXI.Texture) => {
-        t.baseTexture.wrapMode = PIXI.WRAP_MODES.REPEAT;
-        return t;
-      })
-      .catch(() => PIXI.Texture.EMPTY)
-  )).then(([sTex, nTex, pTex, dTex, dustTex, debrisTex, galaxyTex, landmarkTex]) => {
-    if (_bgZoneActive !== zone) return;
-    _bgBuildSprites(zone, w, h, sTex as PIXI.Texture, nTex as PIXI.Texture, pTex as PIXI.Texture, dTex as PIXI.Texture, dustTex as PIXI.Texture, debrisTex as PIXI.Texture, galaxyTex as PIXI.Texture, landmarkTex as PIXI.Texture, app ? app.renderer.resolution : 1);
-  });
-
-  // World-anchored decor (satellites, wrecks, ruins, crystals, anomalies, ...)
-  _bgBuildDecor(zone, label);
-
-  // Rotating foreground asteroids (ast1..4_<label>.png, optional per map).
-  // Individual sprites so each can spin — a baked tile can't rotate its contents.
-  const astUrls = [1, 2, 3, 4].map(i => `${base}/ast${i}_${label}.png?v=5`);
-  Promise.all(astUrls.map(u =>
-    (PIXI.Texture as any).fromURL(u, { scaleMode: PIXI.SCALE_MODES.NEAREST })
-      .catch(() => null)
-  )).then((texs: (PIXI.Texture | null)[]) => {
-    if (_bgZoneActive !== zone) return;
-    const valid = texs.filter((t): t is PIXI.Texture => !!t);
-    if (valid.length === 0 || !bgGraphics) return;
-    const rnd = _bgSeededRng(label);
-    const count = label.startsWith("4-") ? 8 : 5;
-    for (let i = 0; i < count; i++) {
-      const spr = new PIXI.Sprite(valid[Math.floor(rnd() * valid.length)]);
-      spr.anchor.set(0.5);
-      spr.scale.set(0.4 + rnd() * 1.2);
-      // solid rocks — the old 0.5-0.95 alpha made asteroids look like ghosts
-      spr.alpha = 0.94 + rnd() * 0.06;
-      // insert just below bgGraphics so asteroids stay part of the background stack
-      bgLayer.addChildAt(spr, bgLayer.getChildIndex(bgGraphics));
-      _bgAstSprites.push({
-        spr,
-        u: rnd(), v: rnd(),
-        rotSpeed: (rnd() < 0.5 ? -1 : 1) * (0.08 + rnd() * 0.22), // slow but visible spin, rad/s
-        rot0: rnd() * Math.PI * 2,
-      });
-    }
-  });
+  // One painted map per zone — LINEAR filtering (no pixel look), rendered
+  // as a single cover-fit sprite in renderBackground (never tiled).
+  (PIXI.Texture as any).fromURL(`/bg/${label}/${cfg.img}?v=6`, { scaleMode: PIXI.SCALE_MODES.LINEAR })
+    .catch(() => PIXI.Texture.EMPTY)
+    .then((mapTex: PIXI.Texture) => {
+      if (_bgZoneActive !== zone) return;
+      _bgBuildSprites(zone, w, h, mapTex);
+    });
 }
 function renderBackground(w: number, h: number, cam: { x: number; y: number }): void {
   if (!bgGraphics || !starGraphics) return;
 
   const zone = state.player.zone;
-  const label = _bgZoneIdToLabel[zone] ?? zone;
-  const cfg = BG_ZONE_CFG[label] ?? BG_ZONE_CFG["1-1"];
   const t = state.tick / 60;
 
   if (_bgZoneActive !== zone) _bgBuildLayers(zone, w, h);
@@ -2446,120 +2321,36 @@ function renderBackground(w: number, h: number, cam: { x: number; y: number }): 
 
   if (_bgFillSprite) { _bgFillSprite.width = w; _bgFillSprite.height = h; }
 
-  if (_bgStarsTile) {
-    _bgStarsTile.width = w; _bgStarsTile.height = h;
-    _bgStarsTile.tilePosition.x = Math.round((-cam.x * 0.05 + _bgDriftX * 0.5) * res) / res;
-    _bgStarsTile.tilePosition.y = Math.round((-cam.y * 0.05 + _bgDriftY * 0.5) * res) / res;
-    _bgStarsTile.alpha = 1.0;
+  if (_bgMapSprite && _bgMapSprite.texture.width > 1) {
+    // Painted map: single cover-fit sprite, small parallax, gentle sway.
+    // The margin covers the maximum parallax excursion (MAP_RADIUS * factor)
+    // plus the sway amplitude, so the jpeg edge never scrolls into view and
+    // the image is NEVER tiled — zero visible repetition by construction.
+    const margin = MAP_RADIUS * _BG_MAP_PARALLAX + _BG_MAP_DRIFT_AMP;
+    const iw = _bgMapSprite.texture.width, ih = _bgMapSprite.texture.height;
+    const scale = Math.max((w + 2 * margin) / iw, (h + 2 * margin) / ih);
+    _bgMapSprite.scale.set(scale);
+    const swayX = Math.sin(t * 0.021) * _BG_MAP_DRIFT_AMP;
+    const swayY = Math.cos(t * 0.017) * _BG_MAP_DRIFT_AMP;
+    _bgMapSprite.x = w / 2 - cam.x * _BG_MAP_PARALLAX + swayX;
+    _bgMapSprite.y = h / 2 - cam.y * _BG_MAP_PARALLAX + swayY;
   }
 
-  if (_bgGalaxyTile) {
-    // Distant galaxies — just above the far stars, slowest structured band
-    _bgGalaxyTile.width = w; _bgGalaxyTile.height = h;
-    _bgGalaxyTile.tilePosition.x = Math.round((-cam.x * 0.08 + _bgDriftX * 0.25) * res) / res;
-    _bgGalaxyTile.tilePosition.y = Math.round((-cam.y * 0.08 + _bgDriftY * 0.25) * res) / res;
+  if (_bgNebulaTileA) {
+    // Nebula band A (map accent color) — slow drift + faint breathing
+    _bgNebulaTileA.width = w; _bgNebulaTileA.height = h;
+    _bgNebulaTileA.tilePosition.x = Math.round((-cam.x * 0.10 + _bgDriftX * 0.30) * res) / res;
+    _bgNebulaTileA.tilePosition.y = Math.round((-cam.y * 0.10 + _bgDriftY * 0.30) * res) / res;
+    _bgNebulaTileA.alpha = 0.22 + 0.05 * Math.sin(t * 0.16);
   }
 
-  if (_bgNebulaTile) {
-    _bgNebulaTile.width = w; _bgNebulaTile.height = h;
-    _bgNebulaTile.tilePosition.x = Math.round((-cam.x * 0.12 + _bgDriftX * 0.3) * res) / res;
-    _bgNebulaTile.tilePosition.y = Math.round((-cam.y * 0.12 + _bgDriftY * 0.3) * res) / res;
-  }
-
-  if (_bgNebulaTopTile) {
-    // L3 zone effect (veins/aurora/streams/plasma): slow alpha breathing makes
-    // the energy layer feel alive without ever pulling focus from combat
-    _bgNebulaTopTile.width = w; _bgNebulaTopTile.height = h;
-    _bgNebulaTopTile.tilePosition.x = Math.round((-cam.x * 0.08 + _bgDriftX * 0.2) * res) / res;
-    _bgNebulaTopTile.tilePosition.y = Math.round((-cam.y * 0.08 + _bgDriftY * 0.2) * res) / res;
-    _bgNebulaTopTile.alpha = 0.26 + 0.05 * Math.sin(t * 0.21);
-  }
-
-  if (_bgDustTile) {
-    // L5: space dust / haze — medium-fast, kept faint
-    _bgDustTile.width = w; _bgDustTile.height = h;
-    _bgDustTile.tilePosition.x = Math.round((-cam.x * 0.18 + _bgDriftX * 0.4) * res) / res;
-    _bgDustTile.tilePosition.y = Math.round((-cam.y * 0.18 + _bgDriftY * 0.4) * res) / res;
-    _bgDustTile.alpha = 0.16;
-  }
-
-  if (_bgDebrisTile) {
-    // L6: foreground debris / asteroids — fastest band, sparse art keeps it calm
-    _bgDebrisTile.width = w; _bgDebrisTile.height = h;
-    _bgDebrisTile.tilePosition.x = Math.round((-cam.x * 0.30 + _bgDriftX * 0.5) * res) / res;
-    _bgDebrisTile.tilePosition.y = Math.round((-cam.y * 0.30 + _bgDriftY * 0.5) * res) / res;
-    _bgDebrisTile.alpha = 0.9;
-  }
-
-  if (_bgAstSprites.length > 0) {
-    // Rotating foreground asteroids — fastest parallax band, individual slow spin.
-    // Positions wrap on a region slightly larger than the screen so sprites
-    // leave one edge fully before re-entering the other.
-    const M = 160;
-    const wrapW = w + M * 2, wrapH = h + M * 2;
-    const scrollX = -cam.x * 0.30 + _bgDriftX * 0.5;
-    const scrollY = -cam.y * 0.30 + _bgDriftY * 0.5;
-    for (const a of _bgAstSprites) {
-      a.spr.x = ((a.u * wrapW + scrollX) % wrapW + wrapW) % wrapW - M;
-      a.spr.y = ((a.v * wrapH + scrollY) % wrapH + wrapH) % wrapH - M;
-      a.spr.rotation = a.rot0 + t * a.rotSpeed;
-    }
-  }
-
-  if (_bgPlanetSprite) {
-    // Planet: world-space position — moves with camera like any game object
-    const px = Math.round(w / 2 + (cfg.wx - cam.x) * cfg.pSpeed);
-    const py = Math.round(h / 2 + (cfg.wy - cam.y) * cfg.pSpeed);
-    _bgPlanetSprite.x = px;
-    _bgPlanetSprite.y = py;
-    _bgPlanetSprite.width = cfg.pSize;
-    _bgPlanetSprite.height = cfg.pSize;
-    _bgPlanetSprite.alpha = 1.0;
-  }
-
-  if (_bgLandmarkSprite && cfg.lm) {
-    // Landmark silhouette: anchored in world space on its own parallax band
-    const lm = cfg.lm;
-    _bgLandmarkSprite.x = Math.round(w / 2 + (lm.wx - cam.x) * lm.speed);
-    _bgLandmarkSprite.y = Math.round(h / 2 + (lm.wy - cam.y) * lm.speed);
-    const lscale = lm.size / Math.max(1, _bgLandmarkSprite.texture.width);
-    _bgLandmarkSprite.scale.set(lscale);
-    if (lm.spin) _bgLandmarkSprite.rotation = t * lm.spin * Math.PI * 2;
-  }
-
-  if (_bgDecor.length > 0) {
-    // World-anchored decor: per-item parallax + subtle ambient animation.
-    // Offscreen items are hidden (position math is cheap, rendering isn't free).
-    const M3 = 180;
-    for (const dd of _bgDecor) {
-      const sx = w / 2 + (dd.wx - cam.x) * dd.par;
-      const sy = h / 2 + (dd.wy - cam.y) * dd.par;
-      if (sx < -M3 || sx > w + M3 || sy < -M3 || sy > h + M3) {
-        dd.spr.visible = false;
-        continue;
-      }
-      dd.spr.visible = true;
-      let px = sx, py = sy;
-      switch (dd.an) {
-        case "spin":
-          dd.spr.rotation = dd.baseR + t * dd.sp;
-          break;
-        case "pulse":
-          dd.spr.alpha = dd.baseA * (0.72 + 0.28 * Math.sin(t * dd.sp * 2 + dd.ph));
-          break;
-        case "blink": {
-          const on = ((t * dd.sp + dd.ph) % 1.7) < 0.22;
-          dd.spr.alpha = on ? dd.baseA : dd.baseA * 0.12;
-          break;
-        }
-        case "drift":
-          px += Math.sin(t * 0.35 * (0.5 + dd.sp) + dd.ph) * 7;
-          py += Math.cos(t * 0.28 * (0.5 + dd.sp) + dd.ph * 1.7) * 6;
-          break;
-      }
-      dd.spr.x = px;
-      dd.spr.y = py;
-    }
+  if (_bgNebulaTileB) {
+    // Nebula band B (secondary color) — faster band, opposite drift so the
+    // two cloud layers slide against each other and never form a pattern
+    _bgNebulaTileB.width = w; _bgNebulaTileB.height = h;
+    _bgNebulaTileB.tilePosition.x = Math.round((-cam.x * 0.16 - _bgDriftX * 0.42) * res) / res;
+    _bgNebulaTileB.tilePosition.y = Math.round((-cam.y * 0.16 + _bgDriftY * 0.5) * res) / res;
+    _bgNebulaTileB.alpha = 0.15 + 0.04 * Math.sin(t * 0.23 + 1.7);
   }
 
   if (_bgMotes.length > 0) {
