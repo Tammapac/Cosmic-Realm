@@ -70,10 +70,13 @@ export function PlayerStatsPanel() {
     return () => { alive = false; };
   }, [show, tab, sort]);
 
+  // Hooks must run unconditionally — BEFORE the early return, or opening
+  // the window changes the hook count and React crashes the whole tree.
+  const drag = useDraggable("playerstats");
+
   if (!show) return null;
 
   const close = () => { state.showPlayerStats = false; bump(); };
-  const drag = useDraggable("playerstats");
   const rank = rankFor(player.honor);
   const cls = SHIP_CLASSES[player.shipClass];
   const stats = effectiveStats();

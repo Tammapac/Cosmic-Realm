@@ -55,6 +55,9 @@ export function SkillTreePanel() {
   const player = useGame((s) => s.player);
   const [branch, setBranch] = useState<SkillBranch>("offense");
   const [filter, setFilter] = useState<"all" | "learned" | "available">("all");
+  // Hooks must run unconditionally — BEFORE the early return, or opening
+  // the window changes the hook count and React crashes the whole tree.
+  const drag = useDraggable("skilltree");
 
   if (!show) return null;
 
@@ -64,7 +67,6 @@ export function SkillTreePanel() {
     .sort((a, b) => a.pos.row - b.pos.row || a.pos.col - b.pos.col);
 
   const close = () => { state.showSkillTree = false; bump(); };
-  const drag = useDraggable("skilltree");
 
   // HUD framed window (reference language) instead of the baked
   // skills-frame.png art: title band, real tab buttons, node board with the
