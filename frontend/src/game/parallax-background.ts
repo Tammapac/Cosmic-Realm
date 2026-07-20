@@ -172,6 +172,7 @@ export class ParallaxBackground {
   readonly foreground = new PIXI.Container();
 
   private far = new PIXI.Container();
+  private planetLayer = new PIXI.Container(); // planets: above the base bg, BELOW the stars
   private mid = new PIXI.Container();
   private atmo = new PIXI.Container();
 
@@ -199,7 +200,11 @@ export class ParallaxBackground {
   readonly stats: ParallaxStats = { sprites: 0, culled: 0, textures: 0, zone: "" };
 
   constructor() {
-    this.host.addChild(this.far, this.mid, this.atmo);
+    // Deterministic stacking regardless of async texture load order:
+    // fill+bg → planets → starfield → atmosphere. Planets sit in their own
+    // container BELOW the starfield so stars always twinkle in front of
+    // them instead of being swallowed by a planet disc.
+    this.host.addChild(this.far, this.planetLayer, this.mid, this.atmo);
   }
 
   get activeZone(): string { return this.zone; }
@@ -223,7 +228,7 @@ export class ParallaxBackground {
   }
 
   private clearZone(): void {
-    for (const c of [this.far, this.mid, this.atmo, this.worldDecor, this.foreground]) {
+    for (const c of [this.far, this.planetLayer, this.mid, this.atmo, this.worldDecor, this.foreground]) {
       c.removeChildren().forEach((ch) => ch.destroy());
     }
     for (const t of this.zoneTextures) t.destroy(true);
@@ -283,7 +288,7 @@ export class ParallaxBackground {
           // keep planets background-sized: cap the longest side at 680px
           const s = Math.min(1, 680 / Math.max(p.w, p.h));
           spr.scale.set(s);
-          this.mid.addChild(spr);
+          this.planetLayer.addChild(spr);
           const par = Math.max(PARALLAX.planetMin, Math.min(PARALLAX.planetMax, p.pf / 100 + 0.02));
           this.planets.push({ spr, cx: p.x, cy: p.y, par, pulse: 0, baseA: 1 });
         })
@@ -369,6 +374,7 @@ export class ParallaxBackground {
     const m = this.mask;
     this.far.visible = !m || m.has("far");
     this.mid.visible = !m || m.has("mid");
+    this.planetLayer.visible = !m || m.has("mid"); // planets belong to the mid-space toggle
     this.atmo.visible = !m || m.has("atmo");
     this.worldDecor.visible = !m || m.has("world");
     this.foreground.visible = !m || m.has("fg");
@@ -453,7 +459,7 @@ export class ParallaxBackground {
 
     this.stats.culled = culled;
     this.stats.sprites =
-      this.far.children.length + this.mid.children.length + this.atmo.children.length +
+      this.far.children.length + this.planetLayer.children.length + this.mid.children.length + this.atmo.children.length +
       this.worldDecor.children.length + this.foreground.children.length;
     this.stats.textures = this.zoneTextures.length;
   }
