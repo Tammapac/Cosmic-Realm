@@ -23,6 +23,7 @@ export function InventoryPanel() {
   const player = useGame((s) => s.player);
   const tick = useGame((s) => s.tick);
   const [selected, setSelected] = useState<string | null>(null);
+  const [tab, setTab] = useState<"all" | "weapon" | "generator" | "module">("all");
 
   const items = useMemo(() => {
     const list = [...player.inventory].filter((it) => MODULE_DEFS[it.defId]);
@@ -135,22 +136,62 @@ export function InventoryPanel() {
           <span style={{ flex: 1 }}>Inventory · {items.length}</span>
           <button className="gbtn gbtn-red" style={{ padding: "1px 8px", fontSize: 10 }} onClick={close} title={"Close inventory (I)"}>✕</button>
         </div>
+        {/* category tabs on the top edge */}
+        <div style={{ display: "flex", borderBottom: "1px solid var(--hud-border-dim)", flexShrink: 0 }}>
+          {([
+            { key: "all", label: "Alle" },
+            { key: "weapon", label: "Waffen" },
+            { key: "generator", label: "Generatoren" },
+            { key: "module", label: "Module" },
+          ] as const).map(({ key, label }) => {
+            const count = key === "all" ? items.length : items.filter((it) => MODULE_DEFS[it.defId]?.slot === key).length;
+            const active = tab === key;
+            return (
+              <button
+                key={key}
+                onClick={() => setTab(key)}
+                style={{
+                  flex: 1,
+                  padding: "6px 2px",
+                  cursor: "pointer",
+                  background: active ? "rgba(78,226,255,0.1)" : "transparent",
+                  border: "none",
+                  borderBottom: active ? "2px solid var(--hud-cyan)" : "2px solid transparent",
+                  fontFamily: "var(--font-display)",
+                  fontSize: 9.5,
+                  fontWeight: active ? 700 : 400,
+                  letterSpacing: "0.12em",
+                  textTransform: "uppercase",
+                  color: active ? "var(--hud-cyan)" : "var(--hud-text-dim)",
+                  textShadow: active ? "0 0 8px rgba(78,226,255,0.45)" : "none",
+                  transition: "color 0.12s, background 0.12s",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {label} ({count})
+              </button>
+            );
+          })}
+        </div>
         <div style={{ overflowY: "auto", minHeight: 0, padding: "6px 10px 10px" }}>
-          {SECTIONS.map(({ slot, label }) => {
+          {SECTIONS.filter(({ slot }) => tab === "all" || tab === slot).map(({ slot, label }) => {
             const group = items.filter((it) => MODULE_DEFS[it.defId]?.slot === slot);
             if (group.length === 0) return null;
             const equippedCount = group.filter((it) => isEquipped(it.instanceId)).length;
             return (
               <div key={slot}>
-                <div
-                  className="hud-titleband"
-                  style={{ margin: "8px -2px 6px", padding: "3px 8px", fontSize: 10, letterSpacing: "0.24em", borderTop: "1px solid var(--hud-border-dim)" }}
-                >
-                  <span style={{ flex: 1 }}>{label}</span>
-                  <span style={{ color: "var(--hud-text-dim)", letterSpacing: "0.08em" }}>
-                    {equippedCount > 0 ? `${equippedCount} aktiv · ` : ""}{group.length}
-                  </span>
-                </div>
+                {tab === "all" && (
+                  <div
+                    className="hud-titleband"
+                    style={{ margin: "8px -2px 6px", padding: "3px 8px", fontSize: 10, letterSpacing: "0.24em", borderTop: "1px solid var(--hud-border-dim)" }}
+                  >
+                    <span style={{ flex: 1 }}>{label}</span>
+                    <span style={{ color: "var(--hud-text-dim)", letterSpacing: "0.08em" }}>
+                      {equippedCount > 0 ? `${equippedCount} aktiv · ` : ""}{group.length}
+                    </span>
+                  </div>
+                )}
+                {tab !== "all" && <div style={{ height: 8 }} />}
                 <div
                   style={{
                     display: "grid",
