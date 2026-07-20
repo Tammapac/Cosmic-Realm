@@ -157,10 +157,10 @@
    border-image, dark interior, cyan text inside. "Buttons wie die hotkey,
    nur mit Schrift drin." ─────────────────────────────────────────────── */
 .gbtn {
-  background: linear-gradient(180deg, #0d1728 0%, #070d18 100%) !important;
+  background: transparent !important;
   border-style: solid !important;
-  border-width: 6px !important;
-  border-image: url("/assets/ui/kit/slot_cyan.png?v=1") 14 fill stretch !important;
+  border-width: 7px !important;
+  border-image: url("/assets/ui/hud-btn.png?v=2") 12 fill stretch !important;
   border-radius: 0 !important;
   clip-path: none !important;
   color: #bfeaff !important;
@@ -183,8 +183,8 @@
   filter: grayscale(0.5) brightness(0.7);
 }
 .gbtn-gold {
-  border-image: url("/assets/ui/kit/slot_gold.png?v=1") 14 fill stretch !important;
-  background: linear-gradient(180deg, #231a08 0%, #120c04 100%) !important;
+  border-image: url("/assets/ui/hud-btn-gold.png?v=2") 12 fill stretch !important;
+  background: transparent !important;
   color: #ffe6a8 !important;
   text-shadow: 0 0 6px rgba(232, 185, 77, 0.45), 0 1px 2px #000;
 }
@@ -193,8 +193,8 @@
   box-shadow: 0 0 12px rgba(232, 185, 77, 0.4) !important;
 }
 .gbtn-red {
-  border-image: url("/assets/ui/kit/slot_red.png?v=1") 14 fill stretch !important;
-  background: linear-gradient(180deg, #26090d 0%, #140406 100%) !important;
+  border-image: url("/assets/ui/hud-btn-red.png?v=2") 12 fill stretch !important;
+  background: transparent !important;
   color: #ffb0b8 !important;
   text-shadow: 0 0 6px rgba(255, 77, 94, 0.45), 0 1px 2px #000;
 }
