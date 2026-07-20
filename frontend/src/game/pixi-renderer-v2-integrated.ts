@@ -37,7 +37,7 @@ import {
   Enemy, Projectile, Particle, Floater, NpcShip, OtherPlayer, Asteroid, RESOURCES,
   CargoBox, Drone, DRONE_DEFS, ZONES, STATIONS, PORTALS, DUNGEONS, SHIP_CLASSES,
   MAP_RADIUS, FACTIONS, ShipClassId, EnemyType, rankFor, Station,
-  ZoneId, SHIP_SIZE_SCALE,
+  ZoneId, SHIP_SIZE_SCALE, WeaponKind,
 } from "./types";
 import {
   drawShipPixels, drawEnemy, shadeHex, drawProjectile, drawParticle,
@@ -47,6 +47,7 @@ import {
 } from "./render";
 import { DEBUG_OVERLAY } from "./renderer-config";
 import { EffectManager } from "./pixi-effect-manager";
+import { sfx } from "./sound";
 import {
   ShipVisualState, createShipVisual, updateShipVisual,
   triggerDamageFlash, triggerMuzzleFlash, updateMuzzleDecay, updateShipTexture,
@@ -57,6 +58,10 @@ import {
   createAsteroidTexture,
   EnhancedStar, generateEnhancedStars, renderEnhancedStars,
 } from "./pixi-world-visuals";
+import { StarblastExplosions } from "./starblast-explosions";
+import { StarblastLaserticles, LaserticleHandle, LaserSpawnParams } from "./starblast-laserticles";
+import { ShakeState, createShakeState, applyShakeImpulse, stepShake } from "./starblast-camera-shake";
+import { explosionPowerFor } from "./starblast-explosion-power";
 
 // ══════════════════════════════════════════════════════════════════════════
 // PIXI APP & LAYERS
@@ -88,6 +93,22 @@ let stationSprite: PIXI.Sprite | null = null;
 let stationTexture: PIXI.Texture | null = null;
 let stationBaseTexture: PIXI.BaseTexture | null = null;
 
+// ── Starblast-ported VFX systems (lasers, laser-hit fragments, explosions,
+// camera shake) — see starblast-explosions.ts / starblast-laserticles.ts /
+// starblast-camera-shake.ts for the port documentation. ──────────────────
+let starblastExplosions: StarblastExplosions | null = null;
+let starblastLaserticles: StarblastLaserticles | null = null;
+const starblastShake: ShakeState = createShakeState();
+/** Tracks state.cameraShake between frames so a spring impulse fires only
+ *  when a NEW shake event raises the value above its own natural decay
+ *  since last frame (state.cameraShake is a max-wins accumulator with no
+ *  per-event callback — see starblast-camera-shake.ts header). */
+let lastObservedCameraShake = 0;
+/** Laser id -> live handle, so hit/kill events (case-221-equivalent) can
+ *  locate the laser's Laserticles core/trail slot. Mirrors ll1O0 lifetime:
+ *  removed on kill() or natural expiry. */
+const activeLaserticleHandles = new Map<string, LaserticleHandle>();
+
 // Enemy 3D pass (second ship-layer instance) composited inside worldLayer
 let enemyShipCanvas: HTMLCanvasElement | null = null;
 let enemyShipSprite: PIXI.Sprite | null = null;
@@ -97,7 +118,7 @@ let enemyShipBaseTexture: PIXI.BaseTexture | null = null;
 let effectManager: EffectManager | null = null;
 let lastRenderTime = 0;
 let prevEnemyIds = new Set<string>();
-let prevEnemyData = new Map<string, { x: number; y: number; size: number; type: string }>();
+let prevEnemyData = new Map<string, { x: number; y: number; size: number; type: string; isBoss?: boolean }>();
 let prevProjectileData = new Map<string, { x: number; y: number; color: number; weaponKind: string; angle: number; fromPlayer: boolean }>();
 let prevAsteroidIds = new Set<string>();
 let prevAsteroidData = new Map<string, { x: number; y: number; size: number }>();
@@ -1557,6 +1578,22 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
   worldLayer.addChild(effectsFrontLayer);
   worldLayer.addChild(floaterLayer);
 
+  // Starblast-ported laser/hit/explosion GPU particle meshes — added right
+  // above effectsFrontLayer (same draw-order slot the old per-event
+  // spawnCinematicLaserHit/spawnExplosion calls used to occupy) so they
+  // layer over ships/projectiles but under floaters/UI, matching the
+  // additive-on-top-of-scene look Starblast itself renders with.
+  starblastExplosions = new StarblastExplosions();
+  starblastLaserticles = new StarblastLaserticles(2000, () => ({ height: app!.screen.height, zoom: state.cameraZoom }));
+  worldLayer.addChild(starblastExplosions.mesh);
+  worldLayer.addChild(starblastLaserticles.mesh);
+  // TEMP DIAGNOSTIC — remove after visibility bug is found.
+  (window as any).__starblastLaserticles = starblastLaserticles;
+  (window as any).__starblastExplosions = starblastExplosions;
+  (window as any).__worldLayer = worldLayer;
+  (window as any).__pixiApp = app;
+  (window as any).__PIXI = PIXI;
+
   // Debug muzzle marker overlay — always the topmost child of worldLayer so
   // dots draw above sprites but under UI. Empty until __DEBUG_MUZZLE_MARKERS.
   debugMuzzleGfx = new PIXI.Graphics();
@@ -1693,6 +1730,19 @@ export function destroyPixiRenderer(): void {
   prevEnemyIds.clear();
   prevEnemyData.clear();
 
+  // Destroy Starblast-ported VFX meshes
+  if (starblastExplosions) {
+    starblastExplosions.destroy();
+    starblastExplosions = null;
+  }
+  if (starblastLaserticles) {
+    starblastLaserticles.destroy();
+    starblastLaserticles = null;
+  }
+  activeLaserticleHandles.clear();
+  lastObservedCameraShake = 0;
+  starblastShake.x = starblastShake.y = starblastShake.vx = starblastShake.vy = starblastShake.r = starblastShake.vr = 0;
+
   // Destroy gradient sprite
   if (bgGradientSprite) {
     bgGradientSprite.destroy(true);
@@ -1765,13 +1815,20 @@ export function pixiRender(): void {
     clearNebulaSprites();
   }
 
-  // Camera shake
-  let sx = 0, sy = 0;
-  if (state.cameraShake > 0) {
-    const m = state.cameraShake * 16;
-    sx = (Math.random() - 0.5) * m;
-    sy = (Math.random() - 0.5) * m;
+  // Camera shake — Starblast spring-damper port (starblast-camera-shake.ts).
+  // state.cameraShake's existing >12 trigger sites (loop.ts) are untouched
+  // and keep writing a 0..1 max-wins intensity with no position; a NEW
+  // impulse fires whenever that value jumps above where its own per-tick
+  // decay (loop.ts:996, -=dt*1.6) would have left it, since there is no
+  // per-event callback into the renderer otherwise.
+  const expectedDecayed = Math.max(0, lastObservedCameraShake - dt * 1.6);
+  if (state.cameraShake > expectedDecayed + 1e-4) {
+    applyShakeImpulse(starblastShake, state.cameraShake);
   }
+  lastObservedCameraShake = state.cameraShake;
+  stepShake(starblastShake);
+  const sx = starblastShake.x;
+  const sy = starblastShake.y;
 
   // Viewport culling bounds
   const cullMargin = 150;
@@ -1880,6 +1937,8 @@ export function pixiRender(): void {
   }
   render3DLayer();
 
+  // ── Starblast VFX systems tick ──────────────────────────────────────
+  // Laserticles' shader/lifetime math is in Starblast's native 60Hz-tick
   // ── Effect Manager Update ──────────────────────────────────────────
   if (effectManager) {
     effectManager.update(dt);
@@ -1892,24 +1951,26 @@ export function pixiRender(): void {
     for (const id of prevEnemyIds) {
       if (!currentEnemyIds.has(id)) {
         const prev = prevEnemyData.get(id);
-        if (prev) {
-          const explosionType = prev.size > 20 ? "large" : prev.size > 10 ? "medium" : "small";
-          effectManager.spawnExplosion(prev.x, prev.y, prev.size * 2.5, explosionType);
-          // Extra debris + smoke for all enemies
-          effectManager.spawnDebrisBurst(prev.x, prev.y, Math.ceil(prev.size / 2), [0x556677, 0x778899, 0x99aabb, 0x445566, 0x667788]);
-          effectManager.spawnSmokePuff(prev.x, prev.y, prev.size * 1.2);
-          // Even more for larger enemies
-          if (prev.size > 15) {
-            effectManager.spawnDebrisBurst(prev.x, prev.y, Math.ceil(prev.size / 2), [0x778899, 0x99aabb, 0x556677]);
-            effectManager.spawnSmokePuff(prev.x, prev.y, prev.size * 0.8);
-          }
+        if (prev && starblastExplosions) {
+          // alienExplosion() — starblastStandard.html:16025-16028:
+          //   Explosions.explode(x, y, null, alien.getSpec("O01OO"))
+          //   sound, shakeCamera(x, y, alien.getSpec("O01OO"))
+          // getSpec's per-level O01OO lookup is ranked onto Cosmic Realm's
+          // enemy types by size/isBoss — see starblast-explosion-power.ts.
+          const power = explosionPowerFor({ type: prev.type as EnemyType, isBoss: prev.isBoss });
+          starblastExplosions.explode(prev.x, prev.y, null, power, 0, app!.screen.height, state.cameraZoom);
+          // Sound + shake for enemy death are already triggered by
+          // onEnemyDie/applyKill in loop.ts (sfx.explosion/bossKill and
+          // state.cameraShake writes) — not duplicated here, this block
+          // only owns the visual explosion (see task scope: replace
+          // rendering, not the existing death/shake trigger call sites).
         }
       }
     }
     prevEnemyIds = currentEnemyIds;
     prevEnemyData.clear();
     for (const e of state.enemies) {
-      prevEnemyData.set(e.id, { x: e.pos.x, y: e.pos.y, size: e.size, type: e.type });
+      prevEnemyData.set(e.id, { x: e.pos.x, y: e.pos.y, size: e.size, type: e.type, isBoss: e.isBoss });
     }
 
     // Detect asteroid deaths -> spawn heavy debris + smoke + sparks
@@ -1950,6 +2011,31 @@ export function pixiRender(): void {
     }
     prevPlayerHull = currentHull;
   }
+
+  // ── Starblast VFX systems tick ──────────────────────────────────────
+  // Must run AFTER every explode()/addLaser()/kill() call this frame (the
+  // laser-hit diffing in syncProjectiles() above, AND the enemy-death
+  // diffing earlier in this block) — each of those setters only flips a
+  // `dirty` flag; tick() is what actually uploads the changed GPU buffers,
+  // gated on that flag. Calling tick() before the enemy-death diffing (as
+  // an earlier version of this code did) meant the death explosion's
+  // fresh particle data got flagged dirty one call too late to be
+  // uploaded that frame, and sat un-uploaded until some LATER event
+  // (e.g. the next laser hit) happened to flip dirty again — by then the
+  // explosion's short lifetime had already expired in the shader's time
+  // math, so it silently never rendered. Laser hits happened to look
+  // correct by accident, since syncProjectiles() (which can call kill())
+  // already ran earlier in the frame, before this tick() call.
+  //
+  // Ticks vs seconds: Laserticles' shader/lifetime math is in Starblast's
+  // native 60Hz-tick units (source: this.O0Ol1.OI1Il.OIOll, an integer
+  // tick counter). Cosmic Realm's state.tick is a running seconds
+  // accumulator (loop.ts:993, `state.tick += dt`), so it's rescaled by
+  // *60 here to produce the same "ticks" unit the ported formulas
+  // (/60.0 in the vertex shader, lIlO0/60 lifetimes) expect — the
+  // formulas themselves are untouched.
+  if (starblastExplosions) starblastExplosions.tick();
+  if (starblastLaserticles) starblastLaserticles.tick(state.tick * 60);
 
   // ── Debug ───────────────────────────────────────────────────────────
   if (DEBUG_OVERLAY && debugText) {
@@ -2646,22 +2732,14 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
         e.pos.x + (Math.random() - 0.5) * intensity * 3,
         e.pos.y + (Math.random() - 0.5) * intensity * 3
       );
-      // Cinematic laser hit effect on enemy edge facing the player
-      if (effectManager && e.hitFlash > 0.2) {
-        const eventId = `hit-${e.id}-${Math.floor(state.tick * 10)}`;
-        if (!effectManager.hasProcessed(eventId)) {
-          effectManager.markProcessed(eventId);
-          // Direction from player to enemy = where projectiles hit
-          const pp = state.player.pos;
-          const hitAngle = Math.atan2(e.pos.y - pp.y, e.pos.x - pp.x);
-          // Place hit at enemy edge (not center)
-          const edgeDist = e.size * (0.7 + Math.random() * 0.3);
-          const spread = (Math.random() - 0.5) * 0.8;
-          const hx = e.pos.x - Math.cos(hitAngle + spread) * edgeDist;
-          const hy = e.pos.y - Math.sin(hitAngle + spread) * edgeDist;
-          effectManager.spawnCinematicLaserHit(hx, hy, hitAngle, PIXI.utils.string2hex(e.color), 0);
-        }
-      }
+      // Cinematic laser hit particles removed here — the actual hit
+      // burst (Laserticles.kill() + Explosions.explode(), case-221
+      // equivalent) is now spawned once, at the laser's real impact
+      // point/angle, from the projectile-death diffing in
+      // syncProjectiles() above. Keeping this second hitFlash-driven
+      // spawn would fire a duplicate effect (task requires exactly one
+      // combined hit effect per hit) built from an approximated
+      // player->enemy-center angle instead of the laser's own angle.
     } else {
       data.body.alpha = 1;
       data.body.tint = 0xffffff;
@@ -2737,6 +2815,22 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
 
 const muzzleFlashes = new Map<string, { g: PIXI.Graphics; ttl: number }>();
 
+/** Maps Cosmic Realm's WeaponKind onto one of Starblast's 6 laser trail
+ *  types (ll1O0.type, see starblast-laserticles.ts addLaser()'s switch).
+ *  Starblast itself selects the type per weapon/ammo definition; Cosmic
+ *  Realm has no such per-weapon Starblast-type field, so this is the one
+ *  explicit mapping decision the port required (task explicitly asked for
+ *  differentiated types here, not a single fallback) — every target value
+ *  (0/1/4) is one of Starblast's own defined types, none invented.
+ *  "laser" -> 0 (default/else branch: narrow forward-biased trail),
+ *  "energy" -> 1 (symmetric narrow trail),
+ *  "plasma" -> 4 (dispersed/scattered trail, matches a diffuse plasma bolt). */
+function weaponKindToLaserticleType(kind: WeaponKind | undefined): 0 | 1 | 4 {
+  if (kind === "energy") return 1;
+  if (kind === "plasma") return 4;
+  return 0;
+}
+
 function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: number): void {
   _reuseProjSyncIds.clear();
   const activeIds = _reuseProjSyncIds;
@@ -2750,6 +2844,54 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
     }
 
     activeIds.add(pr.id);
+
+    // True lasers (not rockets, not a bullet-hell FX-kind sprite — see
+    // weaponKindToLaserticleType doc) are fully owned by the Starblast
+    // Laserticles GPU mesh: no per-frame PIXI.Sprite is created or
+    // positioned for them at all, since the mesh draws every active laser
+    // (core+trail) in one batch from its own buffers. addLaser() is called
+    // exactly once, on first sight, mirroring ll1O0's constructor being
+    // called once per laser spawn (this.lO1Ol.O0Ol1.OI1Il.laser(t) in the
+    // source, starblastStandard.html:15971-15973).
+    const kindEarly = pr.weaponKind;
+    const isRocketEarly = kindEarly === "rocket";
+    const isFxKindEarly = !pr.fromPlayer && !!FX_KIND_MAP[kindEarly as WeaponKind];
+    const isTrueLaser = !isRocketEarly && !isFxKindEarly;
+
+    if (isTrueLaser) {
+      if (!activeLaserticleHandles.has(pr.id) && starblastLaserticles) {
+        const angle = Math.atan2(pr.vel.y, pr.vel.x);
+        const speed = Math.hypot(pr.vel.x, pr.vel.y);
+        const colorHex = PIXI.utils.string2hex(pr.color);
+        const params: LaserSpawnParams = {
+          x: pr.pos.x,
+          y: pr.pos.y,
+          z: 0,
+          vx: 0,
+          vy: 0,
+          angle,
+          spawnTime: state.tick * 60,
+          speed,
+          damage: Math.max(1, pr.damage),
+          type: weaponKindToLaserticleType(kindEarly),
+          lifetimeFrames: Math.max(1, pr.ttl) * 60,
+          colorHex,
+        };
+        const handle = new LaserticleHandle(params);
+        starblastLaserticles.addLaser(params, handle);
+        activeLaserticleHandles.set(pr.id, handle);
+
+        // Muzzle flash at spawn — same trigger condition as the sprite path
+        // below (fresh player shot), EffectManager's flash is orthogonal to
+        // the ported laser body/trail so it's kept as-is (task scope is
+        // laser body/trail/hit/death, not muzzle flashes).
+        if (effectManager && pr.fromPlayer && pr.ttl > 1.2) {
+          effectManager.spawnMuzzleFlash(pr.pos.x, pr.pos.y, angle, "laser", colorHex);
+        }
+      }
+      continue;
+    }
+
     let data = projectileSprites.get(pr.id);
 
     if (!data) {
@@ -2901,6 +3043,12 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
       const color = PIXI.utils.string2hex(pr.color);
       const isRocket = pr.weaponKind === "rocket";
       if (isRocket) continue;
+      // True lasers get zero legacy glow — Laserticles' own additive
+      // texture atlas (see starblast-laserticles.ts) already provides the
+      // bolt's glow/gradient, matching Starblast's own visual (which has
+      // no separate glow-graphics layer either).
+      const isFxKind = !pr.fromPlayer && !!FX_KIND_MAP[pr.weaponKind as WeaponKind];
+      if (!isFxKind) continue;
       const glowR = 3 + pr.size * 0.5;
       const glowTarget = pr.vel.y < 0 ? projectileGlowGraphics : projectileBehindGlowGraphics;
       const enemyShot = !pr.fromPlayer;
@@ -2947,7 +3095,24 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
           // bullet-hell shot fizzle: animated ring burst in the shot's color
           spawnFxImpact(prev.x, prev.y, PIXI.utils.hex2string(prev.color), (prev as any).size ?? 4);
         } else {
-          effectManager.spawnCinematicLaserHit(prev.x, prev.y, prev.angle, prev.color);
+          // Laser hit/expiry — case-221 equivalent (starblastStandard.html:
+          // 16405-16407: lO0l1() ends the laser at the actual impact point,
+          // Laserticles.kill() spawns impact fragments, Explosions.explode
+          // with power=1/z=0 spawns the orange hit burst). Sound is NOT
+          // played here — onEnemyHit (loop.ts:2741, sfx.enemyHit()) already
+          // fires it from the server-confirmed hit event; playing it again
+          // here would double it up (task requires exactly one combined
+          // effect per hit, and that includes not duplicating the sound).
+          const handle = activeLaserticleHandles.get(id);
+          if (handle && starblastLaserticles && starblastExplosions) {
+            starblastLaserticles.kill(handle, prev.x, prev.y);
+            starblastExplosions.explode(prev.x, prev.y, prev.angle, 1, 0, app!.screen.height, state.cameraZoom);
+            activeLaserticleHandles.delete(id);
+          } else {
+            // Fallback for anything that reached here without a tracked
+            // laser handle (should not normally happen for true lasers).
+            effectManager.spawnCinematicLaserHit(prev.x, prev.y, prev.angle, prev.color);
+          }
         }
       }
     }

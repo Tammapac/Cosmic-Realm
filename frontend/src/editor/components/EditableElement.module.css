@@ -1,0 +1,33 @@
+.element {
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: move;
+  user-select: none;
+}
+
+.element.locked {
+  cursor: not-allowed;
+}
+
+.selected {
+  outline: 1px solid #4ee2ff;
+  outline-offset: 1px;
+}
+
+.kindLabel {
+  font-family: "Courier New", monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: rgba(234, 244, 255, 0.45);
+  pointer-events: none;
+}
+
+.textContent {
+  pointer-events: none;
+  white-space: nowrap;
+}

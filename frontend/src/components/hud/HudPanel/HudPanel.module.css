@@ -1,0 +1,32 @@
+.panel {
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(3px);
+}
+
+.titleBand {
+  display: flex;
+  align-items: center;
+  gap: var(--hud-space-2);
+  padding: var(--hud-space-1) var(--hud-space-3);
+  border-bottom: 1px solid var(--hud-border-dim);
+  background: linear-gradient(90deg, rgba(78, 226, 255, 0.06) 0%, transparent 70%);
+}
+
+.titleTick {
+  width: 2px;
+  height: 11px;
+  background: var(--hud-frame-accent, var(--hud-cyan));
+  box-shadow: var(--hud-glow-soft) var(--hud-cyan-glow);
+  flex-shrink: 0;
+}
+
+.titleText {
+  font-size: var(--hud-fs-xs);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--hud-cyan);
+}
+
+.body {
+  padding: var(--hud-space-3);
+}

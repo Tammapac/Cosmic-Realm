@@ -1,0 +1,61 @@
+/* ── HUD Global Theme ────────────────────────────────────────────────── */
+
+.hud-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  font-family: var(--hud-font);
+  color: var(--hud-text-bright);
+}
+
+/* Applied to any interactive HUD element/panel so the game world under
+   empty HUD space keeps receiving clicks. */
+.hud-interactive {
+  pointer-events: auto;
+}
+
+/* Subtle scanline texture, reused across panels */
+.hud-scanlines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    180deg,
+    transparent 0px,
+    transparent 2px,
+    rgba(120, 200, 255, 0.02) 3px,
+    transparent 4px
+  );
+}
+
+/* Faint isometric grid, used very sparingly (ref: UIEXAMPLE background) */
+.hud-iso-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.35;
+  background-image:
+    linear-gradient(60deg, rgba(78, 226, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(-60deg, rgba(78, 226, 255, 0.05) 1px, transparent 1px);
+  background-size: 44px 76px;
+}
+
+.hud-label {
+  font-family: var(--hud-font);
+  font-size: var(--hud-fs-xs);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--hud-text-dim);
+}
+
+.hud-value {
+  font-family: var(--hud-font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--hud-text-bright);
+}
+
+.hud-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, var(--hud-border) 20%, var(--hud-border) 80%, transparent 100%);
+}

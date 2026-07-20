@@ -1,0 +1,13 @@
+.overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 999;
+}
+
+.guide {
+  stroke: #ff4d9e;
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}

@@ -1,0 +1,29 @@
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* The sweep itself is a true CIRCLE centered on the slot (not the whole
+   square), so its filled angle reads as an intuitively-proportional
+   "pie" wedge -- a conic-gradient painted across a square instead visually
+   under-represents the angle (corners skew the perceived filled area). */
+.sweep {
+  position: absolute;
+  width: 130%;
+  height: 130%;
+  border-radius: 50%;
+  background: conic-gradient(rgba(4, 8, 16, 0.88) var(--cd-deg), transparent var(--cd-deg));
+}
+
+.time {
+  font-family: var(--hud-font-mono);
+  font-weight: 700;
+  font-size: var(--hud-fs-md);
+  color: var(--hud-text-bright);
+  text-shadow: 0 1px 3px #000, 0 0 6px rgba(0, 0, 0, 0.8);
+}

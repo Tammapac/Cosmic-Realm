@@ -1,0 +1,351 @@
+/* Formfamily G (chat panel): rectangular console anchored bottom-left,
+   same material family as the Minimap (Formfamily E) -- straight
+   right-angled shell (not the Hotbar's slanted octagon), symmetric
+   corner chamfer, a single centered V-notch on the top edge only
+   (the panel is tall/narrow, so notches on all 4 edges the way the
+   Minimap has them would eat too much of the message list). Double
+   contour (glowRim + crispEdge outer, innerFrame inner ring), brushed
+   body, PCB veins running vertically (top-to-bottom) since the panel
+   itself is portrait-oriented instead of landscape. */
+.consoleWrap {
+  position: relative;
+  width: fit-content;
+  filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.6));
+  --cp-chamfer: 20px;
+  --cp-notch-a: 34%;
+  --cp-notch-mid-a: 42%;
+  --cp-notch-mid-b: 58%;
+  --cp-notch-b: 66%;
+  --cp-notch-d: 8px;
+}
+
+.glowRim {
+  position: absolute;
+  inset: -3px;
+  background: linear-gradient(180deg, #baf3ff 0%, var(--hud-cyan) 55%, var(--hud-shield-deep) 100%);
+  opacity: 0.8;
+  filter: blur(6px);
+  clip-path: polygon(
+    var(--cp-chamfer) 0, var(--cp-notch-a) 0, var(--cp-notch-mid-a) var(--cp-notch-d), var(--cp-notch-mid-b) var(--cp-notch-d), var(--cp-notch-b) 0,
+    calc(100% - var(--cp-chamfer)) 0, 100% var(--cp-chamfer),
+    100% calc(100% - var(--cp-chamfer)), calc(100% - var(--cp-chamfer)) 100%,
+    var(--cp-chamfer) 100%, 0 calc(100% - var(--cp-chamfer)),
+    0 var(--cp-chamfer)
+  );
+  pointer-events: none;
+}
+
+.crispEdge {
+  position: absolute;
+  inset: -1px;
+  background: linear-gradient(180deg, #d6f6ff 0%, var(--hud-cyan) 60%, var(--hud-shield-deep) 100%);
+  clip-path: polygon(
+    var(--cp-chamfer) 0, var(--cp-notch-a) 0, var(--cp-notch-mid-a) var(--cp-notch-d), var(--cp-notch-mid-b) var(--cp-notch-d), var(--cp-notch-b) 0,
+    calc(100% - var(--cp-chamfer)) 0, 100% var(--cp-chamfer),
+    100% calc(100% - var(--cp-chamfer)), calc(100% - var(--cp-chamfer)) 100%,
+    var(--cp-chamfer) 100%, 0 calc(100% - var(--cp-chamfer)),
+    0 var(--cp-chamfer)
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 1.5px;
+  pointer-events: none;
+}
+
+.innerFrame {
+  position: absolute;
+  inset: 5px;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.85;
+  background: linear-gradient(180deg, #a8e8ff 0%, var(--hud-cyan-dim) 60%, var(--hud-shield-deep) 100%);
+  clip-path: polygon(
+    calc(var(--cp-chamfer) - 5px) 0, var(--cp-notch-a) 0, var(--cp-notch-mid-a) calc(var(--cp-notch-d) - 5px), var(--cp-notch-mid-b) calc(var(--cp-notch-d) - 5px), var(--cp-notch-b) 0,
+    calc(100% - var(--cp-chamfer) + 5px) 0, 100% calc(var(--cp-chamfer) - 5px),
+    100% calc(100% - var(--cp-chamfer) + 5px), calc(100% - var(--cp-chamfer) + 5px) 100%,
+    calc(var(--cp-chamfer) - 5px) 100%, 0 calc(100% - var(--cp-chamfer) + 5px),
+    0 calc(var(--cp-chamfer) - 5px)
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 1px;
+}
+
+.console {
+  position: relative;
+  width: clamp(280px, 24vw, 340px);
+  display: flex;
+  flex-direction: column;
+  padding: 8px 8px 10px;
+  background:
+    linear-gradient(180deg, rgba(120, 175, 220, 0.14) 0%, transparent 40%),
+    linear-gradient(180deg, #283a58 0%, #17233c 32%, #0d1626 62%, #060a14 100%);
+  box-shadow:
+    inset 0 2px 5px rgba(180, 220, 255, 0.14),
+    inset 0 -14px 22px rgba(0, 0, 0, 0.55),
+    0 0 22px rgba(78, 226, 255, 0.18);
+  clip-path: polygon(
+    var(--cp-chamfer) 0, var(--cp-notch-a) 0, var(--cp-notch-mid-a) var(--cp-notch-d), var(--cp-notch-mid-b) var(--cp-notch-d), var(--cp-notch-b) 0,
+    calc(100% - var(--cp-chamfer)) 0, 100% var(--cp-chamfer),
+    100% calc(100% - var(--cp-chamfer)), calc(100% - var(--cp-chamfer)) 100%,
+    var(--cp-chamfer) 100%, 0 calc(100% - var(--cp-chamfer)),
+    0 var(--cp-chamfer)
+  );
+  overflow: hidden;
+}
+
+.consoleSheen {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(200, 225, 255, 0.14) 0%, rgba(200, 225, 255, 0.04) 30%, transparent 55%);
+  pointer-events: none;
+}
+
+.consoleNoise {
+  position: absolute;
+  inset: 0;
+  opacity: 0.045;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.innerBevel {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  padding: 3px;
+  background: linear-gradient(180deg, rgba(210, 235, 255, 0.22) 0%, rgba(0, 0, 0, 0.35) 100%);
+  clip-path: polygon(
+    var(--cp-chamfer) 0, var(--cp-notch-a) 0, var(--cp-notch-mid-a) var(--cp-notch-d), var(--cp-notch-mid-b) var(--cp-notch-d), var(--cp-notch-b) 0,
+    calc(100% - var(--cp-chamfer)) 0, 100% var(--cp-chamfer),
+    100% calc(100% - var(--cp-chamfer)), calc(100% - var(--cp-chamfer)) 100%,
+    var(--cp-chamfer) 100%, 0 calc(100% - var(--cp-chamfer)),
+    0 var(--cp-chamfer)
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+/* Vertical PCB/chip-trace veins -- same trace/node language as
+   Hotbar/Minimap, but mirrored top/bottom instead of left/right since
+   this panel is tall/narrow (portrait) rather than wide (landscape). */
+.consoleVeins {
+  position: absolute;
+  inset: 0;
+  opacity: 0.5;
+  pointer-events: none;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='340' height='120' viewBox='0 0 340 120'%3E%3Cg fill='none' stroke='%2378E2FF' stroke-width='1.4'%3E%3Cpath d='M14 0 L14 40 L6 40 L6 64'/%3E%3Cpath d='M26 0 L26 28 L18 28 L18 54 L26 54 L26 74'/%3E%3Cpath d='M300 0 L300 40 L308 40 L308 64'/%3E%3Cpath d='M288 0 L288 28 L296 28 L296 54 L288 54 L288 74'/%3E%3C/g%3E%3Cg fill='%2378E2FF'%3E%3Ccircle cx='6' cy='64' r='2'/%3E%3Ccircle cx='26' cy='74' r='1.8'/%3E%3Ccircle cx='308' cy='64' r='2'/%3E%3Ccircle cx='288' cy='74' r='1.8'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: repeat-y;
+  background-position: top center;
+  background-size: 100% auto;
+  -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.7) 0%, transparent 60%);
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.7) 0%, transparent 60%);
+}
+
+/* ── Channel tabs ─────────────────────────────────────────────────── */
+.tabs {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 4px;
+  padding: 2px 4px 0;
+}
+
+.tab {
+  all: unset;
+  flex: 1 1 auto;
+  text-align: center;
+  cursor: pointer;
+  padding: 4px 0 6px;
+  font-family: var(--hud-font);
+  font-size: var(--hud-fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--hud-text-dim);
+  background: rgba(3, 5, 10, 0.4);
+  box-shadow: inset 0 0 0 1px rgba(140, 190, 220, 0.08);
+  clip-path: polygon(
+    5px 0, calc(100% - 5px) 0, 100% 5px,
+    100% calc(100% - 5px), calc(100% - 5px) 100%,
+    5px 100%, 0 calc(100% - 5px), 0 5px
+  );
+  transition: color var(--hud-t-fast), background var(--hud-t-fast), filter var(--hud-t-fast);
+  /* Permanent glow ring on every tab, not just active/hover -- always
+     visible via filter: drop-shadow (not box-shadow) so it traces the
+     tab's own sheared clip-path corner instead of glowing around the
+     untouched rectangular box. */
+  filter: drop-shadow(0 0 4px rgba(78, 226, 255, 0.4));
+}
+
+.tab:hover {
+  color: var(--hud-text-bright);
+  background: rgba(10, 16, 28, 0.6);
+}
+
+.tabActive {
+  color: var(--hud-cyan);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--hud-cyan) 20%, #0a0f1c) 0%, #0a0f1c 100%);
+  box-shadow:
+    inset 0 0 0 1px var(--hud-cyan-dim),
+    inset 0 0 10px rgba(78, 226, 255, 0.18);
+  filter: drop-shadow(0 0 6px rgba(78, 226, 255, 0.55));
+}
+
+/* ── Message list ─────────────────────────────────────────────────── */
+/* Sits directly under .tabs with no gap (padding on .tabs handles the
+   spacing above, none below) and no separate top rounding, so the two
+   read as one continuous integrated panel -- the tab strip's bottom
+   edge and the message box's top edge touch directly instead of
+   floating as two visually separate pieces. */
+.messageList {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  height: clamp(150px, 18vw, 190px);
+  overflow-y: auto;
+  padding: 4px 8px;
+  margin: 0 -2px;
+  background: rgba(3, 5, 10, 0.35);
+  box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(140, 190, 220, 0.06);
+}
+
+.messageList::-webkit-scrollbar {
+  width: 5px;
+}
+.messageList::-webkit-scrollbar-track {
+  background: transparent;
+}
+.messageList::-webkit-scrollbar-thumb {
+  background: var(--hud-cyan-dim);
+  opacity: 0.6;
+}
+
+.message {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  font-family: var(--hud-font);
+  font-size: var(--hud-fs-xs);
+  line-height: 1.4;
+}
+
+.messageTime {
+  flex-shrink: 0;
+  font-size: var(--hud-fs-micro);
+  color: var(--hud-text-mute);
+  font-variant-numeric: tabular-nums;
+}
+
+.messageSender {
+  flex-shrink: 0;
+  font-weight: 700;
+}
+
+.messageText {
+  color: var(--hud-text-bright);
+  word-break: break-word;
+}
+
+.messageSystem .messageText {
+  color: var(--hud-text-dim);
+  font-style: italic;
+}
+
+/* System channel entries -- kill/reward/info log lines, colored by
+   logType instead of a sender name (there is no sender on this
+   channel, only events). */
+.logEntry {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-family: var(--hud-font);
+  font-size: var(--hud-fs-xs);
+  line-height: 1.4;
+}
+
+.logIcon {
+  flex-shrink: 0;
+  width: 12px;
+  text-align: center;
+  font-size: 10px;
+}
+
+.logText {
+  font-weight: 600;
+  word-break: break-word;
+}
+
+/* ── Input row ────────────────────────────────────────────────────── */
+.inputRow {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+/* Same "punched in" collar+glass construction as the Minimap's
+   zoneDisplay, just stretched into a wide bar instead of a small
+   centered pill. */
+.inputCollar {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 3px;
+  background: linear-gradient(165deg, #0a0f1c 0%, #1c2740 55%, #4a6188 100%);
+  clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 6px, 100% 100%, 0 100%, 0 6px);
+  box-shadow:
+    inset 0 3px 5px rgba(0, 0, 0, 0.7),
+    inset 0 -1px 2px rgba(210, 235, 255, 0.2);
+}
+
+.inputGlass {
+  position: relative;
+  background: linear-gradient(180deg, rgba(12, 8, 4, 0.9) 0%, rgba(6, 4, 2, 0.95) 100%);
+  clip-path: polygon(3px 0, calc(100% - 3px) 0, 100% 3px, 100% 100%, 0 100%, 0 3px);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+.textInput {
+  all: unset;
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 6px 10px;
+  font-family: var(--hud-font);
+  font-size: var(--hud-fs-xs);
+  color: var(--hud-text-bright);
+}
+
+.textInput::placeholder {
+  color: var(--hud-text-mute);
+}
+
+.sendButton {
+  all: unset;
+  flex-shrink: 0;
+  width: 34px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(165deg, #3a4f74 0%, #17233c 100%);
+  box-shadow: inset 0 1px 0 rgba(210, 235, 255, 0.25), inset 0 -2px 3px rgba(0, 0, 0, 0.5);
+  clip-path: polygon(6px 0, 100% 0, 100% 100%, 0 100%, 0 6px);
+  color: var(--hud-cyan);
+  font-size: 14px;
+  transition: filter var(--hud-t-fast);
+}
+
+.sendButton:hover {
+  filter: drop-shadow(0 0 5px rgba(78, 226, 255, 0.5)) brightness(1.15);
+}

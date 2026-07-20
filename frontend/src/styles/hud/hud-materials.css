@@ -1,0 +1,112 @@
+/* ── HUD Material Layers ─────────────────────────────────────────────────
+   Reusable texture/depth classes. Applied as extra elements/backgrounds
+   inside components so surfaces read as machined metal instead of flat
+   CSS divs. All effects stay subtle (per spec) -- opacity is deliberately
+   low so text/icons are never fought for contrast. */
+
+/* Brushed metal: fine horizontal grain + very faint diagonal micro-noise
+   band. Applied via ::before (not background-image on the element itself)
+   so it always layers on top of whatever background/gradient the component
+   sets, instead of the two `background` declarations fighting over the
+   same property and one fully replacing the other depending on CSS load
+   order. Host element needs `position: relative` (all current users --
+   TopPanel mainBody, Hotbar console, etc. -- already have it). */
+.hud-mat-brushed {
+  position: relative;
+}
+.hud-mat-brushed::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      var(--hud-brushed-line) 0px,
+      var(--hud-brushed-line) 1px,
+      transparent 1px,
+      transparent 3px
+    ),
+    repeating-linear-gradient(
+      178deg,
+      rgba(255, 255, 255, 0.015) 0px,
+      transparent 1px,
+      transparent 2px
+    );
+}
+
+/* Bevel edge: light top rim + dark bottom shade, the base "this is a real
+   machined panel, not a div" cue used on every formfamily. */
+.hud-mat-bevel {
+  box-shadow:
+    inset 0 1px 0 var(--hud-metal-hi),
+    inset 0 -2px 3px var(--hud-metal-lo);
+}
+
+/* Scanline sweep texture (static lines, distinct from the animated sweep
+   used on hero panels) */
+.hud-mat-scan {
+  background-image: repeating-linear-gradient(
+    180deg,
+    transparent 0px,
+    transparent 2px,
+    rgba(120, 200, 255, 0.025) 3px,
+    transparent 4px
+  );
+}
+
+/* Honeycomb/carbon micro-pattern, used sparingly on Formfamily B window
+   backgrounds per spec ("dunkle Carbon- oder Wabenmuster in einzelnen
+   Bereichen") -- kept at very low opacity. */
+.hud-mat-honeycomb {
+  background-image:
+    repeating-linear-gradient(60deg, rgba(140,190,220,0.04) 0, rgba(140,190,220,0.04) 1px, transparent 1px, transparent 14px),
+    repeating-linear-gradient(-60deg, rgba(140,190,220,0.04) 0, rgba(140,190,220,0.04) 1px, transparent 1px, transparent 14px),
+    repeating-linear-gradient(0deg, rgba(140,190,220,0.03) 0, rgba(140,190,220,0.03) 1px, transparent 1px, transparent 14px);
+}
+
+/* Subtle noise overlay via SVG feTurbulence data-URI filter, blended at
+   very low opacity with mix-blend-mode so it reads as fine material grain
+   rather than visible static. */
+.hud-mat-noise {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: var(--hud-noise-opacity);
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 120px 120px;
+}
+
+/* Inner recessed face — used for "eingelassene Innenflaeche" depth tier 3 */
+.hud-mat-inset {
+  background: linear-gradient(180deg, rgba(4, 7, 14, 0.92) 0%, rgba(10, 15, 26, 0.85) 100%);
+  box-shadow:
+    inset 0 3px 6px rgba(0, 0, 0, 0.7),
+    inset 0 -1px 0 rgba(140, 190, 220, 0.05);
+}
+
+/* Thin light-run animation across a metal edge (top rim), used sparingly */
+.hud-mat-edgelight {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  overflow: hidden;
+  pointer-events: none;
+}
+.hud-mat-edgelight::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -30%;
+  width: 30%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(140, 220, 255, 0.9), transparent);
+  animation: hud-edge-run 5s ease-in-out infinite;
+}
+@keyframes hud-edge-run {
+  0% { left: -30%; }
+  45% { left: 100%; }
+  100% { left: 100%; }
+}

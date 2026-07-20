@@ -1,0 +1,534 @@
+/* Formfamily E (radar/minimap): circular sensor console housed in a
+   straight, unsheared rectangular shell -- unlike the Hotbar's angled
+   octagonal cut, this frame stays a plain right-angled box (per explicit
+   direction: outer frame must be square, not slanted) while still using
+   the same material language (glow rim, crisp edge, inner bevel, PCB
+   veins, noise grain, brushed sheen). The scan surface itself is a
+   separate circular window recessed into the top of that shell, same
+   "eingelassene Innenflaeche" depth tier used everywhere else (slots,
+   resource-bar track).
+
+   Corners carry the same angled-cut language as the Hotbar's own corner
+   bevels (clearly diagonal, not a barely-there notch) -- but unlike the
+   Hotbar, which deliberately uses a DIFFERENT cut size per corner, all
+   four corners here use the identical --mm-chamfer size so the shell
+   stays fully symmetric. Each of the 4 edges (top/bottom/left/right) also
+   carries a small V-notch centered on that edge -- angled in, flat,
+   angled back out -- the same "status-wing" cutout language the Hotbar
+   uses on its top edge, just applied identically to all four sides
+   instead of only the top. The border reads as a genuine DOUBLE frame: an
+   outer contour line (.crispEdge) plus a second, separate inner contour
+   line (.innerFrame) with a visible gap of dark console fill between
+   them -- two distinct rings, not one thick border. */
+.consoleWrap {
+  position: relative;
+  width: fit-content;
+  filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.6));
+  --mm-chamfer: 26px;
+  /* Notch geometry, shared by all 4 edges -- a flat-bottomed trapezoid,
+     NOT a V: --mm-notch-a/--mm-notch-b are where the angled sides start
+     (near the edge's own corners), --mm-notch-mid-a/--mm-notch-mid-b are
+     where the angled sides END and the flat inner segment begins/ends
+     (symmetric around the 50% midpoint), --mm-notch-d is how far that
+     flat segment sits from the edge. Mirrors the Hotbar's own top-edge
+     cutout (25% 0, 38% 14px, 62% 14px, 75% 0) applied to all 4 sides. */
+  --mm-notch-a: 34%;
+  --mm-notch-mid-a: 42%;
+  --mm-notch-mid-b: 58%;
+  --mm-notch-b: 66%;
+  --mm-notch-d: 9px;
+}
+
+.glowRim {
+  position: absolute;
+  inset: -3px;
+  background: linear-gradient(180deg, #baf3ff 0%, var(--hud-cyan) 55%, var(--hud-shield-deep) 100%);
+  opacity: 0.8;
+  filter: blur(6px);
+  clip-path: polygon(
+    var(--mm-chamfer) 0, var(--mm-notch-a) 0, var(--mm-notch-mid-a) var(--mm-notch-d), var(--mm-notch-mid-b) var(--mm-notch-d), var(--mm-notch-b) 0,
+    calc(100% - var(--mm-chamfer)) 0,
+    100% var(--mm-chamfer), 100% var(--mm-notch-a), calc(100% - var(--mm-notch-d)) var(--mm-notch-mid-a), calc(100% - var(--mm-notch-d)) var(--mm-notch-mid-b), 100% var(--mm-notch-b),
+    100% calc(100% - var(--mm-chamfer)),
+    calc(100% - var(--mm-chamfer)) 100%, calc(100% - var(--mm-notch-a)) 100%, calc(100% - var(--mm-notch-mid-a)) calc(100% - var(--mm-notch-d)), calc(100% - var(--mm-notch-mid-b)) calc(100% - var(--mm-notch-d)), calc(100% - var(--mm-notch-b)) 100%,
+    var(--mm-chamfer) 100%,
+    0 calc(100% - var(--mm-chamfer)), 0 calc(100% - var(--mm-notch-a)), var(--mm-notch-d) calc(100% - var(--mm-notch-mid-a)), var(--mm-notch-d) calc(100% - var(--mm-notch-mid-b)), 0 calc(100% - var(--mm-notch-b)),
+    0 var(--mm-chamfer)
+  );
+  pointer-events: none;
+}
+
+.crispEdge {
+  position: absolute;
+  inset: -1px;
+  background: linear-gradient(180deg, #d6f6ff 0%, var(--hud-cyan) 60%, var(--hud-shield-deep) 100%);
+  clip-path: polygon(
+    var(--mm-chamfer) 0, var(--mm-notch-a) 0, var(--mm-notch-mid-a) var(--mm-notch-d), var(--mm-notch-mid-b) var(--mm-notch-d), var(--mm-notch-b) 0,
+    calc(100% - var(--mm-chamfer)) 0,
+    100% var(--mm-chamfer), 100% var(--mm-notch-a), calc(100% - var(--mm-notch-d)) var(--mm-notch-mid-a), calc(100% - var(--mm-notch-d)) var(--mm-notch-mid-b), 100% var(--mm-notch-b),
+    100% calc(100% - var(--mm-chamfer)),
+    calc(100% - var(--mm-chamfer)) 100%, calc(100% - var(--mm-notch-a)) 100%, calc(100% - var(--mm-notch-mid-a)) calc(100% - var(--mm-notch-d)), calc(100% - var(--mm-notch-mid-b)) calc(100% - var(--mm-notch-d)), calc(100% - var(--mm-notch-b)) 100%,
+    var(--mm-chamfer) 100%,
+    0 calc(100% - var(--mm-chamfer)), 0 calc(100% - var(--mm-notch-a)), var(--mm-notch-d) calc(100% - var(--mm-notch-mid-a)), var(--mm-notch-d) calc(100% - var(--mm-notch-mid-b)), 0 calc(100% - var(--mm-notch-b)),
+    0 var(--mm-chamfer)
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 1.5px;
+  pointer-events: none;
+}
+
+/* Second contour line, inset a few px from crispEdge -- the visible dark
+   gap between the two is what reads as "Doppelrahmen" instead of just a
+   single thicker border. Same chamfer + 4-edge notch shape, just pulled
+   in by a constant few px so it stays parallel to the outer edge. */
+.innerFrame {
+  position: absolute;
+  inset: 5px;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.85;
+  background: linear-gradient(180deg, #a8e8ff 0%, var(--hud-cyan-dim) 60%, var(--hud-shield-deep) 100%);
+  clip-path: polygon(
+    calc(var(--mm-chamfer) - 5px) 0, var(--mm-notch-a) 0, var(--mm-notch-mid-a) calc(var(--mm-notch-d) - 5px), var(--mm-notch-mid-b) calc(var(--mm-notch-d) - 5px), var(--mm-notch-b) 0,
+    calc(100% - var(--mm-chamfer) + 5px) 0,
+    100% calc(var(--mm-chamfer) - 5px), 100% var(--mm-notch-a), calc(100% - var(--mm-notch-d) + 5px) var(--mm-notch-mid-a), calc(100% - var(--mm-notch-d) + 5px) var(--mm-notch-mid-b), 100% var(--mm-notch-b),
+    100% calc(100% - var(--mm-chamfer) + 5px),
+    calc(100% - var(--mm-chamfer) + 5px) 100%, calc(100% - var(--mm-notch-a)) 100%, calc(100% - var(--mm-notch-mid-a)) calc(100% - var(--mm-notch-d) + 5px), calc(100% - var(--mm-notch-mid-b)) calc(100% - var(--mm-notch-d) + 5px), calc(100% - var(--mm-notch-b)) 100%,
+    calc(var(--mm-chamfer) - 5px) 100%,
+    0 calc(100% - var(--mm-chamfer) + 5px), 0 calc(100% - var(--mm-notch-a)), calc(var(--mm-notch-d) - 5px) var(--mm-notch-mid-a), calc(var(--mm-notch-d) - 5px) var(--mm-notch-mid-b), 0 calc(100% - var(--mm-notch-b)),
+    0 calc(var(--mm-chamfer) - 5px)
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 1px;
+}
+
+.console {
+  position: relative;
+  width: clamp(200px, 17vw, 250px);
+  padding: 6px 6px 6px;
+  background:
+    linear-gradient(180deg, rgba(120, 175, 220, 0.16) 0%, transparent 40%),
+    linear-gradient(180deg, #283a58 0%, #17233c 32%, #0d1626 62%, #060a14 100%);
+  box-shadow:
+    inset 0 2px 5px rgba(180, 220, 255, 0.14),
+    inset 0 -14px 22px rgba(0, 0, 0, 0.55),
+    0 0 22px rgba(78, 226, 255, 0.18);
+  clip-path: polygon(
+    var(--mm-chamfer) 0, var(--mm-notch-a) 0, var(--mm-notch-mid-a) var(--mm-notch-d), var(--mm-notch-mid-b) var(--mm-notch-d), var(--mm-notch-b) 0,
+    calc(100% - var(--mm-chamfer)) 0,
+    100% var(--mm-chamfer), 100% var(--mm-notch-a), calc(100% - var(--mm-notch-d)) var(--mm-notch-mid-a), calc(100% - var(--mm-notch-d)) var(--mm-notch-mid-b), 100% var(--mm-notch-b),
+    100% calc(100% - var(--mm-chamfer)),
+    calc(100% - var(--mm-chamfer)) 100%, calc(100% - var(--mm-notch-a)) 100%, calc(100% - var(--mm-notch-mid-a)) calc(100% - var(--mm-notch-d)), calc(100% - var(--mm-notch-mid-b)) calc(100% - var(--mm-notch-d)), calc(100% - var(--mm-notch-b)) 100%,
+    var(--mm-chamfer) 100%,
+    0 calc(100% - var(--mm-chamfer)), 0 calc(100% - var(--mm-notch-a)), var(--mm-notch-d) calc(100% - var(--mm-notch-mid-a)), var(--mm-notch-d) calc(100% - var(--mm-notch-mid-b)), 0 calc(100% - var(--mm-notch-b)),
+    0 var(--mm-chamfer)
+  );
+  overflow: hidden;
+}
+
+/* Flat top-to-bottom fade only -- no radial component. A radial highlight
+   centered at the top edge (as used on the Hotbar) reads as a point the
+   light converges toward, which visually implies the frame narrows at the
+   top even though the border itself is a straight rectangle. Since this
+   frame is explicitly meant to read as square/unslanted, the sheen has to
+   stay symmetric left-to-right at every height, not just at the center. */
+.consoleSheen {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(200, 225, 255, 0.14) 0%, rgba(200, 225, 255, 0.04) 30%, transparent 55%);
+  pointer-events: none;
+}
+
+.consoleNoise {
+  position: absolute;
+  inset: 0;
+  opacity: 0.045;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.innerBevel {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  padding: 3px;
+  background: linear-gradient(180deg, rgba(210, 235, 255, 0.22) 0%, rgba(0, 0, 0, 0.35) 100%);
+  clip-path: polygon(
+    var(--mm-chamfer) 0, var(--mm-notch-a) 0, var(--mm-notch-mid-a) var(--mm-notch-d), var(--mm-notch-mid-b) var(--mm-notch-d), var(--mm-notch-b) 0,
+    calc(100% - var(--mm-chamfer)) 0,
+    100% var(--mm-chamfer), 100% var(--mm-notch-a), calc(100% - var(--mm-notch-d)) var(--mm-notch-mid-a), calc(100% - var(--mm-notch-d)) var(--mm-notch-mid-b), 100% var(--mm-notch-b),
+    100% calc(100% - var(--mm-chamfer)),
+    calc(100% - var(--mm-chamfer)) 100%, calc(100% - var(--mm-notch-a)) 100%, calc(100% - var(--mm-notch-mid-a)) calc(100% - var(--mm-notch-d)), calc(100% - var(--mm-notch-mid-b)) calc(100% - var(--mm-notch-d)), calc(100% - var(--mm-notch-b)) 100%,
+    var(--mm-chamfer) 100%,
+    0 calc(100% - var(--mm-chamfer)), 0 calc(100% - var(--mm-notch-a)), var(--mm-notch-d) calc(100% - var(--mm-notch-mid-a)), var(--mm-notch-d) calc(100% - var(--mm-notch-mid-b)), 0 calc(100% - var(--mm-notch-b)),
+    0 var(--mm-chamfer)
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+/* Same PCB/chip-trace energy veins as the Hotbar console, just re-tiled to
+   this shell's own aspect ratio -- kept so both modules read as the same
+   material family instead of two unrelated finishes. Mirrored left/right
+   for the same bilateral-symmetry reason. */
+.consoleVeins {
+  position: absolute;
+  inset: 0;
+  opacity: 0.75;
+  pointer-events: none;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='240' viewBox='0 0 120 240'%3E%3Cg fill='none' stroke='%2378E2FF' stroke-width='1.4'%3E%3Cpath d='M0 14 L40 14 L40 6 L64 6'/%3E%3Cpath d='M0 26 L28 26 L28 18 L54 18'/%3E%3Cpath d='M0 38 L34 38 L34 30 L60 30'/%3E%3Cpath d='M0 50 L20 50 L20 44 L44 44'/%3E%3Cpath d='M64 6 L64 2'/%3E%3Cpath d='M54 18 L54 10 L74 10'/%3E%3Cpath d='M44 44 L44 36 L60 36'/%3E%3Cpath d='M20 50 L20 60'/%3E%3Cpath d='M6 4 L6 20 L18 20'/%3E%3Cpath d='M0 190 L40 190 L40 198 L64 198'/%3E%3Cpath d='M0 202 L28 202 L28 210 L54 210'/%3E%3Cpath d='M0 214 L34 214 L34 222 L60 222'/%3E%3Cpath d='M0 226 L20 226 L20 232 L44 232'/%3E%3Cpath d='M64 198 L64 236'/%3E%3Cpath d='M54 210 L54 218 L74 218'/%3E%3Cpath d='M44 232 L44 238'/%3E%3Cpath d='M6 236 L6 220 L18 220'/%3E%3C/g%3E%3Cg fill='%2378E2FF'%3E%3Ccircle cx='64' cy='6' r='2.2'/%3E%3Ccircle cx='54' cy='18' r='2'/%3E%3Ccircle cx='60' cy='30' r='2'/%3E%3Ccircle cx='44' cy='44' r='2'/%3E%3Ccircle cx='64' cy='2' r='1.6'/%3E%3Ccircle cx='74' cy='10' r='1.6'/%3E%3Ccircle cx='18' cy='20' r='1.6'/%3E%3Ccircle cx='64' cy='198' r='2.2'/%3E%3Ccircle cx='54' cy='210' r='2'/%3E%3Ccircle cx='60' cy='222' r='2'/%3E%3Ccircle cx='44' cy='232' r='2'/%3E%3Ccircle cx='64' cy='236' r='1.6'/%3E%3Ccircle cx='74' cy='218' r='1.6'/%3E%3Ccircle cx='18' cy='220' r='1.6'/%3E%3C/g%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='240' viewBox='0 0 120 240'%3E%3Cg fill='none' stroke='%2378E2FF' stroke-width='1.4' transform='translate(120,0) scale(-1,1)'%3E%3Cpath d='M0 14 L40 14 L40 6 L64 6'/%3E%3Cpath d='M0 26 L28 26 L28 18 L54 18'/%3E%3Cpath d='M0 38 L34 38 L34 30 L60 30'/%3E%3Cpath d='M0 50 L20 50 L20 44 L44 44'/%3E%3Cpath d='M64 6 L64 2'/%3E%3Cpath d='M54 18 L54 10 L74 10'/%3E%3Cpath d='M44 44 L44 36 L60 36'/%3E%3Cpath d='M20 50 L20 60'/%3E%3Cpath d='M6 4 L6 20 L18 20'/%3E%3Cpath d='M0 190 L40 190 L40 198 L64 198'/%3E%3Cpath d='M0 202 L28 202 L28 210 L54 210'/%3E%3Cpath d='M0 214 L34 214 L34 222 L60 222'/%3E%3Cpath d='M0 226 L20 226 L20 232 L44 232'/%3E%3Cpath d='M64 198 L64 236'/%3E%3Cpath d='M54 210 L54 218 L74 218'/%3E%3Cpath d='M44 232 L44 238'/%3E%3Cpath d='M6 236 L6 220 L18 220'/%3E%3C/g%3E%3Cg fill='%2378E2FF' transform='translate(120,0) scale(-1,1)'%3E%3Ccircle cx='64' cy='6' r='2.2'/%3E%3Ccircle cx='54' cy='18' r='2'/%3E%3Ccircle cx='60' cy='30' r='2'/%3E%3Ccircle cx='44' cy='44' r='2'/%3E%3Ccircle cx='64' cy='2' r='1.6'/%3E%3Ccircle cx='74' cy='10' r='1.6'/%3E%3Ccircle cx='18' cy='20' r='1.6'/%3E%3Ccircle cx='64' cy='198' r='2.2'/%3E%3Ccircle cx='54' cy='210' r='2'/%3E%3Ccircle cx='60' cy='222' r='2'/%3E%3Ccircle cx='44' cy='232' r='2'/%3E%3Ccircle cx='64' cy='236' r='1.6'/%3E%3Ccircle cx='74' cy='218' r='1.6'/%3E%3Ccircle cx='18' cy='220' r='1.6'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: no-repeat, no-repeat;
+  background-position: left center, right center;
+  background-size: 50% 100%, 50% 100%;
+  -webkit-mask-image: radial-gradient(circle at 50% 46%, transparent 44%, rgba(0, 0, 0, 0.9) 60%);
+  mask-image: radial-gradient(circle at 50% 46%, transparent 44%, rgba(0, 0, 0, 0.9) 60%);
+}
+
+/* Zone-name digital readout -- a small recessed window centered under the
+   top edge. Styled to read as an actual lit LCD/VFD panel rather than a
+   plain dark window: scanline texture, a soft screen-glow bloom behind
+   the text, and a flat (not radial) glass tint so the glow reads as
+   coming from the text itself lighting the glass.
+
+   Punched-IN, not raised: a real recess reads opposite to a raised
+   button -- the light/dark bevel direction has to invert. A raised
+   button catches light on its TOP face and casts shadow below it. A
+   punched hole instead has its upper inner wall thrown into shadow (the
+   collar above it blocks the downward key light) while the lower inner
+   wall/floor catches a bit of bounce light -- so .zoneDisplayCollar now
+   goes dark-top/light-bottom instead of light-top/dark-bottom. The glass
+   itself (.zoneDisplay) then gets a shadow that is explicitly heaviest at
+   the FOUR EDGES and fades toward the center (an inset spread with soft
+   blur on all sides, not just top), so it reads as light falling INTO a
+   hole and being occluded at the walls, rather than a uniform tinted
+   pane. */
+.zoneDisplayCollar {
+  position: relative;
+  z-index: 1;
+  width: fit-content;
+  max-width: 92%;
+  margin: 10px auto 4px;
+  padding: 5px;
+  background: linear-gradient(165deg, #0a0f1c 0%, #1c2740 55%, #4a6188 100%);
+  clip-path: polygon(7px 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 0 100%, 0 7px);
+  box-shadow:
+    inset 0 5px 7px rgba(0, 0, 0, 0.8),
+    inset 0 -2px 3px rgba(210, 235, 255, 0.28),
+    inset 3px 0 5px rgba(0, 0, 0, 0.55),
+    inset -3px 0 5px rgba(0, 0, 0, 0.55);
+}
+
+.zoneDisplay {
+  position: relative;
+  overflow: hidden;
+  padding: 2px 12px;
+  background: linear-gradient(180deg, rgba(12, 8, 4, 0.97) 0%, rgba(6, 4, 2, 0.98) 100%);
+  clip-path: polygon(3px 0, calc(100% - 3px) 0, 100% 3px, 100% 100%, 0 100%, 0 3px);
+  box-shadow:
+    inset 0 6px 8px -2px rgba(0, 0, 0, 1),
+    inset 0 -6px 8px -2px rgba(0, 0, 0, 0.9),
+    inset 6px 0 8px -2px rgba(0, 0, 0, 0.9),
+    inset -6px 0 8px -2px rgba(0, 0, 0, 0.9),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.9),
+    inset 0 0 14px rgba(232, 140, 40, 0.16);
+}
+
+/* Static scanline rows across the glass -- the "this is a lit screen, not
+   a hole" cue -- plus a faint vertical pixel-column grain so it doesn't
+   read as a flat tinted rectangle. */
+.zoneDisplay::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    repeating-linear-gradient(180deg, rgba(0, 0, 0, 0.35) 0px, transparent 1px, transparent 2px),
+    repeating-linear-gradient(90deg, rgba(255, 180, 100, 0.05) 0px, transparent 1px, transparent 3px);
+}
+
+.zoneDisplayText {
+  position: relative;
+  display: block;
+  font-family: var(--hud-font), var(--hud-font-mono);
+  font-size: var(--hud-fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-align: center;
+  white-space: nowrap;
+  color: var(--hud-energy);
+  text-shadow:
+    0 0 3px rgba(255, 220, 160, 0.9),
+    0 0 9px rgba(255, 190, 80, 0.75),
+    0 0 18px rgba(232, 140, 40, 0.5);
+}
+
+.header {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  padding: 0 2px 2px;
+}
+
+.coords {
+  font-family: var(--hud-font-mono);
+  font-size: var(--hud-fs-micro);
+  color: var(--hud-cyan-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Stamped/embossed circular punch -- three parts working together instead
+   of one flat inset-shadow circle:
+   1. .scanCollarWrap: a raised metal RING sitting proud of the console
+      surface, same brushed-steel gradient as the outer shell, its OWN
+      light-top/dark-bottom bevel so it physically reads as a lip of
+      material the hole was punched through (not a painted circle).
+   2. .scanWindow: the recessed glass itself, sitting a few px further in
+      -- gets a harder, closer inset shadow (short blur, high alpha) so
+      the collar visibly casts a shadow onto it right at the seam, plus a
+      thin bright arc at the very top only (12 o'clock), the way real
+      light rakes across the inner wall of a stamped hole instead of
+      glowing evenly all the way around.
+   3. .scanRimLight: crisp 1px highlight tracing the punch's top edge,
+      offset so it sits on the collar side of the seam -- the "metal lip
+      catching light" cue that finally sells the impression. */
+.scanCollarWrap {
+  position: relative;
+  z-index: 1;
+  width: 215px;
+  max-width: 100%;
+  margin: -8px auto 0;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  padding: 5px;
+  background: linear-gradient(165deg, #3a4f74 0%, #1c2740 45%, #0a0f1c 100%);
+  box-shadow:
+    inset 0 2px 2px rgba(200, 230, 255, 0.35),
+    inset 0 -3px 4px rgba(0, 0, 0, 0.6),
+    0 1px 0 rgba(200, 230, 255, 0.08);
+}
+
+.scanWindow {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 42%, rgba(10, 22, 38, 0.9) 0%, rgba(3, 6, 12, 0.97) 78%);
+  box-shadow:
+    inset 0 6px 9px -2px rgba(0, 0, 0, 0.9),
+    inset 0 -2px 5px rgba(0, 0, 0, 0.5),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.6),
+    inset 0 0 22px rgba(78, 226, 255, 0.08);
+}
+
+/* Thin bright arc, top-weighted only -- masked with a gradient so it fades
+   out by 9/3 o'clock instead of ringing the whole circle evenly. */
+.scanRimLight {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 2;
+  padding: 1px;
+  background: linear-gradient(180deg, rgba(210, 240, 255, 0.55) 0%, transparent 40%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+.scanGrid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    repeating-linear-gradient(0deg, rgba(78, 226, 255, 0.09) 0px, transparent 1px, transparent 24px),
+    repeating-linear-gradient(90deg, rgba(78, 226, 255, 0.09) 0px, transparent 1px, transparent 24px);
+  -webkit-mask-image: radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.9) 0%, transparent 96%);
+  mask-image: radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.9) 0%, transparent 96%);
+}
+
+.scanRing {
+  position: absolute;
+  inset: 16%;
+  border-radius: 50%;
+  border: 1px solid rgba(78, 226, 255, 0.16);
+  pointer-events: none;
+}
+
+.scanSweep {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  background: conic-gradient(
+    from 0deg,
+    rgba(160, 240, 255, 0.4) 0deg,
+    rgba(78, 226, 255, 0.22) 10deg,
+    rgba(78, 226, 255, 0.08) 30deg,
+    transparent 70deg,
+    transparent 360deg
+  );
+  /* Locally-declared keyframes, NOT the global hud-radar-sweep from
+     hud-animations.css: Vite's CSS Modules transform hashes bare
+     animation-name values inside .module.css files, including the
+     reference in `animation: hud-radar-sweep ...`, but it does NOT hash
+     the name in a plain global @keyframes rule -- so the hashed
+     reference silently stopped matching anything (animationPlayState
+     still reported "running", but the transform value never changed,
+     confirmed via computed-style sampling). `animation: :global(...)`
+     is not valid inside a property value (only as a selector), so the
+     fix is to declare the keyframes locally here -- then Vite hashes
+     both the declaration and the reference identically. */
+  animation: mm-radar-sweep 4.5s linear infinite;
+}
+
+@keyframes mm-radar-sweep {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.scanCenter {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  margin: -2.5px 0 0 -2.5px;
+  border-radius: 50%;
+  background: var(--hud-cyan);
+  box-shadow: 0 0 6px 2px var(--hud-cyan-glow);
+  z-index: 2;
+}
+
+.blip {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  z-index: 2;
+  pointer-events: none;
+}
+.blip::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: inherit;
+  opacity: 0.35;
+  filter: blur(2px);
+}
+
+/* "Being scanned" flash: fires once per sweep revolution, timed via
+   --blip-delay (set inline per-blip in Minimap.tsx from the blip's own
+   angle around the circle) so it lights up at the exact moment the
+   rotating .scanSweep beam passes over that blip's position, instead of
+   pulsing on an unrelated cycle. animation-delay is intentionally
+   NEGATIVE (-var(--blip-delay)) so the flash keyframe at 0% aligns with
+   "beam not here yet" from the very first frame rather than every blip
+   flashing together on page load before settling into sync. */
+.blipScanFlash {
+  position: absolute;
+  inset: -7px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.9) 0%, transparent 70%);
+  opacity: 0;
+  animation: mm-blip-scan-flash 4.5s linear infinite;
+  animation-delay: calc(-1 * var(--blip-delay, 0s));
+}
+
+@keyframes mm-blip-scan-flash {
+  0%, 94%, 100% { opacity: 0; }
+  96% { opacity: 1; }
+}
+
+.blipAlly {
+  background: var(--hud-green);
+  box-shadow: 0 0 5px 1px var(--hud-green);
+}
+.blipHostile {
+  background: var(--hud-hp);
+  box-shadow: 0 0 5px 1px var(--hud-hp);
+  animation: mm-pulse-critical 1.4s ease-in-out infinite;
+}
+
+@keyframes mm-pulse-critical {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+.blipNeutral {
+  background: var(--hud-energy);
+  box-shadow: 0 0 5px 1px var(--hud-energy);
+}
+.blipObjective {
+  border-radius: 1px;
+  transform: rotate(45deg);
+  background: var(--hud-magenta);
+  box-shadow: 0 0 5px 1px var(--hud-magenta-glow);
+}
+.blipResource {
+  width: 4px;
+  height: 4px;
+  margin: -2px 0 0 -2px;
+  background: var(--hud-gold);
+  box-shadow: 0 0 4px 1px var(--hud-gold);
+  opacity: 0.85;
+}
+.blipLoot {
+  border-radius: 1px;
+  transform: rotate(45deg);
+  background: var(--hud-violet);
+  box-shadow: 0 0 5px 1px var(--hud-violet-glow);
+}
+
+/* Vignette so blips/grid fade out softly at the circular edge instead of
+   ending on a hard line */
+.scanVignette {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 46%, transparent 62%, rgba(3, 6, 12, 0.55) 92%, rgba(3, 6, 12, 0.85) 100%);
+  z-index: 3;
+}
+
+.footer {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding-top: 3px;
+}
+
+.footerTick {
+  width: 3px;
+  height: 3px;
+  background: var(--hud-cyan-dim);
+  opacity: 0.6;
+}
+
+.footerLabel {
+  font-family: var(--hud-font-mono);
+  font-size: var(--hud-fs-micro);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--hud-text-mute);
+}

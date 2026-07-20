@@ -1,0 +1,65 @@
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #0a0e18;
+  border-bottom: 1px solid rgba(120, 180, 220, 0.15);
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+  color: #eaf4ff;
+}
+
+.group {
+  display: flex;
+  gap: 6px;
+}
+
+.divider {
+  width: 1px;
+  height: 20px;
+  background: rgba(120, 180, 220, 0.15);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.toolbar button {
+  all: unset;
+  cursor: pointer;
+  padding: 6px 10px;
+  background: #131c30;
+  border: 1px solid rgba(120, 180, 220, 0.25);
+  color: #eaf4ff;
+  white-space: nowrap;
+}
+.toolbar button:hover {
+  border-color: #4ee2ff;
+}
+.toolbar button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.active {
+  border-color: #4ee2ff !important;
+  color: #4ee2ff !important;
+  background: rgba(78, 226, 255, 0.1) !important;
+}
+
+.danger {
+  color: #ff4d5e !important;
+}
+.danger:hover {
+  border-color: #ff4d5e !important;
+}
+
+.hudComponentBtn {
+  border-color: rgba(232, 185, 77, 0.35) !important;
+  color: #e8b94d !important;
+}
+.hudComponentBtn:hover {
+  border-color: #e8b94d !important;
+  background: rgba(232, 185, 77, 0.1) !important;
+}

@@ -1,0 +1,49 @@
+.overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3500;
+}
+
+.vertex {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  margin-top: -7px;
+  background: #e8b94d;
+  border: 2px solid #1a1206;
+  border-radius: 50%;
+  cursor: grab;
+  pointer-events: auto;
+  box-shadow: 0 0 6px rgba(232, 185, 77, 0.85);
+}
+.vertex:active {
+  cursor: grabbing;
+  background: #4ee2ff;
+}
+.vertex:hover {
+  background: #ffd980;
+}
+
+.midpoint {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  margin-top: -4px;
+  background: rgba(78, 226, 255, 0.35);
+  border: 1px solid rgba(78, 226, 255, 0.7);
+  border-radius: 50%;
+  cursor: copy;
+  pointer-events: auto;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+.overlay:hover .midpoint {
+  opacity: 1;
+}
+.midpoint:hover {
+  background: #4ee2ff;
+  transform: scale(1.3);
+}

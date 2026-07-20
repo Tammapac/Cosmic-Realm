@@ -1,0 +1,205 @@
+/* Formfamily A: horizontal HUD module, one continuous shaped shell.
+   HP/Shield sit built into the TOP of the same shell (not a separate
+   stacked box), ability slots directly below in a recessed channel.
+   Lighter brushed surface that fades toward the base, with a soft glow
+   rim tracing the whole outline. Recognizably rectangular, but the four
+   edges are not identical straight lines -- unequal corner cuts keep it
+   from reading as four plain sides. */
+.consoleWrap {
+  position: relative;
+  width: fit-content;
+  filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.6));
+}
+
+.glowRim {
+  position: absolute;
+  inset: -3px;
+  background: linear-gradient(180deg, #baf3ff 0%, var(--hud-cyan) 55%, var(--hud-shield-deep) 100%);
+  opacity: 0.8;
+  filter: blur(6px);
+  clip-path: polygon(
+    22px 0, 25% 0, 38% 14px, 62% 14px, 75% 0, calc(100% - 14px) 0,
+    100% 7px, 100% calc(100% - 20px),
+    calc(100% - 26px) 100%, 30px 100%,
+    0 calc(100% - 16px), 0 5px
+  );
+  pointer-events: none;
+}
+
+/* Crisp 1px bright contour, sitting between the blurred glow and the
+   console fill so the rim reads as a defined line, not just a soft haze */
+.crispEdge {
+  position: absolute;
+  inset: -1px;
+  background: linear-gradient(180deg, #d6f6ff 0%, var(--hud-cyan) 60%, var(--hud-shield-deep) 100%);
+  clip-path: polygon(
+    22px 0, 25% 0, 38% 14px, 62% 14px, 75% 0, calc(100% - 14px) 0,
+    100% 7px, 100% calc(100% - 20px),
+    calc(100% - 26px) 100%, 30px 100%,
+    0 calc(100% - 16px), 0 5px
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 1.5px;
+  pointer-events: none;
+}
+
+.console {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 36px 22px;
+  background:
+    radial-gradient(120% 90% at 50% -10%, rgba(120, 175, 220, 0.16) 0%, transparent 55%),
+    linear-gradient(180deg, #283a58 0%, #17233c 32%, #0d1626 62%, #060a14 100%);
+  box-shadow:
+    inset 0 2px 5px rgba(180, 220, 255, 0.14),
+    inset 0 -14px 22px rgba(0, 0, 0, 0.55),
+    0 0 22px rgba(78, 226, 255, 0.18);
+  clip-path: polygon(
+    22px 0, 25% 0, 38% 14px, 62% 14px, 75% 0, calc(100% - 14px) 0,
+    100% 7px, 100% calc(100% - 20px),
+    calc(100% - 26px) 100%, 30px 100%,
+    0 calc(100% - 16px), 0 5px
+  );
+  overflow: hidden;
+}
+
+/* Soft top-to-bottom lightening fade, layered above the base gradient so
+   the "heller, leicht verblassend" read holds even over the brushed
+   texture and noise. Now a radial fade centered on the shell instead of
+   a flat linear one, so light reads as falling ACROSS the material
+   (brighter center, subtly darker toward both flanks) rather than only
+   top-to-bottom -- reinforces the console's own bilateral symmetry. */
+.consoleSheen {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(200, 225, 255, 0.14) 0%, rgba(200, 225, 255, 0.04) 30%, transparent 55%),
+    radial-gradient(75% 140% at 50% 0%, rgba(200, 225, 255, 0.05) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.consoleNoise {
+  position: absolute;
+  inset: 0;
+  opacity: 0.045;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Second, inner bevel ring -- a thin dark-to-light contour sitting just
+   INSIDE the console's own edge (as opposed to glowRim/crispEdge, which
+   sit OUTSIDE it). Same "erase to ring" mask-composite technique as
+   crispEdge so the ring thickness is perfectly even all the way around
+   the silhouette, including through the angled top cut and every
+   corner. Reads as a second, separately-machined lip just inside the
+   outer rim -- reinforcing the "built from mounted parts" material
+   language instead of a single flat edge. */
+.innerBevel {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  padding: 3px;
+  background: linear-gradient(180deg, rgba(210, 235, 255, 0.22) 0%, rgba(0, 0, 0, 0.35) 100%);
+  clip-path: polygon(
+    22px 0, 25% 0, 38% 14px, 62% 14px, 75% 0, calc(100% - 14px) 0,
+    100% 7px, 100% calc(100% - 20px),
+    calc(100% - 26px) 100%, 30px 100%,
+    0 calc(100% - 16px), 0 5px
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+/* Energy veins -- a real PCB/chip-trace pattern instead of a diagonal
+   zigzag hatch: orthogonal lines (horizontal runs with right-angle
+   branches, small solder-point nodes at the junctions) drawn as an SVG
+   background, mirrored left/right around the shell's own center line so
+   the pattern matches the console's bilateral symmetry -- the same
+   straight-segments-plus-occasional-angle language as the outer
+   silhouette itself, not a decorative zigzag unrelated to it. Built as
+   one 360x120 tile mirrored via two background-images (one flipped via
+   scaleX in its own viewBox-less coordinate space is awkward in a data
+   URI, so the mirroring is done by placing the SAME tile twice with
+   `background-position: left/right` and `background-repeat: no-repeat`,
+   each covering exactly one half -- the tile's own path layout is drawn
+   so that terminating it at the tile edge reads as running INTO the
+   center seam, giving a true mirror image rather than a repeating strip
+   that happens to tile). Sits behind the slot channel and status row
+   (both z-index:1, this layer is a plain sibling below them in DOM
+   order with no z-index of its own) so it reads as circuitry embedded
+   in the console body, peeking out around the slots rather than drawn
+   over them. */
+.consoleVeins {
+  position: absolute;
+  inset: 0;
+  opacity: 0.8;
+  pointer-events: none;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='120' viewBox='0 0 360 120'%3E%3Cg fill='none' stroke='%2378E2FF' stroke-width='1.6'%3E%3Cpath d='M360 12 L180 12 L180 4 L155 4'/%3E%3Cpath d='M360 26 L240 26 L240 16 L215 16'/%3E%3Cpath d='M360 40 L200 40 L200 30 L165 30'/%3E%3Cpath d='M360 54 L260 54 L260 68 L225 68'/%3E%3Cpath d='M360 66 L230 66 L230 46 L140 46'/%3E%3Cpath d='M360 80 L250 80 L250 94 L210 94'/%3E%3Cpath d='M360 92 L270 92 L270 106 L235 106'/%3E%3Cpath d='M360 104 L215 104 L215 116 L185 116'/%3E%3Cpath d='M300 12 L300 4'/%3E%3Cpath d='M280 26 L280 8 L320 8'/%3E%3Cpath d='M330 40 L330 26'/%3E%3Cpath d='M290 54 L290 40'/%3E%3Cpath d='M310 80 L310 66'/%3E%3Cpath d='M255 40 L255 54'/%3E%3Cpath d='M358 2 L358 20 L310 20'/%3E%3Cpath d='M352 2 L352 12 L330 12'/%3E%3Cpath d='M358 100 L358 118 L305 118'/%3E%3Cpath d='M350 118 L350 108 L325 108'/%3E%3Cpath d='M2 6 L2 24 L50 24'/%3E%3Cpath d='M10 6 L10 16 L32 16'/%3E%3Cpath d='M2 96 L2 114 L55 114'/%3E%3Cpath d='M14 114 L14 104 L35 104'/%3E%3C/g%3E%3Cg fill='%2378E2FF'%3E%3Ccircle cx='155' cy='4' r='2.4'/%3E%3Ccircle cx='215' cy='16' r='2.4'/%3E%3Ccircle cx='165' cy='30' r='2.4'/%3E%3Ccircle cx='225' cy='68' r='2.4'/%3E%3Ccircle cx='140' cy='46' r='2.6'/%3E%3Ccircle cx='210' cy='94' r='2.4'/%3E%3Ccircle cx='235' cy='106' r='2.4'/%3E%3Ccircle cx='185' cy='116' r='2.4'/%3E%3Ccircle cx='300' cy='4' r='2'/%3E%3Ccircle cx='320' cy='8' r='2'/%3E%3Ccircle cx='330' cy='26' r='2'/%3E%3Ccircle cx='290' cy='40' r='2'/%3E%3Ccircle cx='310' cy='66' r='2'/%3E%3Ccircle cx='255' cy='40' r='2'/%3E%3Ccircle cx='255' cy='54' r='2'/%3E%3Ccircle cx='310' cy='20' r='2'/%3E%3Ccircle cx='330' cy='12' r='1.8'/%3E%3Ccircle cx='305' cy='118' r='2'/%3E%3Ccircle cx='325' cy='108' r='1.8'/%3E%3Ccircle cx='50' cy='24' r='2'/%3E%3Ccircle cx='32' cy='16' r='1.8'/%3E%3Ccircle cx='55' cy='114' r='2'/%3E%3Ccircle cx='35' cy='104' r='1.8'/%3E%3C/g%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='120' viewBox='0 0 360 120'%3E%3Cg fill='none' stroke='%2378E2FF' stroke-width='1.6' transform='translate(360,0) scale(-1,1)'%3E%3Cpath d='M360 12 L180 12 L180 4 L155 4'/%3E%3Cpath d='M360 26 L240 26 L240 16 L215 16'/%3E%3Cpath d='M360 40 L200 40 L200 30 L165 30'/%3E%3Cpath d='M360 54 L260 54 L260 68 L225 68'/%3E%3Cpath d='M360 66 L230 66 L230 46 L140 46'/%3E%3Cpath d='M360 80 L250 80 L250 94 L210 94'/%3E%3Cpath d='M360 92 L270 92 L270 106 L235 106'/%3E%3Cpath d='M360 104 L215 104 L215 116 L185 116'/%3E%3Cpath d='M300 12 L300 4'/%3E%3Cpath d='M280 26 L280 8 L320 8'/%3E%3Cpath d='M330 40 L330 26'/%3E%3Cpath d='M290 54 L290 40'/%3E%3Cpath d='M310 80 L310 66'/%3E%3Cpath d='M255 40 L255 54'/%3E%3Cpath d='M358 2 L358 20 L310 20'/%3E%3Cpath d='M352 2 L352 12 L330 12'/%3E%3Cpath d='M358 100 L358 118 L305 118'/%3E%3Cpath d='M350 118 L350 108 L325 108'/%3E%3Cpath d='M2 6 L2 24 L50 24'/%3E%3Cpath d='M10 6 L10 16 L32 16'/%3E%3Cpath d='M2 96 L2 114 L55 114'/%3E%3Cpath d='M14 114 L14 104 L35 104'/%3E%3C/g%3E%3Cg fill='%2378E2FF' transform='translate(360,0) scale(-1,1)'%3E%3Ccircle cx='155' cy='4' r='2.4'/%3E%3Ccircle cx='215' cy='16' r='2.4'/%3E%3Ccircle cx='165' cy='30' r='2.4'/%3E%3Ccircle cx='225' cy='68' r='2.4'/%3E%3Ccircle cx='140' cy='46' r='2.6'/%3E%3Ccircle cx='210' cy='94' r='2.4'/%3E%3Ccircle cx='235' cy='106' r='2.4'/%3E%3Ccircle cx='185' cy='116' r='2.4'/%3E%3Ccircle cx='300' cy='4' r='2'/%3E%3Ccircle cx='320' cy='8' r='2'/%3E%3Ccircle cx='330' cy='26' r='2'/%3E%3Ccircle cx='290' cy='40' r='2'/%3E%3Ccircle cx='310' cy='66' r='2'/%3E%3Ccircle cx='255' cy='40' r='2'/%3E%3Ccircle cx='255' cy='54' r='2'/%3E%3Ccircle cx='310' cy='20' r='2'/%3E%3Ccircle cx='330' cy='12' r='1.8'/%3E%3Ccircle cx='305' cy='118' r='2'/%3E%3Ccircle cx='325' cy='108' r='1.8'/%3E%3Ccircle cx='50' cy='24' r='2'/%3E%3Ccircle cx='32' cy='16' r='1.8'/%3E%3Ccircle cx='55' cy='114' r='2'/%3E%3Ccircle cx='35' cy='104' r='1.8'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: no-repeat, no-repeat;
+  background-position: left center, right center;
+  background-size: 50% 100%, 50% 100%;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.85) 20%, rgba(0, 0, 0, 0.85) 100%);
+  mask-image: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.85) 20%, rgba(0, 0, 0, 0.85) 100%);
+}
+
+/* HP/Shield status row -- sits on top of the slot channel, inside the
+   same shell */
+.statusRow {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0;
+  padding: 0 20px;
+}
+
+.statusWing {
+  flex: 0 1 auto;
+  width: 46%;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.statusDivider {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 4px;
+  background: linear-gradient(180deg, transparent, var(--hud-border-bright), transparent);
+  opacity: 0.5;
+}
+
+.wingLabel {
+  font-family: var(--hud-font-mono);
+  font-size: var(--hud-fs-micro);
+  letter-spacing: 0.18em;
+  color: var(--hud-text-dim);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+/* Recessed channel holding the ability slots -- its own inset depth tier,
+   distinct from the console's outer material */
+.slotChannel {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  margin: 0 6px;
+  background: rgba(3, 5, 10, 0.55);
+  box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.65), inset 0 0 0 1px rgba(140, 190, 220, 0.08);
+  border-radius: 10px;
+}

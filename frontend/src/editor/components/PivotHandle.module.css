@@ -1,0 +1,57 @@
+.pivot {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  margin-left: -14px;
+  margin-top: -14px;
+  cursor: grab;
+  /* Same stacking-context pitfall as the vertex handles: every
+     EditableElement carries an explicit z-index, which promotes it to
+     its own stacking context that beats a plain z-index number on a
+     sibling regardless of DOM order, and Moveable's own control box sits
+     at z-index 3000 in a separate context too -- this needs to clear
+     both. */
+  z-index: 3600;
+  pointer-events: auto;
+}
+
+.pivot:active {
+  cursor: grabbing;
+}
+
+/* Thicker, brighter crosshair with a dark outline on both sides so it
+   reads clearly over light AND dark element fills, not just dark ones. */
+.crosshairV {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: #ffd766;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.85);
+  transform: translateX(-50%);
+}
+
+.crosshairH {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  height: 2px;
+  width: 100%;
+  background: #ffd766;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.85);
+  transform: translateY(-50%);
+}
+
+.dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #fff2cc 0%, #ffd766 45%, #e8b94d 100%);
+  border: 2px solid #1a1206;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 0 1px rgba(255, 215, 102, 0.9), 0 0 10px 2px rgba(255, 215, 102, 0.85);
+}

@@ -1,0 +1,352 @@
+/* Formfamily D (status/slot fields): sheared parallelogram, three visible
+   material layers (outer frame -> mid bracket -> recessed inner face),
+   segmented corner markers. Not a flat rectangle. */
+.slot {
+  --slot-shear: 9px;
+  position: relative;
+  width: clamp(46px, 3.6vw, 60px);
+  height: clamp(46px, 3.6vw, 60px);
+  flex-shrink: 0;
+  transition: filter var(--hud-t-fast);
+  clip-path: polygon(
+    var(--slot-shear) 0, 100% 0,
+    100% calc(100% - var(--slot-shear)), calc(100% - var(--slot-shear)) 100%,
+    0 100%, 0 var(--slot-shear)
+  );
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+}
+
+/* Layer 1 -- outer frame: same brushed-steel material language as the
+   Hotbar console body and the resource-bar glow frame (lighter top-to-
+   bottom gradient, subtle radial sheen, light-top/dark-bottom bevel)
+   instead of the previous flat dark gunmetal fill -- ties the slots
+   visually to the rest of the console's material instead of reading as
+   a separate, older component. Shape/size/spacing are untouched; only
+   the surface finish changed. */
+.border {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(140% 100% at 50% -20%, rgba(180, 215, 245, 0.3) 0%, transparent 62%),
+    linear-gradient(160deg, #5a749e 0%, #324768 40%, #12192c 100%);
+  box-shadow: inset 0 1px 0 rgba(220, 238, 255, 0.55), inset 0 -2px 3px var(--hud-metal-lo);
+}
+
+/* Layer 2 -- mid bracket: inset ~2.5px, carries the brushed-metal texture
+   and the accent tint (cyan normally, gold when selected) as a thin band
+   between the outer frame and the recessed face -- this is the "montiertes
+   Bauteil" seam the brief asks for. */
+.bracket {
+  position: absolute;
+  inset: 2.5px;
+  z-index: 0;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--slot-accent, var(--hud-cyan)) 22%, #17233a) 0%, #0a0f1c 70%);
+  clip-path: polygon(
+    calc(var(--slot-shear) - 2px) 0, 100% 0,
+    100% calc(100% - var(--slot-shear) + 2px), calc(100% - var(--slot-shear) + 2px) 100%,
+    0 100%, 0 calc(var(--slot-shear) - 2px)
+  );
+  box-shadow: inset 0 1px 0 var(--hud-metal-hi), inset 0 -2px 3px var(--hud-metal-lo);
+}
+
+.hitArea {
+  all: unset;
+  display: block;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  box-sizing: border-box;
+  z-index: 1;
+}
+
+.hitArea:disabled {
+  cursor: not-allowed;
+}
+
+/* Layer 3 -- recessed inner face: darkest, slightly transparent, inset
+   shadow for real depth, own noise grain */
+.inner {
+  position: absolute;
+  inset: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(165deg, rgba(18, 28, 46, 0.94) 0%, rgba(5, 8, 15, 0.96) 100%);
+  box-shadow: inset 0 3px 7px rgba(0, 0, 0, 0.75), inset 0 -1px 0 rgba(140, 190, 220, 0.05);
+  transition: background var(--hud-t-fast), transform var(--hud-t-fast), box-shadow var(--hud-t-fast);
+  clip-path: polygon(
+    calc(var(--slot-shear) - 5px) 0, 100% 0,
+    100% calc(100% - var(--slot-shear) + 5px), calc(100% - var(--slot-shear) + 5px) 100%,
+    0 100%, 0 calc(var(--slot-shear) - 5px)
+  );
+  overflow: hidden;
+}
+
+.innerNoise {
+  position: absolute;
+  inset: 0;
+  opacity: 0.06;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* small segmented corner tick marks on the recessed face, echoing the
+   "sichtbare technische Marker" requirement for status fields */
+.cornerMarkTl,
+.cornerMarkBr {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  opacity: 0.55;
+  pointer-events: none;
+}
+.cornerMarkTl { top: 2px; right: 2px; border-top: 1px solid var(--hud-cyan-dim); border-right: 1px solid var(--hud-cyan-dim); }
+.cornerMarkBr { bottom: 2px; left: 2px; border-bottom: 1px solid var(--hud-cyan-dim); border-left: 1px solid var(--hud-cyan-dim); }
+
+/* ── Hover: light-edge sweep across the bracket, brighter inner face,
+   plus a soft outer cyan glow. Uses filter: drop-shadow (not box-shadow)
+   on .slot itself so the glow respects the sheared clip-path silhouette
+   instead of glowing around the untouched rectangular border-box. */
+.hitArea:not(:disabled):hover .inner {
+  background: linear-gradient(165deg, rgba(34, 54, 82, 0.96) 0%, rgba(8, 13, 24, 0.97) 100%);
+  box-shadow: inset 0 0 0 1px var(--hud-border-bright), inset 0 3px 10px rgba(0, 0, 0, 0.5), inset 0 0 16px rgba(78, 226, 255, 0.16);
+}
+.slot:has(.hitArea:not(:disabled):hover) .bracket {
+  background: linear-gradient(160deg, color-mix(in srgb, var(--slot-accent, var(--hud-cyan)) 38%, #17233a) 0%, #0a0f1c 70%);
+}
+.slot:has(.hitArea:not(:disabled):hover) {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 7px rgba(78, 226, 255, 0.45));
+}
+
+/* ── Pressed ── */
+.pressed {
+  transform: translate(1px, 1px);
+  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.8) !important;
+  background: linear-gradient(165deg, rgba(8, 13, 24, 0.97) 0%, rgba(4, 6, 11, 0.97) 100%) !important;
+}
+
+/* ── Selected / active: gold ring across all layers, plus a soft outer
+   gold glow (same drop-shadow-on-.slot technique as hover above, so it
+   follows the sheared silhouette rather than a rectangular box). */
+.selected .inner {
+  box-shadow: inset 0 0 0 1.5px var(--hud-gold), inset 0 3px 8px rgba(0, 0, 0, 0.5), inset 0 0 18px rgba(232, 185, 77, 0.22);
+}
+.selected {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 8px rgba(232, 185, 77, 0.5));
+}
+.ringOuter,
+.ringInner {
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+}
+/* Softened from a hard solid-gold ring to an actual glow: lower opacity
+   + blur turn the once razor-edged rectangle-reading shape into a diffuse
+   halo that still traces the sheared silhouette (via the same erase-to-
+   ring construction with .ringInner below) without looking like a flat
+   painted square. */
+.ringOuter {
+  inset: -5px;
+  background: linear-gradient(160deg, var(--hud-gold) 0%, var(--hud-gold-deep) 100%);
+  opacity: 0.5;
+  filter: blur(6px);
+  clip-path: polygon(
+    calc(var(--slot-shear) + 5px) 0, 100% 0,
+    100% calc(100% - var(--slot-shear) - 5px), calc(100% - var(--slot-shear) - 5px) 100%,
+    0 100%, 0 calc(var(--slot-shear) + 5px)
+  );
+  /* Locally-declared keyframes, NOT the global hud-pulse-border from
+     hud-animations.css: Vite's CSS Modules transform hashes bare
+     animation-name references inside .module.css files but does not
+     hash the name inside a plain global @keyframes rule, so this
+     reference silently matched nothing and the pulse never ran
+     (animationPlayState still reported "running" with no visible
+     effect). Declaring it locally here makes Vite hash both the
+     declaration and the reference identically. Also uses the gold glow
+     color instead of the global version's cyan default, since this ring
+     is the selected-slot indicator, not a cyan accent. */
+  animation: slot-pulse-ring 2.2s ease-in-out infinite;
+}
+
+@keyframes slot-pulse-ring {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.75; }
+}
+.ringInner {
+  inset: -1px;
+  background: var(--hud-bg-void);
+  clip-path: polygon(
+    calc(var(--slot-shear) + 1px) 0, 100% 0,
+    100% calc(100% - var(--slot-shear) - 1px), calc(100% - var(--slot-shear) - 1px) 100%,
+    0 100%, 0 calc(var(--slot-shear) + 1px)
+  );
+}
+
+/* ── Locked ── */
+.locked .bracket { filter: saturate(0.35) brightness(0.55); }
+.locked .inner {
+  background: rgba(6, 9, 15, 0.92);
+  filter: saturate(0.3) brightness(0.55);
+}
+.locked .hitArea { cursor: not-allowed; }
+
+/* ── Disabled ── */
+.disabled .bracket { filter: saturate(0.3) brightness(0.5); }
+.disabled .inner { filter: saturate(0.3) brightness(0.55); }
+
+/* ── Empty ── */
+.empty .bracket { opacity: 0.5; }
+.empty .inner { background: rgba(8, 12, 20, 0.5); }
+
+.keyLabel {
+  position: absolute;
+  top: 3px;
+  left: 5px;
+  font-family: var(--hud-font-mono);
+  font-size: 9px;
+  color: var(--hud-text-dim);
+  z-index: 3;
+  pointer-events: none;
+}
+
+.icon {
+  font-size: clamp(16px, 1.4vw, 22px);
+  line-height: 1;
+  z-index: 2;
+  filter: drop-shadow(0 0 4px rgba(78, 226, 255, 0.4));
+  pointer-events: none;
+  transition: opacity var(--hud-t-fast);
+}
+
+.iconDimmed {
+  opacity: 0.3;
+  transform: scale(0.85);
+}
+
+.lockIcon {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  opacity: 0.75;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.count {
+  position: absolute;
+  bottom: 3px;
+  right: 5px;
+  font-family: var(--hud-font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--hud-text-bright);
+  text-shadow: 0 1px 2px #000;
+  z-index: 3;
+  pointer-events: none;
+}
+
+/* ── Slot dropdown popover (ammo-type / consumable-assign menus) ────
+   Portaled to document.body (see AbilitySlot.tsx) and positioned inline
+   via a measured rect, since the slot's ancestor console shell clips
+   anything outside its own clip-path/overflow:hidden bounds. This class
+   only sets the layer above everything else in the HUD now -- position
+   comes from the inline style. */
+.dropdownAnchor {
+  z-index: 60;
+}
+
+.slotDropdown {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 190px;
+  padding: 4px;
+  background: linear-gradient(180deg, #1c2947 0%, #0a0f1c 100%);
+  box-shadow:
+    inset 0 1px 0 var(--hud-metal-hi),
+    inset 0 -2px 3px var(--hud-metal-lo),
+    0 8px 24px rgba(0, 0, 0, 0.7);
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+
+.slotDropdownHeader {
+  font-family: var(--hud-font-mono);
+  font-size: var(--hud-fs-micro);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--hud-text-dim);
+  padding: 4px 0 5px;
+}
+
+.slotDropdownRow {
+  all: unset;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  cursor: pointer;
+  box-sizing: border-box;
+  width: 100%;
+  background: transparent;
+  border: 1px solid transparent;
+  transition: background var(--hud-t-fast);
+}
+
+.slotDropdownRow:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.slotDropdownRowActive {
+  background: color-mix(in srgb, var(--row-accent, var(--hud-cyan)) 14%, transparent);
+  border-color: color-mix(in srgb, var(--row-accent, var(--hud-cyan)) 55%, transparent);
+}
+
+.slotDropdownRowIcon {
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+  font-size: 15px;
+  color: var(--row-accent, var(--hud-cyan));
+  text-shadow: 0 0 6px color-mix(in srgb, var(--row-accent, var(--hud-cyan)) 70%, transparent);
+}
+
+.slotDropdownRowText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.slotDropdownRowName {
+  font-family: var(--hud-font);
+  font-size: var(--hud-fs-xs);
+  font-weight: 700;
+  color: var(--hud-text-bright);
+}
+
+.slotDropdownRowDesc {
+  font-family: var(--hud-font-mono);
+  font-size: var(--hud-fs-micro);
+  color: var(--hud-text-mute);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.slotDropdownRowCount {
+  flex-shrink: 0;
+  font-family: var(--hud-font-mono);
+  font-size: var(--hud-fs-xs);
+  font-weight: 700;
+  color: var(--hud-text-dim);
+  font-variant-numeric: tabular-nums;
+}

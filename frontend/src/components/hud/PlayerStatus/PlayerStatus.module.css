@@ -1,0 +1,40 @@
+.panel {
+  width: clamp(240px, 20vw, 320px);
+}
+
+.statRow {
+  display: flex;
+  align-items: center;
+  gap: var(--hud-space-3);
+  margin-bottom: var(--hud-space-2);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.statLabel {
+  font-size: var(--hud-fs-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--hud-text-dim);
+}
+
+.statValue {
+  font-family: var(--hud-font-mono);
+  font-size: var(--hud-fs-md);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.statDivider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--hud-border-dim);
+}

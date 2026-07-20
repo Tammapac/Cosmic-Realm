@@ -1,0 +1,151 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  color: #eaf4ff;
+  font-family: "Courier New", monospace;
+  font-size: 12px;
+  overflow-y: auto;
+}
+
+.header {
+  padding: 10px 12px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #7a92b8;
+  border-bottom: 1px solid rgba(120, 180, 220, 0.15);
+}
+
+.empty {
+  padding: 16px 12px;
+  color: #4a5d80;
+}
+
+.section {
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(120, 180, 220, 0.1);
+}
+
+.sectionTitle {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #4ee2ff;
+  margin-bottom: 8px;
+}
+
+.hint {
+  font-size: 10px;
+  line-height: 1.5;
+  color: #7a92b8;
+  margin: 0 0 10px;
+}
+
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 10px;
+  color: #7a92b8;
+}
+
+.field input {
+  background: #0a1120;
+  border: 1px solid rgba(120, 180, 220, 0.25);
+  color: #eaf4ff;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 4px 6px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.field input:focus {
+  outline: none;
+  border-color: #4ee2ff;
+}
+
+.anchorGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.anchorGrid button {
+  all: unset;
+  cursor: pointer;
+  text-align: center;
+  padding: 6px 0;
+  background: #0a1120;
+  border: 1px solid rgba(120, 180, 220, 0.25);
+  color: #eaf4ff;
+}
+.anchorGrid button:hover {
+  border-color: #4ee2ff;
+}
+
+.anchorActive {
+  border-color: #e8b94d !important;
+  color: #e8b94d !important;
+  background: rgba(232, 185, 77, 0.12) !important;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 60px;
+  background: #0a1120;
+  border: 1px solid rgba(120, 180, 220, 0.25);
+  color: #eaf4ff;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 6px;
+  box-sizing: border-box;
+  resize: vertical;
+}
+
+.buttonRow {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.buttonRow button,
+.alignRow button {
+  all: unset;
+  cursor: pointer;
+  padding: 6px 10px;
+  background: #0a1120;
+  border: 1px solid rgba(120, 180, 220, 0.25);
+  color: #eaf4ff;
+  font-size: 11px;
+}
+.buttonRow button:hover,
+.alignRow button:hover {
+  border-color: #4ee2ff;
+}
+
+.alignRow {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.alignRow button {
+  text-align: center;
+  padding: 6px 0;
+}
+
+.danger {
+  color: #ff4d5e !important;
+}
+.danger:hover {
+  border-color: #ff4d5e !important;
+}

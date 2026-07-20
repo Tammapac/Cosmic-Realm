@@ -1,0 +1,53 @@
+/* ── HUD Animations ──────────────────────────────────────────────────── */
+
+@keyframes hud-scan-sweep {
+  0% { transform: translateY(-100%); opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { transform: translateY(100%); opacity: 0; }
+}
+
+@keyframes hud-radar-sweep {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes hud-pulse-border {
+  0%, 100% { box-shadow: 0 0 4px var(--hud-cyan-glow); }
+  50% { box-shadow: 0 0 12px var(--hud-cyan-glow); }
+}
+
+@keyframes hud-pulse-critical {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+@keyframes hud-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes hud-tooltip-in {
+  from { opacity: 0; transform: scale(0.96) translateY(2px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes hud-hover-sweep {
+  from { transform: translateX(-120%) skewX(-20deg); }
+  to { transform: translateX(220%) skewX(-20deg); }
+}
+
+@keyframes hud-shield-flow {
+  0% { background-position: 0 0; }
+  100% { background-position: 40px 0; }
+}
+
+@keyframes hud-flicker-in {
+  0% { opacity: 0; }
+  8% { opacity: 0.6; }
+  12% { opacity: 0.1; }
+  20% { opacity: 0.8; }
+  28% { opacity: 0.2; }
+  40% { opacity: 1; }
+  100% { opacity: 1; }
+}

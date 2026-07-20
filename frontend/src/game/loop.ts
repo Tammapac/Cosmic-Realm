@@ -2739,46 +2739,17 @@ export function onEnemyHit(data: EnemyHitEvent): void {
   e.aggro = true;
   const hitDist = Math.hypot(e.pos.x - state.player.pos.x, e.pos.y - state.player.pos.y);
   if (hitDist < 800) sfx.enemyHit();
+  // Spark/fire/debris state.particles pushes removed here — that visual
+  // hit feedback is now the ported Starblast hit effect (Laserticles.kill
+  // + Explosions.explode), spawned once at the laser's real impact point
+  // from the projectile-death diffing in pixi-renderer-v2-integrated.ts
+  // syncProjectiles(). Keeping these would be a second, redundant hit
+  // effect built from the enemy's center instead of the laser's actual
+  // impact point (task requires exactly one combined effect per hit).
   if (data.crit) {
-    emitSpark(e.pos.x, e.pos.y, "#ffee00", 8, 140, 3);
-    emitSpark(e.pos.x, e.pos.y, "#ffffff", 4, 100, 2);
     pushFloater({ text: `${Math.round(data.damage)}!`, color: "#ffee00", x: e.pos.x + (Math.random() - 0.5) * 18, y: e.pos.y - e.size - 8, scale: 1.5, ttl: 1.0, bold: true });
   } else {
     pushFloater({ text: `${Math.round(data.damage)}`, color: "#e8f0ff", x: e.pos.x + (Math.random() - 0.5) * 18, y: e.pos.y - e.size - 8, scale: 0.95, ttl: 0.7 });
-  }
-  emitSpark(e.pos.x, e.pos.y, e.color, data.crit ? 10 : 5, data.crit ? 200 : 140, data.crit ? 4 : 3);
-  emitSpark(e.pos.x, e.pos.y, "#ffffff", data.crit ? 5 : 2, data.crit ? 140 : 90, 2);
-
-  // Fire particles on server-confirmed hits
-  if (data.crit || Math.random() < 0.4) {
-    const fCnt = data.crit ? 3 : 1;
-    for (let fi = 0; fi < fCnt; fi++) {
-      const fa = Math.random() * Math.PI * 2;
-      const fs = 30 + Math.random() * 60;
-      state.particles.push({
-        id: `sfb-${Math.random().toString(36).slice(2, 8)}`,
-        pos: { x: e.pos.x + (Math.random() - 0.5) * 6, y: e.pos.y + (Math.random() - 0.5) * 6 },
-        vel: { x: Math.cos(fa) * fs, y: Math.sin(fa) * fs },
-        ttl: 0.2 + Math.random() * 0.2, maxTtl: 0.4,
-        color: Math.random() > 0.5 ? "#ff8a4e" : "#ff4500", size: 4 + Math.random() * 5, kind: "fireball",
-      });
-    }
-  }
-  // Burning hull chunks when enemy is low HP
-  if (e.hull / e.hullMax < 0.4 && Math.random() < 0.5) {
-    const da = Math.random() * Math.PI * 2;
-    const ds = 100 + Math.random() * 160;
-    state.particles.push({
-      id: `sdb-${Math.random().toString(36).slice(2, 8)}`,
-      pos: { x: e.pos.x, y: e.pos.y },
-      vel: { x: Math.cos(da) * ds, y: Math.sin(da) * ds },
-      ttl: 0.5 + Math.random() * 0.6, maxTtl: 1.1,
-      color: Math.random() > 0.5 ? e.color : "#ff8a4e",
-      size: 3 + Math.random() * 4,
-      rot: Math.random() * Math.PI * 2,
-      rotVel: (Math.random() - 0.5) * 14,
-      kind: "debris",
-    });
   }
 }
 
@@ -2787,10 +2758,15 @@ export function onEnemyDie(data: EnemyDieEvent): void {
   const e = state.enemies.find((en) => en.id === data.enemyId);
   const pos = e ? { x: e.pos.x, y: e.pos.y } : data.pos;
   const wasBoss = e?.isBoss;
-  const color = e?.color ?? "#ff5c6c";
   const size = e?.size ?? 12;
 
-  emitDeath(pos.x, pos.y, color, !!wasBoss, size);
+  // Death explosion (visual) is no longer triggered from this event handler:
+  // emitDeath() was already an inert no-op (dead code below an early
+  // return), and the actual Starblast alienExplosion() port now runs from
+  // the enemy-death diffing in pixi-renderer-v2-integrated.ts pixiRender()
+  // (compares state.enemies against the previous frame, which already has
+  // the enemy's last-known position/size/isBoss — the same data this
+  // handler would otherwise pass along).
   if (wasBoss) {
     sfx.bossKill();
     state.cameraShake = Math.max(state.cameraShake, 1);

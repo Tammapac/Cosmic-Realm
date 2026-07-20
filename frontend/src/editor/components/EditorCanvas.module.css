@@ -1,0 +1,38 @@
+.viewport {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  background: #05070c;
+  background-image: radial-gradient(circle at 50% 50%, rgba(30, 45, 70, 0.4), transparent 70%);
+}
+
+.stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  background: #0a0e18;
+  box-shadow: 0 0 0 1px rgba(120, 180, 220, 0.25), 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+
+.backgroundImage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+/* Fallback for elements being reshaped via vertex handles (plain shapes
+   and HUD components with a silhouette): hideDefaultLines/renderDirections
+   props should already stop Moveable from drawing perimeter lines, but
+   :global is needed here since Moveable renders its control box in a
+   portal outside this component's own scoped CSS-module class names --
+   this belt-and-suspenders rule guarantees the lines can never intercept
+   clicks meant for a vertex dot sitting on the box's edge, regardless of
+   which Moveable version/prop behavior is in play. */
+:global(.moveable-no-lines) :global(.moveable-line) {
+  display: none;
+}

@@ -6,15 +6,19 @@ import { initPixiRenderer, destroyPixiRenderer, pixiRender } from "./game/pixi-r
 import { init3DLayer, destroy3DLayer, getLoadingProgress, initStationLayer, renderStationLayer, destroyStationLayer } from "./game/three-ship-layer";
 import { destroyStation3DLayer } from "./game/three-station-layer";
 import { activeRenderer } from "./game/renderer-config";
-import { TopBar, WorldTargetHud } from "./components/TopBar";
-import { MiniMap } from "./components/MiniMap";
+import { WorldTargetHud } from "./components/TopBar";
+import { GameHud } from "./components/hud/GameHud";
+import "./styles/hud/hud-tokens.css";
+import "./styles/hud/hud-animations.css";
+import "./styles/hud/hud-theme.css";
+import "./styles/hud/hud-materials.css";
 import { Hangar } from "./components/Hangar";
-import { SocialPanel, ClanPanel, GalaxyMap, BattleLog } from "./components/SocialPanel";
+import { SocialPanel, ClanPanel, GalaxyMap } from "./components/SocialPanel";
+import { ZoneMapOverlay } from "./components/ZoneMapOverlay";
 import { FactionPicker } from "./components/FactionPicker";
 import { IdleRewardModal } from "./components/IdleRewardModal";
 import { EventBanners } from "./components/EventBanners";
 import { GameTooltip } from "./components/GameTooltip";
-import { Hotbar } from "./components/Hotbar";
 import { InventoryPanel } from "./components/InventoryPanel";
 import { SkillTreePanel } from "./components/SkillTreePanel";
 import { PlayerStatsPanel } from "./components/PlayerStatsPanel";
@@ -1072,17 +1076,16 @@ function GameApp() {
       <GameCanvas />
       <div style={{ transform: `scale(${currentUiScale})`, transformOrigin: "top left", width: `${100 / (currentUiScale || 1)}%`, height: `${100 / (currentUiScale || 1)}%`, position: "absolute", top: 0, left: 0, pointerEvents: "none", zIndex: 10 }}>
       <div style={{ pointerEvents: "auto" }}>
-      <TopBar />
+      <GameHud />
       <WorldTargetHud />
-      <MiniMap />
       <Notifications />
       <RiftConfirmDialog />
       <DungeonHud />
       <QuestTracker />
-      <BattleLog />
       {showSocial && <SocialPanel />}
       <ClanPanel />
       <GalaxyMap />
+      <ZoneMapOverlay />
       <EventBanners />
       <GameTooltip />
       <Title />
@@ -1100,7 +1103,6 @@ function GameApp() {
       >
         <DockPrompt />
       </div>
-      <Hotbar />
       <CargoOverlay />
       <InventoryPanel />
       <SkillTreePanel />

@@ -1,0 +1,699 @@
+/* Formfamily F (top status panel): horizontal command-bar built from
+   physically separate docked segments, closely following the reference
+   silhouette (top_panelexample.png) -- an octagonal portrait/rank module
+   on the left (own double-octagon frame, a small raised tab on its top
+   edge, a RANK badge overhanging its bottom edge), a long main console
+   strip carrying identity/location/resources/ratings, and an icon-button
+   cluster on the right with its own status strip. Segments interlock at
+   the seams (the main strip's left/right edges step up/down instead of
+   butting a flat line against the neighboring segment) and a thin
+   horizontal accent-gradient line runs across the top of the main strip,
+   exactly as in the reference. Same material language as the rest of the
+   HUD throughout: chamfered/angled cuts only, brushed-steel body, glow
+   rim + crisp edge double contour, PCB veins, noise grain -- the
+   reference's own glossy sci-fi rendering is translated into our flat
+   gradient/clip-path construction, not copied as an image. */
+
+.wrap {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  width: fit-content;
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.6));
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Segment 1 — portrait / rank octagon
+   ══════════════════════════════════════════════════════════════════
+   A true octagon (all 8 corners chamfered equally), not just the top
+   two like the rest of the HUD's rectangular shells -- this is the one
+   deliberately different silhouette in the whole panel, matching the
+   reference exactly. */
+.portraitWrap {
+  position: relative;
+  z-index: 2;
+  width: 158px;
+  height: 158px;
+  flex-shrink: 0;
+  margin: -20px -34px -20px 0;
+}
+
+/* Dark base plate sitting just outside the glow/crisp contour -- the
+   reference's octagon has a near-black structural rim BEHIND the cyan
+   line, not just the cyan line floating directly on the background, so
+   the silhouette reads as a stepped multi-layer plate instead of one
+   flat cutout. */
+.portraitBasePlate {
+  position: absolute;
+  inset: -6px;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(165deg, #10161f 0%, #05070c 100%);
+  clip-path: polygon(
+    22% 0, 78% 0, 100% 22%, 100% 78%,
+    78% 100%, 22% 100%, 0 78%, 0 22%
+  );
+}
+
+.portraitGlowRim {
+  position: absolute;
+  inset: -3px;
+  background: linear-gradient(180deg, #baf3ff 0%, var(--hud-cyan) 55%, var(--hud-shield-deep) 100%);
+  opacity: 0.8;
+  filter: blur(6px);
+  clip-path: polygon(
+    22% 0, 78% 0, 100% 22%, 100% 78%,
+    78% 100%, 22% 100%, 0 78%, 0 22%
+  );
+  pointer-events: none;
+}
+
+.portraitCrispEdge {
+  position: absolute;
+  inset: -1px;
+  background: linear-gradient(180deg, #d6f6ff 0%, var(--hud-cyan) 60%, var(--hud-shield-deep) 100%);
+  clip-path: polygon(
+    22% 0, 78% 0, 100% 22%, 100% 78%,
+    78% 100%, 22% 100%, 0 78%, 0 22%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 1.5px;
+  pointer-events: none;
+}
+
+.portraitOuter {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  background:
+    linear-gradient(165deg, rgba(120, 175, 220, 0.14) 0%, transparent 45%),
+    linear-gradient(155deg, #283a58 0%, #17233c 35%, #0d1626 65%, #060a14 100%);
+  box-shadow: inset 0 2px 5px rgba(180, 220, 255, 0.12), inset 0 -8px 14px rgba(0, 0, 0, 0.55);
+  clip-path: polygon(
+    22% 0, 78% 0, 100% 22%, 100% 78%,
+    78% 100%, 22% 100%, 0 78%, 0 22%
+  );
+  overflow: hidden;
+}
+
+/* Stepped cable-channel detail on the octagon's left edge -- a narrow
+   vertical strip of short offset segments (echoing the reference's
+   hinge/conduit look on that side), sitting just outside the main
+   chamfer so it reads as a mounted accessory piece rather than part of
+   the octagon's own silhouette. */
+.portraitSideDetail {
+  position: absolute;
+  left: -5px;
+  top: 34%;
+  bottom: 30%;
+  width: 5px;
+  z-index: 2;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    180deg,
+    var(--hud-cyan-dim) 0px,
+    var(--hud-cyan-dim) 3px,
+    transparent 3px,
+    transparent 7px
+  );
+  opacity: 0.7;
+  clip-path: polygon(0 10%, 100% 0, 100% 100%, 0 90%);
+}
+
+/* ── Three-step recess, all sharing the SAME octagon chamfer angles and
+   an EQUAL 10px gap between each step, so the middle genuinely reads as
+   "going down" one physical stage at a time, like a machined pocket cut
+   in three passes -- not just a flat gradient standing in for depth.
+   Each step is a real raised-lip PLATE (light-top/dark-bottom bevel,
+   same language as scanCollarWrap on the Minimap) sitting on top of the
+   next one down, and casts its own drop-shadow onto the step below via
+   filter: drop-shadow (which -- unlike box-shadow -- respects the
+   element's own clip-path, so the shadow traces the octagon outline
+   instead of a rectangular bounding box). Step order, outside-in:
+   portraitMidRing (step 1, ring only) -> portraitInnerRing (step 2,
+   ring only) -> portraitWindow (step 3, filled plate, casts shadow onto
+   core) -> portraitWindowCore (step 4, the deepest floor). */
+.portraitMidRing {
+  position: absolute;
+  inset: 6px;
+  z-index: 1;
+  pointer-events: none;
+  padding: 2px;
+  opacity: 0.6;
+  background: linear-gradient(180deg, rgba(160, 205, 230, 0.45) 0%, rgba(0, 0, 0, 0.55) 100%);
+  clip-path: polygon(
+    22% 0, 78% 0, 100% 22%, 100% 78%,
+    78% 100%, 22% 100%, 0 78%, 0 22%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.55));
+}
+
+.portraitInnerRing {
+  position: absolute;
+  inset: 16px;
+  z-index: 1;
+  pointer-events: none;
+  padding: 2px;
+  opacity: 0.9;
+  background: linear-gradient(180deg, rgba(210, 235, 255, 0.5) 0%, var(--hud-cyan-dim) 100%);
+  clip-path: polygon(
+    22% 0, 78% 0, 100% 22%, 100% 78%,
+    78% 100%, 22% 100%, 0 78%, 0 22%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.55));
+}
+
+/* Step 3 -- a thin transitional plate between the mid rings and the
+   deep core, same chamfer, only a slim gap so the core reads as the
+   dominant recessed area (per reference: the whole window face inside
+   the cyan frame is close to uniformly near-black, not a bright plate
+   with a separate darker floor inset inside it). */
+.portraitWindow {
+  position: absolute;
+  inset: 22px;
+  z-index: 1;
+  pointer-events: none;
+  clip-path: polygon(
+    24% 0, 76% 0, 100% 24%, 100% 76%,
+    76% 100%, 24% 100%, 0 76%, 0 24%
+  );
+  background: linear-gradient(180deg, #141c2c 0%, #0a0f18 100%);
+  box-shadow: inset 0 2px 3px rgba(180, 220, 255, 0.12), inset 0 -2px 4px rgba(0, 0, 0, 0.5);
+}
+
+/* Thin gloss line tracing portraitWindow's own contour. NOT the
+   erase-to-ring mask-composite construction used elsewhere in the HUD
+   (padded clip-path copy XOR'd against the unpadded one) -- with a
+   percentage-based clip-path, the padded copy's smaller box resolves
+   the SAME percentages against a SMALLER box, so its chamfer corners
+   land at a different absolute offset than the outer copy's. At most
+   aspect ratios that's an imperceptible sub-pixel wobble, but here it
+   was enough for the two polygons to cross instead of nesting cleanly,
+   collapsing the ring to zero width exactly through the diagonal
+   corners (confirmed by isolating the element and forcing it solid red
+   -- the ring was fully missing on all four chamfers, present only on
+   the four straight edges). Fixed with a plain SVG-drawn octagon
+   outline instead: stroke sits astride the path at a constant width
+   all the way around regardless of corner angle, so the corners can't
+   collapse the way a dual-polygon mask can. */
+.portraitWindowGloss {
+  position: absolute;
+  inset: 21px;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0.6;
+}
+.portraitWindowGloss svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* Step 4 -- the deep core/floor of the recess. Per reference, this is
+   the DARKEST area in the whole octagon -- near-black almost
+   everywhere, with only a faint brightening along the very top edge
+   (light grazing down the near wall before the pocket goes dark), NOT
+   a lit center. No vignette-from-center, no ring-shaped shadow sitting
+   on top of it -- just a single flat near-black fill with a subtle top
+   sheen is what actually matches the reference's screenshot. */
+.portraitWindowCore {
+  position: absolute;
+  inset: 30px;
+  z-index: 1;
+  pointer-events: none;
+  clip-path: polygon(
+    24% 0, 76% 0, 100% 24%, 100% 76%,
+    76% 100%, 24% 100%, 0 76%, 0 24%
+  );
+  background: linear-gradient(180deg, rgba(10, 14, 22, 0.95) 0%, rgba(2, 3, 6, 0.98) 40%, rgba(1, 2, 4, 0.98) 100%);
+  box-shadow:
+    inset 0 4px 8px -2px rgba(0, 0, 0, 0.9),
+    inset 0 1px 0 rgba(140, 190, 220, 0.1);
+}
+
+/* Pilot rank icon -- sits in the upper part of the dark window, same spot
+   the old pre-rebuild TopBar showed rank_XX.png, but sized down and
+   nudged up to leave room for portraitRankName underneath instead of
+   filling the whole window. */
+.portraitRankIcon {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+/* Rank name, e.g. "RECRUIT" -- sits directly under the icon inside the
+   same dark window. */
+.portraitRankName {
+  position: absolute;
+  left: 50%;
+  top: 72%;
+  transform: translate(-50%, -50%);
+  z-index: 1;
+  width: calc(100% - 20px);
+  text-align: center;
+  font-family: var(--hud-font);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 0 6px currentColor, 0 1px 2px #000;
+  pointer-events: none;
+}
+
+/* Thin gloss line tracing portraitWindowCore's own contour -- same
+   construction as portraitWindowGloss, kept slightly dimmer since this
+   is the deepest step and should still read as the darkest overall. */
+/* Same SVG-stroke fix as portraitWindowGloss -- see that comment. */
+.portraitWindowCoreGloss {
+  position: absolute;
+  inset: 29px;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0.45;
+}
+.portraitWindowCoreGloss svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* Small L-shaped corner-tick markers inside the window, same
+   "technical marker" language as AbilitySlot's cornerMarkTl/BR --
+   the reference has one in each of the window's four corners, not
+   just two. */
+.portraitWindowMark {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  z-index: 2;
+  opacity: 0.6;
+  pointer-events: none;
+}
+.portraitWindowMarkTl { top: 20px; left: 20px; border-top: 1px solid var(--hud-cyan-dim); border-left: 1px solid var(--hud-cyan-dim); }
+.portraitWindowMarkTr { top: 20px; right: 20px; border-top: 1px solid var(--hud-cyan-dim); border-right: 1px solid var(--hud-cyan-dim); }
+.portraitWindowMarkBl { bottom: 20px; left: 20px; border-bottom: 1px solid var(--hud-cyan-dim); border-left: 1px solid var(--hud-cyan-dim); }
+.portraitWindowMarkBr { bottom: 20px; right: 20px; border-bottom: 1px solid var(--hud-cyan-dim); border-right: 1px solid var(--hud-cyan-dim); }
+
+/* Flat-topped tab on the octagon's top edge -- a wide, low rectangular
+   block with a straight top edge (not pointed). Sides are now angled
+   (narrower at the bottom than the top) instead of running straight
+   down, and the bottom edge also dips inward toward the center where
+   the triangle marker sits -- both cuts together give the tab its own
+   trapezoid-ish silhouette instead of a plain rectangle with a notch. */
+.portraitTab {
+  position: absolute;
+  top: -9px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  width: 62px;
+  height: 9px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 1px;
+  background: linear-gradient(180deg, #3a4f74 0%, #17233c 100%);
+  border: 1px solid var(--hud-border-bright);
+  border-bottom: none;
+  clip-path: polygon(16% 0, 84% 0, 94% 65%, 60% 65%, 50% 100%, 40% 65%, 6% 65%);
+  color: var(--hud-cyan);
+  font-size: 7px;
+  pointer-events: none;
+}
+
+/* Small bracket marks flanking the tab -- curved mounting-hardware
+   accents on the octagon's top edge either side of the tab, matching
+   the reference's little bracket shapes instead of a bare tab floating
+   with nothing either side of it. */
+.portraitTabBracket {
+  position: absolute;
+  top: -4px;
+  z-index: 2;
+  width: 16px;
+  height: 8px;
+  border: 1px solid var(--hud-cyan-dim);
+  border-top: none;
+  opacity: 0.6;
+  pointer-events: none;
+}
+.portraitTabBracketLeft {
+  left: 22px;
+  border-radius: 0 0 0 8px;
+  border-right: none;
+}
+.portraitTabBracketRight {
+  right: 22px;
+  border-radius: 0 0 8px 0;
+  border-left: none;
+}
+
+/* Short tick marks flanking the rank badge, echoing the reference's
+   small horizontal dashes either side of the badge along the octagon's
+   lower chamfer. */
+.portraitTick {
+  position: absolute;
+  bottom: 16px;
+  width: 14px;
+  height: 1px;
+  z-index: 2;
+  background: var(--hud-cyan-dim);
+  opacity: 0.65;
+  pointer-events: none;
+}
+.portraitTickLeft { left: 20px; }
+.portraitTickRight { right: 20px; }
+
+/* RANK badge -- a hexagonal plate embedded right at the octagon's own
+   lower chamfer, centered under the emblem, with the SAME angled-corner
+   language as the octagon itself (top-left/top-right corners cut at the
+   octagon's own chamfer angle, bottom corners following the octagon's
+   outward taper) instead of a plain rectangle or rounded pill. Text is
+   left-aligned inside, matching the reference's layout exactly. */
+/* RANK badge -- centered under the emblem, sitting LOWER so it visibly
+   overhangs the octagon's own lower chamfer edge (per reference: the
+   badge's bottom corners cross past the octagon's outline instead of
+   staying fully inside it). Its own thin border is drawn as an SVG
+   polygon stroke (RankBadgeGloss below), same fix as the window/core
+   gloss rings -- a box-shadow inset ring gets clipped away by
+   clip-path and doesn't reliably show as a border on a clipped shape. */
+.rankBadge {
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  width: 74px;
+  height: 32px;
+  padding: 3px 0;
+  background: linear-gradient(180deg, rgba(10, 16, 28, 0.92) 0%, rgba(4, 7, 13, 0.96) 100%);
+  clip-path: polygon(12% 0, 88% 0, 100% 26%, 100% 100%, 0 100%, 0 26%);
+  box-shadow: 0 0 4px rgba(78, 226, 255, 0.25);
+}
+
+.rankBadgeGloss {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.8;
+}
+.rankBadgeGloss svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.rankLabel {
+  font-family: var(--hud-font-mono);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--hud-hp);
+}
+
+.rankValue {
+  font-family: var(--hud-font);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--hud-text-bright);
+  line-height: 1.25;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Seam accent — a thin, clean horizontal glow line across the top of
+   the main strip (echoing the reference's red-to-cyan accent line).
+   Plain rectangle, no clip-path parallelogram -- the earlier polygon
+   attempt produced a stray-looking diagonal wedge instead of a clean
+   line, so this is a flat 2px bar with only the gradient + a soft
+   drop-shadow glow doing the work. Sits ON the main strip. */
+.seamAccent {
+  position: absolute;
+  top: 10px;
+  left: 18px;
+  right: 18px;
+  height: 2px;
+  z-index: 2;
+  pointer-events: none;
+  border-radius: 1px;
+  background: linear-gradient(
+    90deg,
+    var(--hud-hp) 0%,
+    color-mix(in srgb, var(--hud-hp) 50%, var(--hud-cyan)) 14%,
+    var(--hud-cyan-dim) 26%,
+    var(--hud-cyan) 55%,
+    var(--hud-cyan) 100%
+  );
+  opacity: 0.9;
+  box-shadow: 0 0 6px 0 rgba(78, 226, 255, 0.5);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Segment 2 — main console strip
+   ══════════════════════════════════════════════════════════════════
+   Left edge steps up-then-down where it laces past the portrait
+   octagon's right corner (instead of a flat vertical seam); right edge
+   mirrors that into the button cluster. Slightly taller top-right
+   corner chamfer than the others, matching the reference's asymmetric
+   top-right cut. */
+.mainStrip {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-width: 720px;
+  margin-left: -1px;
+}
+
+/* Top edge steps down in exactly 2 stages (flat tread -> angled riser
+   -> flat tread -> angled riser), then returns to the original 0/14px
+   corner height so it docks cleanly into the button cluster exactly as
+   before -- same silhouette language as the very first version (a
+   diagonal cut, not a 90-degree step), just repeated twice instead of
+   once. Shared by glowRim/crispEdge/mainBody so all three layers trace
+   the identical staircase silhouette. */
+.mainGlowRim {
+  position: absolute;
+  inset: -3px;
+  background: linear-gradient(180deg, #baf3ff 0%, var(--hud-cyan) 55%, var(--hud-shield-deep) 100%);
+  opacity: 0.8;
+  filter: blur(6px);
+  clip-path: polygon(
+    30px 0, 34% 0, 42% 6px, 58% 6px, 66% 0,
+    calc(100% - 26px) 0, 100% 14px,
+    100% calc(100% - 12px), calc(100% - 14px) 100%,
+    0 100%, 0 14px
+  );
+  pointer-events: none;
+}
+
+.mainCrispEdge {
+  position: absolute;
+  inset: -1px;
+  background: linear-gradient(180deg, #d6f6ff 0%, var(--hud-cyan) 60%, var(--hud-shield-deep) 100%);
+  clip-path: polygon(
+    30px 0, 34% 0, 42% 6px, 58% 6px, 66% 0,
+    calc(100% - 26px) 0, 100% 14px,
+    100% calc(100% - 12px), calc(100% - 14px) 100%,
+    0 100%, 0 14px
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 1.5px;
+  pointer-events: none;
+}
+
+.mainBody {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 118px;
+  background:
+    linear-gradient(180deg, rgba(120, 175, 220, 0.14) 0%, transparent 40%),
+    linear-gradient(180deg, #283a58 0%, #17233c 32%, #0d1626 62%, #060a14 100%);
+  box-shadow:
+    inset 0 2px 5px rgba(180, 220, 255, 0.14),
+    inset 0 -10px 16px rgba(0, 0, 0, 0.55);
+  clip-path: polygon(
+    30px 0, 34% 0, 42% 6px, 58% 6px, 66% 0,
+    calc(100% - 26px) 0, 100% 14px,
+    100% calc(100% - 12px), calc(100% - 14px) 100%,
+    0 100%, 0 14px
+  );
+  overflow: hidden;
+}
+
+/* Horizontal PCB/chip-trace energy veins running left-to-right across
+   the full width of the (now wider) main strip -- same trace/node
+   language as the Hotbar's veins, but laid out as one long strip
+   instead of two mirrored halves, since this bar reads left-to-right
+   rather than symmetric-around-center like the Hotbar. */
+.mainVeins {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  opacity: 0.55;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='120' viewBox='0 0 640 120'%3E%3Cg fill='none' stroke='%2378E2FF' stroke-width='1.4'%3E%3Cpath d='M0 20 L60 20 L60 12 L120 12 L120 20 L200 20'/%3E%3Cpath d='M0 34 L40 34 L40 44 L100 44 L100 34 L170 34 L170 44 L240 44'/%3E%3Cpath d='M0 96 L60 96 L60 104 L130 104 L130 96 L210 96'/%3E%3Cpath d='M0 82 L50 82 L50 74 L110 74 L110 82 L190 82 L190 74 L260 74'/%3E%3Cpath d='M240 20 L290 20 L290 30 L340 30'/%3E%3Cpath d='M260 44 L310 44 L310 56 L360 56 L360 44 L420 44'/%3E%3Cpath d='M340 30 L390 30 L390 20 L450 20 L450 30 L510 30'/%3E%3Cpath d='M420 44 L470 44 L470 56 L530 56'/%3E%3Cpath d='M210 96 L260 96 L260 88 L320 88 L320 96 L380 96'/%3E%3Cpath d='M380 96 L430 96 L430 104 L490 104 L490 96 L550 96'/%3E%3Cpath d='M510 30 L560 30 L560 20 L610 20 L610 30 L640 30'/%3E%3Cpath d='M550 96 L600 96 L600 104 L640 104'/%3E%3Cpath d='M530 56 L580 56 L580 66 L640 66'/%3E%3C/g%3E%3Cg fill='%2378E2FF'%3E%3Ccircle cx='60' cy='12' r='2'/%3E%3Ccircle cx='120' cy='20' r='2'/%3E%3Ccircle cx='100' cy='34' r='1.8'/%3E%3Ccircle cx='170' cy='44' r='1.8'/%3E%3Ccircle cx='130' cy='96' r='1.8'/%3E%3Ccircle cx='190' cy='74' r='1.8'/%3E%3Ccircle cx='290' cy='30' r='2'/%3E%3Ccircle cx='360' cy='44' r='2'/%3E%3Ccircle cx='450' cy='20' r='2'/%3E%3Ccircle cx='530' cy='56' r='2'/%3E%3Ccircle cx='320' cy='88' r='1.8'/%3E%3Ccircle cx='430' cy='104' r='1.8'/%3E%3Ccircle cx='560' cy='30' r='2'/%3E%3Ccircle cx='610' cy='20' r='1.8'/%3E%3Ccircle cx='600' cy='96' r='1.8'/%3E%3Ccircle cx='580' cy='56' r='1.8'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: repeat-x;
+  background-position: left center;
+  background-size: auto 100%;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.85) 8%, rgba(0, 0, 0, 0.85) 92%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.85) 8%, rgba(0, 0, 0, 0.85) 92%, transparent 100%);
+}
+
+/* ── Main strip content ──────────────────────────────────────────────
+   Faction icon sits at the far left spanning the full height. To its
+   right, ONE vertical stack (identityPanel) holds every readout --
+   name/clan, level/EXP, credits, honor -- left-aligned top to bottom,
+   inside a single dark semi-transparent panel so all four lines stay
+   legible over the PCB veins instead of sitting directly on the bare
+   console background. */
+.mainContent {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  /* Left padding clears the portrait octagon's own overlap zone -- the
+     octagon is 158px wide but portraitWrap's -34px right margin only
+     reserves 124px of flex space for it, so its right ~34px visually
+     overlaps the start of mainStrip. Padding must exceed that or the
+     player name text renders partially under the octagon's edge. */
+  padding: 0 24px 0 46px;
+  gap: 14px;
+}
+
+.identityPanel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  flex: 0 0 auto;
+  padding: 6px 16px;
+  background: linear-gradient(180deg, rgba(10, 16, 28, 0.22) 0%, rgba(10, 16, 28, 0.42) 45%, rgba(3, 5, 10, 0.12) 100%);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.3), inset 0 0 0 1px rgba(140, 190, 220, 0.06);
+  clip-path: polygon(7px 0, 100% 0, 100% 100%, 7px 100%, 0 calc(100% - 7px), 0 7px);
+}
+
+.nameHeader {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.playerName {
+  font-family: var(--hud-font);
+  font-size: var(--hud-fs-md);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--hud-text-bright);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.clanName {
+  font-family: var(--hud-font);
+  font-size: var(--hud-fs-xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--hud-cyan);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.levelRow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.levelLabel {
+  font-family: var(--hud-font);
+  font-size: var(--hud-fs-xs);
+  font-weight: 700;
+  color: var(--hud-text-bright);
+  white-space: nowrap;
+}
+
+.cargoLabel {
+  font-family: var(--hud-font);
+  font-size: var(--hud-fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  margin-left: 4px;
+}
+
+.expTrack {
+  position: relative;
+  width: 100px;
+  height: 4px;
+  background: rgba(3, 5, 10, 0.8);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.7);
+  clip-path: polygon(0 0, calc(100% - 3px) 0, 100% 100%, 3px 100%);
+  overflow: hidden;
+}
+
+.expFill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--hud-cyan-dim) 0%, var(--hud-cyan) 100%);
+  box-shadow: 0 0 5px rgba(78, 226, 255, 0.6);
+}
+
+.statRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.statIcon {
+  flex-shrink: 0;
+  width: 13px;
+  text-align: center;
+  font-size: 11px;
+}
+
+.statLabel {
+  font-family: var(--hud-font);
+  font-size: var(--hud-fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--hud-text-bright);
+}
+
+.statValue {
+  font-family: var(--hud-font);
+  font-size: var(--hud-fs-xs);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+

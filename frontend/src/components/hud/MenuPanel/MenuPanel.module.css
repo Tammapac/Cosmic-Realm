@@ -1,0 +1,175 @@
+/* Formfamily H (menu panel): standalone icon-button strip, anchored
+   top-right, independent from TopPanel. Elongated horizontal shell
+   with a SINGLE angled cut (top-left corner only) instead of the
+   Minimap's symmetric V-notch construction -- reads as a simpler,
+   single-diagonal plate matching the Hotbar's own corner-chamfer
+   language, just with one cut instead of many. Same double contour
+   (glowRim + crispEdge outer, innerBevel inner ring), brushed body,
+   PCB veins running left-to-right like the TopPanel's own main strip. */
+.consoleWrap {
+  position: relative;
+  width: fit-content;
+  filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.6));
+  --mp-cut: 18px;
+}
+
+.glowRim {
+  position: absolute;
+  inset: -3px;
+  background: linear-gradient(180deg, #baf3ff 0%, var(--hud-cyan) 55%, var(--hud-shield-deep) 100%);
+  opacity: 0.8;
+  filter: blur(6px);
+  clip-path: polygon(var(--mp-cut) 0, 100% 0, 100% 100%, 0 100%, 0 var(--mp-cut));
+  pointer-events: none;
+}
+
+.crispEdge {
+  position: absolute;
+  inset: -1px;
+  background: linear-gradient(180deg, #d6f6ff 0%, var(--hud-cyan) 60%, var(--hud-shield-deep) 100%);
+  clip-path: polygon(var(--mp-cut) 0, 100% 0, 100% 100%, 0 100%, 0 var(--mp-cut));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 1.5px;
+  pointer-events: none;
+}
+
+.console {
+  position: relative;
+  width: fit-content;
+  padding: 10px 14px;
+  background:
+    linear-gradient(180deg, rgba(120, 175, 220, 0.14) 0%, transparent 40%),
+    linear-gradient(180deg, #283a58 0%, #17233c 32%, #0d1626 62%, #060a14 100%);
+  box-shadow:
+    inset 0 2px 5px rgba(180, 220, 255, 0.14),
+    inset 0 -10px 16px rgba(0, 0, 0, 0.55),
+    0 0 22px rgba(78, 226, 255, 0.18);
+  clip-path: polygon(var(--mp-cut) 0, 100% 0, 100% 100%, 0 100%, 0 var(--mp-cut));
+  overflow: hidden;
+}
+
+.consoleSheen {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(200, 225, 255, 0.14) 0%, rgba(200, 225, 255, 0.04) 30%, transparent 55%);
+  pointer-events: none;
+}
+
+.consoleNoise {
+  position: absolute;
+  inset: 0;
+  opacity: 0.045;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.innerBevel {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  padding: 3px;
+  background: linear-gradient(180deg, rgba(210, 235, 255, 0.22) 0%, rgba(0, 0, 0, 0.35) 100%);
+  clip-path: polygon(var(--mp-cut) 0, 100% 0, 100% 100%, 0 100%, 0 var(--mp-cut));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+/* Same PCB/chip-trace energy veins as the Hotbar/TopPanel -- was
+   missing from the first version of this panel. Single horizontal
+   strip (not mirrored halves) since the button row above it already
+   establishes a left-to-right reading direction. */
+.consoleVeins {
+  position: absolute;
+  inset: 0;
+  opacity: 0.5;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='260' height='90' viewBox='0 0 260 90'%3E%3Cg fill='none' stroke='%2378E2FF' stroke-width='1.4'%3E%3Cpath d='M0 14 L40 14 L40 6 L64 6'/%3E%3Cpath d='M0 26 L28 26 L28 18 L54 18'/%3E%3Cpath d='M0 76 L40 76 L40 84 L64 84'/%3E%3Cpath d='M0 64 L28 64 L28 72 L54 72'/%3E%3Cpath d='M260 14 L220 14 L220 6 L196 6'/%3E%3Cpath d='M260 26 L232 26 L232 18 L206 18'/%3E%3Cpath d='M260 76 L220 76 L220 84 L196 84'/%3E%3Cpath d='M260 64 L232 64 L232 72 L206 72'/%3E%3C/g%3E%3Cg fill='%2378E2FF'%3E%3Ccircle cx='64' cy='6' r='2'/%3E%3Ccircle cx='54' cy='18' r='1.8'/%3E%3Ccircle cx='64' cy='84' r='2'/%3E%3Ccircle cx='54' cy='72' r='1.8'/%3E%3Ccircle cx='196' cy='6' r='2'/%3E%3Ccircle cx='206' cy='18' r='1.8'/%3E%3Ccircle cx='196' cy='84' r='2'/%3E%3Ccircle cx='206' cy='72' r='1.8'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: repeat-x;
+  background-position: center;
+  background-size: auto 100%;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.85) 15%, rgba(0, 0, 0, 0.85) 85%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.85) 15%, rgba(0, 0, 0, 0.85) 85%, transparent 100%);
+}
+
+/* Single horizontal row of icon buttons -- same 3-layer material
+   language as AbilitySlot (outer frame / recessed inner face) scaled
+   to menu-icon size, same hover/press glow behavior. */
+.row {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 8px;
+}
+
+/* Same 3-layer material stack as AbilitySlot (outer frame -> accent
+   bracket seam -> recessed inner face) instead of one flat gradient
+   plate -- makes the buttons stand out from the console body with the
+   same depth/contrast the Hotbar slots have, rather than reading as
+   flush icons painted on the surface. */
+.button {
+  all: unset;
+  position: relative;
+  width: 36px;
+  height: 36px;
+  cursor: pointer;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+  transition: filter var(--hud-t-fast);
+}
+
+.buttonFrame {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(140% 100% at 50% -20%, rgba(180, 215, 245, 0.3) 0%, transparent 62%),
+    linear-gradient(160deg, #5a749e 0%, #324768 40%, #12192c 100%);
+  box-shadow: inset 0 1px 0 rgba(220, 238, 255, 0.55), inset 0 -2px 3px var(--hud-metal-lo);
+  clip-path: inherit;
+}
+
+.buttonBracket {
+  position: absolute;
+  inset: 2.5px;
+  z-index: 0;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--hud-cyan) 22%, #17233a) 0%, #0a0f1c 70%);
+  clip-path: polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px);
+  box-shadow: inset 0 1px 0 var(--hud-metal-hi), inset 0 -2px 3px var(--hud-metal-lo);
+}
+
+.buttonInner {
+  position: absolute;
+  inset: 5px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(165deg, rgba(18, 28, 46, 0.94) 0%, rgba(5, 8, 15, 0.96) 100%);
+  box-shadow: inset 0 3px 7px rgba(0, 0, 0, 0.75), inset 0 -1px 0 rgba(140, 190, 220, 0.05);
+  clip-path: polygon(1px 0, 100% 0, 100% calc(100% - 1px), calc(100% - 1px) 100%, 0 100%, 0 1px);
+  color: var(--hud-text-dim);
+  font-size: 15px;
+  transition: color var(--hud-t-fast), box-shadow var(--hud-t-fast);
+}
+
+.button:hover .buttonInner {
+  color: var(--hud-cyan);
+  box-shadow: inset 0 0 0 1px var(--hud-border-bright), inset 0 3px 10px rgba(0, 0, 0, 0.5), inset 0 0 16px rgba(78, 226, 255, 0.16);
+}
+
+.button:hover {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 7px rgba(78, 226, 255, 0.45));
+}
+
+.button:active {
+  transform: translate(1px, 1px);
+}
+.button:active .buttonInner {
+  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.8);
+  background: linear-gradient(165deg, rgba(8, 13, 24, 0.97) 0%, rgba(4, 6, 11, 0.97) 100%);
+}

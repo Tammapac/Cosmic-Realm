@@ -1,0 +1,76 @@
+/* ── HUD Design Tokens ──────────────────────────────────────────────────
+   Space-Sci-Fi MMO HUD. Namespaced under --hud-* so nothing collides with
+   the legacy amber/DarkOrbit theme in index.css — the two systems must
+   never bleed into each other. */
+:root {
+  /* ── Base surfaces ── */
+  --hud-bg-void: #030509;
+  --hud-bg-panel: rgba(8, 14, 26, 0.82);
+  --hud-bg-panel-solid: #0a1120;
+  --hud-bg-panel-raised: rgba(14, 22, 40, 0.88);
+
+  /* ── Borders ── */
+  --hud-border: rgba(90, 130, 180, 0.35);
+  --hud-border-bright: rgba(120, 200, 255, 0.75);
+  --hud-border-dim: rgba(60, 90, 130, 0.2);
+  --hud-border-w: 1px;
+
+  /* ── Accents ── */
+  --hud-cyan: #4ee2ff;
+  --hud-cyan-dim: #2a7a99;
+  --hud-cyan-glow: rgba(78, 226, 255, 0.55);
+  --hud-magenta: #b866ff;
+  --hud-magenta-glow: rgba(184, 102, 255, 0.5);
+  --hud-violet: #9d6fd9;
+  --hud-violet-glow: rgba(157, 111, 217, 0.5);
+  --hud-hp: #ff4d5e;
+  --hud-hp-low: #c93040;
+  --hud-hp-dark: #7a1f2c;
+  --hud-shield: #4ee2ff;
+  --hud-shield-deep: #1f7a99;
+  --hud-energy: #ffcc4d;
+  --hud-gold: #e8b94d;
+  --hud-gold-deep: #8a6420;
+  --hud-green: #5cff8a;
+
+  /* ── Material surfaces (formfamily-independent, reused everywhere) ── */
+  --hud-metal-hi: rgba(160, 200, 230, 0.16);   /* top edge highlight */
+  --hud-metal-lo: rgba(0, 0, 0, 0.55);          /* bottom edge shade */
+  --hud-brushed-line: rgba(140, 190, 220, 0.035);
+  --hud-noise-opacity: 0.05;
+
+  /* ── Text ── */
+  --hud-text-bright: #eaf4ff;
+  --hud-text-dim: #7a92b8;
+  --hud-text-mute: #4a5d80;
+
+  /* ── Geometry ── */
+  --hud-cut: 8px;          /* standard bevel/notch size for panels */
+  --hud-cut-sm: 4px;       /* small bevel for slots/buttons */
+  --hud-radius: 0px;       /* HUD never uses rounded corners */
+
+  /* ── Glow ── */
+  --hud-glow-soft: 0 0 6px;
+  --hud-glow-med: 0 0 10px;
+  --hud-glow-strong: 0 0 18px;
+
+  /* ── Motion ── */
+  --hud-t-fast: 90ms ease-out;
+  --hud-t-med: 180ms ease-out;
+  --hud-t-slow: 320ms ease-out;
+
+  /* ── Spacing scale ── */
+  --hud-space-1: clamp(3px, 0.2vw, 5px);
+  --hud-space-2: clamp(6px, 0.4vw, 10px);
+  --hud-space-3: clamp(10px, 0.6vw, 16px);
+  --hud-space-4: clamp(16px, 1vw, 24px);
+
+  /* ── Typography ── */
+  --hud-font: "Kenney Future Narrow", "Courier New", monospace;
+  --hud-font-mono: "Courier New", monospace;
+  --hud-fs-micro: clamp(8px, 0.6vw, 9px);
+  --hud-fs-xs: clamp(9px, 0.65vw, 10px);
+  --hud-fs-sm: clamp(10px, 0.75vw, 12px);
+  --hud-fs-md: clamp(12px, 0.9vw, 15px);
+  --hud-fs-lg: clamp(16px, 1.2vw, 20px);
+}
