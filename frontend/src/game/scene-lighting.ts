@@ -26,7 +26,7 @@ function vignetteTex(): PIXI.Texture {
   ctx.fillRect(0, 0, S, S);
   const g = ctx.createRadialGradient(S / 2, S / 2, S * 0.32, S / 2, S / 2, S * 0.72);
   g.addColorStop(0, "rgba(255,255,255,0)");
-  g.addColorStop(1, "rgba(160,170,200,0.55)"); // cool shade, not pure black
+  g.addColorStop(1, "rgba(150,160,195,0.72)"); // cool shade, not pure black
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, S, S);
   return PIXI.Texture.from(c, { scaleMode: PIXI.SCALE_MODES.LINEAR });
@@ -40,8 +40,8 @@ function keyLightTex(): PIXI.Texture {
   // Warm light entering from the upper right — mirrors the 3D sun at
   // position (100, 300, -80) so both worlds share one key light.
   const g = ctx.createRadialGradient(S * 0.92, S * 0.06, 0, S * 0.92, S * 0.06, S * 1.1);
-  g.addColorStop(0, "rgba(255,240,214,0.16)");
-  g.addColorStop(0.4, "rgba(255,236,200,0.06)");
+  g.addColorStop(0, "rgba(255,240,214,0.3)");
+  g.addColorStop(0.4, "rgba(255,236,200,0.12)");
   g.addColorStop(1, "rgba(255,236,200,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, S, S);
@@ -75,7 +75,7 @@ export class SceneLighting {
 
     this.ambient = new PIXI.Sprite(ambientTex());
     this.ambient.blendMode = PIXI.BLEND_MODES.SCREEN;
-    this.ambient.alpha = 0.05;
+    this.ambient.alpha = 0.09;
 
     this.vignette = new PIXI.Sprite(vignetteTex());
     this.vignette.blendMode = PIXI.BLEND_MODES.MULTIPLY;

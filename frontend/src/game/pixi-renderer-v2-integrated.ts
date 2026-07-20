@@ -65,6 +65,7 @@ import { initLaserDebug, destroyLaserDebug } from "./laser-debug";
 import { ParallaxBackground } from "./parallax-background";
 import { initParallaxDebug, destroyParallaxDebug } from "./parallax-debug";
 import { SceneLighting } from "./scene-lighting";
+import { SceneShadows } from "./scene-shadows";
 import { ShakeState, createShakeState, applyShakeImpulse, stepShake } from "./starblast-camera-shake";
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1594,6 +1595,11 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
   worldLayer.addChildAt(parallaxBg.worldDecor, 0);
   initParallaxDebug(app);
 
+  // Drop shadows (lower-left, opposite the key light) — world pool under
+  // all world sprites/composites, above the parallax decoration.
+  sceneShadows = new SceneShadows();
+  worldLayer.addChildAt(sceneShadows.world.container, 1);
+
   // Debug muzzle marker overlay — always the topmost child of worldLayer so
   // dots draw above sprites but under UI. Empty until __DEBUG_MUZZLE_MARKERS.
   debugMuzzleGfx = new PIXI.Graphics();
@@ -1636,6 +1642,9 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
   stationSprite.height = app.screen.height;
   // Insert between bgLayer (index 0) and worldLayer (index 1)
   app.stage.addChildAt(stationSprite, 1);
+  // Station shadows go directly UNDER the station composite so they fall
+  // onto the background, never onto the station itself.
+  if (sceneShadows) app.stage.addChildAt(sceneShadows.screen.container, 1);
 
   // Enemy 3D pass: offscreen ship-layer instance → Pixi sprite INSIDE
   // worldLayer, right below the 2D enemy layer (which holds names/health
@@ -1762,6 +1771,10 @@ export function destroyPixiRenderer(): void {
   if (sceneLighting) {
     sceneLighting.destroy();
     sceneLighting = null;
+  }
+  if (sceneShadows) {
+    sceneShadows.destroy();
+    sceneShadows = null;
   }
   lastObservedCameraShake = 0;
   starblastShake.x = starblastShake.y = starblastShake.vx = starblastShake.vy = starblastShake.r = starblastShake.vr = 0;
@@ -2124,6 +2137,7 @@ const _bgZoneIdToLabel: Record<string, string> = {
 
 let parallaxBg: ParallaxBackground | null = null;
 let sceneLighting: SceneLighting | null = null;
+let sceneShadows: SceneShadows | null = null;
 
 function renderBackground(w: number, h: number, cam: { x: number; y: number }): void {
   if (!bgGraphics || !starGraphics) return;
@@ -2135,6 +2149,37 @@ function renderBackground(w: number, h: number, cam: { x: number; y: number }): 
   bgGraphics.clear();
   if (parallaxBg) parallaxBg.update(w, h, cam, state.cameraZoom, state.tick / 60);
   if (sceneLighting && parallaxBg) sceneLighting.update(w, h, parallaxBg.palette.hueA, state.tick / 60);
+
+  // Drop shadows for everything that flies or floats — immediate-mode
+  // pooled sprites, culled to the viewport.
+  if (sceneShadows) {
+    sceneShadows.beginFrame();
+    const shZoom = state.cameraZoom;
+    const shHalfW = w / 2 / shZoom + 120;
+    const shHalfH = h / 2 / shZoom + 120;
+    const p = state.player;
+    sceneShadows.world.drop(p.pos.x, p.pos.y, shipHullRadius(p.shipClass, SHIP_SIZE_SCALE[p.shipClass] ?? 1) * 1.6, 0.55);
+    for (const e of state.enemies) {
+      if (Math.abs(e.pos.x - cam.x) > shHalfW || Math.abs(e.pos.y - cam.y) > shHalfH) continue;
+      sceneShadows.world.drop(e.pos.x, e.pos.y, e.size * 1.9, 0.5);
+    }
+    for (const o of state.others) {
+      if (Math.abs(o.pos.x - cam.x) > shHalfW || Math.abs(o.pos.y - cam.y) > shHalfH) continue;
+      sceneShadows.world.drop(o.pos.x, o.pos.y, shipHullRadius(o.shipClass, SHIP_SIZE_SCALE[o.shipClass] ?? 1) * 1.5, 0.5);
+    }
+    for (const npc of state.npcShips) {
+      if (Math.abs(npc.pos.x - cam.x) > shHalfW || Math.abs(npc.pos.y - cam.y) > shHalfH) continue;
+      sceneShadows.world.drop(npc.pos.x, npc.pos.y, npc.size * 1.7, 0.45);
+    }
+    for (const st of STATIONS) {
+      if (st.zone !== state.player.zone) continue;
+      const sx = (st.pos.x - cam.x) * shZoom + w / 2;
+      const sy = (st.pos.y - cam.y) * shZoom + h / 2;
+      if (sx < -400 || sx > w + 400 || sy < -400 || sy > h + 400) continue;
+      sceneShadows.screen.drop(sx, sy, 300 * shZoom, 0.55);
+    }
+    sceneShadows.endFrame();
+  }
 
   if (enhancedStars.length === 0) initStars(w, h);
   // Star field is 860 draw calls per frame — cache and only re-render when
