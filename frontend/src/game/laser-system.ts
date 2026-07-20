@@ -252,6 +252,7 @@ interface LaserVisual {
   brightMul: number;      // ±8% per shot
   trailMul: number;       // ±12% per shot
   phase: number;          // tip/hull pulse phase
+  trailTint: number;      // resolved trail color (ammo color when given)
 }
 
 interface Transient {
@@ -298,9 +299,18 @@ export class LaserSystem {
 
   // ── laser lifecycle ─────────────────────────────────────────────────────
 
-  /** Attach visuals for a projectile id (no-op if already attached).
-   *  Returns true when this call created the visual (fresh shot). */
-  ensure(id: string, preset: LaserPreset, x: number, y: number, angle: number, sizeScale = 1): boolean {
+  /**
+   * Attach visuals for a projectile id (no-op if already attached).
+   * Returns true when this call created the visual (fresh shot).
+   *
+   * `color` is the projectile's own synced color — for player lasers the
+   * ACTIVE AMMO TYPE's color (X1 cyan, X2 green, ...), for remote players
+   * resolved from their synced ammoType, for enemies the server color.
+   * When given it drives glow/tip/trail (and the core picks up a subtle
+   * hue hint while staying near-white); the preset keeps supplying
+   * geometry, trail kind, hit ring and shake. Omitted -> preset palette.
+   */
+  ensure(id: string, preset: LaserPreset, x: number, y: number, angle: number, sizeScale = 1, color?: number): boolean {
     if (this.visuals.has(id)) return false;
     const cfg = PRESETS[preset];
     let v = this.visualPool.find((p) => !p.active);
@@ -320,6 +330,7 @@ export class LaserSystem {
       v = {
         active: false, id: "", preset, cont, glow, core, tip,
         prevX: 0, prevY: 0, trailAcc: 0, sizeMul: 1, brightMul: 1, trailMul: 1, phase: 0,
+        trailTint: 0xffffff,
       };
       this.visualPool.push(v);
     }
@@ -335,13 +346,15 @@ export class LaserSystem {
     v.prevX = x; v.prevY = y;
     v.trailAcc = 0;
     const tintK = Math.random() * 0.25;
-    v.core.tint = cfg.coreTint;
+    const family = color ?? cfg.glowColor;
+    v.trailTint = color ?? cfg.trailColor;
+    v.core.tint = color != null ? jitterColor(family, 0.78) : cfg.coreTint; // near-white, hued
     v.core.width = cfg.coreLen * v.sizeMul;
     v.core.height = cfg.coreW * v.sizeMul;
-    v.glow.tint = jitterColor(cfg.glowColor, tintK);
+    v.glow.tint = jitterColor(family, tintK);
     v.glow.width = v.glow.height = cfg.glowR * 2 * v.sizeMul;
     v.glow.alpha = cfg.glowAlpha * v.brightMul;
-    v.tip.tint = jitterColor(cfg.glowColor, 0.55);
+    v.tip.tint = jitterColor(family, 0.55);
     v.tip.width = v.tip.height = cfg.tipR * 2 * v.sizeMul;
     v.cont.visible = true;
     v.cont.position.set(x, y);
@@ -417,14 +430,15 @@ export class LaserSystem {
 
   // ── one-shot effects ────────────────────────────────────────────────────
 
-  /** Muzzle flash at the weapon point, aligned to the shot direction. */
-  muzzle(x: number, y: number, angle: number, preset: LaserPreset): void {
+  /** Muzzle flash at the weapon point, aligned to the shot direction.
+   *  `color` (ammo/projectile color) overrides the preset palette. */
+  muzzle(x: number, y: number, angle: number, preset: LaserPreset, color?: number): void {
     const cfg = PRESETS[preset];
     const size = cfg.muzzleSize * (0.85 + Math.random() * 0.3);
     const m = this.acquireTransient("muzzle", this.fxLayer, muzzleTex());
     if (!m) return;
     m.life = m.maxLife = 0.05 + Math.random() * 0.05; // 50-100ms
-    m.spr.tint = jitterColor(cfg.muzzleColor, Math.random() * 0.2);
+    m.spr.tint = jitterColor(color != null ? jitterColor(color, 0.4) : cfg.muzzleColor, Math.random() * 0.2);
     m.spr.rotation = angle;
     m.spr.position.set(x, y);
     m.scale0 = size / 96;
@@ -439,8 +453,9 @@ export class LaserSystem {
    *  (preset-dependent), a few embers, optional light camera shake.
    *  Directional ricochet sparks are the ship-hit system's job — the
    *  renderer calls both so hull hits keep their bounce-off look. */
-  hitAt(x: number, y: number, angle: number, preset: LaserPreset): void {
+  hitAt(x: number, y: number, angle: number, preset: LaserPreset, color?: number): void {
     const cfg = PRESETS[preset];
+    const hitColor = color != null ? jitterColor(color, 0.25) : cfg.hitColor;
     // white flash
     const f = this.acquireTransient("flash", this.fxLayer, glowTex());
     if (f) {
@@ -460,7 +475,7 @@ export class LaserSystem {
       const r = this.acquireTransient("ring", this.fxLayer, ringTex());
       if (r) {
         r.life = r.maxLife = 0.22;
-        r.spr.tint = cfg.hitColor;
+        r.spr.tint = hitColor;
         r.spr.position.set(x, y);
         r.spr.rotation = 0;
         r.scale0 = (cfg.hitRingR * 0.5) / 128;
@@ -481,7 +496,7 @@ export class LaserSystem {
       e.life = e.maxLife = 0.35 + Math.random() * 0.3;
       e.vx = Math.cos(a) * sp;
       e.vy = Math.sin(a) * sp;
-      e.spr.tint = cfg.hitColor;
+      e.spr.tint = hitColor;
       e.spr.position.set(x, y);
       e.spr.rotation = 0;
       e.scale0 = (5 + Math.random() * 3) / 48;
@@ -514,7 +529,7 @@ export class LaserSystem {
     const tp = this.acquireTransient("trail", this.trailLayer, cfg.trailKind === "puff" ? puffTex() : trailTex());
     if (!tp) return;
     tp.life = tp.maxLife = cfg.trailLife * v.trailMul;
-    tp.spr.tint = cfg.trailColor;
+    tp.spr.tint = v.trailTint;
     tp.spr.position.set(x, y);
     tp.spr.rotation = angle;
     if (cfg.trailKind === "puff") {

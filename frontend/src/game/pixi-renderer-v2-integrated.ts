@@ -2633,11 +2633,16 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
       if (laserSystem) {
         const angle = Math.atan2(pr.vel.y, pr.vel.x);
         const preset = laserPresetFor(pr.fromPlayer, kindEarly, pr.size, pr.damage);
-        const isNew = laserSystem.ensure(pr.id, preset, pr.pos.x, pr.pos.y, angle, Math.max(0.75, Math.min(1.8, pr.size / 4.5)));
+        // pr.color is the synced ammo/weapon color (local shots set it from
+        // the active ammo type; remote/renderOnly shots resolve it from the
+        // sender's synced ammoType in loop.ts) — it drives glow/trail/tip so
+        // every ammo type keeps its distinct color on every client.
+        const ammoColor = PIXI.utils.string2hex(pr.color);
+        const isNew = laserSystem.ensure(pr.id, preset, pr.pos.x, pr.pos.y, angle, Math.max(0.75, Math.min(1.8, pr.size / 4.5)), ammoColor);
         if (isNew && pr.fromPlayer && pr.ttl > 1.2) {
           // Fresh player shot: muzzle flash at the projectile's own spawn
           // point (already the correct GLB hardpoint), aligned to the shot.
-          laserSystem.muzzle(pr.pos.x, pr.pos.y, angle, preset);
+          laserSystem.muzzle(pr.pos.x, pr.pos.y, angle, preset, ammoColor);
         }
         laserSystem.move(pr.id, pr.pos.x, pr.pos.y, pr.vel.x, pr.vel.y);
       }
@@ -2857,8 +2862,8 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
             // The visual dies exactly at the last authoritative position
             // (the server-corrected impact point) — no overshoot.
             laserSystem.kill(id);
-            // Preset-colored impact: white flash + energy ring + embers...
-            laserSystem.hitAt(prev.x, prev.y, prev.angle, (prev as any).preset ?? "lightLaser");
+            // Ammo-colored impact: white flash + energy ring + embers...
+            laserSystem.hitAt(prev.x, prev.y, prev.angle, (prev as any).preset ?? "lightLaser", prev.color);
             // ...plus the directional hull impact: ricochet sparks bounce
             // off the ship, a narrow spread punches on through in the shot
             // direction (prev.angle = projectile travel angle).
@@ -3371,8 +3376,11 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
       data.body.rotation = _oDir.isDirectional ? 0 : o.angle + Math.PI / 2;
     }
 
-    // DOM overlay label: hull bar + faction dot + name + rank icon, at
-    // constant screen size below the ship (in front of the 3D model).
+    // DOM overlay: hull + shield bars ABOVE the ship and the name label
+    // below — the exact same layout every client uses for its OWN ship
+    // (selfBars in renderOverlays), so what you see over another player is
+    // what they see over themselves. Shield is synced (OtherPlayer.shield/
+    // shieldMax), so both bars are live multiplayer data.
     const oRank = rankFor(o.honor);
     const oFaction = o.faction ? FACTIONS[o.faction as keyof typeof FACTIONS] : null;
     const zoomL = state.cameraZoom;
@@ -3380,7 +3388,18 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
     const syL = (o.pos.y - cam.y) * zoomL + app!.screen.height / 2;
     const rPxL = shipHullRadius(o.shipClass, SHIP_SIZE_SCALE[o.shipClass] ?? 1) * zoomL * 0.66 + 8;
     const hullPct = Math.max(0, Math.min(1, o.hull / Math.max(1, o.hullMax)));
-    _otherLabelHtml += shipLabelHtml(sxL, syL + rPxL, o.name, oFaction, oRank, hullPct, "");
+    const shieldPct = Math.max(0, Math.min(1, o.shield / Math.max(1, o.shieldMax)));
+    const oBarW = 56;
+    _otherLabelHtml += `
+      <div style="position:absolute;left:${Math.round(sxL)}px;top:${Math.round(syL - rPxL)}px;transform:translate(-50%,-100%);pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:2px;">
+        <div style="width:${oBarW}px;height:4px;background:rgba(0,0,0,0.5);border-radius:2px;overflow:hidden;">
+          <div style="width:${Math.round(oBarW * hullPct)}px;height:100%;background:#44ff66;border-radius:2px;"></div>
+        </div>
+        <div style="width:${oBarW}px;height:4px;background:rgba(0,0,0,0.5);border-radius:2px;overflow:hidden;">
+          <div style="width:${Math.round(oBarW * shieldPct)}px;height:100%;background:#4ee2ff;border-radius:2px;"></div>
+        </div>
+      </div>`;
+    _otherLabelHtml += shipLabelHtml(sxL, syL + rPxL, o.name, oFaction, oRank, null, "");
 
     const factionColor = o.faction ? FACTIONS[o.faction as keyof typeof FACTIONS]?.color ?? "#7a8ad8" : "#7a8ad8";
     // Animate body glow with faction color
