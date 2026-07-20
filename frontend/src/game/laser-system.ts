@@ -55,24 +55,32 @@ function cached(key: string, w: number, h: number, draw: (ctx: CanvasRenderingCo
   return t;
 }
 
-/** Elongated bolt core: rounded nose, tapered tail — a directed shape with
- *  a crisp silhouette, deliberately NOT a round dot. White; tinted at use. */
+/** Elongated beam core: a symmetric capsule of uniform thickness with a
+ *  hot center line and softly fading ends — reads as a laser bolt, not an
+ *  arrowhead (the previous shape had a round nose + tapered tail).
+ *  White; tinted at use. */
 function coreTex(): PIXI.Texture {
   return cached("lz-core", 96, 24, (ctx, w, h) => {
-    const cy = h / 2, noseR = h * 0.34;
-    ctx.beginPath();
-    ctx.moveTo(2, cy); // tail point
-    ctx.quadraticCurveTo(w * 0.55, cy - noseR, w - noseR - 2, cy - noseR);
-    ctx.arc(w - noseR - 2, cy, noseR, -Math.PI / 2, Math.PI / 2);
-    ctx.quadraticCurveTo(w * 0.55, cy + noseR, 2, cy);
-    ctx.closePath();
-    // hot white center with a hint of edge falloff for anti-aliased crispness
-    const g = ctx.createLinearGradient(0, 0, w, 0);
-    g.addColorStop(0, "rgba(255,255,255,0.55)");
-    g.addColorStop(0.35, "rgba(255,255,255,0.95)");
-    g.addColorStop(1, "rgba(255,255,255,1)");
-    ctx.fillStyle = g;
-    ctx.fill();
+    const cy = h / 2;
+    const capsule = (halfH: number, alphaEnd: number, alphaMid: number) => {
+      const r = halfH;
+      ctx.beginPath();
+      ctx.moveTo(2 + r, cy - r);
+      ctx.lineTo(w - 2 - r, cy - r);
+      ctx.arc(w - 2 - r, cy, r, -Math.PI / 2, Math.PI / 2);
+      ctx.lineTo(2 + r, cy + r);
+      ctx.arc(2 + r, cy, r, Math.PI / 2, -Math.PI / 2);
+      ctx.closePath();
+      const g = ctx.createLinearGradient(0, 0, w, 0);
+      g.addColorStop(0, `rgba(255,255,255,${alphaEnd})`);
+      g.addColorStop(0.16, `rgba(255,255,255,${alphaMid})`);
+      g.addColorStop(0.84, `rgba(255,255,255,${alphaMid})`);
+      g.addColorStop(1, `rgba(255,255,255,${alphaEnd})`);
+      ctx.fillStyle = g;
+      ctx.fill();
+    };
+    capsule(h * 0.34, 0.3, 0.85);  // beam body, soft ends
+    capsule(h * 0.16, 0.45, 1);    // hot white center line
   });
 }
 
@@ -190,7 +198,7 @@ interface LaserCfg {
 
 const PRESETS: Record<LaserPreset, LaserCfg> = {
   lightLaser: {
-    coreLen: 26, coreW: 4.5, coreTint: 0xeffbff,
+    coreLen: 32, coreW: 4, coreTint: 0xeffbff,
     glowR: 15, glowColor: 0x3fc8ff, glowAlpha: 0.75,
     tipR: 5.5, pulseHull: false,
     trailKind: "streak", trailColor: 0x2fa8ff, trailW: 6.5, trailLife: 0.2, trailSpacing: 10,
@@ -199,7 +207,7 @@ const PRESETS: Record<LaserPreset, LaserCfg> = {
     hitColor: 0x6fd8ff, hitShake: 0,
   },
   heavyLaser: {
-    coreLen: 36, coreW: 8.5, coreTint: 0xf2f2ff,
+    coreLen: 42, coreW: 7.5, coreTint: 0xf2f2ff,
     glowR: 26, glowColor: 0x6f8bff, glowAlpha: 0.85,
     tipR: 8, pulseHull: false,
     trailKind: "streak", trailColor: 0x5577ff, trailW: 11, trailLife: 0.28, trailSpacing: 11,
@@ -217,7 +225,7 @@ const PRESETS: Record<LaserPreset, LaserCfg> = {
     hitColor: 0x6dffb2, hitShake: 0,
   },
   enemyLaser: {
-    coreLen: 25, coreW: 5.5, coreTint: 0xfff1ec,
+    coreLen: 30, coreW: 5, coreTint: 0xfff1ec,
     glowR: 17, glowColor: 0xff4a38, glowAlpha: 0.8,
     tipR: 6, pulseHull: false,
     trailKind: "streak", trailColor: 0xff7a52, trailW: 7.5, trailLife: 0.2, trailSpacing: 10,
