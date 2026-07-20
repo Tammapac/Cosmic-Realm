@@ -64,6 +64,7 @@ import { LaserSystem, laserPresetFor } from "./laser-system";
 import { initLaserDebug, destroyLaserDebug } from "./laser-debug";
 import { ParallaxBackground } from "./parallax-background";
 import { initParallaxDebug, destroyParallaxDebug } from "./parallax-debug";
+import { SceneLighting } from "./scene-lighting";
 import { ShakeState, createShakeState, applyShakeImpulse, stepShake } from "./starblast-camera-shake";
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1615,6 +1616,10 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
   // Parallax foreground (layer 5): above the world, below the UI — sparse
   // silhouettes may pass over ships briefly but the HUD stays clear.
   if (parallaxBg) app.stage.addChild(parallaxBg.foreground);
+  // Scene lighting (key light + zone ambient + vignette): grades the whole
+  // frame — world, ships, effects — below the UI so the HUD stays clean.
+  sceneLighting = new SceneLighting();
+  app.stage.addChild(sceneLighting.container);
   app.stage.addChild(uiLayer);
 
   // Bootstrap the Three.js station renderer to its own offscreen canvas, then
@@ -1753,6 +1758,10 @@ export function destroyPixiRenderer(): void {
   if (parallaxBg) {
     parallaxBg.destroy();
     parallaxBg = null;
+  }
+  if (sceneLighting) {
+    sceneLighting.destroy();
+    sceneLighting = null;
   }
   lastObservedCameraShake = 0;
   starblastShake.x = starblastShake.y = starblastShake.vx = starblastShake.vy = starblastShake.r = starblastShake.vr = 0;
@@ -2114,6 +2123,7 @@ const _bgZoneIdToLabel: Record<string, string> = {
 };
 
 let parallaxBg: ParallaxBackground | null = null;
+let sceneLighting: SceneLighting | null = null;
 
 function renderBackground(w: number, h: number, cam: { x: number; y: number }): void {
   if (!bgGraphics || !starGraphics) return;
@@ -2124,6 +2134,7 @@ function renderBackground(w: number, h: number, cam: { x: number; y: number }): 
 
   bgGraphics.clear();
   if (parallaxBg) parallaxBg.update(w, h, cam, state.cameraZoom, state.tick / 60);
+  if (sceneLighting && parallaxBg) sceneLighting.update(w, h, parallaxBg.palette.hueA, state.tick / 60);
 
   if (enhancedStars.length === 0) initStars(w, h);
   // Star field is 860 draw calls per frame — cache and only re-render when
