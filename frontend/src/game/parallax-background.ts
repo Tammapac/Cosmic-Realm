@@ -72,7 +72,7 @@ let scenesPromise: Promise<Record<string, SceneDef>> | null = null;
 function loadScenes(): Promise<Record<string, SceneDef>> {
   if (scenesCache) return Promise.resolve(scenesCache);
   if (!scenesPromise) {
-    scenesPromise = fetch("/bg/do/scenes.json?v=2")
+    scenesPromise = fetch("/bg/do/scenes.json?v=3")
       .then((r) => r.json())
       .then((j) => (scenesCache = j));
   }
@@ -251,7 +251,7 @@ export class ParallaxBackground {
     this.fillSpr = new PIXI.Sprite(fillTex);
     this.far.addChild(this.fillSpr);
 
-    (PIXI.Texture as any).fromURL(`/bg/do/${def.bg}?v=2`, { scaleMode: PIXI.SCALE_MODES.LINEAR })
+    (PIXI.Texture as any).fromURL(`/bg/do/${def.bg}?v=3`, { scaleMode: PIXI.SCALE_MODES.LINEAR })
       .then((tex: PIXI.Texture) => {
         if (token !== this.buildToken) { tex.destroy(true); return; }
         this.zoneTextures.push(tex);
@@ -264,7 +264,7 @@ export class ParallaxBackground {
     // ── layer 2: mid space — starfield + planets ───────────────────────
     if (def.starfield.length > 0) {
       Promise.all(def.starfield.map((f) =>
-        (PIXI.Texture as any).fromURL(`/bg/do/${f}?v=2`, { scaleMode: PIXI.SCALE_MODES.LINEAR }).catch(() => null)
+        (PIXI.Texture as any).fromURL(`/bg/do/${f}?v=3`, { scaleMode: PIXI.SCALE_MODES.LINEAR }).catch(() => null)
       )).then((texs: (PIXI.Texture | null)[]) => {
         if (token !== this.buildToken) return;
         const valid = texs.filter((t): t is PIXI.Texture => !!t);
@@ -279,7 +279,7 @@ export class ParallaxBackground {
     }
 
     for (const p of def.planets) {
-      (PIXI.Texture as any).fromURL(`/bg/do/${p.file}?v=2`, { scaleMode: PIXI.SCALE_MODES.LINEAR })
+      (PIXI.Texture as any).fromURL(`/bg/do/${p.file}?v=3`, { scaleMode: PIXI.SCALE_MODES.LINEAR })
         .then((tex: PIXI.Texture) => {
           if (token !== this.buildToken) { tex.destroy(true); return; }
           this.zoneTextures.push(tex);
@@ -312,7 +312,7 @@ export class ParallaxBackground {
 
     for (const f of def.flares) {
       f.files.forEach((file, i) => {
-        (PIXI.Texture as any).fromURL(`/bg/do/${file}?v=2`, { scaleMode: PIXI.SCALE_MODES.LINEAR })
+        (PIXI.Texture as any).fromURL(`/bg/do/${file}?v=3`, { scaleMode: PIXI.SCALE_MODES.LINEAR })
           .then((tex: PIXI.Texture) => {
             if (token !== this.buildToken) { tex.destroy(true); return; }
             this.zoneTextures.push(tex);
@@ -344,7 +344,7 @@ export class ParallaxBackground {
     if (label.startsWith("4-") && def.planets.length > 0) {
       const picks = def.planets.slice(0, 2);
       picks.forEach((p, i) => {
-        (PIXI.Texture as any).fromURL(`/bg/do/${p.file}?v=2`, { scaleMode: PIXI.SCALE_MODES.LINEAR })
+        (PIXI.Texture as any).fromURL(`/bg/do/${p.file}?v=3`, { scaleMode: PIXI.SCALE_MODES.LINEAR })
           .then((tex: PIXI.Texture) => {
             if (token !== this.buildToken) { tex.destroy(true); return; }
             this.zoneTextures.push(tex);

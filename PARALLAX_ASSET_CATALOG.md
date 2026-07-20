@@ -16,7 +16,7 @@ Analyse: automatisch (PIL) -- Transparenz, Randdeckung, Frame-/Kachel-Hinweise, 
 
 ## Auffaelligkeiten
 
-- **Starfield-Export-Defekt (behoben)**: Die 20 Original-Kacheln wurden mit durchgehend vollem Blaukanal (255 auf jedem Pixel) exportiert -- als ADD-Layer faerbte das jede Map uniform blau. Die echten Sternmuster stecken schwach im R/G-Kanal (max 21-50). Repariert: Luminanz = max(R,G) x 11 als Weiss-auf-Schwarz zurueckgeschrieben (gleiche Dateinamen, Original-Sternmuster erhalten).
+- **Starfield-Export-Defekt (behoben)**: Die 20 Original-Kacheln wurden mit durchgehend vollem Blaukanal (255 auf jedem Pixel) exportiert -- als ADD-Layer faerbte das jede Map uniform blau. Die echten Sternmuster stecken schwach im R/G-Kanal (max 21-50). Repariert: Luminanz = max(R,G) x 11 als Weiss-auf-Schwarz zurueckgeschrieben (gleiche Dateinamen, Original-Sternmuster erhalten). Zweiter Pass: Das stars1-Set enthielt zusaetzlich flaechige Nebel-Fragmente (23-94% der Pixel), die im Kachelraster als graue Dreiecke/Bloecke sichtbar wurden -- weicher Schwellwert bei 50 entfernt alle Flaechen, uebrig bleiben reine Sternpunkte mit Halo.
 - **Starfields sind opak** (schwarzer Grund): korrektes Rendering nur mit ADD-Blend -- dadurch keine schwarzen Rechtecke.
 - **planet12.png**: Schwarzrand-Verdacht (>85% dunkle Kantenpixel) -- von der kuratierten Auswahl ausgeschlossen.
 - **mask91/92/93-x**: Schwarzrand-Verdacht, betreffen nur 5-x-Maps -- nicht verwendet.
