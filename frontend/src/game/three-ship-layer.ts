@@ -377,10 +377,14 @@ export function init3DLayer(canvas: HTMLCanvasElement): void {
   // sky/sun reflections and specular highlights roll off naturally, so the
   // ships read as objects lit BY the scene instead of cut-in renders.
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.15;
+  renderer.toneMappingExposure = 0.92; // dimmer than the 2D scene, never brighter
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  (scene as any).environmentIntensity = 0.65;
+  (scene as any).environmentIntensity = 0.42;
+  // Grade the DOM-presented canvas to match the Pixi scene lighting (the
+  // player layer sits ABOVE the Pixi vignette/ambient and would otherwise
+  // read brighter than everything else — the "cut-in" look).
+  canvas.style.filter = "brightness(0.94) saturate(0.96)";
 
   // Lighting - enhanced dramatic contrast for stronger shading
   // Ambient: very low intensity for deeper shadows
@@ -388,7 +392,7 @@ export function init3DLayer(canvas: HTMLCanvasElement): void {
   scene.add(ambient);
 
   // Main sun: brighter warm light from upper-right for strong highlights
-  const sun = new THREE.DirectionalLight(0xfff8f0, 2.6);
+  const sun = new THREE.DirectionalLight(0xfff8f0, 1.9);
   sun.position.set(100, 300, -80);
   sun.castShadow = true;
   sun.shadow.mapSize.set(4096, 4096);
@@ -403,7 +407,7 @@ export function init3DLayer(canvas: HTMLCanvasElement): void {
   scene.add(sun);
 
   // Rim/fill: cooler blue light from opposite side for edge definition
-  const fill = new THREE.DirectionalLight(0x6699ff, 0.7);
+  const fill = new THREE.DirectionalLight(0x6699ff, 0.55);
   fill.position.set(-80, 150, 100);
   scene.add(fill);
 

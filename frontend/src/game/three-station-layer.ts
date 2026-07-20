@@ -270,10 +270,10 @@ export function initStation3DLayer(width?: number, height?: number): HTMLCanvasE
   // Filmic tone mapping + soft environment reflections — matches the ship
   // layer so stations shine subtly and sit in the same light as the world.
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.1;
+  renderer.toneMappingExposure = 0.88; // stations stay moody, embedded in the dark
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  (scene as any).environmentIntensity = 0.5;
+  (scene as any).environmentIntensity = 0.32;
 
   const ambient = new THREE.AmbientLight(0x2a2c48, 0.45);
   scene.add(ambient);
