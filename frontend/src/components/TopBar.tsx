@@ -315,7 +315,7 @@ function LogoutFlow() {
               fontWeight: 800,
               lineHeight: 1,
               textShadow: "0 0 24px rgba(255,60,80,0.9), 0 0 48px rgba(255,60,80,0.5)",
-              fontFamily: "'Courier New', monospace",
+              fontFamily: "var(--font-display)",
             }}
           >
             {remaining}
@@ -342,33 +342,28 @@ function LogoutFlow() {
         pointerEvents: "auto",
       }}
     >
-      <div style={{
-        background: "rgba(8,12,30,0.95)",
-        border: "1px solid rgba(255,60,80,0.4)",
-        boxShadow: "0 0 40px rgba(255,60,80,0.3), inset 0 0 30px rgba(0,0,0,0.6)",
-        padding: "28px 40px",
-        maxWidth: 440,
-        textAlign: "center",
-      }}>
-        <div style={{ color: "#ff8a9a", fontSize: 16, letterSpacing: "0.2em", marginBottom: 12, textShadow: "0 0 8px rgba(255,60,80,0.6)" }}>
-          CONFIRM LOGOUT
+      <div className="panel" style={{ width: 400, maxWidth: "92vw", display: "flex", flexDirection: "column" }}>
+        <div className="hud-titleband" style={{ letterSpacing: "0.28em" }}>
+          <span style={{ flex: 1, color: "var(--hud-hp)", textShadow: "0 0 8px rgba(255,77,94,0.5)" }}>Confirm Logout</span>
         </div>
-        <div style={{ color: "#e8ecff", fontSize: 14, marginBottom: 24, lineHeight: 1.5 }}>
-          Are you sure you want to log out?
+        <div style={{ color: "var(--hud-text-bright)", fontSize: 13, padding: "16px 20px", lineHeight: 1.5, textAlign: "center", letterSpacing: "0.08em" }}>
+          ARE YOU SURE YOU WANT TO LOG OUT?
         </div>
-        <div className="flex justify-center gap-3">
-          <GameButton
+        <div className="flex justify-center gap-3" style={{ padding: "0 16px 16px" }}>
+          <button
+            className="gbtn gbtn-red"
+            style={{ fontSize: 12, padding: "7px 22px" }}
             onClick={() => { state.showLogoutConfirm = false; state.logoutCountdown = true; bump(); }}
-            style={{ color: "#ff8a9a", fontSize: 13, padding: "6px 20px" }}
           >
-            ✓ Confirm
-          </GameButton>
-          <GameButton
+            ✓ CONFIRM
+          </button>
+          <button
+            className="gbtn"
+            style={{ fontSize: 12, padding: "7px 22px" }}
             onClick={() => { state.showLogoutConfirm = false; bump(); }}
-            style={{ color: "#e8ecff", fontSize: 13, padding: "6px 20px" }}
           >
-            ✕ Cancel
-          </GameButton>
+            ✕ CANCEL
+          </button>
         </div>
       </div>
     </div>

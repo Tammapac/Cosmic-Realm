@@ -35,6 +35,9 @@
 .hud-plate {
   position: relative;
   isolation: isolate;
+  /* One typeface for every window: the Kenney display font — no browser
+     fonts, no monospace fallback bleeding into panels. */
+  font-family: var(--font-display);
   background: var(--hud-frame-accent, rgba(78, 226, 255, 0.85));
   border: none;
   clip-path: polygon(

@@ -379,14 +379,21 @@ function RiftConfirmDialog() {
   if (!def) return null;
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999 }}>
-      <div className="panel panel-framed" style={{ padding: 24, maxWidth: 380, textAlign: "center", boxShadow: "0 0 60px rgba(0,0,0,0.9)" }}>
-        <div style={{ fontSize: 20, fontWeight: "bold", marginBottom: 12, color: def.color }}>{def.name}</div>
-        <div style={{ fontSize: 14, color: "#aaa", marginBottom: 8 }}>SOLO MODE</div>
-        <div style={{ fontSize: 13, color: "#888", marginBottom: 6 }}>{def.waves} waves / {def.enemiesPerWave} enemies per wave</div>
-        <div style={{ fontSize: 13, color: "#ccc", marginBottom: 22 }}>Enter this rift?</div>
-        <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
-          <button style={{ padding: "10px 28px", background: "#333", color: "#ccc", border: "1px solid #555", borderRadius: 6, cursor: "pointer", fontSize: 14 }} onClick={() => { setDungeonId(null); _riftConfirmDungeonId = null; }}>Cancel</button>
-          <button style={{ padding: "10px 28px", background: def.color, color: "#000", border: "none", borderRadius: 6, cursor: "pointer", fontSize: 14, fontWeight: "bold" }} onClick={() => { setDungeonId(null); _riftConfirmDungeonId = null; enterDungeon(dungeonId as DungeonId); }}>Enter Rift</button>
+      <div className="panel" style={{ width: 380, maxWidth: "92vw", display: "flex", flexDirection: "column" }}>
+        <div className="hud-titleband" style={{ letterSpacing: "0.28em" }}>
+          <span style={{ flex: 1, color: def.color, textShadow: `0 0 8px ${def.color}66` }}>{def.name}</span>
+        </div>
+        <div style={{ padding: "14px 18px", textAlign: "center" }}>
+          <div style={{ fontSize: 11, letterSpacing: "0.24em", color: "var(--hud-gold)", marginBottom: 8 }}>SOLO MODE</div>
+          <div style={{ fontSize: 12, color: "var(--hud-text-dim)", marginBottom: 4, letterSpacing: "0.08em" }}>
+            {def.waves} WAVES · {def.enemiesPerWave} ENEMIES PER WAVE
+          </div>
+          <div className="sci-divider" style={{ height: 1, margin: "10px 0" }} />
+          <div style={{ fontSize: 13, color: "var(--hud-text-bright)", letterSpacing: "0.1em" }}>ENTER THIS RIFT?</div>
+        </div>
+        <div style={{ display: "flex", gap: 12, justifyContent: "center", padding: "0 16px 16px" }}>
+          <button className="gbtn" style={{ padding: "8px 24px", fontSize: 12 }} onClick={() => { setDungeonId(null); _riftConfirmDungeonId = null; }}>CANCEL</button>
+          <button className="gbtn gbtn-gold" style={{ padding: "8px 24px", fontSize: 12 }} onClick={() => { setDungeonId(null); _riftConfirmDungeonId = null; enterDungeon(dungeonId as DungeonId); }}>▶ ENTER RIFT</button>
         </div>
       </div>
     </div>
