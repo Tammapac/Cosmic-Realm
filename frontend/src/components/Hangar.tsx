@@ -143,11 +143,11 @@ export function Hangar({ stationId }: { stationId: string }) {
             {/* Station icon */}
             <div style={{
               width: 42, height: 42, flexShrink: 0,
-              border: "1px solid rgba(247,168,50,0.3)",
-              background: "rgba(247,168,50,0.07)",
+              border: "1px solid rgba(78,226,255,0.35)",
+              background: "rgba(78,226,255,0.07)",
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 20, color: "var(--accent-cyan)",
-              boxShadow: "0 0 12px rgba(247,168,50,0.15)",
+              fontSize: 20, color: "var(--hud-cyan)",
+              boxShadow: "0 0 12px rgba(78,226,255,0.2)",
             }}>⬡</div>
             <div className="min-w-0">
               <div className="hud-label">DOCKED AT · {station.kind.toUpperCase()}</div>
