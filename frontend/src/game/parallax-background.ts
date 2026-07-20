@@ -39,12 +39,16 @@ import { MAP_RADIUS } from "./types";
 
 export const PARALLAX = {
   far: 0.02,
+  // Planets sit BEHIND the starfield, so they must also move SLOWER than
+  // it — otherwise the depth reads inverted (a "distant" planet sliding
+  // faster than the stars in front of it).
+  planetMin: 0.02,
+  planetMax: 0.045,
   starfield: 0.06,
-  planetMin: 0.03,
-  planetMax: 0.11,
+  structures: 0.05, // large dark structures/silhouettes, also behind stars
   atmosphere: 0.12,
   world: 1.0,
-  foreground: 1.12,
+  foreground: 1.12, // reserved (currently unpopulated)
 } as const;
 
 const FAR_SWAY = 22;      // px of slow autonomous sway on the base bg
@@ -187,7 +191,6 @@ export class ParallaxBackground {
   private planets: AnchoredSprite[] = [];
   private flares: AnchoredSprite[] = [];
   private motes: { spr: PIXI.Sprite; u: number; v: number; s: number; ph: number }[] = [];
-  private fgItems: AnchoredSprite[] = [];
   private zoneTextures: PIXI.Texture[] = []; // destroyed on zone switch
 
   private driftX = 0;
@@ -235,7 +238,7 @@ export class ParallaxBackground {
     this.zoneTextures = [];
     this.fillSpr = this.bgSpr = null;
     this.sfTile = this.nebA = this.nebB = null;
-    this.planets = []; this.flares = []; this.motes = []; this.fgItems = [];
+    this.planets = []; this.flares = []; this.motes = [];
     this.driftX = 0; this.driftY = 0;
   }
 
@@ -289,7 +292,9 @@ export class ParallaxBackground {
           const s = Math.min(1, 680 / Math.max(p.w, p.h));
           spr.scale.set(s);
           this.planetLayer.addChild(spr);
-          const par = Math.max(PARALLAX.planetMin, Math.min(PARALLAX.planetMax, p.pf / 100 + 0.02));
+          // pf 1..10 -> 0.022..0.045, always below the starfield's 0.06 so
+          // relative depth stays consistent (farther = slower).
+          const par = Math.max(PARALLAX.planetMin, Math.min(PARALLAX.planetMax, p.pf / 250 + 0.018));
           this.planets.push({ spr, cx: p.x, cy: p.y, par, pulse: 0, baseA: 1 });
         })
         .catch(() => {});
@@ -340,7 +345,10 @@ export class ParallaxBackground {
       this.motes.push({ spr, u: rnd(), v: rnd(), s: 0.4 + rnd() * 0.8, ph: rnd() * Math.PI * 2 });
     }
 
-    // ── layer 5: foreground — dark silhouettes on danger zones only ────
+    // ── dark structure silhouettes (danger zones) — like the planets they
+    // sit BEHIND the starfield and drift slowly (0.05), reading as huge
+    // distant structures instead of fast foreground objects. The
+    // foreground container (1.12) stays reserved but unpopulated.
     if (label.startsWith("4-") && def.planets.length > 0) {
       const picks = def.planets.slice(0, 2);
       picks.forEach((p, i) => {
@@ -352,14 +360,13 @@ export class ParallaxBackground {
             spr.anchor.set(0.5);
             spr.tint = 0x0b0e16;         // silhouette, not a repeated planet
             spr.alpha = 0.45;
-            const s = Math.min(1.5, 900 / Math.max(p.w, p.h));
+            const s = Math.min(1.2, 780 / Math.max(p.w, p.h));
             spr.scale.set(s);
-            this.foreground.addChild(spr);
-            // pseudo-world anchors far from the map center so silhouettes
-            // pass by at the edges and never park in front of the player
-            const ax = (i === 0 ? -0.62 : 0.66) * MAP_RADIUS;
-            const ay = (i === 0 ? 0.55 : -0.6) * MAP_RADIUS;
-            this.fgItems.push({ spr, cx: ax, cy: ay, par: PARALLAX.foreground, pulse: 0, baseA: 0.45 });
+            this.planetLayer.addChild(spr);
+            // canvas anchors near opposite corners, away from the center
+            const cx = i === 0 ? 260 : 1860;
+            const cy = i === 0 ? 1130 : 200;
+            this.planets.push({ spr, cx, cy, par: PARALLAX.structures, pulse: 0, baseA: 0.45 });
           })
           .catch(() => {});
       });
@@ -443,19 +450,11 @@ export class ParallaxBackground {
       mo.spr.alpha = 0.05 + 0.06 * (0.5 + 0.5 * Math.sin(t * mo.s + mo.ph));
     }
 
-    // Foreground: zoomed like the world, pivot moves 12% faster than cam.
+    // Foreground (reserved, currently unpopulated): zoomed like the world,
+    // pivot moves 12% faster than the camera.
     this.foreground.scale.set(zoom);
     this.foreground.position.set(w / 2 + shakeX, h / 2 + shakeY);
     this.foreground.pivot.set(cam.x * PARALLAX.foreground, cam.y * PARALLAX.foreground);
-    for (const fgi of this.fgItems) {
-      fgi.spr.x = fgi.cx; fgi.spr.y = fgi.cy;
-      const sx = (fgi.cx - cam.x * PARALLAX.foreground) * zoom + w / 2;
-      const sy = (fgi.cy - cam.y * PARALLAX.foreground) * zoom + h / 2;
-      const M3 = (Math.max(fgi.spr.width, fgi.spr.height) / 2) * zoom + 80;
-      const vis = sx > -M3 && sx < w + M3 && sy > -M3 && sy < h + M3;
-      if (!vis) culled++;
-      fgi.spr.visible = vis;
-    }
 
     this.stats.culled = culled;
     this.stats.sprites =
