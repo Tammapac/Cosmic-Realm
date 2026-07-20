@@ -38,13 +38,13 @@ export function TopBar() {
 
       {/* Floating menu icons (PNG GUI pack) */}
       <div className="pointer-events-auto flex gap-1.5 shrink-0 items-start">
-        <IconBtn icon="ic-map" label="Galaxy Map (M)" onClick={() => { state.showMap = !state.showMap; bump(); }} />
-        <IconBtn icon="ic-journal" label="Mission Journal" onClick={() => { state.showJournal = !state.showJournal; bump(); }} />
-        <IconBtn icon="ic-quests" label="Quest Log on/off" onClick={() => { state.showQuestTracker = !state.showQuestTracker; localStorage.setItem("sf-quest-tracker", state.showQuestTracker ? "on" : "off"); bump(); }} />
-        <IconBtn icon="ic-social" label="Social" onClick={() => { state.showSocial = !state.showSocial; bump(); }} />
-        <IconBtn icon="ic-clan" label="Clan (C)" onClick={() => { state.showClan = !state.showClan; bump(); }} />
-        <IconBtn icon="ic-settings" label="Settings" onClick={() => { state.showSettings = !state.showSettings; bump(); }} />
-        <IconBtn icon="ic-logout" label="Logout" onClick={() => { state.showLogoutConfirm = true; bump(); }} />
+        <IconBtn icon="ic-map" label="Galaxy Map (M)" short="Map" onClick={() => { state.showMap = !state.showMap; bump(); }} />
+        <IconBtn icon="ic-journal" label="Mission Journal" short="Journal" onClick={() => { state.showJournal = !state.showJournal; bump(); }} />
+        <IconBtn icon="ic-quests" label="Quest Log on/off" short="Quests" onClick={() => { state.showQuestTracker = !state.showQuestTracker; localStorage.setItem("sf-quest-tracker", state.showQuestTracker ? "on" : "off"); bump(); }} />
+        <IconBtn icon="ic-social" label="Social" short="Social" onClick={() => { state.showSocial = !state.showSocial; bump(); }} />
+        <IconBtn icon="ic-clan" label="Clan (C)" short="Clan" onClick={() => { state.showClan = !state.showClan; bump(); }} />
+        <IconBtn icon="ic-settings" label="Settings" short="Settings" onClick={() => { state.showSettings = !state.showSettings; bump(); }} />
+        <IconBtn icon="ic-logout" label="Logout" short="Logout" onClick={() => { state.showLogoutConfirm = true; bump(); }} />
       </div>
     </div>
     <LogoutFlow />
@@ -443,14 +443,18 @@ export function WorldTargetHud() {
   );
 }
 
-function IconBtn({ icon, label, onClick }: { icon: string; label: string; onClick: () => void }) {
+function IconBtn({ icon, label, short, onClick }: { icon: string; label: string; short: string; onClick: () => void }) {
+  // Short caption under the icon so the command buttons read at a glance
+  // instead of being bare icons (full label stays in the tooltip).
   return (
     <button
       className="ic-btn"
       title={label}
       onClick={onClick}
       style={{ backgroundImage: `url(/assets/ui/atlas/${icon}.png?v=4)` }}
-    />
+    >
+      <span className="ic-btn-label">{short}</span>
+    </button>
   );
 }
 

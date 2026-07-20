@@ -1,0 +1,465 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   HUD SKIN — extends the hud_preview design system (hud-tokens.css, the
+   HudShowcase reference) to EVERY legacy UI class in index.css: windows,
+   station interface, hangar, nav columns, buttons, inputs, tooltips,
+   popups, chips, scrollbars. Loaded AFTER index.css so identical selectors
+   win by order. The legacy amber/atlas skin (border-image window frames,
+   #f7a832 accent) is fully replaced by the angular cyan-on-deep-blue HUD
+   language: cut corners, no border radius, metal edge highlights, cyan
+   glows, Kenney display font for labels.
+   ══════════════════════════════════════════════════════════════════════════ */
+@import "./hud-tokens.css";
+
+/* ── 1. Re-point the legacy palette to the HUD reference ────────────────── */
+:root {
+  --accent-cyan: var(--hud-cyan);            /* was amber #f7a832 */
+  --accent-magenta: var(--hud-magenta);
+  --accent-amber: var(--hud-gold);
+  --accent-gold: var(--hud-gold);
+  --accent-green: var(--hud-green);
+  --accent-red: var(--hud-hp);
+  --bg-panel: var(--hud-bg-panel);
+  --bg-panel-solid: var(--hud-bg-panel-solid);
+  --border-glow: var(--hud-border-bright);
+  --border-soft: var(--hud-border-dim);
+  --text-bright: var(--hud-text-bright);
+  --text-dim: #b8cce8;
+  --text-mute: var(--hud-text-dim);
+}
+
+/* ── 2. Core panel (every window/popup body) ────────────────────────────── */
+.panel {
+  background:
+    linear-gradient(180deg, rgba(16, 26, 46, 0.94) 0%, rgba(8, 14, 26, 0.94) 55%, rgba(6, 10, 20, 0.96) 100%);
+  border: 1px solid var(--hud-border);
+  clip-path: polygon(
+    var(--hud-cut) 0, 100% 0, 100% calc(100% - var(--hud-cut)),
+    calc(100% - var(--hud-cut)) 100%, 0 100%, 0 var(--hud-cut)
+  );
+  box-shadow:
+    inset 0 1px 0 var(--hud-metal-hi),
+    inset 0 -1px 0 var(--hud-metal-lo),
+    inset 0 0 34px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(0, 0, 0, 0.6),
+    0 6px 28px rgba(0, 0, 0, 0.55);
+}
+.panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(0deg, var(--hud-brushed-line) 0 1px, transparent 1px 3px);
+  opacity: 0.6;
+}
+
+/* ── 3. Framed windows (hangar, station, journals, big modals) ──────────── */
+/* The atlas border-image is gone; border widths stay so inner layout keeps
+   its inset. The frame is drawn with layered strokes + corner cuts. */
+.panel-framed {
+  border-image: none;
+  border-style: solid;
+  border-color: transparent;
+  border-width: 44px 38px 34px 38px;
+  background:
+    linear-gradient(180deg, rgba(18, 30, 52, 0.97) 0%, rgba(9, 15, 28, 0.97) 46%, rgba(6, 10, 20, 0.98) 100%);
+  clip-path: polygon(
+    14px 0, calc(100% - 14px) 0, 100% 14px,
+    100% calc(100% - 14px), calc(100% - 14px) 100%, 14px 100%,
+    0 calc(100% - 14px), 0 14px
+  );
+  box-shadow:
+    inset 0 0 0 1px var(--hud-border),
+    inset 0 0 0 2px rgba(0, 0, 0, 0.7),
+    inset 0 2px 0 var(--hud-metal-hi),
+    inset 0 0 60px rgba(0, 0, 0, 0.5),
+    0 10px 40px rgba(0, 0, 0, 0.65);
+}
+.panel-framed.panel-gold {
+  border-image: none;
+  box-shadow:
+    inset 0 0 0 1px rgba(232, 185, 77, 0.5),
+    inset 0 0 0 2px rgba(0, 0, 0, 0.7),
+    inset 0 2px 0 var(--hud-metal-hi),
+    inset 0 0 60px rgba(0, 0, 0, 0.5),
+    0 0 22px rgba(232, 185, 77, 0.12),
+    0 10px 40px rgba(0, 0, 0, 0.65);
+}
+
+/* ── 4. Window header strip ─────────────────────────────────────────────── */
+.sw-window-header {
+  background: linear-gradient(180deg, rgba(20, 36, 62, 0.95) 0%, rgba(10, 18, 34, 0.9) 70%, rgba(8, 14, 26, 0.5) 100%);
+  border-bottom: 1px solid rgba(78, 226, 255, 0.4);
+  box-shadow: inset 0 1px 0 rgba(120, 200, 255, 0.16), 0 1px 0 rgba(0, 0, 0, 0.7);
+}
+
+/* ── 5. Left-nav column items (station/hangar menus) ────────────────────── */
+.sw-nav-item {
+  color: #9fb4d4;
+  background: linear-gradient(180deg, rgba(16, 26, 46, 0.92) 0%, rgba(9, 15, 28, 0.92) 100%);
+  border: 1px solid rgba(60, 90, 130, 0.35);
+  border-left: 3px solid transparent;
+}
+.sw-nav-item:hover {
+  color: #dff6ff;
+  border-left-color: rgba(78, 226, 255, 0.65);
+  background: linear-gradient(180deg, rgba(22, 36, 62, 0.95) 0%, rgba(12, 20, 38, 0.95) 100%);
+}
+.sw-nav-item--selected,
+.sw-nav-item--selected:hover {
+  color: var(--hud-cyan);
+  text-shadow: var(--hud-glow-soft) var(--hud-cyan-glow);
+  background: linear-gradient(180deg, rgba(18, 40, 62, 0.95) 0%, rgba(10, 22, 38, 0.95) 100%);
+  border: 1px solid rgba(78, 226, 255, 0.55);
+  border-left: 3px solid var(--hud-cyan);
+  box-shadow:
+    inset 0 0 14px rgba(78, 226, 255, 0.08),
+    0 0 8px rgba(78, 226, 255, 0.15);
+}
+.sw-nav-item--selected::before {
+  border-top-color: rgba(78, 226, 255, 0.8);
+  border-right-color: rgba(78, 226, 255, 0.8);
+}
+.sw-nav-item--selected::after {
+  border-bottom-color: rgba(78, 226, 255, 0.8);
+  border-right-color: rgba(78, 226, 255, 0.8);
+}
+
+/* ── 6. Buttons ─────────────────────────────────────────────────────────── */
+.gbtn {
+  background: linear-gradient(180deg, #14213a 0%, #0b1322 100%);
+  border: 1px solid rgba(90, 130, 180, 0.45);
+  color: #9fe0ff;
+  text-shadow: 0 0 6px rgba(78, 226, 255, 0.3);
+  clip-path: polygon(
+    var(--hud-cut-sm) 0, 100% 0, 100% calc(100% - var(--hud-cut-sm)),
+    calc(100% - var(--hud-cut-sm)) 100%, 0 100%, 0 var(--hud-cut-sm)
+  );
+  box-shadow:
+    inset 0 0 0 1px rgba(78, 226, 255, 0.08),
+    inset 0 1px 0 var(--hud-metal-hi),
+    0 1px 3px rgba(0, 0, 0, 0.5);
+}
+.gbtn::before {
+  border-top-color: rgba(78, 226, 255, 0.7);
+  border-left-color: rgba(78, 226, 255, 0.7);
+}
+.gbtn::after {
+  border-bottom-color: rgba(78, 226, 255, 0.7);
+  border-right-color: rgba(78, 226, 255, 0.7);
+}
+.gbtn:hover:not(:disabled) {
+  color: #dff6ff;
+  border-color: rgba(78, 226, 255, 0.65);
+  box-shadow:
+    inset 0 0 0 1px rgba(78, 226, 255, 0.2),
+    inset 0 0 14px rgba(78, 226, 255, 0.1),
+    0 0 10px rgba(78, 226, 255, 0.3);
+}
+.gbtn:disabled {
+  color: #4a5d80;
+  border-color: rgba(60, 90, 130, 0.3);
+}
+.gbtn:disabled::before,
+.gbtn:disabled::after {
+  border-color: rgba(60, 90, 130, 0.35);
+}
+.gbtn-gold {
+  color: #ffe2a8;
+  background: linear-gradient(180deg, #2c2410 0%, #171208 100%);
+  border-color: rgba(232, 185, 77, 0.6);
+  text-shadow: 0 0 6px rgba(232, 185, 77, 0.35);
+}
+.gbtn-gold::before,
+.gbtn-gold::after {
+  border-color: rgba(232, 185, 77, 0.75);
+}
+.gbtn-gold:hover:not(:disabled) {
+  color: #fff0cc;
+  border-color: rgba(232, 185, 77, 0.7);
+  box-shadow:
+    inset 0 0 0 1px rgba(232, 185, 77, 0.2),
+    inset 0 0 14px rgba(232, 185, 77, 0.08),
+    0 0 10px rgba(232, 185, 77, 0.25);
+}
+.gbtn-red {
+  color: #ff9aa4;
+  text-shadow: 0 0 6px rgba(255, 77, 94, 0.35);
+}
+.gbtn-red::before,
+.gbtn-red::after {
+  border-color: rgba(255, 77, 94, 0.7);
+}
+.gbtn-red:hover:not(:disabled) {
+  color: #ffc4ca;
+  border-color: rgba(255, 77, 94, 0.6);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 77, 94, 0.16),
+    inset 0 0 14px rgba(255, 77, 94, 0.07),
+    0 0 10px rgba(255, 77, 94, 0.25);
+}
+
+.btn {
+  background: linear-gradient(180deg, #1c2c4a 0%, #101a30 55%, #0a1120 100%);
+  color: #cfe8ff;
+  border: 1px solid rgba(90, 130, 180, 0.5);
+  box-shadow:
+    inset 1px 1px 0 rgba(160, 210, 255, 0.18),
+    inset -1px -1px 0 rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+.btn-primary {
+  background: linear-gradient(180deg, #1f6f92 0%, #0e3a54 100%);
+  border-color: var(--hud-cyan);
+}
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #2d8cb4 0%, #145070 100%);
+  box-shadow: 0 0 12px rgba(78, 226, 255, 0.5);
+}
+.btn-danger {
+  background: linear-gradient(180deg, #8a2333 0%, #4a1019 100%);
+  border-color: var(--hud-hp);
+}
+.btn-amber {
+  background: linear-gradient(180deg, #8a6420 0%, #4a3410 100%);
+  border-color: var(--hud-gold);
+}
+
+/* ── 7. Inputs & selects ────────────────────────────────────────────────── */
+.ginput {
+  background: linear-gradient(180deg, rgba(5, 9, 18, 0.94) 0%, rgba(9, 15, 28, 0.94) 100%);
+  border: 1px solid rgba(90, 130, 180, 0.4);
+  box-shadow: inset 0 0 0 1px rgba(78, 226, 255, 0.08), inset 0 2px 6px rgba(0, 0, 0, 0.6);
+  color: var(--hud-text-bright);
+}
+.ginput:focus {
+  border-color: rgba(78, 226, 255, 0.6);
+  box-shadow: inset 0 0 0 1px rgba(78, 226, 255, 0.2), 0 0 6px rgba(78, 226, 255, 0.25);
+}
+select.ginput {
+  color: var(--hud-cyan);
+}
+
+/* ── 8. Slots, cells, cards, rows ───────────────────────────────────────── */
+.sw-slot {
+  border: 1px solid rgba(90, 130, 180, 0.4);
+  border-image: none;
+  padding: 3px;
+  background: linear-gradient(180deg, rgba(6, 10, 20, 0.9) 0%, rgba(10, 17, 32, 0.9) 100%);
+  clip-path: polygon(
+    var(--hud-cut-sm) 0, 100% 0, 100% calc(100% - var(--hud-cut-sm)),
+    calc(100% - var(--hud-cut-sm)) 100%, 0 100%, 0 var(--hud-cut-sm)
+  );
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+.sw-slot:hover {
+  border-image: none;
+  border-color: rgba(78, 226, 255, 0.55);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.6), 0 0 8px rgba(78, 226, 255, 0.2);
+}
+.sw-slot--active {
+  border-image: none;
+  border-color: var(--hud-cyan);
+  box-shadow:
+    inset 0 0 10px rgba(78, 226, 255, 0.15),
+    0 0 10px rgba(78, 226, 255, 0.35);
+}
+.equip-cell {
+  background: linear-gradient(180deg, rgba(6, 10, 20, 0.9) 0%, rgba(10, 17, 32, 0.9) 100%);
+  border: 1px solid rgba(90, 130, 180, 0.35);
+}
+.equip-cell:hover {
+  border-color: rgba(78, 226, 255, 0.6);
+}
+.sw-card {
+  background: linear-gradient(180deg, rgba(14, 22, 40, 0.92) 0%, rgba(8, 14, 26, 0.92) 100%);
+  border: 1px solid rgba(90, 130, 180, 0.3);
+}
+.sw-card:hover {
+  border-color: rgba(78, 226, 255, 0.5);
+  box-shadow: 0 0 10px rgba(78, 226, 255, 0.12);
+}
+.sw-rail {
+  background: linear-gradient(180deg, rgba(10, 17, 32, 0.9) 0%, rgba(6, 10, 20, 0.9) 100%);
+  border-left: 1px solid rgba(90, 130, 180, 0.3);
+}
+.stat-box {
+  background: rgba(8, 14, 26, 0.7);
+  border: 1px solid rgba(90, 130, 180, 0.28);
+}
+.j-row--sel {
+  background: linear-gradient(180deg, rgba(18, 40, 62, 0.9) 0%, rgba(10, 22, 38, 0.9) 100%);
+  border-color: rgba(78, 226, 255, 0.55);
+}
+.j-row--sel::before,
+.j-row--sel::after {
+  border-color: rgba(78, 226, 255, 0.8);
+}
+.hover-row:hover {
+  background: rgba(78, 226, 255, 0.07);
+}
+.selected-row {
+  background: rgba(78, 226, 255, 0.12);
+}
+.sci-divider {
+  background: linear-gradient(90deg, transparent, rgba(78, 226, 255, 0.4), transparent);
+}
+
+/* ── 9. Headers, chips, consoles, banners ───────────────────────────────── */
+.sec-hdr,
+.dob-hdr,
+.console-hdr {
+  color: var(--hud-cyan);
+  background: linear-gradient(180deg, rgba(18, 32, 56, 0.9) 0%, rgba(10, 18, 34, 0.85) 100%);
+  border: 1px solid rgba(78, 226, 255, 0.3);
+  text-shadow: 0 0 8px rgba(78, 226, 255, 0.35);
+}
+.console-sq {
+  background: var(--hud-bg-panel);
+  border: 1px solid var(--hud-border);
+}
+.console-corner.tl { border-color: var(--hud-cyan); }
+.console-corner.tr { border-color: var(--hud-cyan); }
+.console-corner.bl { border-color: var(--hud-cyan); }
+.console-corner.br { border-color: var(--hud-cyan); }
+.hud-chip,
+.chip-chat,
+.chip-quest,
+.chip-tray {
+  background: var(--hud-bg-panel);
+  border: 1px solid var(--hud-border);
+  box-shadow: inset 0 1px 0 var(--hud-metal-hi), 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+.chip-target {
+  background: rgba(26, 10, 14, 0.85);
+  border: 1px solid rgba(255, 77, 94, 0.5);
+}
+.banner-amber {
+  color: var(--hud-gold);
+  background: linear-gradient(180deg, rgba(44, 34, 16, 0.9) 0%, rgba(27, 21, 9, 0.9) 100%);
+  border: 1px solid rgba(232, 185, 77, 0.45);
+}
+
+/* ── 10. Tooltips & popup framing ───────────────────────────────────────── */
+.sw-tooltip,
+.gtip,
+.tooltip-pixel {
+  background: linear-gradient(180deg, rgba(12, 20, 38, 0.97) 0%, rgba(6, 10, 20, 0.97) 100%);
+  border: 1px solid rgba(78, 226, 255, 0.45);
+  box-shadow:
+    inset 0 1px 0 var(--hud-metal-hi),
+    0 0 14px rgba(78, 226, 255, 0.12),
+    0 8px 24px rgba(0, 0, 0, 0.7);
+  color: var(--hud-text-bright);
+}
+.sw-tooltip::before, .gtip::before {
+  border-top-color: rgba(78, 226, 255, 0.8);
+  border-left-color: rgba(78, 226, 255, 0.8);
+}
+.sw-tooltip::after, .gtip::after {
+  border-bottom-color: rgba(78, 226, 255, 0.8);
+  border-right-color: rgba(78, 226, 255, 0.8);
+}
+
+/* ── 11. Scrollbars ─────────────────────────────────────────────────────── */
+::-webkit-scrollbar-track {
+  background: rgba(6, 10, 20, 0.9);
+  border-left: 1px solid rgba(60, 90, 130, 0.25);
+}
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #24476b 0%, #16304a 100%);
+  border: 1px solid rgba(78, 226, 255, 0.3);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #2f5f8f 0%, #1e4062 100%);
+  border-color: rgba(78, 226, 255, 0.55);
+}
+
+/* ── 12. Top-right command buttons (map/journal/quests/social/clan/
+        settings/logout) — clear framed plates instead of bare icons ────── */
+.ic-btn {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  background-color: rgba(10, 18, 34, 0.92);
+  background-size: 46px 46px;
+  background-position: center 2px;
+  border: 1px solid rgba(90, 130, 180, 0.5);
+  clip-path: polygon(
+    var(--hud-cut-sm) 0, 100% 0, 100% calc(100% - var(--hud-cut-sm)),
+    calc(100% - var(--hud-cut-sm)) 100%, 0 100%, 0 var(--hud-cut-sm)
+  );
+  box-shadow:
+    inset 0 1px 0 var(--hud-metal-hi),
+    inset 0 0 0 1px rgba(78, 226, 255, 0.08),
+    0 2px 8px rgba(0, 0, 0, 0.55);
+  filter: none;
+}
+.ic-btn .ic-btn-label {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 2px;
+  font-family: var(--font-display);
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9fe0ff;
+  text-shadow: 0 1px 2px #000, 0 0 6px rgba(78, 226, 255, 0.35);
+  text-align: center;
+  pointer-events: none;
+}
+.ic-btn:hover {
+  border-color: rgba(78, 226, 255, 0.75);
+  background-color: rgba(16, 28, 50, 0.95);
+  filter: brightness(1.15);
+  box-shadow:
+    inset 0 1px 0 var(--hud-metal-hi),
+    inset 0 0 12px rgba(78, 226, 255, 0.12),
+    0 0 12px rgba(78, 226, 255, 0.35),
+    0 2px 8px rgba(0, 0, 0, 0.55);
+}
+.ic-btn:hover .ic-btn-label {
+  color: #dff6ff;
+}
+.ic-btn:active {
+  transform: translateY(1px) scale(0.97);
+}
+
+/* ── 13. Misc interactive hotspots ──────────────────────────────────────── */
+.avatar-btn:hover {
+  background: radial-gradient(ellipse at center, rgba(78, 226, 255, 0.25) 0%, transparent 70%);
+  box-shadow: 0 0 12px rgba(78, 226, 255, 0.35);
+  border-radius: 0;
+}
+.avatar-btn:active {
+  background: radial-gradient(ellipse at center, rgba(78, 226, 255, 0.45) 0%, transparent 70%);
+}
+.j-close:hover {
+  box-shadow: 0 0 12px rgba(78, 226, 255, 0.7), inset 0 0 8px rgba(78, 226, 255, 0.35);
+}
+.j-close:active {
+  box-shadow: 0 0 6px rgba(78, 226, 255, 0.5), inset 0 0 10px rgba(78, 226, 255, 0.5);
+}
+.send-tri:hover {
+  filter: brightness(1.25) drop-shadow(0 0 6px rgba(78, 226, 255, 0.6));
+}
+.skill-node:hover {
+  filter: brightness(1.2) drop-shadow(0 0 8px rgba(78, 226, 255, 0.5));
+}
+
+/* ── 14. Bars ───────────────────────────────────────────────────────────── */
+.bar {
+  background: rgba(5, 9, 18, 0.85);
+  border: 1px solid rgba(90, 130, 180, 0.35);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.6);
+}
+
+/* ── 15. Glow text helpers follow the palette swap automatically via
+        --accent-*; the amber glow keeps gold for currency contexts. ────── */
+.glow-amber { text-shadow: 0 0 8px rgba(232, 185, 77, 0.6); }
