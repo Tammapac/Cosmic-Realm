@@ -612,6 +612,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
   const [showAmmoPopup, setShowAmmoPopup] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [sellMode, setSellMode] = useState(false);
+  const [sellAllArmed, setSellAllArmed] = useState(false);
   // rich comparison card anchored next to the hovered inventory/shop cell
   const [cardHover, setCardHover] = useState<{ kind: "inv" | "shop"; id: string; x: number; y: number } | null>(null);
   const [hoverEquip, setHoverEquip] = useState<{ slot: ModuleSlot; index: number; def: ModuleDef | null } | null>(null);
@@ -812,6 +813,37 @@ function LoadoutTab({ stationId }: { stationId: string }) {
             </button>
           ))}
         </div>
+        {!showShop && (() => {
+          // SELL ALL: every inventory item that is NOT currently equipped.
+          // Two-step confirm so a misclick can't liquidate the cargo bay.
+          const equippedIds = new Set(
+            [...player.equipped.weapon, ...player.equipped.generator, ...player.equipped.module].filter(Boolean)
+          );
+          const unused = player.inventory.filter((it) => !equippedIds.has(it.instanceId) && MODULE_DEFS[it.defId]);
+          const total = unused.reduce((s, it) => s + lootSellPrice(it, MODULE_DEFS[it.defId]), 0);
+          if (unused.length === 0) return null;
+          return (
+            <button
+              className="gbtn gbtn-red shrink-0"
+              style={{ padding: "4px 0", fontSize: 10, letterSpacing: "0.1em", marginBottom: 8 }}
+              title={`Sells every item that is not equipped (${unused.length} items)`}
+              onClick={() => {
+                if (!sellAllArmed) {
+                  setSellAllArmed(true);
+                  setTimeout(() => setSellAllArmed(false), 3500);
+                  return;
+                }
+                setSellAllArmed(false);
+                for (const it of unused) sellInventoryItem(it.instanceId);
+                pushNotification(`Sold ${unused.length} unused items for ${total.toLocaleString()} CR`, "good");
+              }}
+            >
+              {sellAllArmed
+                ? `CONFIRM — SELL ${unused.length} FOR ${total.toLocaleString()} CR?`
+                : `SELL ALL UNUSED (${unused.length}) · ${total.toLocaleString()} CR`}
+            </button>
+          );
+        })()}
 
         <div
           className="console-sq overflow-y-auto min-h-0 flex-1"
