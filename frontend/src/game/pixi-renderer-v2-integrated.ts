@@ -36,7 +36,7 @@ import { effectiveStats, getDebugSpawnBuffer } from "./loop";
 import {
   Enemy, Projectile, Particle, Floater, NpcShip, OtherPlayer, Asteroid, RESOURCES,
   CargoBox, Drone, DRONE_DEFS, ZONES, STATIONS, PORTALS, DUNGEONS, SHIP_CLASSES,
-  MAP_RADIUS, FACTIONS, ShipClassId, EnemyType, rankFor, Station,
+  MAP_RADIUS, FACTIONS, ShipClassId, rankFor, Station,
   ZoneId, SHIP_SIZE_SCALE, WeaponKind,
 } from "./types";
 import {
@@ -58,10 +58,10 @@ import {
   createAsteroidTexture,
   EnhancedStar, generateEnhancedStars, renderEnhancedStars,
 } from "./pixi-world-visuals";
-import { StarblastExplosions } from "./starblast-explosions";
+import { ExplosionSystem } from "./explosion-system";
+import { initExplosionDebug, destroyExplosionDebug } from "./explosion-debug";
 import { StarblastLaserticles, LaserticleHandle, LaserSpawnParams } from "./starblast-laserticles";
 import { ShakeState, createShakeState, applyShakeImpulse, stepShake } from "./starblast-camera-shake";
-import { explosionPowerFor } from "./starblast-explosion-power";
 
 // ══════════════════════════════════════════════════════════════════════════
 // PIXI APP & LAYERS
@@ -93,10 +93,10 @@ let stationSprite: PIXI.Sprite | null = null;
 let stationTexture: PIXI.Texture | null = null;
 let stationBaseTexture: PIXI.BaseTexture | null = null;
 
-// ── Starblast-ported VFX systems (lasers, laser-hit fragments, explosions,
-// camera shake) — see starblast-explosions.ts / starblast-laserticles.ts /
-// starblast-camera-shake.ts for the port documentation. ──────────────────
-let starblastExplosions: StarblastExplosions | null = null;
+// ── VFX systems: layered explosions (explosion-system.ts), Starblast-ported
+// laser trails (starblast-laserticles.ts) and camera shake
+// (starblast-camera-shake.ts). ───────────────────────────────────────────
+let explosionSystem: ExplosionSystem | null = null;
 let starblastLaserticles: StarblastLaserticles | null = null;
 const starblastShake: ShakeState = createShakeState();
 /** Tracks state.cameraShake between frames so a spring impulse fires only
@@ -1579,21 +1579,12 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
   worldLayer.addChild(effectsFrontLayer);
   worldLayer.addChild(floaterLayer);
 
-  // Starblast-ported laser/hit/explosion GPU particle meshes — added right
-  // above effectsFrontLayer (same draw-order slot the old per-event
-  // spawnCinematicLaserHit/spawnExplosion calls used to occupy) so they
-  // layer over ships/projectiles but under floaters/UI, matching the
-  // additive-on-top-of-scene look Starblast itself renders with.
-  starblastExplosions = new StarblastExplosions();
+  // Starblast-ported laser trail GPU mesh — added right above
+  // effectsFrontLayer so beams layer over ships/projectiles but under
+  // floaters/UI. (The Starblast explosion mesh that used to sit here was
+  // replaced by ExplosionSystem, which renders into the effects layers.)
   starblastLaserticles = new StarblastLaserticles(2000, () => ({ height: app!.screen.height, zoom: state.cameraZoom }));
-  worldLayer.addChild(starblastExplosions.mesh);
   worldLayer.addChild(starblastLaserticles.mesh);
-  // TEMP DIAGNOSTIC — remove after visibility bug is found.
-  (window as any).__starblastLaserticles = starblastLaserticles;
-  (window as any).__starblastExplosions = starblastExplosions;
-  (window as any).__worldLayer = worldLayer;
-  (window as any).__pixiApp = app;
-  (window as any).__PIXI = PIXI;
 
   // Debug muzzle marker overlay — always the topmost child of worldLayer so
   // dots draw above sprites but under UI. Empty until __DEBUG_MUZZLE_MARKERS.
@@ -1603,6 +1594,12 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
   worldLayer.addChild(debugMuzzleLabels);
 
   effectManager = new EffectManager(effectsBehindLayer, effectsFrontLayer);
+
+  // Layered explosion VFX (core flash / flipbook / ring / shockwave /
+  // sparks / debris / embers+smoke / light) — pooled, renders into the
+  // three existing effects layers. Debug view: Ctrl+Alt+X or __fxDebug().
+  explosionSystem = new ExplosionSystem(effectsBehindLayer, effectsLayer, effectsFrontLayer);
+  initExplosionDebug(app);
 
   lastRenderTime = performance.now();
 
@@ -1731,10 +1728,11 @@ export function destroyPixiRenderer(): void {
   prevEnemyIds.clear();
   prevEnemyData.clear();
 
-  // Destroy Starblast-ported VFX meshes
-  if (starblastExplosions) {
-    starblastExplosions.destroy();
-    starblastExplosions = null;
+  // Destroy explosion system + Starblast laser trail mesh
+  destroyExplosionDebug();
+  if (explosionSystem) {
+    explosionSystem.destroy();
+    explosionSystem = null;
   }
   if (starblastLaserticles) {
     starblastLaserticles.destroy();
@@ -1952,19 +1950,17 @@ export function pixiRender(): void {
     for (const id of prevEnemyIds) {
       if (!currentEnemyIds.has(id)) {
         const prev = prevEnemyData.get(id);
-        if (prev && starblastExplosions) {
-          // alienExplosion() — starblastStandard.html:16025-16028:
-          //   Explosions.explode(x, y, null, alien.getSpec("O01OO"))
-          //   sound, shakeCamera(x, y, alien.getSpec("O01OO"))
-          // getSpec's per-level O01OO lookup is ranked onto Cosmic Realm's
-          // enemy types by size/isBoss — see starblast-explosion-power.ts.
-          const power = explosionPowerFor({ type: prev.type as EnemyType, isBoss: prev.isBoss });
-          starblastExplosions.explode(prev.x, prev.y, null, power, 0, app!.screen.height, state.cameraZoom);
+        if (prev && explosionSystem) {
+          // Bosses get the staggered multi-burst preset; regular enemies
+          // scale the standard preset by their size (18 = mid-tier size in
+          // ENEMY_DEFS, so scouts land ~0.6x and leviathans ~2.2x).
           // Sound + shake for enemy death are already triggered by
-          // onEnemyDie/applyKill in loop.ts (sfx.explosion/bossKill and
-          // state.cameraShake writes) — not duplicated here, this block
-          // only owns the visual explosion (see task scope: replace
-          // rendering, not the existing death/shake trigger call sites).
+          // onEnemyDie/applyKill in loop.ts — shake is suppressed here so
+          // it isn't applied twice.
+          explosionSystem.spawn(prev.isBoss ? "bossExplosion" : "enemyExplosion", prev.x, prev.y, {
+            sizeScale: prev.isBoss ? Math.max(1, prev.size / 30) : prev.size / 18,
+            shake: false,
+          });
         }
       }
     }
@@ -2002,61 +1998,47 @@ export function pixiRender(): void {
       }
     }
 
-    // Player hit detection — spawn hit flash + debris when hull drops
+    // Player hit detection — small layered hit burst when hull drops
     const currentHull = state.player.hull;
-    if (prevPlayerHull > 0 && currentHull < prevPlayerHull && state.playerRespawnTimer <= 0) {
+    if (prevPlayerHull > 0 && currentHull < prevPlayerHull && state.playerRespawnTimer <= 0 && explosionSystem) {
       const p = state.player;
-      effectManager.spawnHitEffect(p.pos.x, p.pos.y, p.angle + Math.PI, "laser", 0xff4444, p.shield > 0);
-      // Extra debris flying from player on hit
-      effectManager.spawnDebrisBurst(p.pos.x, p.pos.y, 4, [0x556677, 0x778899, 0x667788, 0x445566]);
+      explosionSystem.spawn("smallHit", p.pos.x, p.pos.y);
     }
     prevPlayerHull = currentHull;
 
-    // Player death explosion — I0Il0.prototype.killed (starblast.io live
-    // client, fetched 2026-07-20): Explosions.explode(x, y, null,
-    // max(5, ship.radius)), sound, shakeCamera(x, y, 20). loop.ts's
-    // damagePlayer() sets playerRespawnTimer=0.5 synchronously on the same
-    // hull-drop that kills the player, so the ordinary hit branch above
-    // (gated on playerRespawnTimer<=0) never fires for the death blow —
-    // this is the dedicated death call site, detected by the respawn
-    // timer's 0->active edge. ship.radius has no Cosmic Realm equivalent;
-    // shipHullRadius(shipClass, sizeScale) is the same silhouette-radius
-    // helper already used for the player's own on-screen hit ring (below,
-    // ~line 3529), so it is the closest true analogue. Sound + shake for
-    // player death are already triggered by damagePlayer() (loop.ts:
-    // sfx.explosion(true) / state.cameraShake=1) — not duplicated here,
-    // this block only owns the visual explosion.
-    if (state.playerRespawnTimer > 0 && prevPlayerRespawnTimer <= 0 && starblastExplosions) {
+    // Player death explosion. loop.ts's damagePlayer() sets
+    // playerRespawnTimer=0.5 synchronously on the same hull-drop that
+    // kills the player, so the ordinary hit branch above (gated on
+    // playerRespawnTimer<=0) never fires for the death blow — this is the
+    // dedicated death call site, detected by the respawn timer's
+    // 0->active edge. shipHullRadius is the same silhouette-radius helper
+    // used for the player's on-screen hit ring. Sound + shake for player
+    // death are already triggered by damagePlayer() (sfx.explosion(true) /
+    // state.cameraShake=1) — shake is suppressed here so it isn't doubled.
+    if (state.playerRespawnTimer > 0 && prevPlayerRespawnTimer <= 0 && explosionSystem) {
       const p = state.player;
       const radius = shipHullRadius(p.shipClass, SHIP_SIZE_SCALE[p.shipClass] ?? 1);
-      starblastExplosions.explode(p.pos.x, p.pos.y, null, Math.max(5, radius), 0, app!.screen.height, state.cameraZoom);
+      explosionSystem.spawn("enemyExplosion", p.pos.x, p.pos.y, {
+        sizeScale: Math.max(1, radius / 14) * 1.3,
+        shake: false,
+      });
     }
     prevPlayerRespawnTimer = state.playerRespawnTimer;
   }
 
-  // ── Starblast VFX systems tick ──────────────────────────────────────
-  // Must run AFTER every explode()/addLaser()/kill() call this frame (the
-  // laser-hit diffing in syncProjectiles() above, AND the enemy-death
-  // diffing earlier in this block) — each of those setters only flips a
-  // `dirty` flag; tick() is what actually uploads the changed GPU buffers,
-  // gated on that flag. Calling tick() before the enemy-death diffing (as
-  // an earlier version of this code did) meant the death explosion's
-  // fresh particle data got flagged dirty one call too late to be
-  // uploaded that frame, and sat un-uploaded until some LATER event
-  // (e.g. the next laser hit) happened to flip dirty again — by then the
-  // explosion's short lifetime had already expired in the shader's time
-  // math, so it silently never rendered. Laser hits happened to look
-  // correct by accident, since syncProjectiles() (which can call kill())
-  // already ran earlier in the frame, before this tick() call.
-  //
+  // ── VFX systems tick ────────────────────────────────────────────────
+  // Explosion system: advances particle life/motion/frames; safe to run
+  // after all spawn calls this frame (spawns are plain sprite writes, not
+  // deferred GPU-buffer flags).
+  if (explosionSystem) explosionSystem.update(dt);
   // Ticks vs seconds: Laserticles' shader/lifetime math is in Starblast's
   // native 60Hz-tick units (source: this.O0Ol1.OI1Il.OIOll, an integer
   // tick counter). Cosmic Realm's state.tick is a running seconds
   // accumulator (loop.ts:993, `state.tick += dt`), so it's rescaled by
   // *60 here to produce the same "ticks" unit the ported formulas
   // (/60.0 in the vertex shader, lIlO0/60 lifetimes) expect — the
-  // formulas themselves are untouched.
-  if (starblastExplosions) starblastExplosions.tick();
+  // formulas themselves are untouched. Must run after syncProjectiles()
+  // (which can call kill()) so fresh kill data uploads the same frame.
   if (starblastLaserticles) starblastLaserticles.tick(state.tick * 60);
 
   // ── Debug ───────────────────────────────────────────────────────────
@@ -3106,48 +3088,29 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
     for (const [id, prev] of prevProjectileData) {
       if (!currentProjIds.has(id)) {
         if (prev.weaponKind === "rocket") {
-          // Rocket/torpedo area detonation — projectileExplosion() (case
-          // 187/103, starblast.io live client 2026-07-20): the game's one
-          // true Explosions.blast() call site, sized off the weapon's own
-          // blast radius: blast(x, y, 3 * weapon.damage_area / 15). Cosmic
-          // Realm's rocket weapons carry that same value as aoeRadius
-          // (types.ts ROCKET stats, 18-45 px); dividing by 10 keeps the
-          // resulting power (1.8-4.5) in the same range Starblast's own
-          // damage_area values produce, well under explode()/blast()'s
-          // hard clamp of 25.
-          const power = Math.max(1, (prev.aoeRadius ?? 20) / 10);
-          if (prev.fromPlayer) {
-            if (starblastExplosions) {
-              starblastExplosions.blast(prev.x, prev.y, power, 0, app!.screen.height, state.cameraZoom);
-            } else {
-              effectManager.spawnMiniExplosion(prev.x, prev.y);
-            }
-          } else if (starblastExplosions) {
-            // Enemy rocket hit — half power, matching the existing
-            // own-kill-vs-enemy-kill asymmetry used for shake elsewhere
-            // in this file (killed() vs case-150 above).
-            starblastExplosions.blast(prev.x, prev.y, power * 0.5, 0, app!.screen.height, state.cameraZoom);
-          } else {
-            // Enemy rocket hit — smaller impact (just sparks + small flash)
-            effectManager.spawnSparkBurst(prev.x, prev.y, Math.random() * Math.PI * 2, 8, 0xff6622);
-            effectManager.spawnSmokePuff(prev.x, prev.y, 12);
+          // Rocket/torpedo area detonation. The weapon's aoeRadius
+          // (types.ts rocket stats, 18-45 px) drives the visual size:
+          // /30 maps that range onto sizeScale 0.6-1.5 of the standard
+          // explosion preset. Enemy rockets land at 60% of the player's,
+          // matching the own-vs-enemy asymmetry used for shake elsewhere.
+          if (explosionSystem) {
+            const sizeScale = Math.max(0.5, (prev.aoeRadius ?? 20) / 30) * (prev.fromPlayer ? 1 : 0.6);
+            explosionSystem.spawn("enemyExplosion", prev.x, prev.y, { sizeScale });
           }
         } else if (!prev.fromPlayer && FX_KIND_MAP[prev.weaponKind]) {
           // bullet-hell shot fizzle: animated ring burst in the shot's color
           spawnFxImpact(prev.x, prev.y, PIXI.utils.hex2string(prev.color), (prev as any).size ?? 4);
         } else {
-          // Laser hit/expiry — case-221 equivalent (starblastStandard.html:
-          // 16405-16407: lO0l1() ends the laser at the actual impact point,
-          // Laserticles.kill() spawns impact fragments, Explosions.explode
-          // with power=1/z=0 spawns the orange hit burst). Sound is NOT
-          // played here — onEnemyHit (loop.ts:2741, sfx.enemyHit()) already
+          // Laser hit/expiry — Laserticles.kill() ends the beam at the
+          // real impact point and spawns its trail fragments; the layered
+          // smallHit preset supplies the impact burst. Sound is NOT
+          // played here — onEnemyHit (loop.ts, sfx.enemyHit()) already
           // fires it from the server-confirmed hit event; playing it again
-          // here would double it up (task requires exactly one combined
-          // effect per hit, and that includes not duplicating the sound).
+          // here would double it up.
           const handle = activeLaserticleHandles.get(id);
-          if (handle && starblastLaserticles && starblastExplosions) {
+          if (handle && starblastLaserticles && explosionSystem) {
             starblastLaserticles.kill(handle, prev.x, prev.y);
-            starblastExplosions.explode(prev.x, prev.y, prev.angle, 1, 0, app!.screen.height, state.cameraZoom);
+            explosionSystem.spawn("smallHit", prev.x, prev.y);
             activeLaserticleHandles.delete(id);
           } else {
             // Fallback for anything that reached here without a tracked

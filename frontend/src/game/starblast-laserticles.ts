@@ -11,10 +11,12 @@
  *   number of "trail" points spawned behind it every tick, plus impact
  *   fragments on kill()).
  *
- * Same THREE.Points -> PIXI.Mesh translation rationale as
- * starblast-explosions.ts (see that file's header for the full
- * explanation of the quad-per-point substitution for gl_PointSize/
- * gl_PointCoord, and for why the toroidal system_size wrap is dropped).
+ * THREE.Points -> PIXI.Mesh translation rationale: PixiJS has no
+ * GL_POINTS primitive, so each "point" is drawn as a camera-facing quad —
+ * a `corner` attribute (-1..1 per axis) stands in for gl_PointCoord and a
+ * per-vertex size scales the quad in the vertex shader in place of
+ * gl_PointSize. The toroidal system_size wrap from the source is dropped
+ * because Cosmic Realm's map does not wrap.
  *
  * Untouched from source: core/trail pool split (core_size=500), the
  * per-type trail particle counts and speed/size falloff curves in lll1O(),
@@ -171,7 +173,7 @@ function createLaserAtlasTexture(): HTMLCanvasElement {
 
 // ── Laserticles: GPU-buffer laser core+trail particle pool ──────────────
 // Ported from t.prototype.l0111 (starblastStandard.html:5510-5533).
-// gl_PointCoord -> vCorner quad substitution as in starblast-explosions.ts.
+// gl_PointCoord -> vCorner quad substitution (see file header).
 // `type`-dependent atlas offset (toffset) and per-particle rotation
 // (co/si, computed from `angle`, or forced to 0 for type 5 = impact
 // fragments) are carried over exactly.
@@ -244,8 +246,9 @@ void main() {
 }
 `;
 
-// 4 corners (one per quad vertex) -- see starblast-explosions.ts CORNERS
-// comment for why this is 4, not 6, entries.
+// 4 corners (one per quad vertex): buildIndices() wires them into 2
+// triangles per particle via the index buffer, so only 4 — not 6 —
+// corner entries are written per particle.
 const CORNERS = [-1, -1, 1, -1, 1, 1, -1, 1];
 
 /** Matches ll1O0's `this.type = Math.max(0, Math.min(6, 0|type))` domain. */
@@ -378,9 +381,10 @@ export class StarblastLaserticles {
 
   private getScreen: () => { height: number; zoom: number };
 
-  // See starblast-explosions.ts buildIndices() for why this prefers
-  // Uint16Array: a Uint32 index buffer silently fails to draw at all on a
-  // WebGL context without canUseUInt32ElementIndex.
+  // Prefers Uint16Array: PixiJS only draws a Uint32 index buffer when
+  // canUseUInt32ElementIndex is true (WebGL2 or OES_element_index_uint);
+  // without it, GeometrySystem.draw() console.warns and never calls
+  // gl.drawElements — the whole mesh silently draws nothing.
   private buildIndices(size: number): Uint16Array | Uint32Array {
     const maxIndex = size * 4 - 1;
     const idx = maxIndex <= 65535 ? new Uint16Array(size * 6) : new Uint32Array(size * 6);
