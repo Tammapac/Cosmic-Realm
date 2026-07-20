@@ -1998,11 +1998,15 @@ export function pixiRender(): void {
       }
     }
 
-    // Player hit detection — small layered hit burst when hull drops
+    // Player hit detection — directional hull impact when hull drops.
+    // The exact shooter direction isn't tracked at this point (hull-drop
+    // diffing, not a projectile event), so the shot is approximated as
+    // coming from behind the ship (p.angle + PI), same as the previous
+    // spawnHitEffect wiring.
     const currentHull = state.player.hull;
     if (prevPlayerHull > 0 && currentHull < prevPlayerHull && state.playerRespawnTimer <= 0 && explosionSystem) {
       const p = state.player;
-      explosionSystem.spawn("smallHit", p.pos.x, p.pos.y);
+      explosionSystem.spawnShipHit(p.pos.x, p.pos.y, p.angle + Math.PI);
     }
     prevPlayerHull = currentHull;
 
@@ -3110,7 +3114,10 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
           const handle = activeLaserticleHandles.get(id);
           if (handle && starblastLaserticles && explosionSystem) {
             starblastLaserticles.kill(handle, prev.x, prev.y);
-            explosionSystem.spawn("smallHit", prev.x, prev.y);
+            // Directional hull impact, not an explosion: ricochet sparks
+            // bounce off the ship, a narrow spread punches on through in
+            // the shot direction (prev.angle = projectile travel angle).
+            explosionSystem.spawnShipHit(prev.x, prev.y, prev.angle);
             activeLaserticleHandles.delete(id);
           } else {
             // Fallback for anything that reached here without a tracked

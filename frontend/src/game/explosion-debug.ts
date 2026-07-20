@@ -8,8 +8,9 @@
  * suppressed in here (system.allowShake = false).
  *
  * Toggle:  Ctrl+Alt+X  or  window.__fxDebug()  from the console.
- * Keys:    1-9  show a single layer in isolation
+ * Keys:    1-9, 0  show a single layer in isolation
  *          C    combined (all layers)
+ *          H    directional ship-hit impact (angle rotates per spawn)
  *          P    cycle preset (smallHit / enemyExplosion / bossExplosion)
  *          Space or click  re-spawn at pointer / center
  *          Esc  close
@@ -25,11 +26,12 @@ interface DebugState {
   bg: PIXI.Graphics;
   info: PIXI.Text;
   system: ExplosionSystem;
-  mode: "combined" | ExplosionLayer;
+  mode: "combined" | "shipHit" | ExplosionLayer;
   preset: ExplosionPreset;
   respawnTimer: number;
   spawnX: number;
   spawnY: number;
+  hitAngle: number;
   tick: () => void;
 }
 
@@ -76,6 +78,9 @@ function open(): void {
       dbg.respawnTimer = RESPAWN_INTERVAL;
       if (dbg.mode === "combined") {
         dbg.system.spawn(dbg.preset, dbg.spawnX, dbg.spawnY, { shake: false });
+      } else if (dbg.mode === "shipHit") {
+        dbg.system.spawnShipHit(dbg.spawnX, dbg.spawnY, dbg.hitAngle);
+        dbg.hitAngle += Math.PI / 4; // rotate so every direction is shown
       } else {
         dbg.system.spawnLayerOnly(dbg.mode, dbg.preset, dbg.spawnX, dbg.spawnY);
       }
@@ -92,6 +97,7 @@ function open(): void {
     respawnTimer: 0,
     spawnX: app.screen.width / 2,
     spawnY: app.screen.height / 2,
+    hitAngle: 0,
     tick,
   };
 
@@ -121,11 +127,11 @@ function redrawBg(): void {
 function updateInfo(): void {
   if (!dbg) return;
   const layerLines = EXPLOSION_LAYERS
-    .map((l, i) => `${i + 1} ${dbg!.mode === l ? "▶" : " "} ${l}`)
+    .map((l, i) => `${(i + 1) % 10} ${dbg!.mode === l ? "▶" : " "} ${l}`)
     .join("\n");
   dbg.info.text =
     `EXPLOSION DEBUG   preset: ${dbg.preset}   active: ${dbg.system.active}\n` +
-    `C ${dbg.mode === "combined" ? "▶" : " "} combined     P next preset     click/space respawn     Esc close\n\n` +
+    `C ${dbg.mode === "combined" ? "▶" : " "} combined     H ${dbg.mode === "shipHit" ? "▶" : " "} ship-hit     P next preset     click/space respawn     Esc close\n\n` +
     layerLines;
 }
 
@@ -139,13 +145,15 @@ function onKeyDown(e: KeyboardEvent): void {
   if (!dbg) return;
   if (e.code === "Escape") { close(); return; }
   if (e.code === "KeyC") { dbg.mode = "combined"; dbg.respawnTimer = 0; return; }
+  if (e.code === "KeyH") { dbg.mode = "shipHit"; dbg.respawnTimer = 0; return; }
   if (e.code === "KeyP") {
     dbg.preset = PRESET_ORDER[(PRESET_ORDER.indexOf(dbg.preset) + 1) % PRESET_ORDER.length];
     dbg.respawnTimer = 0;
     return;
   }
   if (e.code === "Space") { dbg.respawnTimer = 0; e.preventDefault(); return; }
-  const num = parseInt(e.key, 10);
+  // Digits 1-9 select layers 1-9; 0 selects the 10th.
+  const num = e.key === "0" ? 10 : parseInt(e.key, 10);
   if (num >= 1 && num <= EXPLOSION_LAYERS.length) {
     dbg.mode = EXPLOSION_LAYERS[num - 1];
     dbg.respawnTimer = 0;

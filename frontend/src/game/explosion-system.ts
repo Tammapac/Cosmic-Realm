@@ -213,14 +213,16 @@ export const EXPLOSION_LAYERS = [
   "ring",        // 3 expanding combustion ring              (mid,   ADD)
   "shockwave",   // 4 transparent cold pressure wave         (front, NORMAL)
   "sparks",      // 5 radial streaks                         (front, ADD)
-  "debris",      // 6 dark rotating fragments                (mid,   NORMAL)
-  "embers",      // 7 slow-fading glow motes + smoke         (behind)
-  "smoke",       //   (listed separately for the debug view) (behind, NORMAL)
-  "light",       // 9 brief ambient illumination             (behind, ADD)
+  "fireTrails",  // 6 flying embers that leave a fire trail  (front, ADD)
+  "debris",      // 7 dark rotating fragments                (mid,   NORMAL)
+  "embers",      // 8 slow-fading glow motes                 (behind, ADD)
+  "smoke",       // 9 growing grey puffs                     (behind, NORMAL)
+  "light",       // 0 brief ambient illumination             (behind, ADD)
 ] as const;
 export type ExplosionLayer = (typeof EXPLOSION_LAYERS)[number];
 
-type Behavior = ExplosionLayer;
+// "fireTrail" heads stamp short-lived "trailPuff" glows along their path.
+type Behavior = ExplosionLayer | "fireTrail" | "trailPuff";
 
 interface ExpParticle {
   active: boolean;
@@ -237,6 +239,7 @@ interface ExpParticle {
   spin: number;           // rad/s
   startAlpha: number;
   frames: PIXI.Texture[] | null; // flipbook only
+  trailTimer: number;     // fireTrail heads: countdown to next puff stamp
 }
 
 export type ExplosionPreset = "smallHit" | "enemyExplosion" | "bossExplosion";
@@ -244,10 +247,12 @@ export type ExplosionPreset = "smallHit" | "enemyExplosion" | "bossExplosion";
 interface PresetCfg {
   radius: number;        // world-unit visual radius of the fireball
   flashLife: number;
+  flipbooks: number;     // overlapping flipbook instances (volume)
   animLife: number;
   ringLife: number;
   shockLife: number;
   sparks: number; sparkLife: number;
+  fireTrails: number;    // ember heads that leave a fire trail behind
   debris: number; debrisLife: number;
   embers: number; smoke: number; smokeLife: number;
   lightScale: number; lightAlpha: number; lightLife: number;
@@ -257,31 +262,34 @@ interface PresetCfg {
 
 const PRESETS: Record<ExplosionPreset, PresetCfg> = {
   smallHit: {
-    radius: 26,
-    flashLife: 0.09, animLife: 0.5, ringLife: 0.3, shockLife: 0.34,
-    sparks: 7, sparkLife: 0.45,
-    debris: 3, debrisLife: 0.9,
-    embers: 3, smoke: 1, smokeLife: 0.9,
-    lightScale: 2.0, lightAlpha: 0.18, lightLife: 0.16,
+    radius: 34,
+    flashLife: 0.1, flipbooks: 1, animLife: 0.62, ringLife: 0.4, shockLife: 0.45,
+    sparks: 9, sparkLife: 0.6,
+    fireTrails: 2,
+    debris: 4, debrisLife: 1.2,
+    embers: 4, smoke: 2, smokeLife: 1.2,
+    lightScale: 2.0, lightAlpha: 0.2, lightLife: 0.2,
     shake: 0, subBursts: 0,
   },
   enemyExplosion: {
-    radius: 70,
-    flashLife: 0.11, animLife: 0.68, ringLife: 0.46, shockLife: 0.52,
-    sparks: 16, sparkLife: 0.7,
-    debris: 8, debrisLife: 1.4,
-    embers: 6, smoke: 5, smokeLife: 1.5,
-    lightScale: 2.6, lightAlpha: 0.3, lightLife: 0.22,
+    radius: 95,
+    flashLife: 0.14, flipbooks: 2, animLife: 0.95, ringLife: 0.65, shockLife: 0.75,
+    sparks: 24, sparkLife: 1.1,
+    fireTrails: 5,
+    debris: 12, debrisLife: 2.2,
+    embers: 10, smoke: 8, smokeLife: 2.4,
+    lightScale: 2.8, lightAlpha: 0.34, lightLife: 0.3,
     shake: 0.35, subBursts: 0,
   },
   bossExplosion: {
-    radius: 150,
-    flashLife: 0.14, animLife: 0.85, ringLife: 0.6, shockLife: 0.7,
-    sparks: 26, sparkLife: 0.9,
-    debris: 14, debrisLife: 2.0,
-    embers: 9, smoke: 9, smokeLife: 2.2,
-    lightScale: 3.0, lightAlpha: 0.4, lightLife: 0.3,
-    shake: 1, subBursts: 4,
+    radius: 200,
+    flashLife: 0.18, flipbooks: 3, animLife: 1.15, ringLife: 0.85, shockLife: 1.0,
+    sparks: 36, sparkLife: 1.4,
+    fireTrails: 9,
+    debris: 20, debrisLife: 3.0,
+    embers: 14, smoke: 14, smokeLife: 3.2,
+    lightScale: 3.2, lightAlpha: 0.45, lightLife: 0.4,
+    shake: 1, subBursts: 6,
   },
 };
 
@@ -319,7 +327,7 @@ export class ExplosionSystem {
     behind: [], mid: [], front: [],
   };
   private activeCount = 0;
-  private readonly maxActive = Math.round(700 * QUALITY);
+  private readonly maxActive = Math.round(950 * QUALITY);
 
   // Reused scheduler slots for boss sub-bursts (no setTimeout).
   private pending: PendingBurst[] = Array.from({ length: 16 }, () => ({
@@ -360,7 +368,7 @@ export class ExplosionSystem {
       active: true, sprite, behavior: "sparks", life: 0, maxLife: 1,
       x: 0, y: 0, vx: 0, vy: 0, drag: 0,
       baseScale: 1, endScale: 1, flipX: 1, flipY: 1, spin: 0,
-      startAlpha: 1, frames: null,
+      startAlpha: 1, frames: null, trailTimer: 0,
     };
     pool.push(p);
     this.activeCount++;
@@ -404,6 +412,97 @@ export class ExplosionSystem {
   spawnLayerOnly(layer: ExplosionLayer, preset: ExplosionPreset, x: number, y: number): void {
     const cfg = PRESETS[preset];
     this.burst(cfg, x, y, 1, false, layer);
+  }
+
+  /**
+   * Directional ship-hit impact — a shot striking a hull, NOT a small
+   * explosion. `shotAngle` is the projectile's travel direction (radians).
+   * Two spark families sell the impact:
+   *   - ricochet: most sparks bounce BACK off the hull in a wide cone
+   *     around the reversed shot direction (as if deflected by armor)
+   *   - punch-through spread: a few faster, dimmer sparks continue in a
+   *     narrow cone along the original shot direction
+   * plus a tiny impact flash and a couple of drifting ember motes.
+   * No ring, shockwave, flipbook, smoke, debris or shake.
+   */
+  spawnShipHit(x: number, y: number, shotAngle: number, sizeScale = 1): void {
+    const R = 20 * sizeScale;
+    const q = QUALITY;
+
+    // Impact flash — small and fast, just marks the contact point.
+    const flash = this.acquire("front");
+    if (flash) {
+      this.initP(flash, "coreFlash", x, y, 0.07);
+      flash.sprite.texture = glowTex();
+      flash.sprite.tint = COLOR_FLASH_HALO;
+      flash.sprite.blendMode = PIXI.BLEND_MODES.ADD;
+      flash.baseScale = (R * 1.2) / 128;
+      flash.endScale = (R * 2.0) / 128;
+      flash.startAlpha = 0.9;
+      this.prime(flash);
+    }
+
+    // Ricochet sparks — deflected off the hull, wide cone (~±70°) around
+    // the reversed shot direction.
+    const ricochets = Math.max(4, Math.round(7 * q));
+    for (let i = 0; i < ricochets; i++) {
+      const p = this.acquire("front");
+      if (!p) break;
+      const a = shotAngle + Math.PI + (Math.random() - 0.5) * 2.4;
+      const speed = 90 + Math.random() * 150;
+      this.initP(p, "sparks", x, y, 0.35 + Math.random() * 0.35);
+      p.vx = Math.cos(a) * speed;
+      p.vy = Math.sin(a) * speed;
+      p.drag = 2.4;
+      p.sprite.texture = sparkTex();
+      p.sprite.tint = i < 2 ? 0xffffff : COLOR_SPARKS[Math.floor(Math.random() * COLOR_SPARKS.length)];
+      p.sprite.blendMode = PIXI.BLEND_MODES.ADD;
+      p.sprite.rotation = a;
+      p.baseScale = (R * (0.5 + Math.random() * 0.4)) / 64;
+      p.endScale = p.baseScale * 0.3;
+      p.startAlpha = 1;
+      this.prime(p);
+    }
+
+    // Punch-through spread — a few faster, dimmer sparks carry on in a
+    // narrow cone (~±14°) along the shot direction itself.
+    const through = Math.max(2, Math.round(4 * q));
+    for (let i = 0; i < through; i++) {
+      const p = this.acquire("front");
+      if (!p) break;
+      const a = shotAngle + (Math.random() - 0.5) * 0.5;
+      const speed = 140 + Math.random() * 180;
+      this.initP(p, "sparks", x, y, 0.25 + Math.random() * 0.25);
+      p.vx = Math.cos(a) * speed;
+      p.vy = Math.sin(a) * speed;
+      p.drag = 2.0;
+      p.sprite.texture = sparkTex();
+      p.sprite.tint = COLOR_SPARKS[Math.floor(Math.random() * COLOR_SPARKS.length)];
+      p.sprite.blendMode = PIXI.BLEND_MODES.ADD;
+      p.sprite.rotation = a;
+      p.baseScale = (R * (0.35 + Math.random() * 0.25)) / 64;
+      p.endScale = p.baseScale * 0.25;
+      p.startAlpha = 0.7;
+      this.prime(p);
+    }
+
+    // Two ember motes drifting slowly off the impact point.
+    for (let i = 0; i < 2; i++) {
+      const p = this.acquire("behind");
+      if (!p) break;
+      const a = shotAngle + Math.PI + (Math.random() - 0.5) * 1.6;
+      this.initP(p, "embers", x, y, 0.5 + Math.random() * 0.4);
+      p.vx = Math.cos(a) * (20 + Math.random() * 30);
+      p.vy = Math.sin(a) * (20 + Math.random() * 30);
+      p.drag = 1.2;
+      p.sprite.texture = glowTex();
+      p.sprite.tint = COLOR_EMBERS[Math.floor(Math.random() * COLOR_EMBERS.length)];
+      p.sprite.blendMode = PIXI.BLEND_MODES.ADD;
+      p.baseScale = (R * 0.18) / 128;
+      p.endScale = p.baseScale * 0.3;
+      p.startAlpha = 0.7;
+      this.prime(p);
+    }
   }
 
   // ── the composition ─────────────────────────────────────────────────────
@@ -453,12 +552,22 @@ export class ExplosionSystem {
       }
     }
 
-    // 2) main flipbook — existing sheets, frame order untouched, manual tick.
+    // 2) main flipbook — existing sheets, frame order untouched, manual
+    // tick. Bigger presets overlay several offset instances so the
+    // fireball reads as a volume, not a single flat card.
     if ((!only || only === "flipbook") && flipbookSets.length > 0) {
-      const p = this.acquire("mid");
-      if (p) {
+      for (let i = 0; i < cfg.flipbooks; i++) {
+        const p = this.acquire("mid");
+        if (!p) break;
         const frames = flipbookSets[Math.floor(Math.random() * flipbookSets.length)];
-        this.initP(p, "flipbook", x, y, cfg.animLife * (0.9 + Math.random() * 0.25));
+        const secondary = i > 0;
+        const oa = Math.random() * Math.PI * 2;
+        const od = secondary ? R * (0.25 + Math.random() * 0.3) : 0;
+        this.initP(
+          p, "flipbook",
+          x + Math.cos(oa) * od, y + Math.sin(oa) * od,
+          cfg.animLife * (secondary ? 0.75 + Math.random() * 0.3 : 0.95 + Math.random() * 0.25)
+        );
         p.frames = frames;
         p.sprite.texture = frames[0];
         p.sprite.tint = 0xffffff;
@@ -466,9 +575,9 @@ export class ExplosionSystem {
         p.sprite.rotation = Math.random() * Math.PI * 2;
         p.flipX = Math.random() < 0.5 ? -1 : 1;
         p.flipY = Math.random() < 0.5 ? -1 : 1;
-        p.baseScale = (R * 2.4) / 256 * (0.85 + Math.random() * 0.3);
-        p.endScale = p.baseScale * 1.12;
-        p.startAlpha = 0.95;
+        p.baseScale = (R * 2.4) / 256 * (0.85 + Math.random() * 0.3) * (secondary ? 0.55 : 1);
+        p.endScale = p.baseScale * 1.25;
+        p.startAlpha = secondary ? 0.8 : 0.95;
         this.prime(p);
       }
     }
@@ -511,11 +620,11 @@ export class ExplosionSystem {
         const p = this.acquire("front");
         if (!p) break;
         const a = Math.random() * Math.PI * 2;
-        const speed = R * (2.6 + Math.random() * 3.4);
+        const speed = R * (2.4 + Math.random() * 3.8);
         this.initP(p, "sparks", x + (Math.random() - 0.5) * R * 0.2, y + (Math.random() - 0.5) * R * 0.2, cfg.sparkLife * (0.6 + Math.random() * 0.7));
         p.vx = Math.cos(a) * speed;
         p.vy = Math.sin(a) * speed;
-        p.drag = 3.2;
+        p.drag = 2.1; // low drag: sparks travel visibly far from the blast
         p.sprite.texture = sparkTex();
         p.sprite.tint = COLOR_SPARKS[Math.floor(Math.random() * COLOR_SPARKS.length)];
         p.sprite.blendMode = PIXI.BLEND_MODES.ADD;
@@ -523,6 +632,30 @@ export class ExplosionSystem {
         p.baseScale = (R * (0.35 + Math.random() * 0.3)) / 64;
         p.endScale = p.baseScale * 0.35;
         p.startAlpha = 1;
+        this.prime(p);
+      }
+    }
+
+    // 5b) fire trails — glowing ember heads thrown out of the blast that
+    // stamp a fading fire trail behind them as they fly (see update()).
+    if (!only || only === "fireTrails") {
+      const n = Math.max(1, Math.round(cfg.fireTrails * q));
+      for (let i = 0; i < n; i++) {
+        const p = this.acquire("front");
+        if (!p) break;
+        const a = Math.random() * Math.PI * 2;
+        const speed = R * (1.7 + Math.random() * 1.8);
+        this.initP(p, "fireTrail", x, y, cfg.sparkLife * (0.9 + Math.random() * 0.6));
+        p.vx = Math.cos(a) * speed;
+        p.vy = Math.sin(a) * speed;
+        p.drag = 1.3; // keeps momentum: trails arc well clear of the fireball
+        p.trailTimer = 0.02 * Math.random(); // desync stamp cadence
+        p.sprite.texture = glowTex();
+        p.sprite.tint = COLOR_EMBERS[Math.floor(Math.random() * COLOR_EMBERS.length)];
+        p.sprite.blendMode = PIXI.BLEND_MODES.ADD;
+        p.baseScale = (R * (0.14 + Math.random() * 0.08)) / 128;
+        p.endScale = p.baseScale * 0.35;
+        p.startAlpha = 0.95;
         this.prime(p);
       }
     }
@@ -612,6 +745,7 @@ export class ExplosionSystem {
     p.life = life; p.maxLife = life;
     p.flipX = 1; p.flipY = 1;
     p.frames = null;
+    p.trailTimer = 0;
     p.sprite.rotation = 0;
     p.sprite.position.set(x, y);
     // Hide until prime() applies the configured t=0 alpha/scale — a pooled
@@ -691,6 +825,32 @@ export class ExplosionSystem {
           }
           case "sparks":
             alpha = p.startAlpha * (1 - t * t);
+            break;
+          case "fireTrail": {
+            alpha = p.startAlpha * (1 - t * t);
+            // Stamp a short-lived fire puff along the flight path. Puffs
+            // are plain pooled particles ("trailPuff": no motion, no
+            // stamping of their own — no cascade), so the trail fades
+            // tail-first behind the head.
+            p.trailTimer -= dt;
+            if (p.trailTimer <= 0) {
+              p.trailTimer = 0.045;
+              const puff = this.acquire(slot);
+              if (puff) {
+                this.initP(puff, "trailPuff", p.x, p.y, 0.28 + Math.random() * 0.2);
+                puff.sprite.texture = glowTex();
+                puff.sprite.tint = p.sprite.tint;
+                puff.sprite.blendMode = PIXI.BLEND_MODES.ADD;
+                puff.baseScale = p.baseScale * (0.7 + Math.random() * 0.3);
+                puff.endScale = puff.baseScale * 0.2;
+                puff.startAlpha = 0.5;
+                this.prime(puff);
+              }
+            }
+            break;
+          }
+          case "trailPuff":
+            alpha = p.startAlpha * (1 - t);
             break;
           case "debris":
             // Solid until the last third, then fade.
