@@ -85,12 +85,24 @@ export class SceneLighting {
     this.container.eventMode = "none"; // never intercepts input
   }
 
+  private vignetteOnly = false;
+
+  /** Vignette-only mode: hide the SCREEN key/ambient grade layers (which
+   *  flatten 3D contrast) and keep just a mild corner vignette. */
+  setVignetteOnly(on: boolean): void {
+    this.vignetteOnly = on;
+    this.keyLight.visible = !on;
+    this.ambient.visible = !on;
+    if (on) this.vignette.alpha = 0.55; // gentler than the full 0.85
+  }
+
   /** Per-frame: fit to screen, tint the ambient from the zone palette. */
   update(w: number, h: number, ambientHex: string, tick: number): void {
     for (const s of [this.keyLight, this.ambient, this.vignette]) {
       s.width = w;
       s.height = h;
     }
+    if (this.vignetteOnly) return;
     this.ambient.tint = PIXI.utils.string2hex(ambientHex);
     // Barely-there breathing keeps the light alive without being noticed.
     this.keyLight.alpha = 0.9 + 0.1 * Math.sin(tick * 0.11);

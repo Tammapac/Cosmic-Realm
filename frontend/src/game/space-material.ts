@@ -91,24 +91,29 @@ function detailRoughAoTex(seed: number, variant: "hull" | "station"): THREE.Canv
   }
   void plateCount;
 
-  // Panel SEAMS — thin darker lines = recessed grooves (rougher + AO). A calm
-  // orthogonal grid, not noise, so it reads as engineered panelling.
-  ctx.strokeStyle = "rgba(60,60,60,0.55)";
-  ctx.lineWidth = 2;
+  // Panel SEAMS — dark grooves (recessed = strong AO). Bolder + a bright
+  // beveled highlight edge so the seam catches light on one side and shadows
+  // on the other (reads as a real recessed channel, not a painted line).
   const seams = variant === "station" ? 7 : 5;
   for (let i = 1; i < seams; i++) {
     const off = (i / seams) * S + (rnd() - 0.5) * 12;
+    ctx.strokeStyle = "rgba(30,30,30,0.9)"; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(off, 0); ctx.lineTo(off, S); ctx.stroke();
+    ctx.strokeStyle = "rgba(150,150,150,0.5)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(off + 2, 0); ctx.lineTo(off + 2, S); ctx.stroke();
     const off2 = (i / seams) * S + (rnd() - 0.5) * 12;
+    ctx.strokeStyle = "rgba(30,30,30,0.9)"; ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(0, off2); ctx.lineTo(S, off2); ctx.stroke();
+    ctx.strokeStyle = "rgba(150,150,150,0.5)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, off2 + 2); ctx.lineTo(S, off2 + 2); ctx.stroke();
   }
 
-  // Bolts / rivets along some seams — tiny dark dots (recessed = AO).
-  ctx.fillStyle = "rgba(50,50,50,0.6)";
-  const bolts = variant === "station" ? 120 : 60;
+  // Bolts / rivets — darker + slightly bigger so they read as recessed points.
+  ctx.fillStyle = "rgba(28,28,28,0.85)";
+  const bolts = variant === "station" ? 140 : 70;
   for (let i = 0; i < bolts; i++) {
     const x = rnd() * S, y = rnd() * S;
-    ctx.beginPath(); ctx.arc(x, y, 1.5 + rnd(), 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x, y, 2 + rnd() * 1.5, 0, Math.PI * 2); ctx.fill();
   }
 
   // Maintenance hatches — small recessed rectangles (rougher + darker).
@@ -289,18 +294,26 @@ export function applySpaceMaterial(
     mat.color = new THREE.Color(baseHex);
   }
 
-  // Detail maps (stable per seed). roughnessMap drives per-plate variation;
-  // aoMap darkens recesses; a shared detail normal adds micro relief.
+  // Detail maps (stable per seed). CRITICAL: without an explicit .repeat the
+  // 512px detail map is stretched ONCE across the whole hull → invisible mush.
+  // Tile it several times so plates/seams/bolts actually read at ship scale.
   const rao = detailRoughAoTex(seed, variant);
+  const tile = role === "station" ? 3 : 2;
+  rao.repeat.set(tile, tile);
+  rao.needsUpdate = true;
   mat.roughnessMap = rao;
   mat.aoMap = rao;                 // reuse: dark seams/bolts read as occlusion
-  mat.aoMapIntensity = role === "station" ? 1.0 : 0.85;
-  mat.normalMap = detailNormalTex();
-  mat.normalScale = new THREE.Vector2(0.35, 0.35);
+  // Strong AO so recesses/seams go genuinely dark (was too weak to see).
+  mat.aoMapIntensity = role === "station" ? 1.6 : 1.35;
 
-  // Dirt darkens the albedo via a subtle vertex-less approach: bake it into the
-  // aoMap channel too (multiplies lighting) so grime reads without a 2nd UV set.
-  // (A dedicated dirt overlay mesh is avoided to keep draw calls flat.)
+  // Detail normal — tiled + a much stronger scale so seams/bevels catch the
+  // key light and the hull stops reading as a flat sticker.
+  const nrm = detailNormalTex();
+  nrm.repeat.set(tile * 1.5, tile * 1.5);
+  nrm.needsUpdate = true;
+  mat.normalMap = nrm;
+  mat.normalScale = new THREE.Vector2(0.9, 0.9);
+
   void dirtTex(seed, heavy);
 
   // Per-role PBR: dark metal, not chrome, not plastic. Player = cleaner/glossier

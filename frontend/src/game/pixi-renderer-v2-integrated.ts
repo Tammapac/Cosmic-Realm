@@ -1640,9 +1640,14 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
   // Parallax foreground (layer 5): above the world, below the UI — sparse
   // silhouettes may pass over ships briefly but the HUD stays clear.
   if (parallaxBg) app.stage.addChild(parallaxBg.foreground);
-  // Scene lighting (key light + zone ambient + vignette): grades the whole
-  // frame — world, ships, effects — below the UI so the HUD stays clean.
+  // Scene lighting overlay REMOVED: it was a canvas-wide SCREEN/MULTIPLY grade
+  // (a "brightness/ambient filter over the whole canvas") that flattened the
+  // 3D material contrast — the user forbids canvas-wide filters, and it was
+  // the main reason ships/stations still read flat after the material work.
+  // Only the vignette is kept (a mild corner darken is legitimate framing, not
+  // a brightness filter) via the lighter-weight vignette-only mode.
   sceneLighting = new SceneLighting();
+  sceneLighting.setVignetteOnly(true);
   app.stage.addChild(sceneLighting.container);
   app.stage.addChild(uiLayer);
 
