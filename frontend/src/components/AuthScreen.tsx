@@ -96,10 +96,10 @@ export default function AuthScreen({ onAuth }: Props) {
     <div
       style={{
         position: "fixed", inset: 0,
-        // "contain" keeps the FULL key art visible (title at the top never
-        // gets cropped); the dark base fills any letterbox bars.
-        background: "#04070e url(/assets/ui/login-bg.jpg?v=1) no-repeat center top",
-        backgroundSize: "contain",
+        // Stretch the key art edge-to-edge (fills the whole screen, no
+        // black side bars); the title sits top-center and stays visible.
+        background: "#04070e url(/assets/ui/login-bg.jpg?v=1) no-repeat center center",
+        backgroundSize: "100% 100%",
         fontFamily: "var(--font-display)",
         display: "flex", alignItems: "flex-end", justifyContent: "center",
       }}
