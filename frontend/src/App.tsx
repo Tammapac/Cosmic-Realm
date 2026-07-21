@@ -521,16 +521,11 @@ function DockingSummary() {
       style={{ animation: "fadeInDown 0.3s ease" }}
     >
       <div
-        className="rounded border px-5 py-4 cursor-pointer select-none"
-        style={{
-          background: "rgba(2,6,20,0.92)",
-          borderColor: "#1e3a5f",
-          boxShadow: "0 0 24px rgba(0,180,255,0.15)",
-          minWidth: 260,
-        }}
+        className="panel cursor-pointer select-none"
+        style={{ minWidth: 260 }}
       >
-        <div className="text-cyan text-[11px] tracking-[0.25em] font-bold mb-3">◉ DOCKING REPORT</div>
-        <div className="flex flex-col gap-2">
+        <div className="hud-titleband" style={{ marginBottom: 4 }}>◉ DOCKING REPORT</div>
+        <div className="flex flex-col gap-2" style={{ padding: "8px 16px 0" }}>
           {summary.map((entry, i) => (
             <div key={i} className="flex items-center justify-between gap-4 text-[12px]">
               <div className="flex items-center gap-2">
@@ -543,16 +538,18 @@ function DockingSummary() {
             </div>
           ))}
         </div>
-        {totalCost > 0 && (
-          <>
-            <div className="border-t mt-3 mb-2" style={{ borderColor: "#1e3a5f" }} />
-            <div className="flex justify-between text-[12px]">
-              <span style={{ color: "#7a9cbf" }}>Total spent</span>
-              <span style={{ color: "#facc15" }}>-{totalCost}cr</span>
-            </div>
-          </>
-        )}
-        <div className="text-[9px] tracking-widest mt-3" style={{ color: "#3a5a7a" }}>CLICK TO DISMISS</div>
+        <div style={{ padding: "0 16px 12px" }}>
+          {totalCost > 0 && (
+            <>
+              <div className="mt-3 mb-2" style={{ height: 1, background: "linear-gradient(90deg,transparent,rgba(78,226,255,0.4),transparent)" }} />
+              <div className="flex justify-between text-[12px]">
+                <span style={{ color: "#7a9cbf" }}>Total spent</span>
+                <span style={{ color: "#facc15" }}>-{totalCost}cr</span>
+              </div>
+            </>
+          )}
+          <div className="text-[9px] tracking-widest mt-3" style={{ color: "#3a5a7a" }}>CLICK TO DISMISS</div>
+        </div>
       </div>
     </div>
   );

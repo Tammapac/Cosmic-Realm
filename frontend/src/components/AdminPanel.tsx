@@ -83,44 +83,27 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
       background: "rgba(0,0,0,0.7)", zIndex: 200,
       display: "flex", alignItems: "center", justifyContent: "center",
     }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{
-        background: "linear-gradient(135deg, #0a0e1a 0%, #121830 100%)",
-        border: "1px solid #2a3a5c",
-        borderRadius: 8,
+      <div className="panel" style={{
         width: 700, maxHeight: "80vh",
         display: "flex", flexDirection: "column",
-        boxShadow: "0 0 40px rgba(78,226,255,0.1)",
         overflow: "hidden",
       }}>
-        {/* Header */}
-        <div style={{
-          display: "flex", justifyContent: "space-between", alignItems: "center",
-          padding: "12px 16px",
-          borderBottom: "1px solid #1a2a4c",
-          background: "rgba(78,226,255,0.03)",
-        }}>
+        {/* Header — shared console title band, matching every other window */}
+        <div className="hud-titleband" style={{ justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ color: "#4ee2ff", fontSize: 14, fontWeight: "bold", letterSpacing: "0.1em" }}>
-              ADMIN PANEL
-            </span>
+            <span style={{ flex: "0 0 auto" }}>ADMIN PANEL</span>
             <div style={{ display: "flex", gap: 4 }}>
               {(["players", "quick"] as const).map((t) => (
-                <button key={t} onClick={() => setTab(t)} style={{
-                  background: tab === t ? "rgba(78,226,255,0.15)" : "transparent",
-                  border: tab === t ? "1px solid #4ee2ff44" : "1px solid transparent",
-                  color: tab === t ? "#4ee2ff" : "#667",
-                  fontSize: 10, padding: "3px 10px", borderRadius: 3, cursor: "pointer",
-                  textTransform: "uppercase", letterSpacing: "0.08em",
+                <button key={t} onClick={() => setTab(t)} className={tab === t ? "gbtn" : "gbtn"} style={{
+                  padding: "2px 10px", fontSize: 10,
+                  filter: tab === t ? undefined : "grayscale(0.5) brightness(0.8)",
                 }}>
                   {t}
                 </button>
               ))}
             </div>
           </div>
-          <button onClick={onClose} style={{
-            background: "rgba(255,60,80,0.1)", border: "1px solid #ff3b4d33",
-            color: "#ff8a9a", fontSize: 11, padding: "3px 10px", borderRadius: 3, cursor: "pointer",
-          }}>ESC</button>
+          <button onClick={onClose} className="gbtn gbtn-red" style={{ padding: "2px 10px", fontSize: 10 }}>ESC</button>
         </div>
 
         <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>

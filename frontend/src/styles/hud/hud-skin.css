@@ -27,82 +27,184 @@
   --text-mute: var(--hud-text-dim);
 }
 
-/* ── 2. Core panel — EXACT HudFrame construction (the hotbar/minimap/chat
-      reference): the element's own background is a crisp accent RING, the
-      panel fill sits on an inset ::before with its own smaller clip-path,
-      scanlines on ::after, backdrop blur. isolation keeps z:-1 inside. ── */
-/* Panel = the SAME kit material as the minimap/chat/hotbar panels: a
-   9-slice cyan-metal frame with a bright light-vein (hud-window-frame.png,
-   sliced procedurally from the chat_panel look) as border-image, over a
-   dark navy interior. This is the actual reference art, not a CSS
-   approximation. `fill` paints the dark center too, so the frame reads
-   identically at any window size. !important beats component inline
-   styles that used to swallow the frame. */
+/* ══════════════════════════════════════════════════════════════════════
+   2. Core panel — THE reusable HUD console, extracted verbatim from the
+      Minimap / Hotbar / ChatPanel / TopPanel material stack.
+
+      Those ambient components each build the look from a stack of sibling
+      divs (glowRim → crispEdge → innerBevel → brushed body → sheen →
+      noise → PCB veins). A pop-up window is a single .panel element with
+      no room for that many children, so the IDENTICAL material is folded
+      onto one element:
+
+        • element `background`   = sheen fade + brushed grain + base metal
+                                   gradient  (#283a58→#060a14, exactly the
+                                   Hotbar/Minimap `.console` fill)
+        • element `box-shadow`   = inset top metal-highlight + inset bottom
+                                   shade + inset 1.5px CRISP CYAN RING
+                                   (= .crispEdge) + outer depth + outer
+                                   cyan glow (= .glowRim, softened)
+        • element `clip-path`    = the shell's chamfered silhouette (the
+                                   Minimap's symmetric top-corner cut)
+        • ::before               = PCB energy veins (the same SVG traces),
+                                   masked so they fade from the top edge
+        • ::after                = inner bevel ring (.innerBevel) — a
+                                   light-top/dark-bottom contour just
+                                   inside the rim
+
+      NO border-image PNG, NO per-window CSS. Every window that renders
+      `.panel` / `.hud-plate` now IS this console. This is the single
+      source of the game's window look — change it here, all windows
+      change together.
+   ══════════════════════════════════════════════════════════════════════ */
 .panel,
 .hud-plate {
+  --panel-cut: 16px;
+  --panel-accent: var(--hud-cyan);
+  --panel-accent-deep: var(--hud-shield-deep);
+  --panel-glow: rgba(78, 226, 255, 0.30);
   position: relative;
+  isolation: isolate;
   font-family: var(--font-display) !important;
-  background:
-    linear-gradient(180deg, rgba(11, 19, 35, 0.97) 0%, rgba(7, 12, 24, 0.98) 100%) !important;
-  /* border-image draws the kit frame in the border box; the border is
-     thin (5px) so content keeps its space, and border-image-outset pushes
-     the ART outward past the border so the beveled corners + light-vein
-     render at full size without eating layout. */
-  border-style: solid !important;
-  border-width: 5px !important;
-  border-image: url("/assets/ui/hud-window-frame.png?v=1") 48 fill stretch !important;
-  border-image-outset: 6px !important;
+  border: none !important;
   border-radius: 0 !important;
-  clip-path: none !important;
+  /* base metal body — the exact Hotbar/Minimap console fill, plus the
+     top sheen fade layered above it so the "heller oben, verblassend"
+     read holds without a separate .consoleSheen element. */
+  background:
+    linear-gradient(180deg, rgba(200, 225, 255, 0.12) 0%, rgba(200, 225, 255, 0.03) 26%, transparent 52%),
+    repeating-linear-gradient(90deg, var(--hud-brushed-line) 0px, var(--hud-brushed-line) 1px, transparent 1px, transparent 3px),
+    linear-gradient(180deg, #283a58 0%, #17233c 32%, #0d1626 62%, #060a14 100%) !important;
+  clip-path: polygon(
+    var(--panel-cut) 0, calc(100% - var(--panel-cut)) 0,
+    100% var(--panel-cut), 100% calc(100% - var(--panel-cut)),
+    calc(100% - var(--panel-cut)) 100%, var(--panel-cut) 100%,
+    0 calc(100% - var(--panel-cut)), 0 var(--panel-cut)
+  ) !important;
   backdrop-filter: blur(3px);
   box-shadow:
-    0 6px 26px rgba(0, 0, 0, 0.6),
-    0 0 22px rgba(78, 226, 255, 0.18) !important;
+    /* inner top metal highlight + bottom shade (the machined bevel) */
+    inset 0 2px 5px rgba(180, 220, 255, 0.16),
+    inset 0 -14px 24px rgba(0, 0, 0, 0.55),
+    /* crisp accent ring hugging the whole silhouette (= .crispEdge) */
+    inset 0 0 0 1.5px var(--panel-accent),
+    inset 0 0 0 3px rgba(3, 6, 12, 0.55),
+    /* outer depth drop + soft accent glow rim (= .glowRim, softened) */
+    0 8px 28px rgba(0, 0, 0, 0.62),
+    0 0 22px var(--panel-glow) !important;
 }
 
-/* Title band matching HudPanel: cyan tick + tracked uppercase title.
-   Apply to a panel's first header row. */
+/* ::before — PCB energy veins, the SAME trace/node SVG language as the
+   Hotbar/TopPanel, tiled across the panel and faded in from the top so
+   they read as circuitry embedded in the body, never fighting content. */
+.panel::before,
+.hud-plate::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.5;
+  clip-path: inherit;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='120' viewBox='0 0 360 120'%3E%3Cg fill='none' stroke='%2378E2FF' stroke-width='1.4'%3E%3Cpath d='M0 20 L60 20 L60 12 L120 12 L120 20 L200 20'/%3E%3Cpath d='M0 34 L40 34 L40 44 L100 44 L100 34 L170 34'/%3E%3Cpath d='M0 96 L60 96 L60 104 L130 104 L130 96 L210 96'/%3E%3Cpath d='M0 82 L50 82 L50 74 L110 74 L110 82 L190 82'/%3E%3Cpath d='M200 20 L260 20 L260 30 L320 30'/%3E%3Cpath d='M210 96 L270 96 L270 88 L330 88'/%3E%3Cpath d='M320 30 L360 30'/%3E%3Cpath d='M330 88 L360 88'/%3E%3C/g%3E%3Cg fill='%2378E2FF'%3E%3Ccircle cx='120' cy='12' r='2'/%3E%3Ccircle cx='100' cy='44' r='1.8'/%3E%3Ccircle cx='130' cy='104' r='1.8'/%3E%3Ccircle cx='110' cy='74' r='1.8'/%3E%3Ccircle cx='320' cy='30' r='2'/%3E%3Ccircle cx='330' cy='88' r='1.8'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 360px 120px;
+  -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.7) 0%, rgba(0, 0, 0, 0.12) 42%, transparent 78%);
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.7) 0%, rgba(0, 0, 0, 0.12) 42%, transparent 78%);
+}
+
+/* ::after — inner bevel ring (= .innerBevel): a light-top → dark-bottom
+   contour inset a few px from the rim, so the frame reads as a genuine
+   double edge (crisp accent line outside, machined lip inside) instead of
+   one flat border. Drawn with the erase-to-ring mask trick so its width
+   stays even through the chamfered corners. */
+.panel::after,
+.hud-plate::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  z-index: -1;
+  pointer-events: none;
+  padding: 2px;
+  background: linear-gradient(180deg, rgba(210, 235, 255, 0.22) 0%, rgba(0, 0, 0, 0.35) 100%);
+  clip-path: polygon(
+    calc(var(--panel-cut) - 3px) 0, calc(100% - var(--panel-cut) + 3px) 0,
+    100% calc(var(--panel-cut) - 3px), 100% calc(100% - var(--panel-cut) + 3px),
+    calc(100% - var(--panel-cut) + 3px) 100%, calc(var(--panel-cut) - 3px) 100%,
+    0 calc(100% - var(--panel-cut) + 3px), 0 calc(var(--panel-cut) - 3px)
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+/* Title band: cyan tick + tracked uppercase title, sitting flush on the
+   top edge of the console with a recessed dark wash so it reads as a
+   machined header strip (matching the Minimap zone display / TopPanel
+   seam), not a floating label. */
 .hud-titleband {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px 12px;
+  padding: 7px 14px;
+  background:
+    linear-gradient(90deg, rgba(78, 226, 255, 0.10) 0%, rgba(78, 226, 255, 0.02) 40%, transparent 72%),
+    linear-gradient(180deg, rgba(20, 34, 60, 0.55) 0%, rgba(8, 14, 26, 0.35) 100%);
   border-bottom: 1px solid var(--hud-border-dim);
-  background: linear-gradient(90deg, rgba(78, 226, 255, 0.06) 0%, transparent 70%);
+  box-shadow: inset 0 1px 0 rgba(180, 220, 255, 0.12), 0 1px 0 rgba(0, 0, 0, 0.6);
   font-family: var(--font-display);
   font-size: 11px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--hud-cyan);
+  text-shadow: 0 0 8px rgba(78, 226, 255, 0.35);
 }
 .hud-titleband::before {
   content: "";
   width: 2px;
-  height: 11px;
+  height: 12px;
   background: var(--hud-cyan);
   box-shadow: var(--hud-glow-soft) var(--hud-cyan-glow);
   flex-shrink: 0;
 }
 
-/* ── 3. Framed windows (hangar, station, journals, big modals) — same ring
-      construction, bigger cuts, wider inner inset. Border widths stay so
-      inner layouts keep their position. ── */
-/* Framed windows (hangar, station, big modals) use the identical kit
-   frame — .panel already supplies the border-image; just drop the legacy
-   atlas border-image and keep the .panel border-width. */
+/* ── 3. Framed windows (hangar, station, journals, big modals) — the same
+      console, only a larger corner cut + a heavier outer glow so the big
+      modals read as a weightier version of the same plate, not a new
+      frame. Everything else is inherited from .panel above. ── */
 .panel-framed {
-  border-image: url("/assets/ui/hud-window-frame.png?v=1") 48 fill stretch !important;
-  border-width: 6px !important;
-  border-image-outset: 8px !important;
-  clip-path: none !important;
+  --panel-cut: 22px !important;
+  /* kill the legacy atlas window.png border-image + its 44px border box
+     from index.css so the console clip-path + accent ring are the only
+     frame. Without this the old armored-window PNG paints underneath and
+     the 44px border offsets the whole layout. */
+  border: none !important;
+  border-image: none !important;
 }
-/* Gold-accent variant (featured windows: hangar, dossier, loot) — same
-   frame recolored gold. */
+.panel-framed::before { opacity: 0.42; }
+
+/* Gold-accent variant (featured windows: hangar, dossier, loot, idle
+   reward) — the identical console recolored to the gold accent via the
+   accent custom properties. No separate frame, no PNG. */
 .panel-gold {
-  border-image: url("/assets/ui/hud-window-frame-gold.png?v=1") 48 fill stretch !important;
-  box-shadow:
-    0 6px 26px rgba(0, 0, 0, 0.6),
-    0 0 20px rgba(232, 185, 77, 0.18) !important;
+  --panel-accent: var(--hud-gold) !important;
+  --panel-accent-deep: var(--hud-gold-deep) !important;
+  --panel-glow: rgba(232, 185, 77, 0.26) !important;
+}
+/* recolor the gold panels' PCB veins + title accents to match */
+.panel-gold::before {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='120' viewBox='0 0 360 120'%3E%3Cg fill='none' stroke='%23E8B94D' stroke-width='1.4'%3E%3Cpath d='M0 20 L60 20 L60 12 L120 12 L120 20 L200 20'/%3E%3Cpath d='M0 34 L40 34 L40 44 L100 44 L100 34 L170 34'/%3E%3Cpath d='M0 96 L60 96 L60 104 L130 104 L130 96 L210 96'/%3E%3Cpath d='M0 82 L50 82 L50 74 L110 74 L110 82 L190 82'/%3E%3Cpath d='M200 20 L260 20 L260 30 L320 30'/%3E%3Cpath d='M210 96 L270 96 L270 88 L330 88'/%3E%3Cpath d='M320 30 L360 30'/%3E%3Cpath d='M330 88 L360 88'/%3E%3C/g%3E%3Cg fill='%23E8B94D'%3E%3Ccircle cx='120' cy='12' r='2'/%3E%3Ccircle cx='100' cy='44' r='1.8'/%3E%3Ccircle cx='130' cy='104' r='1.8'/%3E%3Ccircle cx='110' cy='74' r='1.8'/%3E%3Ccircle cx='320' cy='30' r='2'/%3E%3Ccircle cx='330' cy='88' r='1.8'/%3E%3C/g%3E%3C/svg%3E");
+}
+.panel-gold .hud-titleband {
+  color: var(--hud-gold);
+  text-shadow: 0 0 8px rgba(232, 185, 77, 0.4);
+  background:
+    linear-gradient(90deg, rgba(232, 185, 77, 0.12) 0%, rgba(232, 185, 77, 0.02) 40%, transparent 72%),
+    linear-gradient(180deg, rgba(44, 34, 16, 0.5) 0%, rgba(20, 15, 8, 0.32) 100%);
+}
+.panel-gold .hud-titleband::before {
+  background: var(--hud-gold);
+  box-shadow: var(--hud-glow-soft) rgba(232, 185, 77, 0.55);
 }
 
 /* ── 4. Window header strip ─────────────────────────────────────────────── */
@@ -153,57 +255,94 @@
   border-right-color: rgba(78, 226, 255, 0.8);
 }
 
-/* ── 6. Buttons — hotkey-slot look: the actual slot_cyan.png kit frame as
-   border-image, dark interior, cyan text inside. "Buttons wie die hotkey,
-   nur mit Schrift drin." ─────────────────────────────────────────────── */
+/* ══════════════════════════════════════════════════════════════════════
+   6. Buttons — the AbilitySlot 3-layer material, folded onto one <button>
+      (outer metal frame → accent bracket seam → recessed inner face),
+      matching the hotbar slots exactly. Sheared corners (top-left /
+      bottom-right cut), cyan light-edge, hover glow that follows the
+      silhouette via drop-shadow, press translate. NO border-image PNG.
+      "Buttons wie die Hotkey, nur mit Schrift drin."
+   ══════════════════════════════════════════════════════════════════════ */
 .gbtn {
-  background: transparent !important;
-  border-style: solid !important;
-  border-width: 7px !important;
-  border-image: url("/assets/ui/hud-btn.png?v=2") 12 fill stretch !important;
+  --btn-accent: var(--hud-cyan);
+  --btn-glow: rgba(78, 226, 255, 0.45);
+  --btn-text: #cdeeff;
+  position: relative;
+  isolation: isolate;
+  border: none !important;
   border-radius: 0 !important;
-  clip-path: none !important;
-  color: #bfeaff !important;
-  text-shadow: 0 0 6px rgba(78, 226, 255, 0.4), 0 1px 2px #000;
-  box-shadow: none !important;
-  transition: filter 0.1s, box-shadow 0.12s;
+  padding: 7px 18px;
+  font-family: var(--font-display) !important;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--btn-text) !important;
+  text-shadow: 0 0 6px var(--btn-glow), 0 1px 2px #000;
+  /* recessed inner face (layer 3) as the element background */
+  background: linear-gradient(165deg, rgba(20, 32, 52, 0.96) 0%, rgba(6, 10, 18, 0.97) 100%) !important;
+  clip-path: polygon(
+    6px 0, 100% 0, 100% calc(100% - 6px),
+    calc(100% - 6px) 100%, 0 100%, 0 6px
+  ) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(210, 235, 255, 0.14),
+    inset 0 3px 8px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1.5px color-mix(in srgb, var(--btn-accent) 55%, transparent) !important;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+  transition: filter var(--hud-t-fast), box-shadow var(--hud-t-fast), color var(--hud-t-fast), background var(--hud-t-fast);
 }
-.gbtn::before, .gbtn::after { display: none !important; }
+/* ::before = outer metal frame (layer 1), sitting behind, the brushed
+   steel plate the recessed face is punched into. */
+.gbtn::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  z-index: -1;
+  pointer-events: none;
+  clip-path: polygon(
+    8px 0, 100% 0, 100% calc(100% - 8px),
+    calc(100% - 8px) 100%, 0 100%, 0 8px
+  );
+  background:
+    radial-gradient(140% 100% at 50% -20%, rgba(180, 215, 245, 0.30) 0%, transparent 62%),
+    linear-gradient(160deg, #5a749e 0%, #324768 40%, #12192c 100%);
+  box-shadow: inset 0 1px 0 rgba(220, 238, 255, 0.5), inset 0 -2px 3px var(--hud-metal-lo);
+  display: block !important;
+}
+.gbtn::after { display: none !important; }
 .gbtn:hover:not(:disabled) {
   color: #ffffff !important;
-  filter: brightness(1.25);
-  box-shadow: 0 0 12px rgba(78, 226, 255, 0.4) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(210, 235, 255, 0.16),
+    inset 0 3px 8px rgba(0, 0, 0, 0.4),
+    inset 0 0 0 1.5px var(--btn-accent),
+    inset 0 0 16px color-mix(in srgb, var(--btn-accent) 22%, transparent) !important;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 8px var(--btn-glow));
 }
 .gbtn:active:not(:disabled) {
-  filter: brightness(0.85);
-  transform: translateY(1px);
+  transform: translate(1px, 1px);
+  background: linear-gradient(165deg, rgba(8, 13, 24, 0.97) 0%, rgba(4, 6, 11, 0.97) 100%) !important;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
 }
 .gbtn:disabled {
   color: #52657f !important;
   filter: grayscale(0.5) brightness(0.7);
 }
 .gbtn-gold {
-  border-image: url("/assets/ui/hud-btn-gold.png?v=2") 12 fill stretch !important;
-  background: transparent !important;
-  color: #ffe6a8 !important;
-  text-shadow: 0 0 6px rgba(232, 185, 77, 0.45), 0 1px 2px #000;
-}
-.gbtn-gold:hover:not(:disabled) {
-  color: #fff4d4 !important;
-  box-shadow: 0 0 12px rgba(232, 185, 77, 0.4) !important;
+  --btn-accent: var(--hud-gold);
+  --btn-glow: rgba(232, 185, 77, 0.5);
+  --btn-text: #ffe6a8;
 }
 .gbtn-red {
-  border-image: url("/assets/ui/hud-btn-red.png?v=2") 12 fill stretch !important;
-  background: transparent !important;
-  color: #ffb0b8 !important;
-  text-shadow: 0 0 6px rgba(255, 77, 94, 0.45), 0 1px 2px #000;
+  --btn-accent: var(--hud-hp);
+  --btn-glow: rgba(255, 77, 94, 0.5);
+  --btn-text: #ffb0b8;
 }
-.gbtn-red:hover:not(:disabled) {
-  color: #ffd0d6 !important;
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 77, 94, 0.16),
-    inset 0 0 14px rgba(255, 77, 94, 0.07),
-    0 0 10px rgba(255, 77, 94, 0.25);
+/* red danger buttons get a red-tinted outer frame too */
+.gbtn-red::before {
+  background:
+    radial-gradient(140% 100% at 50% -20%, rgba(255, 180, 190, 0.32) 0%, transparent 62%),
+    linear-gradient(160deg, #9e3244 0%, #68222f 40%, #2c0d12 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 210, 218, 0.45), inset 0 -2px 3px var(--hud-metal-lo);
 }
 
 .btn {
@@ -233,42 +372,63 @@
 }
 
 /* ── 7. Inputs & selects ────────────────────────────────────────────────── */
+/* Inputs = the Minimap/Chat "punched-in glass" recess: a dark glass face
+   with a sharp inner shadow at all four walls, sheared corners, cyan
+   focus ring. Same depth tier as slotChannel / zoneDisplay. */
 .ginput {
-  background: linear-gradient(180deg, rgba(5, 9, 18, 0.94) 0%, rgba(9, 15, 28, 0.94) 100%);
-  border: 1px solid rgba(90, 130, 180, 0.4);
-  box-shadow: inset 0 0 0 1px rgba(78, 226, 255, 0.08), inset 0 2px 6px rgba(0, 0, 0, 0.6);
+  background: linear-gradient(180deg, rgba(4, 7, 14, 0.95) 0%, rgba(9, 15, 28, 0.94) 100%);
+  border: none;
+  border-radius: 0;
+  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+  box-shadow:
+    inset 0 2px 5px rgba(0, 0, 0, 0.8),
+    inset 0 -1px 0 rgba(180, 220, 255, 0.08),
+    inset 0 0 0 1px rgba(78, 226, 255, 0.10);
   color: var(--hud-text-bright);
 }
 .ginput:focus {
-  border-color: rgba(78, 226, 255, 0.6);
-  box-shadow: inset 0 0 0 1px rgba(78, 226, 255, 0.2), 0 0 6px rgba(78, 226, 255, 0.25);
+  box-shadow:
+    inset 0 2px 5px rgba(0, 0, 0, 0.8),
+    inset 0 0 0 1px rgba(78, 226, 255, 0.55),
+    0 0 8px rgba(78, 226, 255, 0.3);
 }
 select.ginput {
   color: var(--hud-cyan);
 }
 
 /* ── 8. Slots, cells, cards, rows ───────────────────────────────────────── */
+/* Slots = the AbilitySlot recessed inner face: sheared corners, dark
+   glass, hard inner shadow, cyan light-edge that brightens on hover and
+   goes solid + glows when active. The outer metal frame is implied by the
+   1.5px inset accent ring rather than a full second element (slots appear
+   in dense grids where extra DOM per cell is wasteful). */
 .sw-slot {
-  border: 1px solid rgba(90, 130, 180, 0.4);
-  border-image: none;
+  border: none;
+  border-image: none;  /* drop the legacy atlas slot.png from index.css */
+  border-radius: 0;
   padding: 3px;
-  background: linear-gradient(180deg, rgba(6, 10, 20, 0.9) 0%, rgba(10, 17, 32, 0.9) 100%);
+  background: linear-gradient(165deg, rgba(18, 28, 46, 0.94) 0%, rgba(5, 8, 15, 0.96) 100%);
   clip-path: polygon(
     var(--hud-cut-sm) 0, 100% 0, 100% calc(100% - var(--hud-cut-sm)),
     calc(100% - var(--hud-cut-sm)) 100%, 0 100%, 0 var(--hud-cut-sm)
   );
-  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(0, 0, 0, 0.5);
+  box-shadow:
+    inset 0 3px 7px rgba(0, 0, 0, 0.75),
+    inset 0 -1px 0 rgba(140, 190, 220, 0.06),
+    inset 0 0 0 1px rgba(120, 200, 255, 0.14);
+  transition: box-shadow var(--hud-t-fast), filter var(--hud-t-fast);
 }
 .sw-slot:hover {
-  border-image: none;
-  border-color: rgba(78, 226, 255, 0.55);
-  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.6), 0 0 8px rgba(78, 226, 255, 0.2);
+  box-shadow:
+    inset 0 3px 7px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1px var(--hud-border-bright),
+    inset 0 0 16px rgba(78, 226, 255, 0.16);
+  filter: drop-shadow(0 0 7px rgba(78, 226, 255, 0.4));
 }
 .sw-slot--active {
-  border-image: none;
-  border-color: var(--hud-cyan);
   box-shadow:
-    inset 0 0 10px rgba(78, 226, 255, 0.15),
+    inset 0 0 0 1.5px var(--hud-cyan),
+    inset 0 0 14px rgba(78, 226, 255, 0.18),
     0 0 10px rgba(78, 226, 255, 0.35);
 }
 .equip-cell {
