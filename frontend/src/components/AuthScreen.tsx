@@ -120,24 +120,31 @@ export default function AuthScreen({ onAuth }: Props) {
           40%  { opacity: 0; }
           100% { transform: translateX(140%) skewX(-18deg); opacity: 0; }
         }
-        /* Semi-transparent glass: the key art shows through. Overrides the
-           opaque .panel fill for the login form only. */
-        .auth-glass {
+        /* Semi-transparent glass: the key art shows through. Must beat the
+           opaque .panel rule (which is !important) — so this is more
+           specific (form.auth-glass) AND drops the border-image fill that
+           paints the dark panel interior; a slim cyan border + clipped
+           corners keep the HUD look. */
+        form.auth-glass {
           background:
-            linear-gradient(180deg, rgba(14,24,44,0.52) 0%, rgba(8,14,28,0.58) 100%) !important;
+            linear-gradient(180deg, rgba(14,24,44,0.48) 0%, rgba(8,14,28,0.54) 100%) !important;
+          border-image: none !important;
+          border: 1.5px solid rgba(78,226,255,0.55) !important;
+          border-radius: 0 !important;
+          clip-path: polygon(12px 0, 100% 0, 100% calc(100% - 12px), calc(100% - 12px) 100%, 0 100%, 0 12px) !important;
           backdrop-filter: blur(7px) saturate(1.05) !important;
           -webkit-backdrop-filter: blur(7px) saturate(1.05) !important;
           animation: authPanelPulse 4.5s ease-in-out infinite;
           overflow: hidden;
         }
-        .auth-glass .auth-sheen {
+        form.auth-glass .auth-sheen {
           content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 45%;
-          background: linear-gradient(90deg, transparent, rgba(180,235,255,0.14), rgba(255,255,255,0.08), transparent);
+          background: linear-gradient(90deg, transparent, rgba(180,235,255,0.16), rgba(255,255,255,0.1), transparent);
           pointer-events: none; z-index: 1;
           animation: authPanelSheen 7s ease-in-out infinite;
         }
         /* keep all interactive content above the sheen */
-        .auth-glass > *:not(.auth-sheen) { position: relative; z-index: 4; }
+        form.auth-glass > *:not(.auth-sheen) { position: relative; z-index: 4; }
       `}</style>
 
       <form
