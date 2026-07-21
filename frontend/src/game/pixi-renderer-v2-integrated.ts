@@ -2439,6 +2439,10 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
       const existing = projectileSprites.get(pr.id);
       if (existing) existing.sprite.visible = false;
       if (laserSystem) laserSystem.hide(pr.id);
+      // Off-screen: there is nothing to see, so release the render-hold in
+      // loop.ts (a remote bolt the local player can't see must still be able
+      // to expire via collision normally, not fly its full ttl).
+      pr.rendered = true;
       continue;
     }
 
@@ -2465,6 +2469,10 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
         // every ammo type keeps its distinct color on every client.
         const ammoColor = PIXI.utils.string2hex(pr.color);
         const isNew = laserSystem.ensure(pr.id, preset, pr.pos.x, pr.pos.y, angle, Math.max(0.75, Math.min(1.8, pr.size / 4.5)), ammoColor);
+        // Mark the bolt as drawn so the game tick may now let collision remove
+        // it — remote/renderOnly shots are held alive in loop.ts until this
+        // flag is set, so they can never be culled before being seen.
+        pr.rendered = true;
         if (isNew && pr.fromPlayer && pr.ttl > 1.2) {
           // Fresh player shot: muzzle flash at the projectile's own spawn
           // point (already the correct GLB hardpoint), aligned to the shot.

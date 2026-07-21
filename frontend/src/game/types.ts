@@ -650,6 +650,13 @@ export type Projectile = {
   armorPiercing?: boolean;  // AP ammo marker
   weaponKind?: WeaponKind;
   renderOnly?: boolean;
+  // Set by the Pixi renderer (syncProjectiles) the first frame it draws this
+  // projectile. Remote/renderOnly shots must survive collision removal until
+  // this is true, so the layered LaserSystem (CPU per-frame, unlike the old
+  // self-propelled GPU mesh) gets at least one ensure()/move() pass and the
+  // bolt is actually visible instead of being culled in the same game tick it
+  // spawned in (separate RAF loops for tick vs render).
+  rendered?: boolean;
   // The enemy this shot was fired at (captured at fire time). Purely for
   // overkill culling: when the target dies, in-flight shots get their ttl
   // capped to a short grace window instead of flying on for seconds.

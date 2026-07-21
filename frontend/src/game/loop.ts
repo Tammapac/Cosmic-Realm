@@ -2215,6 +2215,17 @@ function tickWorld(dt: number): void {
         emitRing(pr.pos.x, pr.pos.y, pr.color);
       }
     }
+    // Remote/renderOnly bolts must be drawn at least once before collision can
+    // remove them. Tick (this loop) and render (pixiRender, separate RAF) are
+    // independent, and remote laser shots converge straight onto the enemy
+    // they were aimed at — so a fresh remote bolt otherwise hits and is culled
+    // in the very tick it spawned, before syncProjectiles ever calls
+    // LaserSystem.ensure(), leaving it invisible. `rendered` is set by the
+    // renderer; until then this shot only flies + expires, no collision.
+    // (Local shots are unaffected — they are not renderOnly.)
+    if (pr.renderOnly && !pr.rendered) {
+      return true;
+    }
     if (pr.fromPlayer) {
       // hit enemies (silhouette hulls, mirrors the server)
       for (const e of state.enemies) {
