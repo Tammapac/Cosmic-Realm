@@ -235,7 +235,8 @@ type SocketEvents = {
   onEnemyHit: (event: EnemyHitEvent) => void;
   onEnemyAttack: (event: EnemyAttackEvent) => void;
   onPlayerHit: (data: { damage: number; hp: number; shield: number }) => void;
-  onPlayerDie: (data: { playerId: number; pos: { x: number; y: number } }) => void;
+  onPlayerHitRemote: (data: { playerId: number; damage: number; pos: { x: number; y: number }; killerId: number | null }) => void;
+  onPlayerDie: (data: { playerId: number; pos: { x: number; y: number }; killerId: number | null }) => void;
   onAsteroidMine: (data: { asteroidId: string; hp: number; hpMax: number }) => void;
   onAsteroidDestroy: (data: { asteroidId: string; playerId: number; ore: { resourceId: string; qty: number } }) => void;
   onAsteroidRespawn: (asteroid: ServerAsteroid) => void;
@@ -401,7 +402,11 @@ export function connectSocket(token: string) {
     listeners.onPlayerHit?.(data);
   });
 
-  socket.on("player:die", (data: { playerId: number; pos: { x: number; y: number } }) => {
+  socket.on("player:hit:remote", (data: { playerId: number; damage: number; pos: { x: number; y: number }; killerId: number | null }) => {
+    listeners.onPlayerHitRemote?.(data);
+  });
+
+  socket.on("player:die", (data: { playerId: number; pos: { x: number; y: number }; killerId: number | null }) => {
     listeners.onPlayerDie?.(data);
   });
 

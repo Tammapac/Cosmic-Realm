@@ -3686,22 +3686,50 @@ export function onPlayerHitFromServer(data: { damage: number; hp: number; shield
   state.lastHitTick = state.tick;
 }
 
-export function onPlayerDieFromServer(data: { playerId: number; pos: { x: number; y: number } }): void {
-  const p = state.player;
-  if (data.playerId !== serverPlayerId) return;
-  const shipColor = SHIP_CLASSES[p.shipClass].color;
-  emitDeath(data.pos.x, data.pos.y, shipColor, true);
-  state.playerDeathFlash = 0.6;
-  state.player.milestones.totalDeaths++;
-  state.isAttacking = false;
-  state.isLaserFiring = false;
-  state.isRocketFiring = false;
-  state.attackTargetId = null;
-  state.selectedWorldTarget = null;
-  sfx.thrusterStop();
-  sfx.explosion(true);
-  state.cameraShake = 1;
-  pushNotification("Ship destroyed. Respawning...", "bad");
+export function onPlayerDieFromServer(data: { playerId: number; pos: { x: number; y: number }; killerId?: number | null }): void {
+  const isLocal = data.playerId === serverPlayerId;
+  if (isLocal) {
+    // Local player destroyed — queue the explosion at the exact death point
+    // (server respawns to origin, so p.pos would be wrong by the time the
+    // renderer runs). The renderer's respawn-timer-edge explosion is
+    // suppressed while a queued death is present, so the blast isn't doubled.
+    const p = state.player;
+    state.pendingPlayerDeaths.push({ x: data.pos.x, y: data.pos.y, shipClass: p.shipClass, local: true });
+    state.playerDeathFlash = 0.6;
+    state.playerRespawnTimer = 1.2;
+    state.player.milestones.totalDeaths++;
+    state.isAttacking = false;
+    state.isLaserFiring = false;
+    state.isRocketFiring = false;
+    state.attackTargetId = null;
+    state.selectedPlayerId = null;
+    state.selectedWorldTarget = null;
+    sfx.thrusterStop();
+    sfx.explosion(true);
+    state.cameraShake = 1;
+    pushNotification("Ship destroyed. Respawning...", "bad");
+  } else {
+    // Another player was destroyed — explosion at the death point so the
+    // attacker and bystanders see the kill. Clear it as a target if selected.
+    const other = state.others.find((o) => o.id === String(data.playerId));
+    const shipClass = other?.shipClass ?? "skimmer";
+    state.pendingPlayerDeaths.push({ x: data.pos.x, y: data.pos.y, shipClass, local: false });
+    const nearby = Math.hypot(data.pos.x - state.player.pos.x, data.pos.y - state.player.pos.y) < 900;
+    if (nearby) { sfx.explosion(true); state.cameraShake = Math.max(state.cameraShake, 0.4); }
+    if (state.selectedPlayerId === String(data.playerId)) {
+      state.selectedPlayerId = null;
+      if (state.selectedWorldTarget?.kind === "player") state.selectedWorldTarget = null;
+    }
+    if (data.killerId === serverPlayerId) pushNotification(`You destroyed ${other?.name ?? "an enemy pilot"}!`, "good");
+  }
+}
+
+// A remote player took a hit — spark at the impact point so the attacker and
+// bystanders see it land (the actual death explosion comes from player:die).
+export function onPlayerHitRemoteFromServer(data: { playerId: number; damage: number; pos: { x: number; y: number }; killerId: number | null }): void {
+  if (data.playerId === serverPlayerId) return; // own hits use onPlayerHitFromServer
+  emitSpark(data.pos.x, data.pos.y, "#ff5c6c", 5, 90, 2);
+  emitSpark(data.pos.x, data.pos.y, "#ffffff", 3, 70, 2);
 }
 
 // Reconcile a remote player's client-side drone list with the authoritative

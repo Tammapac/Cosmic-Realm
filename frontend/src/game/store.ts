@@ -118,6 +118,11 @@ export type GameState = {
   hotbarCooldowns: number[];     // 8 slots, remaining cooldown seconds
   pendingRocketSalvo: number;    // rockets left to fire this tick
   pendingDronePod: boolean;      // spawn a temp combat drone
+  // Player death explosions to play, pushed by onPlayerDieFromServer and
+  // drained by the Pixi renderer each frame (the death event carries the
+  // exact death point; the victim respawns server-side so a hull diff can't
+  // catch the 0-HP frame reliably).
+  pendingPlayerDeaths: { x: number; y: number; shipClass: string; local: boolean }[];
   dockingSummary: DockServiceEntry[] | null;
   selectedWorldTarget: {
     kind: "enemy" | "asteroid" | "player";
@@ -528,6 +533,7 @@ export const state: GameState = {
   hotbarCooldowns: [0, 0, 0, 0, 0, 0, 0, 0],
   pendingRocketSalvo: 0,
   pendingDronePod: false,
+  pendingPlayerDeaths: [],
   dockingSummary: null,
   selectedWorldTarget: null,
   attackTargetId: null,

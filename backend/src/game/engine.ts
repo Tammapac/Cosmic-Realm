@@ -220,7 +220,8 @@ export type GameEvent =
   | { type: "boss:warn"; zone: string }
   | { type: "npc:spawn"; zone: string; npc: ClientNpc }
   | { type: "npc:die"; zone: string; npcId: string }
-  | { type: "player:hit"; playerId: number; damage: number; zone: string }
+  | { type: "player:hit"; playerId: number; damage: number; zone: string; pos: Vec2; killerId: number | null }
+  | { type: "player:die"; playerId: number; zone: string; pos: Vec2; killerId: number | null }
   | { type: "projectile:spawn"; zone: string; fromPlayerId: number; x: number; y: number; vx: number; vy: number; damage: number; color: string; size: number; crit: boolean; weaponKind: "laser" | "rocket" | "energy" | "plasma"; homing: boolean; ammoType?: string; ttl: number; hardpointIndex?: number; hardpointRing?: "muzzle" | "weapon"; shipClass?: string; targetId?: string };
 
 export type ClientEnemy = {
@@ -1117,8 +1118,10 @@ export class GameEngine {
               if (!diffFaction && !optInDuel) continue;            // allied & not a chosen duel
               if (isInStationSafeZone(zoneId, { x: victim.posX, y: victim.posY }, -(STATION_SAFE_RADIUS - PVP_SAFE_RADIUS))) continue; // small station core only
               if (projHitsPlayer(proj, victim, dt)) {
-                this.damagePlayer(victim, proj.damage);
-                events.push({ type: "player:hit", playerId: victim.playerId, damage: proj.damage, zone: zoneId });
+                const vpos = { x: victim.posX, y: victim.posY };
+                const died = this.damagePlayer(victim, proj.damage);
+                events.push({ type: "player:hit", playerId: victim.playerId, damage: proj.damage, zone: zoneId, pos: vpos, killerId: attacker.playerId });
+                if (died) events.push({ type: "player:die", playerId: victim.playerId, zone: zoneId, pos: vpos, killerId: attacker.playerId });
                 zs.projectiles.delete(projId);
                 break;
               }
@@ -1150,8 +1153,10 @@ export class GameEngine {
         for (const p of players) {
           if (p.isDocked) continue;
           if (projHitsPlayer(proj, p, dt)) {
-            this.damagePlayer(p, proj.damage);
-            events.push({ type: "player:hit", playerId: p.playerId, damage: proj.damage, zone: zoneId });
+            const ppos = { x: p.posX, y: p.posY };
+            const died = this.damagePlayer(p, proj.damage);
+            events.push({ type: "player:hit", playerId: p.playerId, damage: proj.damage, zone: zoneId, pos: ppos, killerId: null });
+            if (died) events.push({ type: "player:die", playerId: p.playerId, zone: zoneId, pos: ppos, killerId: null });
             zs.projectiles.delete(projId);
             break;
           }
@@ -1162,7 +1167,11 @@ export class GameEngine {
 
   // ── DAMAGE PLAYER (server-authoritative) ────────────────────────────────
 
-  private damagePlayer(p: OnlinePlayer, rawDamage: number): void {
+  // Returns true if this hit destroyed the player (hull reached 0). On death
+  // the player is respawned server-side (full hull/shield) so they can keep
+  // playing; the caller emits player:die so every client sees the explosion.
+  private damagePlayer(p: OnlinePlayer, rawDamage: number): boolean {
+    if (p.hull <= 0) return false; // already dead this tick, don't double-kill
     const stats = this.playerStatsCache.get(p.playerId) ?? null;
     const reduction = stats ? stats.damageReduction : 0;
     const absorb = stats ? stats.shieldAbsorb : 0.5;
@@ -1173,6 +1182,20 @@ export class GameEngine {
     p.shield = Math.max(0, p.shield - shieldDmg);
     p.hull = Math.max(0, p.hull - hullDmg);
     p.lastHitTick = Date.now() / 1000;
+    if (p.hull <= 0) {
+      // Server-authoritative respawn: restore to full at the zone origin,
+      // stop firing/moving. Clients play the death explosion from player:die.
+      p.hull = p.hullMax;
+      p.shield = p.shieldMax;
+      p.posX = 0; p.posY = 0;
+      p.velX = 0; p.velY = 0;
+      p.isLaserFiring = false;
+      p.isRocketFiring = false;
+      p.attackTargetId = null;
+      p.pvpTargetId = null;
+      return true;
+    }
+    return false;
   }
 
   // ── CULLED STATE PER PLAYER ─────────────────────────────────────────────

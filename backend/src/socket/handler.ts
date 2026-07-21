@@ -813,9 +813,23 @@ function broadcastEvents(io: Server, events: GameEvent[]): void {
       case "player:hit": {
         const p = getPlayer(ev.playerId);
         if (p) {
+          // Victim: authoritative HP update (drives their own hit VFX + death).
           const sock = io.sockets.sockets.get(p.socketId);
           sock?.emit("player:hit", { damage: ev.damage, hp: p.hull, shield: p.shield });
         }
+        // Everyone else in the zone: spark/flash the victim's remote ship so
+        // the attacker and bystanders actually SEE the hit land.
+        io.to(`zone:${ev.zone}`).emit("player:hit:remote", {
+          playerId: ev.playerId, damage: ev.damage, pos: ev.pos, killerId: ev.killerId,
+        });
+        break;
+      }
+      case "player:die": {
+        // Zone-wide so every client plays the death explosion at the death
+        // point (the victim respawns server-side; getCulledState re-syncs pos).
+        io.to(`zone:${ev.zone}`).emit("player:die", {
+          playerId: ev.playerId, pos: ev.pos, killerId: ev.killerId,
+        });
         break;
       }
       case "asteroid:mine":

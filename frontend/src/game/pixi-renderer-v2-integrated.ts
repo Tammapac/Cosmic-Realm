@@ -124,6 +124,9 @@ let prevAsteroidIds = new Set<string>();
 let prevAsteroidData = new Map<string, { x: number; y: number; size: number }>();
 let prevPlayerHull = -1;
 let prevPlayerRespawnTimer = 0;
+// Per-remote-player last-seen hull, for spawning hit sparks + death explosions
+// on OTHER players (mirrors the local prevPlayerHull diff). Keyed by o.id.
+const prevOtherHull = new Map<string, number>();
 let projectileGlowGraphics: PIXI.Graphics | null = null;
 let projectileBehindGlowGraphics: PIXI.Graphics | null = null;
 
@@ -2068,7 +2071,13 @@ export function pixiRender(): void {
     // used for the player's on-screen hit ring. Sound + shake for player
     // death are already triggered by damagePlayer() (sfx.explosion(true) /
     // state.cameraShake=1) — shake is suppressed here so it isn't doubled.
-    if (state.playerRespawnTimer > 0 && prevPlayerRespawnTimer <= 0 && explosionSystem) {
+    // Legacy PvE death (asteroid collision etc.) sets the respawn timer with
+    // no queued death — explode at the player position. Server-driven deaths
+    // (PvP) instead push an exact death point to pendingPlayerDeaths (drained
+    // below), so this edge is skipped when a local death is queued to avoid a
+    // double blast.
+    const hasQueuedLocalDeath = state.pendingPlayerDeaths.some((d) => d.local);
+    if (state.playerRespawnTimer > 0 && prevPlayerRespawnTimer <= 0 && !hasQueuedLocalDeath && explosionSystem) {
       const p = state.player;
       const radius = shipHullRadius(p.shipClass, SHIP_SIZE_SCALE[p.shipClass] ?? 1);
       explosionSystem.spawn("enemyExplosion", p.pos.x, p.pos.y, {
@@ -2077,6 +2086,21 @@ export function pixiRender(): void {
       });
     }
     prevPlayerRespawnTimer = state.playerRespawnTimer;
+
+    // Server-driven player death explosions (PvP + any server-authoritative
+    // kill), queued by onPlayerDieFromServer with the exact death point. The
+    // victim respawns server-side so a hull diff can't reliably catch the
+    // 0-HP frame — this event-driven queue is the authoritative death VFX.
+    if (state.pendingPlayerDeaths.length > 0 && explosionSystem) {
+      for (const d of state.pendingPlayerDeaths) {
+        const radius = shipHullRadius(d.shipClass, SHIP_SIZE_SCALE[d.shipClass as keyof typeof SHIP_SIZE_SCALE] ?? 1);
+        explosionSystem.spawn("enemyExplosion", d.x, d.y, {
+          sizeScale: Math.max(1, radius / 14) * 1.5,
+          shake: d.local,
+        });
+      }
+      state.pendingPlayerDeaths.length = 0;
+    }
   }
 
   // ── VFX systems tick ────────────────────────────────────────────────
@@ -3258,6 +3282,21 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
     const myFaction = state.player.faction;
     const oHostile = !!o.faction && !!myFaction && o.faction !== myFaction;
     _otherLabelHtml += shipLabelHtml(sxL, syL + rPxL, o.name, oFaction, oRank, null, "", oHostile);
+
+    // Remote-player hit + death VFX, driven by the synced hull the same way
+    // the local player's is (prevPlayerHull diff). A hull DROP → directional
+    // ship-hit sparks; a drop TO 0 (or an authoritative death) → explosion.
+    // Keyed by o.id so each remote ship tracks its own previous hull.
+    const prevH = prevOtherHull.get(o.id);
+    if (prevH !== undefined && o.hull < prevH && explosionSystem) {
+      if (o.hull <= 0) {
+        const oradius = shipHullRadius(o.shipClass, SHIP_SIZE_SCALE[o.shipClass] ?? 1);
+        explosionSystem.spawn("enemyExplosion", o.pos.x, o.pos.y, { sizeScale: Math.max(1, oradius / 14) * 1.3, shake: false });
+      } else {
+        explosionSystem.spawnShipHit(o.pos.x, o.pos.y, o.angle + Math.PI);
+      }
+    }
+    prevOtherHull.set(o.id, o.hull);
 
     const factionColor = o.faction ? FACTIONS[o.faction as keyof typeof FACTIONS]?.color ?? "#7a8ad8" : "#7a8ad8";
     // Animate body glow with faction color

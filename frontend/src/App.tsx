@@ -42,7 +42,7 @@ import {
   onAsteroidMine, onAsteroidDestroy, onAsteroidRespawn,
   onServerZoneEnemies, onServerZoneAsteroids, onServerZoneNpcs,
   onNpcSpawn, onNpcDie,
-  onWelcome, onDelta, onSnapshot, onPlayerHitFromServer, onPlayerDieFromServer,
+  onWelcome, onDelta, onSnapshot, onPlayerHitFromServer, onPlayerHitRemoteFromServer, onPlayerDieFromServer,
   onProjectileSpawnFromServer,
 } from "./game/loop";
 
@@ -808,6 +808,7 @@ function GameApp() {
       onEnemyHit: (event: EnemyHitEvent) => onEnemyHit(event),
       onEnemyAttack: (event: EnemyAttackEvent) => onEnemyAttack(event),
       onPlayerHit: (data) => onPlayerHitFromServer(data),
+      onPlayerHitRemote: (data) => onPlayerHitRemoteFromServer(data),
       onPlayerDie: (data) => onPlayerDieFromServer(data),
       onAsteroidMine: (data) => onAsteroidMine(data),
       onAsteroidDestroy: (data) => onAsteroidDestroy(data),
