@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
 import { GameButton } from "./GameButton";
-import { useGame, state, bump, cargoCapacity } from "../game/store";
+import { useGame, state, bump, cargoCapacity, pushNotification } from "../game/store";
 import { clearToken } from "../net/api";
 import { disconnectSocket } from "../net/socket";
-import { EXP_FOR_LEVEL, FACTIONS, SHIP_CLASSES, rankFor, HONOR_RANKS } from "../game/types";
+import { EXP_FOR_LEVEL, FACTIONS, SHIP_CLASSES, rankFor, HONOR_RANKS, type OtherPlayer } from "../game/types";
 
 function fmtNum(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
@@ -382,17 +382,22 @@ export function WorldTargetHud() {
   const target = useGame((s) => s.selectedWorldTarget);
   const enemies = useGame((s) => s.enemies);
   const asteroids = useGame((s) => s.asteroids);
+  const others = useGame((s) => s.others);
   if (!target) return null;
   const entity = target.kind === "enemy"
     ? enemies.find((e) => e.id === target.id)
-    : asteroids.find((a) => a.id === target.id);
+    : target.kind === "player"
+      ? others.find((o) => o.id === target.id)
+      : asteroids.find((a) => a.id === target.id);
   const hp = entity ? ("hull" in entity ? entity.hull : entity.hp) : 0;
   const hpMax = entity ? ("hullMax" in entity ? entity.hullMax : entity.hpMax) : 1;
   const hpPct = Math.max(0, Math.min(100, (hp / Math.max(1, hpMax)) * 100));
-  const hpColor = target.kind === "enemy" ? "#ff5c6c" : "#c69060";
+  const isPlayer = target.kind === "player";
+  const otherEntity = isPlayer ? (entity as OtherPlayer | undefined) : undefined;
+  const hpColor = target.kind === "enemy" ? "#ff5c6c" : isPlayer ? "#5ad1ff" : "#c69060";
   return (
     <div
-      className="console-sq pointer-events-none"
+      className={isPlayer ? "console-sq" : "console-sq pointer-events-none"}
       style={{
         position: "fixed",
         left: 14,
@@ -441,6 +446,27 @@ export function WorldTargetHud() {
             {Math.round(hp)}/{Math.round(hpMax)}
           </div>
         </div>
+      )}
+      {isPlayer && otherEntity && (
+        <>
+          <div
+            className="text-center"
+            style={{ fontSize: 10, marginTop: 5, color: "#9fb4d4", letterSpacing: "0.08em", fontFamily: "var(--font-display)" }}
+          >
+            {target.detail}
+          </div>
+          <button
+            className="gbtn"
+            style={{ width: "100%", marginTop: 7, padding: "5px 0", fontSize: 10.5, letterSpacing: "0.14em" }}
+            onClick={() => {
+              // Group-invite entry point. The party/group system isn't wired
+              // yet, so this surfaces the intent + selected player id for now.
+              pushNotification(`Group invite for ${otherEntity.name} — coming soon`, "info");
+            }}
+          >
+            + INVITE TO GROUP
+          </button>
+        </>
       )}
     </div>
   );

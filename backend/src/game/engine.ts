@@ -1083,6 +1083,28 @@ export class GameEngine {
             break;
           }
         }
+        // PvP: a player's shot also damages players of a DIFFERENT faction.
+        // Only runs if the shot wasn't already consumed by an enemy hit above
+        // (enemy loop deletes + breaks), so one projectile never hits both.
+        // Guards mirror the enemy-projectile→player path: skip self, docked
+        // victims, same/undeclared faction, and station safe zones.
+        if (zs.projectiles.has(projId)) {
+          const attacker = players.find(pl => pl.playerId === proj.fromPlayerId);
+          if (attacker && attacker.faction) {
+            for (const victim of players) {
+              if (victim.playerId === proj.fromPlayerId) continue; // never self
+              if (victim.isDocked) continue;                       // docked = safe
+              if (!victim.faction || victim.faction === attacker.faction) continue; // same/no faction = allied
+              if (isInStationSafeZone(zoneId, { x: victim.posX, y: victim.posY })) continue; // station bubble
+              if (projHitsPlayer(proj, victim, dt)) {
+                this.damagePlayer(victim, proj.damage);
+                events.push({ type: "player:hit", playerId: victim.playerId, damage: proj.damage, zone: zoneId });
+                zs.projectiles.delete(projId);
+                break;
+              }
+            }
+          }
+        }
       } else if (proj.fromNpcId !== null) {
         // NPC projectile -> hit enemies (silhouette hulls)
         for (const e of zs.enemies.values()) {

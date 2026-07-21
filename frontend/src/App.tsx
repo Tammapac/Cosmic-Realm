@@ -26,7 +26,7 @@ import { BossBar } from "./components/BossBar";
 import { QuestTracker } from "./components/QuestTracker";
 import SettingsMenu from "./components/SettingsMenu";
 import { AdminPanel } from "./components/AdminPanel";
-import { DUNGEONS, STATIONS, PORTALS, ZONES, MODULE_DEFS, RESOURCES, SHIP_CLASSES, ENEMY_DEFS, type EnemyType, type DungeonId } from "./game/types";
+import { DUNGEONS, STATIONS, PORTALS, ZONES, MODULE_DEFS, RESOURCES, SHIP_CLASSES, ENEMY_DEFS, SHIP_SIZE_SCALE, type EnemyType, type DungeonId } from "./game/types";
 import { travelToZone, state as gameState } from "./game/store";
 import { enemyModelKey, enemySizeScale, shipHullRadius } from "../../lib/hitbox";
 import AuthScreen from "./components/AuthScreen";
@@ -146,6 +146,20 @@ function GameCanvas() {
     return best;
   };
 
+  // Same nearest-within-silhouette pick as enemies, over other players in the
+  // current zone. Used for click-to-select (target HUD + future group invite).
+  const pickPlayerAt = (wx: number, wy: number) => {
+    let best: (typeof state.others)[number] | null = null;
+    let bestD = Infinity;
+    for (const o of state.others) {
+      if (o.zone !== state.player.zone) continue;
+      const r = Math.max(44, shipHullRadius(o.shipClass, SHIP_SIZE_SCALE[o.shipClass] ?? 1) * 1.15 + 12);
+      const d = Math.hypot(o.pos.x - wx, o.pos.y - wy);
+      if (d < r && d < bestD) { bestD = d; best = o; }
+    }
+    return best;
+  };
+
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement | HTMLDivElement>) => {
     if (state.dockedAt) return;
     const { x: wx, y: wy } = screenToWorld(e);
@@ -160,6 +174,24 @@ function GameCanvas() {
         detail: `${enemy.type.toUpperCase()} · ${Math.max(0, Math.round(enemy.hull))}/${Math.round(enemy.hullMax)} HP`,
       };
       state.attackTargetId = enemy.id;
+      state.miningTargetId = null;
+      state.selectedPlayerId = null;
+      bump();
+      return;
+    }
+
+    // Check if clicking on another player — select them (for the target HUD
+    // and later group invites). Players are NOT auto-fired at, so this only
+    // sets the selection, not attackTargetId.
+    const other = pickPlayerAt(wx, wy);
+    if (other) {
+      state.selectedPlayerId = other.id;
+      state.selectedWorldTarget = {
+        kind: "player",
+        id: other.id,
+        name: other.name,
+        detail: `${(SHIP_CLASSES[other.shipClass]?.name ?? other.shipClass).toUpperCase()} · LV ${other.level}`,
+      };
       state.miningTargetId = null;
       bump();
       return;
@@ -207,6 +239,8 @@ function GameCanvas() {
     // Clicked on free space — move ship there, keep target lock
     state.cameraTarget = { x: wx, y: wy };
     state.miningTargetId = null;
+    state.selectedPlayerId = null;
+    if (state.selectedWorldTarget?.kind === "player") state.selectedWorldTarget = null;
 
     // Snap to station if clicked nearby
     for (const s of STATIONS) {

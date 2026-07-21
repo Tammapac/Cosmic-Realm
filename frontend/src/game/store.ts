@@ -120,12 +120,16 @@ export type GameState = {
   pendingDronePod: boolean;      // spawn a temp combat drone
   dockingSummary: DockServiceEntry[] | null;
   selectedWorldTarget: {
-    kind: "enemy" | "asteroid";
+    kind: "enemy" | "asteroid" | "player";
     id: string;
     name: string;
     detail: string;
   } | null;
   attackTargetId: string | null;
+  // Another player selected by clicking their ship — for the target HUD and
+  // later group invites. Independent from attackTargetId (players aren't
+  // auto-fired at the way enemies are).
+  selectedPlayerId: string | null;
   isAttacking: boolean;
   isLaserFiring: boolean;
   isRocketFiring: boolean;
@@ -527,6 +531,7 @@ export const state: GameState = {
   dockingSummary: null,
   selectedWorldTarget: null,
   attackTargetId: null,
+  selectedPlayerId: null,
   isAttacking: false,
   isLaserFiring: false,
   isRocketFiring: false,
