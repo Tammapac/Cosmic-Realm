@@ -10,30 +10,6 @@ type Props = {
 // the baked auth-login.png / auth-register.png art windows are retired.
 // All auth logic is unchanged.
 
-function Starfield() {
-  return (
-    <div style={{ position: "absolute", inset: 0, overflow: "hidden", pointerEvents: "none" }}>
-      {Array.from({ length: 90 }, (_, i) => (
-        <div
-          key={i}
-          style={{
-            position: "absolute",
-            width: Math.random() * 2 + 1,
-            height: Math.random() * 2 + 1,
-            background: i % 7 === 0 ? "#4ee2ff" : "#fff",
-            borderRadius: "50%",
-            left: `${Math.random() * 100}%`,
-            top: `${Math.random() * 100}%`,
-            opacity: Math.random() * 0.5 + 0.15,
-            animation: `authTwinkle ${2 + Math.random() * 3}s ease-in-out infinite`,
-            animationDelay: `${Math.random() * 3}s`,
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
 function Field({
   label, type = "text", value, onChange, autoComplete,
 }: {
@@ -120,18 +96,21 @@ export default function AuthScreen({ onAuth }: Props) {
     <div
       style={{
         position: "fixed", inset: 0,
-        background: "radial-gradient(ellipse at 50% 35%, #0a1120 0%, #05070f 55%, #020204 100%)",
+        backgroundImage: "url(/assets/ui/login-bg.jpg?v=1)",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
         fontFamily: "var(--font-display)",
-        display: "flex", alignItems: "center", justifyContent: "center",
+        display: "flex", alignItems: "flex-end", justifyContent: "center",
       }}
     >
-      <Starfield />
+      {/* darkening scrim so the login panel stays readable over the art */}
+      <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 50% 78%, rgba(2,4,10,0.55) 0%, rgba(2,4,10,0.35) 45%, rgba(2,4,10,0.15) 100%)", pointerEvents: "none" }} />
       <style>{`@keyframes authTwinkle { 0%, 100% { opacity: 0.15; } 50% { opacity: 0.7; } }`}</style>
 
       <form
         onSubmit={mode === "login" ? submitLogin : submitRegister}
         className="panel"
-        style={{ width: "min(420px, 92vw)", display: "flex", flexDirection: "column" }}
+        style={{ width: "min(420px, 92vw)", display: "flex", flexDirection: "column", position: "relative", zIndex: 1, marginBottom: "8vh" }}
       >
         <div className="hud-titleband" style={{ fontSize: 15, letterSpacing: "0.4em", padding: "10px 14px", justifyContent: "center" }}>
           Cosmic Realm
@@ -183,6 +162,16 @@ export default function AuthScreen({ onAuth }: Props) {
           </HudButton>
         </div>
       </form>
+
+      {/* copyright — bottom-left corner */}
+      <div style={{
+        position: "absolute", left: 16, bottom: 12, zIndex: 1,
+        fontFamily: "var(--font-display)", fontSize: 11, letterSpacing: "0.14em",
+        color: "rgba(200,225,255,0.65)", textShadow: "0 1px 3px #000",
+        userSelect: "none", pointerEvents: "none",
+      }}>
+        © 2026 TAMMAPAC · ALL RIGHTS RESERVED
+      </div>
     </div>
   );
 }

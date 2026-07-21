@@ -652,38 +652,26 @@ function LoadingScreen({ onReady }: { onReady: () => void }) {
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 200,
-      background: "#020408",
+      backgroundImage: "url(/assets/ui/loading-bg.jpg?v=1)",
+      backgroundSize: "cover",
+      backgroundPosition: "center",
       display: "flex", flexDirection: "column",
-      alignItems: "center", justifyContent: "center",
+      alignItems: "center", justifyContent: "flex-end",
       transition: "opacity 0.7s ease-out",
       opacity: fadeOut ? 0 : 1,
       pointerEvents: fadeOut ? "none" : "auto",
     }}>
-      <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
-        {Array.from({ length: 60 }, (_, i) => (
-          <div key={i} style={{
-            position: "absolute",
-            width: Math.random() * 2 + 1,
-            height: Math.random() * 2 + 1,
-            background: "#fff",
-            borderRadius: "50%",
-            left: `${Math.random() * 100}%`,
-            top: `${Math.random() * 100}%`,
-            opacity: Math.random() * 0.6 + 0.2,
-            animation: `twinkle ${2 + Math.random() * 3}s ease-in-out infinite`,
-            animationDelay: `${Math.random() * 3}s`,
-          }} />
-        ))}
-      </div>
+      {/* bottom scrim so the title + bar stay readable over the art */}
+      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, transparent 40%, rgba(2,4,10,0.55) 78%, rgba(2,4,10,0.85) 100%)", pointerEvents: "none" }} />
       <style>{`
-        @keyframes twinkle { 0%, 100% { opacity: 0.2; } 50% { opacity: 0.8; } }
-        @keyframes pulse { 0%, 100% { text-shadow: 0 0 10px #f7a83244; } 50% { text-shadow: 0 0 25px #f7a83288, 0 0 50px #f7a83244; } }
+        @keyframes pulse { 0%, 100% { text-shadow: 0 0 10px rgba(78,226,255,0.3); } 50% { text-shadow: 0 0 25px rgba(78,226,255,0.55), 0 0 50px rgba(78,226,255,0.3); } }
       `}</style>
       <div style={{
-        fontSize: 34, letterSpacing: 12, color: "#f7a832",
+        position: "relative", zIndex: 1,
+        fontSize: 34, letterSpacing: 12, color: "#4ee2ff",
         fontFamily: "var(--font-display, 'Courier New', monospace)", fontWeight: "bold",
         animation: "pulse 3s ease-in-out infinite",
-        marginBottom: 42, textAlign: "center",
+        marginBottom: 30, textAlign: "center",
       }}>
         COSMIC REALM
       </div>
@@ -691,7 +679,7 @@ function LoadingScreen({ onReady }: { onReady: () => void }) {
           match the art's TRUE black channel (a thin slit: rows 23-28 of 54
           → T42.6/B48.1%) so the amber never touches the metal frame. */}
       <div style={{
-        position: "relative",
+        position: "relative", zIndex: 1,
         width: "min(480px, 80vw)",
         aspectRatio: "567 / 54",
         backgroundImage: "url(/assets/ui/loading-bar.png?v=2)",
@@ -704,15 +692,16 @@ function LoadingScreen({ onReady }: { onReady: () => void }) {
         }}>
           <div style={{
             width: `${progress}%`, height: "100%",
-            background: "linear-gradient(180deg, #ffd580 0%, #f7a832 55%, #b36a12 100%)",
-            boxShadow: "0 0 8px #f7a832aa",
+            background: "linear-gradient(180deg, #baf3ff 0%, #4ee2ff 55%, #1f7a99 100%)",
+            boxShadow: "0 0 8px rgba(78,226,255,0.65)",
             transition: "width 0.3s ease-out",
           }} />
         </div>
       </div>
       <div style={{
-        marginTop: 14, fontSize: 12, letterSpacing: 4,
-        color: "#f7a832aa", fontFamily: "var(--font-display, 'Courier New', monospace)",
+        position: "relative", zIndex: 1,
+        marginTop: 14, marginBottom: "7vh", fontSize: 12, letterSpacing: 4,
+        color: "rgba(78,226,255,0.75)", fontFamily: "var(--font-display, 'Courier New', monospace)",
       }}>
         LOADING SYSTEMS... {progress}%
       </div>
