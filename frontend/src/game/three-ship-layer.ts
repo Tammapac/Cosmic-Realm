@@ -60,6 +60,51 @@ function getGlowTexture(): THREE.CanvasTexture {
   return glowTexture;
 }
 
+// Engine-flame texture for the 3D thruster beam: a teardrop plume, bright and
+// rounded at the nozzle end (right, +x) tapering to a soft point at the tail
+// (left). Drawn once, stretched via non-square sprite scale so it reads as a
+// real exhaust cone. Sprite material tints it (white core / colored plume).
+let flameTexture3D: THREE.CanvasTexture | null = null;
+function getFlameTexture3D(): THREE.CanvasTexture {
+  if (flameTexture3D) return flameTexture3D;
+  const w = 256, h = 96;
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  const ctx = c.getContext("2d")!;
+  const lg = ctx.createLinearGradient(0, 0, w, 0);
+  lg.addColorStop(0.0, "rgba(255,255,255,0)");
+  lg.addColorStop(0.35, "rgba(255,255,255,0.30)");
+  lg.addColorStop(0.72, "rgba(255,255,255,0.88)");
+  lg.addColorStop(0.9, "rgba(255,255,255,1)");
+  lg.addColorStop(1.0, "rgba(255,255,255,0.6)");
+  ctx.fillStyle = lg;
+  const cy = h / 2;
+  ctx.beginPath();
+  ctx.moveTo(2, cy);
+  for (let i = 0; i <= 60; i++) {
+    const tX = i / 60, x = 2 + tX * (w - 4);
+    const prof = Math.pow(tX, 0.6) * (1 - 0.14 * Math.pow(tX, 6));
+    ctx.lineTo(x, cy - prof * (h / 2 - 2));
+  }
+  for (let i = 60; i >= 0; i--) {
+    const tX = i / 60, x = 2 + tX * (w - 4);
+    const prof = Math.pow(tX, 0.6) * (1 - 0.14 * Math.pow(tX, 6));
+    ctx.lineTo(x, cy + prof * (h / 2 - 2));
+  }
+  ctx.closePath();
+  ctx.fill();
+  const vg = ctx.createLinearGradient(0, 0, 0, h);
+  vg.addColorStop(0, "rgba(0,0,0,1)");
+  vg.addColorStop(0.5, "rgba(255,255,255,0)");
+  vg.addColorStop(1, "rgba(0,0,0,1)");
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, 0, w, h);
+  ctx.globalCompositeOperation = "source-over";
+  flameTexture3D = new THREE.CanvasTexture(c);
+  return flameTexture3D;
+}
+
 interface GlowAnchor {
   color: THREE.Color;
   intensity: number; // 1 = authored baseline
@@ -164,6 +209,8 @@ interface Ship3D {
   model: THREE.Group;
   hardpoints: ShipHardpoints;
   engineGlows: THREE.Sprite[];
+  flameBeams: { plume: THREE.Sprite; core: THREE.Sprite }[];
+  beamScale: number;
   mixer: THREE.AnimationMixer | null;
   lastCamX: number;
   lastCamY: number;
@@ -977,8 +1024,14 @@ export function updateShip3D(
 
     // Create engine glow sprites at thruster hardpoints
     const engineGlows: THREE.Sprite[] = [];
+    // Real exhaust BEAM sprites (plume + white-hot core), rendered in the 3D
+    // scene so the hull occludes them correctly — this replaces the Pixi beam
+    // for GLB ships (which bled through the ship because it lived on a lower
+    // canvas). Oriented + stretched every frame in updateEngineGlow().
+    const flameBeams: { plume: THREE.Sprite; core: THREE.Sprite }[] = [];
     // Sovereign gets smaller glow (half size)
     const glowSize = shipClass === "sovereign" ? 0.45 : 0.9;
+    const beamScale = shipClass === "sovereign" ? 0.6 : 1;
 
     for (const thruster of hardpoints.thrusters) {
       const material = new THREE.SpriteMaterial({
@@ -991,8 +1044,30 @@ export function updateShip3D(
         blending: THREE.AdditiveBlending
       });
       const sprite = new THREE.Sprite(material);
-      sprite.scale.set(glowSize, glowSize, 1); // Glow size - tiny and subtle
+      sprite.scale.set(glowSize, glowSize, 1); // nozzle bloom
       sprite.layers.set(FX_LAYER); // engine glow must not receive an outline
+
+      // Flame beam plume (colored) + core (white-hot), parented to the thruster
+      // node so they follow the ship. depthTest stays on so the hull can occlude
+      // them (unlike the round bloom which must always show at the nozzle).
+      const mkFlame = (tint: number): THREE.Sprite => {
+        const m = new THREE.SpriteMaterial({
+          map: getFlameTexture3D(), color: tint, transparent: true, opacity: 0,
+          depthWrite: false, depthTest: true, blending: THREE.AdditiveBlending,
+        });
+        // Anchor the bright nozzle end (texture right) at the hardpoint: shift
+        // the sprite's center so its right edge sits at the node (center.x=1).
+        m.rotation = 0;
+        const sp = new THREE.Sprite(m);
+        sp.center.set(1, 0.5);
+        sp.layers.set(FX_LAYER);
+        sp.scale.set(0.01, 0.01, 1);
+        thruster.add(sp);
+        return sp;
+      };
+      const plume = mkFlame(0x4488ff);
+      const core = mkFlame(0xbfe4ff);
+      flameBeams.push({ plume, core });
 
       // Position relative to thruster
       thruster.add(sprite);
@@ -1043,7 +1118,7 @@ export function updateShip3D(
     }
 
     ship = {
-      wrapper, model, hardpoints, engineGlows, mixer,
+      wrapper, model, hardpoints, engineGlows, flameBeams, beamScale, mixer,
       lastYRot: -angle + Math.PI,
       lastCamX: camX, lastCamY: camY,
       lastWorldX: worldX, lastWorldY: worldY,
@@ -1106,18 +1181,69 @@ export function removeShip3D(entityId: string): void {
   }
 }
 
-export function updateEngineGlow(entityId: string, speed: number): void {
+export function updateEngineGlow(entityId: string, speed: number, angle?: number, color?: number): void {
   const ship = activeShips.get(entityId);
   if (!ship || !ship.engineGlows) return;
 
-  // Glow intensity scales linearly with speed, capped at 1 at speed 80.
-  // Below ~speed=1 (near-standstill) the glow is effectively off — no floor.
-  const intensity = speed < 1 ? 0 : Math.min(1, speed / 80);
+  // Reaches full brightness quickly (matches the old Pixi ramp feel) so the
+  // beam is clearly visible while moving; fully off near standstill.
+  const intensity = speed < 0.6 ? 0 : Math.min(1, speed / 3.5);
 
+  // Nozzle bloom (round) — always faces the nozzle, brighter now.
   for (const glow of ship.engineGlows) {
     const material = glow.material as THREE.SpriteMaterial;
-    material.opacity = intensity;
+    material.opacity = intensity * 0.85;
+    if (color != null) material.color.setHex(color);
   }
+
+  if (!ship.flameBeams || ship.flameBeams.length === 0) return;
+
+  // Per-frame flicker so the flame breathes.
+  const flick = 0.85 + Math.random() * 0.3;
+  const sm = ship.beamScale;
+  // Screen-space orientation of the beam. The sprite billboards to the top-down
+  // camera, so material.rotation orients the flame in screen space directly
+  // from the game heading `angle` (the ship flies toward `angle`; exhaust goes
+  // the opposite way). The flame's bright nozzle is at its right edge
+  // (center.x=1) so the body extends LEFT (−x); rotating the sprite by `angle`
+  // makes that −x point backward (−cos,−sin) and the nozzle stay at the node.
+  // Three's SpriteMaterial rotation is clockwise in the y-down screen, matching
+  // the game's own angle convention (verified against the Pixi thruster).
+  // Live-tunable direction offset (radians) so the beam angle can be corrected
+  // without a rebuild: in the browser console set `window.__beamRot = Math.PI`
+  // (or ±Math.PI/2) if the flame points the wrong way, then it's baked in.
+  const a = angle ?? 0;
+  const dbgOff = (typeof window !== "undefined" && typeof (window as any).__beamRot === "number")
+    ? (window as any).__beamRot : 0;
+  const beamRot = a + dbgOff;
+
+  for (const fb of ship.flameBeams) {
+    if (intensity <= 0) {
+      (fb.plume.material as THREE.SpriteMaterial).opacity = 0;
+      (fb.core.material as THREE.SpriteMaterial).opacity = 0;
+      continue;
+    }
+    // Plume — long colored cone. Length grows with thrust; width moderate.
+    const pm = fb.plume.material as THREE.SpriteMaterial;
+    if (color != null) pm.color.setHex(color);
+    pm.opacity = 0.6 * intensity;
+    pm.rotation = beamRot;
+    fb.plume.scale.set((1.7 + intensity * 2.1) * flick * sm, (0.7 + intensity * 0.35) * sm, 1);
+
+    // Core — shorter, thinner, white-hot.
+    const cm = fb.core.material as THREE.SpriteMaterial;
+    cm.color.setHex(color != null ? lerpHex(color, 0xffffff, 0.72) : 0xffffff);
+    cm.opacity = 0.95 * intensity;
+    cm.rotation = beamRot;
+    fb.core.scale.set((1.0 + intensity * 1.25) * flick * sm, (0.4 + intensity * 0.2) * sm, 1);
+  }
+}
+
+// Blend two 0xRRGGBB colors, t=0→a, t=1→b (for pushing the core white-hot).
+function lerpHex(a: number, b: number, t: number): number {
+  const ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
+  const br = (b >> 16) & 0xff, bg = (b >> 8) & 0xff, bb = b & 0xff;
+  return ((Math.round(ar + (br - ar) * t) << 16) | (Math.round(ag + (bg - ag) * t) << 8) | Math.round(ab + (bb - ab) * t));
 }
 
 export function updateNebulaBackground(cameraX: number, cameraY: number): void {

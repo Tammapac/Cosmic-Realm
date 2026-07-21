@@ -3102,10 +3102,10 @@ function syncPlayer(): void {
     const glbHardpoints = getShipMuzzleWorldPositionsAt("player", p.pos.x, p.pos.y, p.angle);
 
     if (glbHardpoints && glbHardpoints.thrusters.length > 0) {
-      // One trail per GLB thruster hardpoint. All hp_thruster_* nodes emit.
-      for (const t of glbHardpoints.thrusters) {
-        effectManager.spawnThrusterTrail(t.x, t.y, p.angle, speed, localThrustColor, 1, trailScale);
-      }
+      // GLB ships: the thruster beam is rendered in the THREE.js scene
+      // (updateEngineGlow below), so the hull occludes it correctly. Emitting
+      // the Pixi beam here too made it bleed through/around the ship (Pixi
+      // canvas sits under the 3D ship canvas), so it's intentionally skipped.
     } else if (PLASMA_WAKE_SHIPS.has(p.shipClass)) {
       // Fallback: Plasma wake for special ships
       const sizeScale = SHIP_SIZE_SCALE[p.shipClass] ?? 1;
@@ -3136,8 +3136,10 @@ function syncPlayer(): void {
     const glbHardpoints = getShipHardpointPositions("player", cam.x, cam.y);
 
     if (glbHardpoints && glbHardpoints.thrusters.length > 0) {
-      // For 3D ships with GLB hardpoints, use Three.js engine glow (rendered in 3D scene)
-      updateEngineGlow("player", speed);
+      // For 3D ships with GLB hardpoints, the full thruster beam lives in the
+      // Three.js scene (behind the hull). Pass heading + faction color so the
+      // beam points backward and carries the ammo/faction hue.
+      updateEngineGlow("player", speed, p.angle, localThrustColor);
     } else {
       // Fallback to 2D PixiJS engine glow for non-3D ships
       const thrustI = Math.min(1, speed / 80);
@@ -3339,10 +3341,8 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
         const glbHardpoints = getShipMuzzleWorldPositionsAt(o.id, o.pos.x, o.pos.y, o.angle);
 
         if (glbHardpoints && glbHardpoints.thrusters.length > 0) {
-          // One trail per GLB thruster hardpoint — all hp_thruster_* emit.
-          for (const t of glbHardpoints.thrusters) {
-            effectManager.spawnThrusterTrail(t.x, t.y, o.angle, spd, thrustColor);
-          }
+          // GLB ships: beam rendered in the 3D scene (updateEngineGlow below),
+          // so it's occluded by the hull. Pixi beam skipped to avoid bleed.
         } else if (PLASMA_WAKE_SHIPS.has(o.shipClass)) {
           // Plasma wake fallback
           const oSizeScale = SHIP_SIZE_SCALE[o.shipClass] ?? 1;
@@ -3365,9 +3365,10 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
         }
       }
 
-      // Always drive the engine glow opacity — passing spd=0 turns it fully off.
+      // Always drive the engine glow — passing spd=0 turns it fully off. Pass
+      // heading + faction color so the 3D beam points backward and is tinted.
       if (use3D) {
-        updateEngineGlow(o.id, spd);
+        updateEngineGlow(o.id, spd, o.angle, thrustColor);
       }
     }
 
