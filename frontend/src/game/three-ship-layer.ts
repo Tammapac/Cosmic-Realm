@@ -10,6 +10,23 @@ function shipSeedHash(s: string): number {
   for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
   return h >>> 0;
 }
+
+// Does a material's dominant color match the accent hue (so we know it's the
+// enemy's "core" part, e.g. the overlord's blue crystal)? Compares hue and
+// requires the color to be reasonably saturated + not near-black, so plain
+// grey/dark hull plates never match.
+function materialMatchesAccentColor(m: THREE.MeshStandardMaterial, accentHex: number): boolean {
+  const src = (m.emissive && (m.emissive.r + m.emissive.g + m.emissive.b) > 0.15)
+    ? m.emissive : m.color;
+  if (!src) return false;
+  const hsl = { h: 0, s: 0, l: 0 };
+  src.getHSL(hsl);
+  if (hsl.s < 0.28 || hsl.l < 0.12 || hsl.l > 0.9) return false; // grey/black/white → not the core
+  const acc = new THREE.Color(accentHex);
+  const ah = { h: 0, s: 0, l: 0 }; acc.getHSL(ah);
+  let dh = Math.abs(hsl.h - ah.h); if (dh > 0.5) dh = 1 - dh; // circular hue distance
+  return dh < 0.09; // within ~32° of the accent hue
+}
 import {
   ENABLE_THREE_NEBULA_SHADER,
   THREE_NEBULA_RENDER_SCALE,
@@ -555,7 +572,13 @@ function loadModel(shipClass: string): void {
       // map to the hull here; "core"/"both" attach a glowing crystal/orb per
       // instance in updateShip3D (see makeEnemyCore).
       const accent = ENEMY_ACCENTS[shipClass];
-      const energyCracks = accent && (accent.kind === "cracks" || accent.kind === "both")
+      const energyCracks = accent && accent.kind === "cracks"
+        ? { color: accent.color, intensity: accent.intensity }
+        : undefined;
+      // For "core" enemies, the accent-colored material on the model is made
+      // shiny + self-lit (so only the interior/core glows, not a decal over
+      // the whole ship).
+      const coreAccent = accent && accent.kind === "core"
         ? { color: accent.color, intensity: accent.intensity }
         : undefined;
       let hullMatCount = 0, glowSkipCount = 0;
@@ -619,6 +642,23 @@ function loadModel(shipClass: string): void {
               size: r * 2,
             };
             mesh.layers.set(FX_LAYER);
+          } else if (coreAccent && materialMatchesAccentColor(m, coreAccent.color)) {
+            // This material is the enemy's ACCENT-COLORED part (e.g. the
+            // overlord's blue core) → make it shiny + self-lit so ONLY the
+            // interior/core glows. The rest of the hull is untouched (falls to
+            // the dark space-metal branch below).
+            m.color = new THREE.Color(coreAccent.color).multiplyScalar(0.6);
+            m.emissive = new THREE.Color(coreAccent.color);
+            m.emissiveIntensity = coreAccent.intensity ?? 2.0;
+            m.metalness = 0.9;
+            m.roughness = 0.12;          // very shiny
+            (m as any).envMapIntensity = 1.6;
+            m.userData.pulseEmissive = {
+              base: coreAccent.intensity ?? 2.0,
+              amp: (coreAccent.intensity ?? 2.0) * 0.4, speed: 1.5,
+            };
+            m.needsUpdate = true;
+            hullMatCount++;
           } else if (strongEmissive) {
             // Keep the glow, but still darken the base + add reflectivity so it
             // reads as lit metal with an emissive detail, not a flat bright blob.
@@ -1061,26 +1101,11 @@ export function updateShip3D(
     wrapper.add(model);
     scene.add(wrapper);
 
-    // Per-enemy signature CORE (crystal/orb) — a small emissive gem placed
-    // INSIDE the model (e.g. overlord's blue crystal, titan's reactor). It uses
-    // normal depth so the HULL OCCLUDES it — only what peeks through openings is
-    // visible, plus a subtle bloom bleed. NOT a sprite over the whole ship.
-    const accent = ENEMY_ACCENTS[shipClass];
-    if (accent && accent.kind === "core") {
-      const core = makeEnemyCore(accent.color, { crystal: !!accent.crystal, intensity: accent.intensity });
-      const mbox = new THREE.Box3().setFromObject(model);
-      const msize = mbox.getSize(new THREE.Vector3());
-      const mcenter = mbox.getCenter(new THREE.Vector3());
-      // Small: a fraction of the hull so it sits in the interior, not around it.
-      const coreScale = (Math.min(msize.x, msize.z) || 1) * (accent.size ?? 0.28);
-      core.scale.setScalar(coreScale);
-      core.position.copy(mcenter);
-      // Sink it slightly below the top so the hull covers the outer parts.
-      core.position.y -= msize.y * 0.12;
-      // Stay on the DEFAULT layer (0) so the hull depth-occludes it.
-      wrapper.add(core);
-      wrapper.userData.enemyCore = core;
-    }
+    // NOTE: the separate glowing "core" object was removed — it always read as
+    // a glow OVER the whole model. Instead, the enemy's OWN accent-colored
+    // material is made shiny + self-lit in the material traversal above (see
+    // the accent.kind === "core" branch there), so only the parts that are
+    // already that color (the interior/core) light up; the rest stays dark.
 
     // Billboard glow sprites: attach to authored halo anchors (hidden shells)
     // and to any explicitly named "Glow_*" empties. Parenting means the

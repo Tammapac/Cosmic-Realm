@@ -2500,7 +2500,12 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
     // every frame from the projectile's authoritative world position.
     const kindEarly = pr.weaponKind;
     const isRocketEarly = kindEarly === "rocket";
-    const isFxKindEarly = !pr.fromPlayer && !!FX_KIND_MAP[kindEarly as WeaponKind];
+    // NPC projectiles used to render as animated FX sprites (orb/spinner/…)
+    // which never got the upgraded enemyLaser look. They now go through the
+    // SAME layered LaserSystem as player shots — only the render path changes;
+    // the projectile spawn/ballistics/aoeRadius are untouched. (Set to false to
+    // route every non-rocket projectile, player and enemy, through LaserSystem.)
+    const isFxKindEarly = false;
     const isTrueLaser = !isRocketEarly && !isFxKindEarly;
 
     if (isTrueLaser) {
@@ -2726,9 +2731,6 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
             const sizeScale = Math.max(0.5, (prev.aoeRadius ?? 20) / 30) * (prev.fromPlayer ? 1 : 0.6);
             explosionSystem.spawn("enemyExplosion", prev.x, prev.y, { sizeScale });
           }
-        } else if (!prev.fromPlayer && FX_KIND_MAP[prev.weaponKind]) {
-          // bullet-hell shot fizzle: animated ring burst in the shot's color
-          spawnFxImpact(prev.x, prev.y, PIXI.utils.hex2string(prev.color), (prev as any).size ?? 4);
         } else {
           // Laser hit/expiry — Laserticles.kill() ends the beam at the
           // real impact point and spawns its trail fragments; the layered
