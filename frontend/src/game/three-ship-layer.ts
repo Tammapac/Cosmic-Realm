@@ -584,9 +584,11 @@ function loadModel(shipClass: string): void {
         ? { color: accent.color, intensity: accent.intensity, matchAny: !!accent.matchAnyColored }
         : undefined;
       let hullMatCount = 0, glowSkipCount = 0;
+      let dbgMeshes = 0, dbgMats = 0, dbgStrongEmis = 0, dbgGlow = 0, dbgCore = 0, dbgNoStd = 0;
       model.traverse((child) => {
         const mesh = child as THREE.Mesh;
         if (!mesh.isMesh || !mesh.material) return;
+        dbgMeshes++;
 
         // Handle BOTH single materials and material ARRAYS (multi-material
         // meshes were silently skipped before → some models never changed).
@@ -602,6 +604,8 @@ function loadModel(shipClass: string): void {
 
         for (let mi = 0; mi < matList.length; mi++) {
           let m = matList[mi] as THREE.MeshStandardMaterial;
+          dbgMats++;
+          const dbgType = (m as any).type;
 
           // Unlit → lit upgrade.
           if ((m as any).type === "MeshBasicMaterial") {
@@ -639,6 +643,7 @@ function loadModel(shipClass: string): void {
             (m.emissiveIntensity ?? 1) > 0.3;
 
           if (isGlowShell) {
+            dbgGlow++;
             // Enemy halo → hidden + turned into a glow anchor (unchanged behavior).
             m.visible = false;
             anyTransparentGlow = true;
@@ -675,8 +680,9 @@ function loadModel(shipClass: string): void {
               amp: (coreAccent.intensity ?? 2.0) * 0.4, speed: 1.5,
             };
             m.needsUpdate = true;
-            hullMatCount++;
+            hullMatCount++; dbgCore++;
           } else if (strongEmissive) {
+            dbgStrongEmis++;
             // Keep the glow, but still darken the base + add reflectivity so it
             // reads as lit metal with an emissive detail, not a flat bright blob.
             m.metalness = Math.max(m.metalness ?? 0, 0.5);
@@ -684,6 +690,7 @@ function loadModel(shipClass: string): void {
             (m as any).envMapIntensity = 0.8;
             m.needsUpdate = true;
           } else {
+            if (dbgType !== "MeshStandardMaterial" && dbgType !== "MeshPhysicalMaterial") dbgNoStd++;
             applySpaceMaterial(m, role, { seed, energyCracks });
             hullMatCount++;
           }
@@ -696,7 +703,7 @@ function loadModel(shipClass: string): void {
         if (anyTransparentGlow) glowSkipCount++;
       });
       if ((window as any).__DEBUG_MAT) {
-        console.log(`[SpaceMat] ${shipClass}: ${hullMatCount} hull mats textured, ${glowSkipCount} glow meshes skipped`);
+        console.log(`[SpaceMat] ${shipClass}: meshes=${dbgMeshes} mats=${dbgMats} → textured=${hullMatCount} core=${dbgCore} strongEmissive=${dbgStrongEmis} glowShell=${dbgGlow} nonStd=${dbgNoStd}`);
       }
       const box = new THREE.Box3().setFromObject(model);
       const size = box.getSize(new THREE.Vector3());
