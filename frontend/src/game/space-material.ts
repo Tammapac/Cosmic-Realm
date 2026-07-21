@@ -250,26 +250,27 @@ function detailNormalTex(): THREE.CanvasTexture {
 // the model center). All glow via emissive/bloom + a slow pulse.
 export type EnemyAccent =
   | { kind: "cracks"; color: number; intensity?: number }
-  | { kind: "core"; color: number; size?: number; intensity?: number }
-  | { kind: "both"; color: number; coreColor?: number; intensity?: number };
+  | { kind: "core"; color: number; size?: number; intensity?: number; crystal?: boolean };
 
+// `size` is a fraction of the hull's smaller footprint — kept small so the gem
+// lives INSIDE the model (the hull occludes it, only the inner glow peeks out).
 export const ENEMY_ACCENTS: Record<string, EnemyAccent> = {
-  enemy_scout:       { kind: "core",   color: 0x4ec8ff, size: 0.35, intensity: 1.6 }, // cyan sensor eye
+  enemy_scout:       { kind: "core",   color: 0x4ec8ff, size: 0.26, intensity: 2.0 }, // cyan sensor eye
   enemy_interceptor: { kind: "cracks", color: 0x5cf0ff, intensity: 1.4 },             // cyan speed veins
   enemy_raider:      { kind: "cracks", color: 0xff8a3c, intensity: 1.6 },             // orange vents
-  enemy_corvette:    { kind: "core",   color: 0x35ffd0, size: 0.4,  intensity: 1.6 }, // teal core
+  enemy_corvette:    { kind: "core",   color: 0x35ffd0, size: 0.28, intensity: 2.0 }, // teal core
   enemy_destroyer:   { kind: "cracks", color: 0xff4d4d, intensity: 1.7 },             // red weapon glow
-  enemy_sentinel:    { kind: "core",   color: 0xffc24d, size: 0.42, intensity: 1.7 }, // amber scanner
+  enemy_sentinel:    { kind: "core",   color: 0xffc24d, size: 0.3,  intensity: 2.1 }, // amber scanner
   enemy_specter:     { kind: "cracks", color: 0xb168ff, intensity: 1.3 },             // violet ghost
-  enemy_phantom:     { kind: "core",   color: 0xc9a0ff, size: 0.38, intensity: 1.4 }, // pale violet
+  enemy_phantom:     { kind: "core",   color: 0xc9a0ff, size: 0.26, intensity: 1.8, crystal: true }, // pale violet gem
   enemy_wraith:      { kind: "cracks", color: 0x6effc0, intensity: 1.4 },             // toxic green-cyan
-  enemy_voidling:    { kind: "core",   color: 0x9b4dff, size: 0.5,  intensity: 1.8 }, // purple void orb
+  enemy_voidling:    { kind: "core",   color: 0x9b4dff, size: 0.32, intensity: 2.2, crystal: true }, // purple void crystal
   enemy_dread:       { kind: "cracks", color: 0xff3b57, intensity: 1.8 },             // crimson
-  enemy_titan:       { kind: "core",   color: 0xff7a2c, size: 0.55, intensity: 1.9 }, // orange reactor
-  enemy_juggernaut:  { kind: "both",   color: 0xff3a3a, coreColor: 0xff5a3a, intensity: 1.8 }, // red cracks + red core
-  enemy_overlord:    { kind: "core",   color: 0x3a7bff, size: 0.6,  intensity: 2.1 }, // BLUE CRYSTAL
+  enemy_titan:       { kind: "core",   color: 0xff7a2c, size: 0.34, intensity: 2.3 }, // orange reactor
+  enemy_juggernaut:  { kind: "cracks", color: 0xff3a3a, intensity: 1.8 }, // red cracks only (the top orb was removed)
+  enemy_overlord:    { kind: "core",   color: 0x3a7bff, size: 0.34, intensity: 2.6, crystal: true }, // BLUE CRYSTAL inside
   enemy_leviathan:   { kind: "cracks", color: 0x35ff7a, intensity: 1.8 },             // green cracks
-  enemy_zengas:      { kind: "core",   color: 0xff4de2, size: 0.5,  intensity: 2.0 }, // magenta core
+  enemy_zengas:      { kind: "core",   color: 0xff4de2, size: 0.3,  intensity: 2.3, crystal: true }, // magenta crystal
 };
 
 /**
@@ -391,30 +392,41 @@ export function makeEnemyCore(color: number, opts?: { crystal?: boolean; intensi
   const col = new THREE.Color(color);
   const inten = opts?.intensity ?? 1.6;
 
-  // Inner bright gem/orb.
-  const innerMat = new THREE.SpriteMaterial({
-    map: opts?.crystal ? crystalTex() : coreGlowTex(),
-    color: col.clone().lerp(new THREE.Color(0xffffff), 0.4),
-    transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending,
-    depthWrite: false, depthTest: false,
+  // A small emissive 3D GEM/ORB placed INSIDE the model, with normal depth so
+  // the hull occludes it — it only shows through openings/gaps and bleeds a
+  // little via bloom. NOT a camera-facing sprite over the whole ship (that
+  // read as a cheap decal on top). Kept small so it lives in the interior.
+  const geo = opts?.crystal
+    ? new THREE.IcosahedronGeometry(0.5, 0)   // faceted crystal
+    : new THREE.SphereGeometry(0.5, 16, 12);  // reactor orb
+  const coreMat = new THREE.MeshStandardMaterial({
+    color: col.clone().multiplyScalar(0.15),  // dark base so it's not a flat blob
+    emissive: col.clone(),
+    emissiveIntensity: inten,
+    metalness: 0.2,
+    roughness: 0.35,
+    depthTest: true,      // hull occludes it → only inner is visible
+    depthWrite: true,
   });
-  const inner = new THREE.Sprite(innerMat);
-  inner.scale.set(1, 1, 1);
-  inner.userData.coreRole = "inner";
-  grp.add(inner);
+  const coreMesh = new THREE.Mesh(geo, coreMat);
+  coreMesh.userData.coreRole = "gem";
+  coreMesh.userData.noOutline = true;
+  grp.add(coreMesh);
 
-  // Soft outer halo.
+  // A SMALL contained halo so the internal light reads even on solid hulls —
+  // but kept tight (roughly the gem size) so it stays "inside", not a big decal
+  // over the ship. depthWrite off so it blends; it rides just around the gem.
   const haloMat = new THREE.SpriteMaterial({
     map: coreGlowTex(), color: col,
-    transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending,
+    transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending,
     depthWrite: false, depthTest: false,
   });
   const halo = new THREE.Sprite(haloMat);
-  halo.scale.set(2.4, 2.4, 1);
+  halo.scale.set(1.5, 1.5, 1);
   halo.userData.coreRole = "halo";
   grp.add(halo);
 
-  grp.userData.pulseSprite = { base: inten, amp: inten * 0.4, speed: 1.5, inner: innerMat, halo: haloMat };
+  grp.userData.pulseSprite = { base: inten, amp: inten * 0.5, speed: 1.5, coreMat, haloMat };
   return grp;
 }
 

@@ -1061,21 +1061,23 @@ export function updateShip3D(
     wrapper.add(model);
     scene.add(wrapper);
 
-    // Per-enemy signature CORE (crystal/orb) — attached at the model center for
-    // "core"/"both" accents (e.g. overlord's blue crystal, titan's reactor).
+    // Per-enemy signature CORE (crystal/orb) — a small emissive gem placed
+    // INSIDE the model (e.g. overlord's blue crystal, titan's reactor). It uses
+    // normal depth so the HULL OCCLUDES it — only what peeks through openings is
+    // visible, plus a subtle bloom bleed. NOT a sprite over the whole ship.
     const accent = ENEMY_ACCENTS[shipClass];
-    if (accent && (accent.kind === "core" || accent.kind === "both")) {
-      const coreColor = accent.kind === "both" ? (accent.coreColor ?? accent.color) : accent.color;
-      const isCrystal = shipClass === "enemy_overlord" || shipClass === "enemy_voidling" || shipClass === "enemy_zengas";
-      const core = makeEnemyCore(coreColor, { crystal: isCrystal, intensity: accent.intensity });
-      // Size relative to the model, from its bbox.
+    if (accent && accent.kind === "core") {
+      const core = makeEnemyCore(accent.color, { crystal: !!accent.crystal, intensity: accent.intensity });
       const mbox = new THREE.Box3().setFromObject(model);
       const msize = mbox.getSize(new THREE.Vector3());
       const mcenter = mbox.getCenter(new THREE.Vector3());
-      const coreScale = (Math.max(msize.x, msize.z) || 1) * (accent.kind === "core" ? (accent.size ?? 0.45) : 0.4);
+      // Small: a fraction of the hull so it sits in the interior, not around it.
+      const coreScale = (Math.min(msize.x, msize.z) || 1) * (accent.size ?? 0.28);
       core.scale.setScalar(coreScale);
       core.position.copy(mcenter);
-      core.traverse((n) => n.layers?.set(FX_LAYER)); // glow layer (bloom, no outline)
+      // Sink it slightly below the top so the hull covers the outer parts.
+      core.position.y -= msize.y * 0.12;
+      // Stay on the DEFAULT layer (0) so the hull depth-occludes it.
       wrapper.add(core);
       wrapper.userData.enemyCore = core;
     }
@@ -1238,16 +1240,16 @@ export function render3DLayer(): void {
           if (p) (m as THREE.MeshStandardMaterial).emissiveIntensity = p.base + Math.sin(now * p.speed) * p.amp;
         }
       });
-      // Signature core (crystal/orb) pulse — opacity + a slow spin.
+      // Signature core (inner gem) pulse — emissive breathing + a slow spin.
       const core = (ship.wrapper.userData as any).enemyCore as THREE.Group | undefined;
       if (core) {
         const ps = (core.userData as any).pulseSprite;
-        if (ps) {
-          const k = 1 + Math.sin(now * ps.speed) * (ps.amp / ps.base) * 0.5;
-          ps.inner.opacity = Math.min(1, 0.9 * k);
-          ps.halo.opacity = Math.min(1, 0.5 * k);
+        if (ps && ps.coreMat) {
+          const s = Math.sin(now * ps.speed);
+          ps.coreMat.emissiveIntensity = ps.base + s * ps.amp;
+          if (ps.haloMat) ps.haloMat.opacity = 0.4 + s * 0.15;
         }
-        core.rotation.z += frameDt * 0.4; // gentle crystal turn
+        core.rotation.y += frameDt * 0.6; // gentle gem turn
       }
     }
   }
