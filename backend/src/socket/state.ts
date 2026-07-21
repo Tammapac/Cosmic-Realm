@@ -44,6 +44,11 @@ export type OnlinePlayer = {
   isLaserFiring: boolean;
   isRocketFiring: boolean;
   attackTargetId: string | null;
+  // Player id (as string) this player has explicitly selected as a PvP target.
+  // Enables same-faction opt-in duels: same-faction damage only lands when the
+  // victim is the attacker's chosen pvpTargetId. Different-faction PvP never
+  // needs this. Null when no player is targeted.
+  pvpTargetId: string | null;
   miningTargetId: string | null;
   laserAmmoType: string;
   rocketAmmoType: string;

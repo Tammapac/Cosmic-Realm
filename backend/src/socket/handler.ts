@@ -101,6 +101,7 @@ export function setupSocket(io: Server) {
       isLaserFiring: false,
       isRocketFiring: false,
       attackTargetId: null,
+      pvpTargetId: null,
       laserAmmoType: "x1",
       rocketAmmoType: "cl1",
       laserFireCd: 0,
@@ -145,10 +146,11 @@ export function setupSocket(io: Server) {
     });
 
     // ── INPUT: ATTACK (start/stop firing) ─────────────────────────
-    socket.on("input:attack", (data: { enemyId: string | null; laser: boolean; rocket: boolean; laserAmmo: string; rocketAmmo: string }) => {
+    socket.on("input:attack", (data: { enemyId: string | null; pvpTargetId?: string | null; laser: boolean; rocket: boolean; laserAmmo: string; rocketAmmo: string }) => {
       const p = getPlayer(user.playerId);
       if (!p) return;
       p.attackTargetId = data.enemyId;
+      p.pvpTargetId = data.pvpTargetId ?? null;
       p.isLaserFiring = data.laser;
       p.isRocketFiring = data.rocket;
       if (data.laserAmmo) p.laserAmmoType = data.laserAmmo;

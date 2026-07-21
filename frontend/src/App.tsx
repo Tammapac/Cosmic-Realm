@@ -934,6 +934,7 @@ function GameApp() {
         firing: state.isLaserFiring,
         rocketFiring: state.isRocketFiring,
         attackTargetId: state.attackTargetId,
+        pvpTargetId: state.selectedPlayerId,
         miningTargetId: state.miningTargetId,
         laserAmmo: state.player.activeAmmoType ?? "x1",
         rocketAmmo: state.player.activeRocketAmmoType ?? "cl1",
@@ -946,6 +947,7 @@ function GameApp() {
         cur.firing !== last.firing ||
         cur.rocketFiring !== last.rocketFiring ||
         cur.attackTargetId !== last.attackTargetId ||
+        cur.pvpTargetId !== last.pvpTargetId ||
         cur.laserAmmo !== last.laserAmmo ||
         cur.rocketAmmo !== last.rocketAmmo;
       const miningChanged = cur.miningTargetId !== last.miningTargetId;

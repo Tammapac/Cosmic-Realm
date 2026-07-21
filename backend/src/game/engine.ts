@@ -43,6 +43,10 @@ function projHitsPlayer(proj: ServerProjectile, p: OnlinePlayer, dt: number): bo
 // ── STATION SAFE ZONES ───────────────────────────────────────────────────
 // No enemies may spawn within this radius of any station.
 const STATION_SAFE_RADIUS = 1500;
+// PvP no-fire bubble around a station core — much smaller than the enemy-spawn
+// exclusion, so cross-faction combat is possible across the open zone and only
+// the immediate docking area (where players are often idle) is protected.
+const PVP_SAFE_RADIUS = 500;
 
 const STATIONS_BY_ZONE: Record<string, Vec2[]> = {};
 for (const st of STATIONS) {
@@ -1083,19 +1087,26 @@ export class GameEngine {
             break;
           }
         }
-        // PvP: a player's shot also damages players of a DIFFERENT faction.
-        // Only runs if the shot wasn't already consumed by an enemy hit above
-        // (enemy loop deletes + breaks), so one projectile never hits both.
-        // Guards mirror the enemy-projectile→player path: skip self, docked
-        // victims, same/undeclared faction, and station safe zones.
+        // PvP: a player's shot also damages other players. Runs only if the
+        // shot wasn't already consumed by an enemy hit above (enemy loop
+        // deletes + breaks), so one projectile never hits both.
+        //   • DIFFERENT faction → always attackable.
+        //   • SAME faction → only when the attacker has explicitly selected
+        //     that player as their PvP target (opt-in duel), i.e. the victim
+        //     is the attacker's pvpTargetId.
+        // Guards: never self, never a docked victim, and a small station-core
+        // safe bubble (PVP_SAFE_RADIUS, much smaller than the enemy-spawn
+        // exclusion so PvP isn't disabled across the whole spawn area).
         if (zs.projectiles.has(projId)) {
           const attacker = players.find(pl => pl.playerId === proj.fromPlayerId);
-          if (attacker && attacker.faction) {
+          if (attacker) {
             for (const victim of players) {
               if (victim.playerId === proj.fromPlayerId) continue; // never self
               if (victim.isDocked) continue;                       // docked = safe
-              if (!victim.faction || victim.faction === attacker.faction) continue; // same/no faction = allied
-              if (isInStationSafeZone(zoneId, { x: victim.posX, y: victim.posY })) continue; // station bubble
+              const diffFaction = !!attacker.faction && !!victim.faction && victim.faction !== attacker.faction;
+              const optInDuel = attacker.pvpTargetId != null && attacker.pvpTargetId === String(victim.playerId);
+              if (!diffFaction && !optInDuel) continue;            // allied & not a chosen duel
+              if (isInStationSafeZone(zoneId, { x: victim.posX, y: victim.posY }, -(STATION_SAFE_RADIUS - PVP_SAFE_RADIUS))) continue; // small station core only
               if (projHitsPlayer(proj, victim, dt)) {
                 this.damagePlayer(victim, proj.damage);
                 events.push({ type: "player:hit", playerId: victim.playerId, damage: proj.damage, zone: zoneId });

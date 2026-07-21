@@ -496,6 +496,7 @@ export function sendInput(data: {
   firing: boolean;
   rocketFiring: boolean;
   attackTargetId: string | null;
+  pvpTargetId?: string | null;
   miningTargetId: string | null;
   laserAmmo: string;
   rocketAmmo: string;
@@ -509,6 +510,7 @@ export function sendInput(data: {
   }
   socket?.emit("input:attack", {
     enemyId: data.attackTargetId,
+    pvpTargetId: data.pvpTargetId ?? null,
     laser: data.firing,
     rocket: data.rocketFiring,
     laserAmmo: data.laserAmmo,

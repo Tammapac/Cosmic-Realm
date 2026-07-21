@@ -1514,9 +1514,16 @@ function shipLabelHtml(
   hullPct: number | null,
   extra: string,
 ): string {
-  const dot = faction
-    ? `<span style="flex:none;width:8px;height:8px;border-radius:50%;background:${faction.color};box-shadow:0 0 4px ${faction.color};" title="${faction.tag}"></span>`
-    : "";
+  // Faction emblem — real per-faction icon (EIC/MMO/VRU) instead of a bare
+  // colored dot. Tag maps 1:1 to the icon file in /assets/ui/factions/.
+  const factionIconFile = faction
+    ? ({ EIC: "eic", MMO: "mmo", VRU: "vru" } as Record<string, string>)[faction.tag]
+    : undefined;
+  const dot = faction && factionIconFile
+    ? `<img src="/assets/ui/factions/${factionIconFile}.png" style="flex:none;width:17px;height:17px;object-fit:contain;filter:drop-shadow(0 0 3px ${faction.color}) drop-shadow(0 1px 2px #000);" title="${faction.tag}"/>`
+    : faction
+      ? `<span style="flex:none;width:8px;height:8px;border-radius:50%;background:${faction.color};box-shadow:0 0 4px ${faction.color};" title="${faction.tag}"></span>`
+      : "";
   // Fixed landscape badge box so every rank insignia renders at a readable,
   // consistent size directly right of the name.
   const rankImg = `<img src="/assets/ui/ranks/rank_${String(rank.index + 1).padStart(2, "0")}.png" style="flex:none;height:16px;width:28px;object-fit:contain;filter:drop-shadow(0 1px 2px #000) drop-shadow(0 0 3px rgba(0,0,0,0.8));" title="${rank.name}"/>`;
