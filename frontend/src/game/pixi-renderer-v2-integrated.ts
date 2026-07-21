@@ -1513,7 +1513,12 @@ function shipLabelHtml(
   rank: { index: number; name: string },
   hullPct: number | null,
   extra: string,
+  hostile = false,
 ): string {
+  // Enemy-faction pilots read RED (name + glow); allies/self stay the normal
+  // cool white so hostiles are instantly identifiable.
+  const nameColor = hostile ? "#ff5a5a" : "#e8f0ff";
+  const nameGlow = hostile ? "0 0 5px rgba(255,60,60,0.75),0 1px 2px #000" : "0 0 3px #000,0 1px 2px #000";
   // Faction emblem — real per-faction icon (EIC/MMO/VRU) instead of a bare
   // colored dot. Tag maps 1:1 to the icon file in /assets/ui/factions/.
   const factionIconFile = faction
@@ -1532,7 +1537,7 @@ function shipLabelHtml(
     : "";
   return `<div style="position:absolute;left:${Math.round(sx)}px;top:${Math.round(syTop)}px;transform:translate(-50%,0);pointer-events:none;">
     ${bar}
-    <div style="display:flex;align-items:center;justify-content:center;gap:5px;font-family:'Kenney Future Narrow','Courier New',monospace;font-size:13px;font-weight:bold;color:#e8f0ff;text-shadow:0 0 3px #000,0 1px 2px #000;white-space:nowrap;letter-spacing:0.05em;">${dot}<span>${escapeHtml(name)}</span>${rankImg}${extra}</div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:5px;font-family:'Kenney Future Narrow','Courier New',monospace;font-size:13px;font-weight:bold;color:${nameColor};text-shadow:${nameGlow};white-space:nowrap;letter-spacing:0.05em;">${dot}<span>${escapeHtml(name)}</span>${rankImg}${extra}</div>
   </div>`;
 }
 
@@ -3248,7 +3253,11 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
           <div style="width:${Math.round(oBarW * shieldPct)}px;height:100%;background:#4ee2ff;border-radius:2px;"></div>
         </div>
       </div>`;
-    _otherLabelHtml += shipLabelHtml(sxL, syL + rPxL, o.name, oFaction, oRank, null, "");
+    // Hostile = a declared faction different from the local player's (allies
+    // and factionless pilots stay neutral-colored).
+    const myFaction = state.player.faction;
+    const oHostile = !!o.faction && !!myFaction && o.faction !== myFaction;
+    _otherLabelHtml += shipLabelHtml(sxL, syL + rPxL, o.name, oFaction, oRank, null, "", oHostile);
 
     const factionColor = o.faction ? FACTIONS[o.faction as keyof typeof FACTIONS]?.color ?? "#7a8ad8" : "#7a8ad8";
     // Animate body glow with faction color

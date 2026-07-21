@@ -746,7 +746,16 @@ export class GameEngine {
       p.laserFireCd -= dt;
       p.rocketFireCd -= dt;
 
-      const target = p.attackTargetId ? zs.enemies.get(p.attackTargetId) : null;
+      // Resolve the fire target: an enemy (attackTargetId) OR another player
+      // (pvpTargetId, set when the pilot clicked a player). Players aren't in
+      // zs.enemies, so a player target is looked up in the zone player list and
+      // exposed as a {pos} the rest of the fire code can aim at unchanged.
+      let target: { pos: { x: number; y: number } } | null =
+        p.attackTargetId ? (zs.enemies.get(p.attackTargetId) ?? null) : null;
+      if (!target && p.pvpTargetId) {
+        const victim = players.find(pl => String(pl.playerId) === p.pvpTargetId);
+        if (victim && !victim.isDocked) target = { pos: { x: victim.posX, y: victim.posY } };
+      }
       if (!target) {
         if (p.attackTargetId) p.attackTargetId = null;
         continue;

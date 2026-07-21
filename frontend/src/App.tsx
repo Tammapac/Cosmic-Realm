@@ -1059,7 +1059,8 @@ function GameApp() {
         bump();
       } else if (e.key === "1") {
         if (!state.dockedAt) {
-          if (state.selectedWorldTarget?.kind === "enemy") {
+          // Fire at an enemy OR at a selected player (PvP).
+          if (state.selectedWorldTarget?.kind === "enemy" || state.selectedWorldTarget?.kind === "player") {
             state.isLaserFiring = !state.isLaserFiring;
             state.isAttacking = state.isLaserFiring || state.isRocketFiring;
             bump();
@@ -1067,7 +1068,7 @@ function GameApp() {
         }
       } else if (e.key === "2") {
         if (!state.dockedAt) {
-          if (state.selectedWorldTarget?.kind === "enemy") {
+          if (state.selectedWorldTarget?.kind === "enemy" || state.selectedWorldTarget?.kind === "player") {
             state.isRocketFiring = !state.isRocketFiring;
             state.isAttacking = state.isLaserFiring || state.isRocketFiring;
             bump();

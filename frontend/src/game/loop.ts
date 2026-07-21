@@ -1753,9 +1753,17 @@ function tickWorld(dt: number): void {
   // ── Attack: only fire when player chooses to attack (isAttacking)
   playerFireCd.value -= dt;
   rocketFireCd.value -= dt;
-  const atkTarget = state.attackTargetId
-    ? state.enemies.find((e) => e.id === state.attackTargetId)
+  // Fire target: an enemy (attackTargetId) or, for PvP, the selected player
+  // (selectedPlayerId). Only .pos is needed downstream, so a player target is
+  // adapted to the same shape. The server is authoritative for the actual
+  // damage; this drives the local muzzle/aim + predicted visual.
+  let atkTarget: { pos: { x: number; y: number } } | null = state.attackTargetId
+    ? (state.enemies.find((e) => e.id === state.attackTargetId) ?? null)
     : null;
+  if (!atkTarget && state.selectedPlayerId) {
+    const tp = state.others.find((o) => o.id === state.selectedPlayerId);
+    if (tp) atkTarget = { pos: { x: tp.pos.x, y: tp.pos.y } };
+  }
   const FIRE_RANGE = 400;
   if ((state.isLaserFiring || state.isRocketFiring) && atkTarget) {
     const ang = Math.atan2(atkTarget.pos.y - p.pos.y, atkTarget.pos.x - p.pos.x);
