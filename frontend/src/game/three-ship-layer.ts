@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { ThreeNebulaBackground } from "./three-nebula-background";
-import { applySpaceMaterial, type SpaceRole } from "./space-material";
+import { applySpaceMaterial, makeEnemyCore, ENEMY_ACCENTS, type SpaceRole } from "./space-material";
 
 // Stable string hash → seed for reproducible per-class surface aging.
 function shipSeedHash(s: string): number {
@@ -551,9 +551,12 @@ function loadModel(shipClass: string): void {
       const isEnemy = shipClass.startsWith("enemy_");
       const role: SpaceRole = isEnemy ? "npc" : "player";
       const seed = shipSeedHash(shipClass);
-      // Special-case bodies get glowing energy cracks (Leviathan → green).
-      const energyCracks = shipClass === "enemy_leviathan"
-        ? { color: 0x35ff7a, intensity: 1.8 }
+      // Per-enemy signature accent. "cracks"/"both" apply an emissive fracture
+      // map to the hull here; "core"/"both" attach a glowing crystal/orb per
+      // instance in updateShip3D (see makeEnemyCore).
+      const accent = ENEMY_ACCENTS[shipClass];
+      const energyCracks = accent && (accent.kind === "cracks" || accent.kind === "both")
+        ? { color: accent.color, intensity: accent.intensity }
         : undefined;
       let hullMatCount = 0, glowSkipCount = 0;
       model.traverse((child) => {
@@ -1058,6 +1061,25 @@ export function updateShip3D(
     wrapper.add(model);
     scene.add(wrapper);
 
+    // Per-enemy signature CORE (crystal/orb) — attached at the model center for
+    // "core"/"both" accents (e.g. overlord's blue crystal, titan's reactor).
+    const accent = ENEMY_ACCENTS[shipClass];
+    if (accent && (accent.kind === "core" || accent.kind === "both")) {
+      const coreColor = accent.kind === "both" ? (accent.coreColor ?? accent.color) : accent.color;
+      const isCrystal = shipClass === "enemy_overlord" || shipClass === "enemy_voidling" || shipClass === "enemy_zengas";
+      const core = makeEnemyCore(coreColor, { crystal: isCrystal, intensity: accent.intensity });
+      // Size relative to the model, from its bbox.
+      const mbox = new THREE.Box3().setFromObject(model);
+      const msize = mbox.getSize(new THREE.Vector3());
+      const mcenter = mbox.getCenter(new THREE.Vector3());
+      const coreScale = (Math.max(msize.x, msize.z) || 1) * (accent.kind === "core" ? (accent.size ?? 0.45) : 0.4);
+      core.scale.setScalar(coreScale);
+      core.position.copy(mcenter);
+      core.traverse((n) => n.layers?.set(FX_LAYER)); // glow layer (bloom, no outline)
+      wrapper.add(core);
+      wrapper.userData.enemyCore = core;
+    }
+
     // Billboard glow sprites: attach to authored halo anchors (hidden shells)
     // and to any explicitly named "Glow_*" empties. Parenting means the
     // anchor's pulse animation scales the sprites too.
@@ -1206,6 +1228,7 @@ export function render3DLayer(): void {
   if (now - _lastEmissivePulseUpdate > 0.03) {
     _lastEmissivePulseUpdate = now;
     for (const ship of activeShips.values()) {
+      // Hull crack emissive pulse.
       ship.model.traverse((child) => {
         const mesh = child as THREE.Mesh;
         if (!mesh.isMesh || !mesh.material) return;
@@ -1215,6 +1238,17 @@ export function render3DLayer(): void {
           if (p) (m as THREE.MeshStandardMaterial).emissiveIntensity = p.base + Math.sin(now * p.speed) * p.amp;
         }
       });
+      // Signature core (crystal/orb) pulse — opacity + a slow spin.
+      const core = (ship.wrapper.userData as any).enemyCore as THREE.Group | undefined;
+      if (core) {
+        const ps = (core.userData as any).pulseSprite;
+        if (ps) {
+          const k = 1 + Math.sin(now * ps.speed) * (ps.amp / ps.base) * 0.5;
+          ps.inner.opacity = Math.min(1, 0.9 * k);
+          ps.halo.opacity = Math.min(1, 0.5 * k);
+        }
+        core.rotation.z += frameDt * 0.4; // gentle crystal turn
+      }
     }
   }
   if (outlineRT && outlineScene && outlineCamera && fsQuad && brightMat && blurMat && outlineMat && bloomRTA && bloomRTB) {

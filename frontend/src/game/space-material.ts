@@ -243,6 +243,35 @@ function detailNormalTex(): THREE.CanvasTexture {
   return tex;
 }
 
+// ── Per-enemy signature accents ─────────────────────────────────────────────
+// Each NPC type gets a distinctive glowing detail so they read as unique. Two
+// kinds: "cracks" = branching emissive fractures over the hull; "core" = a
+// glowing crystal/orb centerpiece (an additive sprite the caller attaches to
+// the model center). All glow via emissive/bloom + a slow pulse.
+export type EnemyAccent =
+  | { kind: "cracks"; color: number; intensity?: number }
+  | { kind: "core"; color: number; size?: number; intensity?: number }
+  | { kind: "both"; color: number; coreColor?: number; intensity?: number };
+
+export const ENEMY_ACCENTS: Record<string, EnemyAccent> = {
+  enemy_scout:       { kind: "core",   color: 0x4ec8ff, size: 0.35, intensity: 1.6 }, // cyan sensor eye
+  enemy_interceptor: { kind: "cracks", color: 0x5cf0ff, intensity: 1.4 },             // cyan speed veins
+  enemy_raider:      { kind: "cracks", color: 0xff8a3c, intensity: 1.6 },             // orange vents
+  enemy_corvette:    { kind: "core",   color: 0x35ffd0, size: 0.4,  intensity: 1.6 }, // teal core
+  enemy_destroyer:   { kind: "cracks", color: 0xff4d4d, intensity: 1.7 },             // red weapon glow
+  enemy_sentinel:    { kind: "core",   color: 0xffc24d, size: 0.42, intensity: 1.7 }, // amber scanner
+  enemy_specter:     { kind: "cracks", color: 0xb168ff, intensity: 1.3 },             // violet ghost
+  enemy_phantom:     { kind: "core",   color: 0xc9a0ff, size: 0.38, intensity: 1.4 }, // pale violet
+  enemy_wraith:      { kind: "cracks", color: 0x6effc0, intensity: 1.4 },             // toxic green-cyan
+  enemy_voidling:    { kind: "core",   color: 0x9b4dff, size: 0.5,  intensity: 1.8 }, // purple void orb
+  enemy_dread:       { kind: "cracks", color: 0xff3b57, intensity: 1.8 },             // crimson
+  enemy_titan:       { kind: "core",   color: 0xff7a2c, size: 0.55, intensity: 1.9 }, // orange reactor
+  enemy_juggernaut:  { kind: "both",   color: 0xff3a3a, coreColor: 0xff5a3a, intensity: 1.8 }, // red cracks + red core
+  enemy_overlord:    { kind: "core",   color: 0x3a7bff, size: 0.6,  intensity: 2.1 }, // BLUE CRYSTAL
+  enemy_leviathan:   { kind: "cracks", color: 0x35ff7a, intensity: 1.8 },             // green cracks
+  enemy_zengas:      { kind: "core",   color: 0xff4de2, size: 0.5,  intensity: 2.0 }, // magenta core
+};
+
 /**
  * ENERGY-CRACK emissive map: branching glowing fractures over a black hull.
  * Black = no glow (the hull stays dark, non-emissive), bright = a crack that
@@ -299,6 +328,94 @@ function energyCrackTex(seed: number): THREE.CanvasTexture {
   tex.colorSpace = THREE.SRGBColorSpace;
   _texCache.set(key, tex);
   return tex;
+}
+
+// Round soft glow (for the core halo). White; tinted by the sprite material.
+function coreGlowTex(): THREE.CanvasTexture {
+  const key = "coreglow";
+  const hit = _texCache.get(key);
+  if (hit) return hit;
+  const S = 128;
+  const c = document.createElement("canvas"); c.width = c.height = S;
+  const ctx = c.getContext("2d")!;
+  const g = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(0.25, "rgba(255,255,255,0.7)");
+  g.addColorStop(0.6, "rgba(255,255,255,0.18)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = g; ctx.fillRect(0, 0, S, S);
+  const tex = new THREE.CanvasTexture(c);
+  _texCache.set(key, tex);
+  return tex;
+}
+
+// Faceted crystal (for core "crystal" look) — a bright angular gem shape.
+function crystalTex(): THREE.CanvasTexture {
+  const key = "crystal";
+  const hit = _texCache.get(key);
+  if (hit) return hit;
+  const S = 128;
+  const c = document.createElement("canvas"); c.width = c.height = S;
+  const ctx = c.getContext("2d")!;
+  ctx.translate(S / 2, S / 2);
+  // hexagonal gem, brightest at center
+  const pts: [number, number][] = [];
+  for (let i = 0; i < 6; i++) {
+    const a = -Math.PI / 2 + i * Math.PI / 3;
+    pts.push([Math.cos(a) * S * 0.42, Math.sin(a) * S * 0.46]);
+  }
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, S * 0.5);
+  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(0.5, "rgba(255,255,255,0.75)");
+  g.addColorStop(1, "rgba(255,255,255,0.15)");
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+  for (const p of pts) ctx.lineTo(p[0], p[1]);
+  ctx.closePath(); ctx.fill();
+  // facet lines
+  ctx.strokeStyle = "rgba(255,255,255,0.5)"; ctx.lineWidth = 1.5;
+  for (const p of pts) { ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(p[0], p[1]); ctx.stroke(); }
+  const tex = new THREE.CanvasTexture(c);
+  _texCache.set(key, tex);
+  return tex;
+}
+
+/**
+ * Build a glowing CORE object (crystal or orb) to attach at a model's center.
+ * Returns a small group of additive sprites (bright inner + soft halo), tagged
+ * with pulseEmissive-equivalent data (userData.pulseSprite) so the render loop
+ * breathes its opacity/scale. Renderer-agnostic; the caller adds it + sizes it.
+ */
+export function makeEnemyCore(color: number, opts?: { crystal?: boolean; intensity?: number }): THREE.Group {
+  const grp = new THREE.Group();
+  const col = new THREE.Color(color);
+  const inten = opts?.intensity ?? 1.6;
+
+  // Inner bright gem/orb.
+  const innerMat = new THREE.SpriteMaterial({
+    map: opts?.crystal ? crystalTex() : coreGlowTex(),
+    color: col.clone().lerp(new THREE.Color(0xffffff), 0.4),
+    transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending,
+    depthWrite: false, depthTest: false,
+  });
+  const inner = new THREE.Sprite(innerMat);
+  inner.scale.set(1, 1, 1);
+  inner.userData.coreRole = "inner";
+  grp.add(inner);
+
+  // Soft outer halo.
+  const haloMat = new THREE.SpriteMaterial({
+    map: coreGlowTex(), color: col,
+    transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending,
+    depthWrite: false, depthTest: false,
+  });
+  const halo = new THREE.Sprite(haloMat);
+  halo.scale.set(2.4, 2.4, 1);
+  halo.userData.coreRole = "halo";
+  grp.add(halo);
+
+  grp.userData.pulseSprite = { base: inten, amp: inten * 0.4, speed: 1.5, inner: innerMat, halo: haloMat };
+  return grp;
 }
 
 // ── Material presets ────────────────────────────────────────────────────────
