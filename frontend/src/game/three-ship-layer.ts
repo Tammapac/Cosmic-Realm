@@ -2,6 +2,14 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { ThreeNebulaBackground } from "./three-nebula-background";
+import { applySpaceMaterial, type SpaceRole } from "./space-material";
+
+// Stable string hash → seed for reproducible per-class surface aging.
+function shipSeedHash(s: string): number {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
 import {
   ENABLE_THREE_NEBULA_SHADER,
   THREE_NEBULA_RENDER_SCALE,
@@ -377,23 +385,31 @@ export function init3DLayer(canvas: HTMLCanvasElement): void {
   // sky/sun reflections and specular highlights roll off naturally, so the
   // ships read as objects lit BY the scene instead of cut-in renders.
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.92; // dimmer than the 2D scene, never brighter
+  // 0.86: was 0.92 with an extra CSS brightness(0.94) grade on the canvas
+  // (0.92×0.94≈0.865). The CSS filter is removed (forbidden), so the dimming
+  // now lives entirely here in tone mapping.
+  renderer.toneMappingExposure = 0.86;
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   (scene as any).environmentIntensity = 0.42;
   // Grade the DOM-presented canvas to match the Pixi scene lighting (the
   // player layer sits ABOVE the Pixi vignette/ambient and would otherwise
   // read brighter than everything else — the "cut-in" look).
-  canvas.style.filter = "brightness(0.94) saturate(0.96)";
+  // NOTE: the old `canvas.style.filter = brightness(0.94) saturate(0.96)` CSS
+  // grade was REMOVED (forbidden canvas filter). The equivalent dimming is now
+  // done properly in-scene via tone-mapping exposure (set above) + the deeper
+  // low ambient below, so nothing outside WebGL touches the pixels.
 
-  // Lighting - enhanced dramatic contrast for stronger shading
-  // Ambient: very low intensity for deeper shadows
-  const ambient = new THREE.AmbientLight(0x303050, 0.2);
+  // ── Directional world lighting (deep shadow side, no flat ambient) ──
+  // Very low, cool ambient so the side facing away from the sun goes genuinely
+  // dark instead of being lifted flat — the main cause of the "flat/cut-out"
+  // read. The material's own AO map darkens recesses on top of this.
+  const ambient = new THREE.AmbientLight(0x232a42, 0.12);
   scene.add(ambient);
 
-  // Main sun: brighter warm light from upper-right for strong highlights
-  const sun = new THREE.DirectionalLight(0xfff8f0, 1.9);
-  sun.position.set(100, 300, -80);
+  // Main sun: strong warm key from the upper-right → clear lit side.
+  const sun = new THREE.DirectionalLight(0xfff2e0, 2.2);
+  sun.position.set(120, 320, -90);
   sun.castShadow = true;
   sun.shadow.mapSize.set(4096, 4096);
   sun.shadow.camera.left = -900;
@@ -406,10 +422,17 @@ export function init3DLayer(canvas: HTMLCanvasElement): void {
   sun.shadow.normalBias = 0.6;
   scene.add(sun);
 
-  // Rim/fill: cooler blue light from opposite side for edge definition
-  const fill = new THREE.DirectionalLight(0x6699ff, 0.55);
-  fill.position.set(-80, 150, 100);
+  // Cool fill: weak, opposite side — defines the dark side's edge without
+  // lifting it to grey.
+  const fill = new THREE.DirectionalLight(0x5c86d6, 0.4);
+  fill.position.set(-90, 140, 110);
   scene.add(fill);
+
+  // Grazing rim from behind/below → catches top edges (fresnel-like) so hulls
+  // read against the dark background instead of blending into a flat blob.
+  const rim = new THREE.DirectionalLight(0x9ec2ff, 0.55);
+  rim.position.set(-30, -70, 210);
+  scene.add(rim);
 
   window.addEventListener("resize", onResize);
   console.log("[Three.js] INIT OK canvas:", w, "x", h);
@@ -549,18 +572,30 @@ function loadModel(shipClass: string): void {
             const mat = mesh.material as THREE.MeshStandardMaterial;
             if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace;
 
-            if (!isEnemy) {
-              // Set good default shading properties if they exist
-              if (mat.roughness !== undefined) mat.roughness = Math.max(0.3, Math.min(0.6, mat.roughness));
-              if (mat.metalness !== undefined) mat.metalness = Math.max(0.25, Math.min(0.6, mat.metalness));
-              if ((mat as any).envMapIntensity !== undefined) (mat as any).envMapIntensity = 1.0;
-
-              // Remove excessive emissive glow that can wash out lighting
-              if (mat.emissive) mat.emissive.set(0x000000);
-              if (mat.emissiveIntensity !== undefined) mat.emissiveIntensity = 0;
+            // Shared dark space-metal material. Applied to OPAQUE HULL meshes
+            // only — authored emissive parts (engine cores, weapon glows) and
+            // transparent glow shells are left untouched so real light sources
+            // still glow. Enemies now get the same dark treatment on their hull
+            // (previously skipped → they read bright + flat), just tuned to the
+            // npc preset (darker, rougher, more worn) vs the player preset.
+            const isEmissivePart = !!mat.emissive &&
+              (mat.emissive.r + mat.emissive.g + mat.emissive.b) > 0.05 &&
+              (mat.emissiveIntensity ?? 1) > 0;
+            const isGlowShell = mat.transparent;
+            if (!isEmissivePart && !isGlowShell) {
+              const role: SpaceRole = isEnemy ? "npc" : "player";
+              // Stable per-class seed so a ship class always ages identically.
+              const seed = shipSeedHash(shipClass);
+              // aoMap needs a 2nd UV channel — mirror uv→uv2 if absent so the
+              // detail AO/roughness map actually darkens recesses.
+              const geo = mesh.geometry as THREE.BufferGeometry;
+              if (geo && geo.attributes.uv && !geo.attributes.uv2) {
+                geo.setAttribute("uv2", geo.attributes.uv);
+              }
+              applySpaceMaterial(mat, role, { seed });
+            } else {
+              mat.needsUpdate = true;
             }
-
-            mat.needsUpdate = true;
 
             // Self-shadowing (transparent halo shells don't cast)
             mesh.castShadow = !mat.transparent;

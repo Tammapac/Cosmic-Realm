@@ -273,9 +273,18 @@ export function applySpaceMaterial(
      role === "station" ? SPACE_METAL.station :
      role === "npc" ? SPACE_METAL.hullNpc : SPACE_METAL.hull);
 
+  // How much to darken the authored albedo toward dark metal. NPCs are pulled
+  // down hardest (they read "too bright" with their raw Blender textures), boss
+  // a little, player kept closest to authored (well-kept ship), station mid.
+  const albedoMul =
+    role === "npc" ? 0.55 :
+    role === "boss" ? 0.72 :
+    role === "station" ? 0.7 :
+    role === "player" ? 0.85 : 0.8;
   if (mat.map) {
-    // Keep authored albedo but pull it toward dark metal so nothing reads bright.
-    mat.color = new THREE.Color(0xffffff).multiplyScalar(0.9);
+    // Keep authored albedo detail but multiply it down + tint toward the dark
+    // metal palette so nothing reads bright/flat.
+    mat.color = new THREE.Color(baseHex).lerp(new THREE.Color(0xffffff), 0.35).multiplyScalar(albedoMul + 0.25);
   } else {
     mat.color = new THREE.Color(baseHex);
   }

@@ -3,6 +3,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { PIXELATE_3D, PIXELATE_3D_SCALE } from "./renderer-config";
 import { STATIONS } from "./types";
+import { applySpaceMaterial } from "./space-material";
 
 // Effective downscale factor for the fake pixel-art render mode (1 = off).
 // The Pixi stationSprite stretches this canvas back to screen size with
@@ -185,7 +186,11 @@ function loadTemplate(url: string): void {
       const box = new THREE.Box3().setFromObject(model);
       const size = box.getSize(new THREE.Vector3());
       const maxDim = Math.max(size.x, size.y, size.z);
-      // Force all materials to fully opaque — walk EVERY descendant, not just meshes
+      // Apply the shared dark space-metal material to the station hull so it
+      // reads as a heavy metallic structure (panels, seams, wear, AO) instead
+      // of the old forced-matte grey block (rough≥0.88/metal≤0.08). Emissive
+      // window/light materials are preserved so they can glow.
+      const seed = strHash(url);
       model.traverse((child: any) => {
         if (!child.material) return;
         const materials = Array.isArray(child.material) ? child.material : [child.material];
@@ -198,15 +203,19 @@ function loadTemplate(url: string): void {
           m.alphaMap = null;
           m.blending = THREE.NormalBlending;
           m.premultipliedAlpha = false;
-          // Matte hull: the Tripo exports come in glossy/metallic, and the
-          // slow spin sweeps specular highlights across the hull — a constant
-          // shimmer that doesn't fit the game's flat pixel-art look. High
-          // roughness + low metalness kills the gloss while keeping shading.
-          if (m.roughness !== undefined) m.roughness = Math.max(0.88, m.roughness);
-          if (m.metalness !== undefined) m.metalness = Math.min(0.08, m.metalness);
-          if (m.envMapIntensity !== undefined) m.envMapIntensity = 0.25;
-          m.needsUpdate = true;
+          const isEmissive = !!m.emissive &&
+            (m.emissive.r + m.emissive.g + m.emissive.b) > 0.05 &&
+            (m.emissiveIntensity ?? 1) > 0;
+          if (isEmissive) { m.needsUpdate = true; continue; } // keep glowing windows/lights
+          // aoMap needs uv2.
+          const geo = child.geometry as THREE.BufferGeometry | undefined;
+          if (geo && geo.attributes && geo.attributes.uv && !geo.attributes.uv2) {
+            geo.setAttribute("uv2", geo.attributes.uv);
+          }
+          applySpaceMaterial(m as THREE.MeshStandardMaterial, "station", { seed });
         }
+        // Modules cast + receive shadows on each other (real depth between them).
+        if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; }
       });
       templates.set(url, { group: model, maxDim });
       templateLoading.delete(url);
@@ -247,6 +256,9 @@ export function initStation3DLayer(width?: number, height?: number): HTMLCanvasE
   }
   renderer.setClearColor(0x000000, 0); // Transparent — Pixi composites this over its bgLayer
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  // Real inter-module shadows (modules occlude each other under the key light).
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   const dbSize = renderer.getDrawingBufferSize(new THREE.Vector2());
   setupOutlinePass(dbSize.x, dbSize.y);
@@ -273,18 +285,34 @@ export function initStation3DLayer(width?: number, height?: number): HTMLCanvasE
   renderer.toneMappingExposure = 0.88; // stations stay moody, embedded in the dark
   const pmrem = new THREE.PMREMGenerator(renderer);
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  (scene as any).environmentIntensity = 0.32;
+  (scene as any).environmentIntensity = 0.55; // metallic hull needs more reflection
 
-  const ambient = new THREE.AmbientLight(0x2a2c48, 0.45);
+  // Deeper directional contrast so the station reads as a heavy 3D structure
+  // (bright lit side, dark shadow side, deep module gaps) instead of a flat,
+  // uniformly-lifted grey block. Lower ambient is the key change.
+  const ambient = new THREE.AmbientLight(0x232840, 0.16);
   scene.add(ambient);
 
-  const sun = new THREE.DirectionalLight(0xcfd9ff, 1.15);
-  sun.position.set(100, 300, -80);
+  // Strong cool key from the upper-right, shadow-casting so modules occlude
+  // each other (real inter-module shadows).
+  const sun = new THREE.DirectionalLight(0xe6ecff, 1.9);
+  sun.position.set(120, 320, -90);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.left = -1400; sun.shadow.camera.right = 1400;
+  sun.shadow.camera.top = 1400; sun.shadow.camera.bottom = -1400;
+  sun.shadow.camera.near = 1; sun.shadow.camera.far = 6000;
+  sun.shadow.bias = -0.0004; sun.shadow.normalBias = 1.0;
   scene.add(sun);
 
-  const fill = new THREE.DirectionalLight(0x6699ff, 0.4);
-  fill.position.set(-80, 150, 100);
+  const fill = new THREE.DirectionalLight(0x5c86d6, 0.32);
+  fill.position.set(-90, 140, 110);
   scene.add(fill);
+
+  // Grazing rim so panel edges + antennae catch light against the dark.
+  const rim = new THREE.DirectionalLight(0x9ec2ff, 0.45);
+  rim.position.set(-30, -70, 210);
+  scene.add(rim);
 
   window.addEventListener("resize", onResize);
   return stationCanvas;
