@@ -622,6 +622,34 @@ export class EffectManager {
       core.tint = lerpColor(color, 0xffffff, 0.7);
       core.rotation = 0; core.angularVel = 0;
     }
+
+    // ── Thruster TRAIL — separate from the static nozzle glow above. Small
+    //    soft puffs born at the nozzle that drift backward, gently expand and
+    //    fade, forming the ribbon that streams out behind the ship. These are
+    //    long-lived MOVING particles (unlike the re-spawned static glow), so
+    //    they accumulate into a proper trailing wake. ──
+    const px = Math.cos(angle + Math.PI / 2), py = Math.sin(angle + Math.PI / 2);
+    const puffs = intensity > 0.5 ? 2 : 1;
+    for (let i = 0; i < puffs; i++) {
+      const puff = this.acquire("trail", this.behindLayer, getSoftGlowTex(7), true);
+      if (!puff) break;
+      const dist = (3 + Math.random() * 5) * sm;                 // start right at the nozzle
+      const lat = (Math.random() - 0.5) * (3 + intensity * 4) * sm;
+      puff.x = x + bx * dist + px * lat;
+      puff.y = y + by * dist + py * lat;
+      // Drift backward (the trail streams out behind the ship).
+      puff.vx = bx * (28 + Math.random() * 28) * intensity + px * lat * 0.4;
+      puff.vy = by * (28 + Math.random() * 28) * intensity + py * lat * 0.4;
+      puff.life = VFX.THRUSTER_PARTICLE_LIFETIME * (1.0 + Math.random() * 0.7) * sm;
+      puff.maxLife = puff.life;
+      puff.startAlpha = 0.34 * intensity * alphaMultiplier;
+      puff.scaleStart = (0.28 + intensity * 0.3) * (0.85 + Math.random() * 0.3) * sm;
+      puff.scaleEnd = puff.scaleStart * 2.0;                     // expands as it cools (billow)
+      puff.scaleX = 1; puff.scaleY = 1;
+      puff.anchorX = 0.5;
+      puff.tint = lerpColor(color, 0xffffff, 0.12);
+      puff.rotation = 0; puff.angularVel = 0;
+    }
   }
 
 
