@@ -636,33 +636,24 @@ function LoadingScreen({ onReady }: { onReady: () => void }) {
   useEffect(() => {
     let elapsed = 0;
     // Minimum on-screen time so fast connections don't flash the loader,
-    // and a settle window after everything reports ready so late assets
-    // (all GLB models, not just the player ship) truly finish.
-    const MIN_MS = 3500;
-    const SETTLE_MS = 700;
-    let readySince = 0;
+    // plus a hard cap so the loader can NEVER get stuck (only the player
+    // ship is preloaded; the other GLB models load lazily on demand, so
+    // waiting for "all models" here would hang forever).
+    const MIN_MS = 4000;
+    const MAX_MS = 12000;
     const interval = setInterval(() => {
       elapsed += 100;
       const p = getLoadingProgress();
-      // Real progress = share of ALL ship models loaded, gated by a slow
-      // time ramp so the bar advances smoothly even before models resolve.
-      const modelPct = p.total > 0 ? (p.loaded / p.total) * 100 : 100;
-      const timePct = Math.min(92, (elapsed / MIN_MS) * 92);
-      // Wait for: the player ship ready AND every model resolved
-      // (loaded or failed) AND the minimum time elapsed.
-      const allModels = p.total === 0 || p.loaded >= p.total;
-      const fullyReady = p.playerReady && allModels && elapsed >= MIN_MS;
+      // The bar follows a smooth time ramp to ~95%; the player ship being
+      // ready lets it complete once the minimum time has passed.
+      const timePct = Math.min(95, Math.round((elapsed / MIN_MS) * 95));
+      const done = (p.playerReady && elapsed >= MIN_MS) || elapsed >= MAX_MS;
+      setProgress(done ? 100 : timePct);
 
-      setProgress(fullyReady ? 100 : Math.round(Math.min(modelPct, timePct, 99)));
-
-      if (fullyReady) {
-        if (readySince === 0) readySince = elapsed;
-        // hold at 100% for a short settle window, then fade out
-        if (elapsed - readySince >= SETTLE_MS) {
-          clearInterval(interval);
-          setFadeOut(true);
-          setTimeout(onReady, 800);
-        }
+      if (done) {
+        clearInterval(interval);
+        setFadeOut(true);
+        setTimeout(onReady, 800);
       }
     }, 100);
     return () => clearInterval(interval);
@@ -671,10 +662,10 @@ function LoadingScreen({ onReady }: { onReady: () => void }) {
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 200,
-      // "contain" keeps the FULL loading art visible (no left/right crop on
-      // wide monitors); the dark base fills any letterbox bars.
+      // Stretch the loading art edge-to-edge (fills the whole screen, no
+      // letterbox bars). 3:2 -> viewport aspect is a mild stretch only.
       background: "#04070e url(/assets/ui/loading-bg.jpg?v=1) no-repeat center center",
-      backgroundSize: "contain",
+      backgroundSize: "100% 100%",
       display: "flex", flexDirection: "column",
       alignItems: "center", justifyContent: "flex-end",
       transition: "opacity 0.7s ease-out",
