@@ -548,80 +548,91 @@ function loadModel(shipClass: string): void {
       // Enemy models author their own emissive glow + PBR values in Blender —
       // preserve them. Player ships keep the legacy clamps below.
       const isEnemy = shipClass.startsWith("enemy_");
+      const role: SpaceRole = isEnemy ? "npc" : "player";
+      const seed = shipSeedHash(shipClass);
+      let hullMatCount = 0, glowSkipCount = 0;
       model.traverse((child) => {
-        if ((child as THREE.Mesh).isMesh) {
-          const mesh = child as THREE.Mesh;
-          if (mesh.material) {
-            // Convert MeshBasicMaterial (unlit) to MeshStandardMaterial (lit)
-            if (mesh.material.type === 'MeshBasicMaterial') {
-              const oldMat = mesh.material as THREE.MeshBasicMaterial;
-              const newMat = new THREE.MeshStandardMaterial({
-                map: oldMat.map,
-                color: oldMat.color,
-                transparent: oldMat.transparent,
-                opacity: oldMat.opacity,
-                side: oldMat.side,
-                roughness: 0.45, // shiny hull — env reflections pick this up
-                metalness: 0.35, // clear metallic response
-              });
-              mesh.material = newMat;
-              oldMat.dispose();
-            }
+        const mesh = child as THREE.Mesh;
+        if (!mesh.isMesh || !mesh.material) return;
 
-            // Ensure proper color space and shading properties
-            const mat = mesh.material as THREE.MeshStandardMaterial;
-            if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace;
+        // Handle BOTH single materials and material ARRAYS (multi-material
+        // meshes were silently skipped before → some models never changed).
+        const matList: THREE.Material[] = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        const newList: THREE.Material[] = [];
+        let anyTransparentGlow = false;
 
-            // Shared dark space-metal material. Applied to OPAQUE HULL meshes
-            // only — authored emissive parts (engine cores, weapon glows) and
-            // transparent glow shells are left untouched so real light sources
-            // still glow. Enemies now get the same dark treatment on their hull
-            // (previously skipped → they read bright + flat), just tuned to the
-            // npc preset (darker, rougher, more worn) vs the player preset.
-            const isEmissivePart = !!mat.emissive &&
-              (mat.emissive.r + mat.emissive.g + mat.emissive.b) > 0.05 &&
-              (mat.emissiveIntensity ?? 1) > 0;
-            const isGlowShell = mat.transparent;
-            if (!isEmissivePart && !isGlowShell) {
-              const role: SpaceRole = isEnemy ? "npc" : "player";
-              // Stable per-class seed so a ship class always ages identically.
-              const seed = shipSeedHash(shipClass);
-              // aoMap needs a 2nd UV channel — mirror uv→uv2 if absent so the
-              // detail AO/roughness map actually darkens recesses.
-              const geo = mesh.geometry as THREE.BufferGeometry;
-              if (geo && geo.attributes.uv && !geo.attributes.uv2) {
-                geo.setAttribute("uv2", geo.attributes.uv);
-              }
-              applySpaceMaterial(mat, role, { seed });
-            } else {
-              mat.needsUpdate = true;
-            }
-
-            // Self-shadowing (transparent halo shells don't cast)
-            mesh.castShadow = !mat.transparent;
-            mesh.receiveShadow = true;
-
-            // Transparent glow shells (enemy halos): hide the sphere geometry
-            // (material-level, so child sprites stay visible) and mark the
-            // node as a glow anchor — updateShip3D attaches layered billboard
-            // sprites to it per instance. Color/size/alpha come from the
-            // authored shell; its pulse animation drives the sprites.
-            if (isEnemy && mat.transparent) {
-              mat.visible = false;
-              const col = (mat.emissive && (mat.emissive.r + mat.emissive.g + mat.emissive.b) > 0.05)
-                ? mat.emissive.clone() : (mat.color ? mat.color.clone() : new THREE.Color(GLOW_DEFAULT_COLOR));
-              if (!mesh.geometry.boundingSphere) mesh.geometry.computeBoundingSphere();
-              const r = mesh.geometry.boundingSphere ? mesh.geometry.boundingSphere.radius : 1;
-              mesh.userData.glowAnchor = {
-                color: "#" + col.getHexString(),
-                intensity: (mat.opacity ?? GLOW_BASE_ALPHA) / GLOW_BASE_ALPHA,
-                size: r * 2,
-              };
-              mesh.layers.set(FX_LAYER);
-            }
-          }
+        // aoMap needs a 2nd UV channel — set once per mesh.
+        const geo = mesh.geometry as THREE.BufferGeometry;
+        if (geo && geo.attributes.uv && !geo.attributes.uv2) {
+          geo.setAttribute("uv2", geo.attributes.uv);
         }
+
+        for (let mi = 0; mi < matList.length; mi++) {
+          let m = matList[mi] as THREE.MeshStandardMaterial;
+
+          // Unlit → lit upgrade.
+          if ((m as any).type === "MeshBasicMaterial") {
+            const om = m as any;
+            const up = new THREE.MeshStandardMaterial({
+              map: om.map, color: om.color, transparent: om.transparent,
+              opacity: om.opacity, side: om.side, roughness: 0.5, metalness: 0.4,
+            });
+            om.dispose?.();
+            m = up;
+          }
+          if (m.map) m.map.colorSpace = THREE.SRGBColorSpace;
+
+          // A GLOW SHELL is an enemy halo: transparent AND essentially unlit /
+          // emissive-driven. Only these are skipped + hidden. A merely
+          // alpha-flagged HULL material is NOT a glow shell and still gets the
+          // space-metal treatment (this over-broad skip was the bug).
+          const glowByEmissive = !!m.emissive &&
+            (m.emissive.r + m.emissive.g + m.emissive.b) > 0.05;
+          const isGlowShell = isEnemy && m.transparent && (m.opacity ?? 1) < 0.9 && glowByEmissive;
+
+          // An EMISSIVE PART (engine core, weapon strip) glows and must keep its
+          // emissive — but we still want it lit as metal, so we only skip the
+          // dark-metal override for STRONGLY emissive materials, not faint ones.
+          const strongEmissive = !!m.emissive &&
+            (m.emissive.r + m.emissive.g + m.emissive.b) > 0.35 &&
+            (m.emissiveIntensity ?? 1) > 0.3;
+
+          if (isGlowShell) {
+            // Enemy halo → hidden + turned into a glow anchor (unchanged behavior).
+            m.visible = false;
+            anyTransparentGlow = true;
+            const col = glowByEmissive ? m.emissive!.clone()
+              : (m.color ? m.color.clone() : new THREE.Color(GLOW_DEFAULT_COLOR));
+            if (!mesh.geometry.boundingSphere) mesh.geometry.computeBoundingSphere();
+            const r = mesh.geometry.boundingSphere ? mesh.geometry.boundingSphere.radius : 1;
+            mesh.userData.glowAnchor = {
+              color: "#" + col.getHexString(),
+              intensity: (m.opacity ?? GLOW_BASE_ALPHA) / GLOW_BASE_ALPHA,
+              size: r * 2,
+            };
+            mesh.layers.set(FX_LAYER);
+          } else if (strongEmissive) {
+            // Keep the glow, but still darken the base + add reflectivity so it
+            // reads as lit metal with an emissive detail, not a flat bright blob.
+            m.metalness = Math.max(m.metalness ?? 0, 0.5);
+            m.roughness = Math.min(m.roughness ?? 1, 0.55);
+            (m as any).envMapIntensity = 0.8;
+            m.needsUpdate = true;
+          } else {
+            applySpaceMaterial(m, role, { seed });
+            hullMatCount++;
+          }
+          newList.push(m);
+        }
+
+        mesh.material = Array.isArray(mesh.material) ? newList : newList[0];
+        mesh.castShadow = !anyTransparentGlow;
+        mesh.receiveShadow = true;
+        if (anyTransparentGlow) glowSkipCount++;
       });
+      if ((window as any).__DEBUG_MAT) {
+        console.log(`[SpaceMat] ${shipClass}: ${hullMatCount} hull mats textured, ${glowSkipCount} glow meshes skipped`);
+      }
       const box = new THREE.Box3().setFromObject(model);
       const size = box.getSize(new THREE.Vector3());
       const center = box.getCenter(new THREE.Vector3());

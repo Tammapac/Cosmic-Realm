@@ -191,10 +191,20 @@ function loadTemplate(url: string): void {
       // of the old forced-matte grey block (rough≥0.88/metal≤0.08). Emissive
       // window/light materials are preserved so they can glow.
       const seed = strHash(url);
+      let stHull = 0, stEmis = 0;
       model.traverse((child: any) => {
         if (!child.material) return;
         const materials = Array.isArray(child.material) ? child.material : [child.material];
-        for (const m of materials) {
+        const geo = child.geometry as THREE.BufferGeometry | undefined;
+        if (geo && geo.attributes && geo.attributes.uv && !geo.attributes.uv2) {
+          geo.setAttribute("uv2", geo.attributes.uv);
+        }
+        for (let mi = 0; mi < materials.length; mi++) {
+          let m = materials[mi];
+          if (m.type === "MeshBasicMaterial") {
+            const up = new THREE.MeshStandardMaterial({ map: m.map, color: m.color, roughness: 0.6, metalness: 0.5 });
+            m.dispose?.(); materials[mi] = up; m = up;
+          }
           m.transparent = false;
           m.opacity = 1;
           m.depthWrite = true;
@@ -203,23 +213,22 @@ function loadTemplate(url: string): void {
           m.alphaMap = null;
           m.blending = THREE.NormalBlending;
           m.premultipliedAlpha = false;
-          const isEmissive = !!m.emissive &&
-            (m.emissive.r + m.emissive.g + m.emissive.b) > 0.05 &&
-            (m.emissiveIntensity ?? 1) > 0;
-          if (isEmissive) { m.needsUpdate = true; continue; } // keep glowing windows/lights
-          // aoMap needs uv2.
-          const geo = child.geometry as THREE.BufferGeometry | undefined;
-          if (geo && geo.attributes && geo.attributes.uv && !geo.attributes.uv2) {
-            geo.setAttribute("uv2", geo.attributes.uv);
-          }
+          // Only STRONGLY emissive materials (real windows/lights) are kept as
+          // glowing; a faint emissive hull still gets the dark-metal treatment.
+          const strongEmissive = !!m.emissive &&
+            (m.emissive.r + m.emissive.g + m.emissive.b) > 0.35 &&
+            (m.emissiveIntensity ?? 1) > 0.3;
+          if (strongEmissive) { m.needsUpdate = true; stEmis++; continue; }
           applySpaceMaterial(m as THREE.MeshStandardMaterial, "station", { seed });
+          stHull++;
         }
+        if (Array.isArray(child.material)) child.material = materials;
         // Modules cast + receive shadows on each other (real depth between them).
         if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; }
       });
       templates.set(url, { group: model, maxDim });
       templateLoading.delete(url);
-      console.log("[Station3D] loaded", url, "maxDim:", maxDim.toFixed(2));
+      console.log("[Station3D] loaded", url, "maxDim:", maxDim.toFixed(2), `(${stHull} hull mats, ${stEmis} emissive kept)`);
     },
     undefined,
     (err) => {
