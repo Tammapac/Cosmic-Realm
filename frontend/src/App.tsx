@@ -635,15 +635,34 @@ function LoadingScreen({ onReady }: { onReady: () => void }) {
 
   useEffect(() => {
     let elapsed = 0;
+    // Minimum on-screen time so fast connections don't flash the loader,
+    // and a settle window after everything reports ready so late assets
+    // (all GLB models, not just the player ship) truly finish.
+    const MIN_MS = 3500;
+    const SETTLE_MS = 700;
+    let readySince = 0;
     const interval = setInterval(() => {
       elapsed += 100;
       const p = getLoadingProgress();
-      const fakePct = Math.min(95, Math.round((elapsed / 4000) * 95));
-      setProgress(p.playerReady ? 100 : fakePct);
-      if (p.playerReady) {
-        clearInterval(interval);
-        setFadeOut(true);
-        setTimeout(onReady, 800);
+      // Real progress = share of ALL ship models loaded, gated by a slow
+      // time ramp so the bar advances smoothly even before models resolve.
+      const modelPct = p.total > 0 ? (p.loaded / p.total) * 100 : 100;
+      const timePct = Math.min(92, (elapsed / MIN_MS) * 92);
+      // Wait for: the player ship ready AND every model resolved
+      // (loaded or failed) AND the minimum time elapsed.
+      const allModels = p.total === 0 || p.loaded >= p.total;
+      const fullyReady = p.playerReady && allModels && elapsed >= MIN_MS;
+
+      setProgress(fullyReady ? 100 : Math.round(Math.min(modelPct, timePct, 99)));
+
+      if (fullyReady) {
+        if (readySince === 0) readySince = elapsed;
+        // hold at 100% for a short settle window, then fade out
+        if (elapsed - readySince >= SETTLE_MS) {
+          clearInterval(interval);
+          setFadeOut(true);
+          setTimeout(onReady, 800);
+        }
       }
     }, 100);
     return () => clearInterval(interval);

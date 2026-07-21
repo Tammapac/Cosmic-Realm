@@ -96,15 +96,16 @@ export default function AuthScreen({ onAuth }: Props) {
     <div
       style={{
         position: "fixed", inset: 0,
-        backgroundImage: "url(/assets/ui/login-bg.jpg?v=1)",
-        backgroundSize: "cover",
-        backgroundPosition: "center",
+        // "contain" keeps the FULL key art visible (title at the top never
+        // gets cropped); the dark base fills any letterbox bars.
+        background: "#04070e url(/assets/ui/login-bg.jpg?v=1) no-repeat center top",
+        backgroundSize: "contain",
         fontFamily: "var(--font-display)",
         display: "flex", alignItems: "flex-end", justifyContent: "center",
       }}
     >
       {/* darkening scrim so the login panel stays readable over the art */}
-      <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 50% 78%, rgba(2,4,10,0.55) 0%, rgba(2,4,10,0.35) 45%, rgba(2,4,10,0.15) 100%)", pointerEvents: "none" }} />
+      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, transparent 45%, rgba(2,4,10,0.4) 72%, rgba(2,4,10,0.75) 100%)", pointerEvents: "none" }} />
       <style>{`@keyframes authTwinkle { 0%, 100% { opacity: 0.15; } 50% { opacity: 0.7; } }`}</style>
 
       <form
