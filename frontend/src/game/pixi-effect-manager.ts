@@ -588,91 +588,39 @@ export class EffectManager {
     const intensity = Math.min(1, speed / 4);
     if (intensity < 0.05) return;
 
-    const back = angle + Math.PI;              // thrust points backward
-    const bx = Math.cos(back), by = Math.sin(back);
-    const px = Math.cos(angle + Math.PI / 2);  // perpendicular (for lateral jitter)
-    const py = Math.sin(angle + Math.PI / 2);
-    // Flame orientation. The flame texture's bright NOZZLE is at its right edge
-    // (+x); with anchorX=1 that right edge pins to the hardpoint and the plume
-    // body extends to the sprite's LEFT (−x). To make that body point BACKWARD
-    // out of the engine, the sprite's local +x must point FORWARD — i.e. rotate
-    // by `angle`, NOT `angle+PI` (the old value made the plume shoot forward).
-    const beamRot = angle;
-    // Per-frame flicker so the flame breathes instead of sitting static.
-    const flick = 0.9 + Math.random() * 0.2;
+    // Deliberately minimal: a tiny STATIC glow dot at each nozzle — no long
+    // beam, no stretch, no per-frame flicker, no random size/position (which
+    // read as swinging/pulsing). Re-spawned every frame with identical values,
+    // so it sits as a steady ~5px point that just brightens with thrust.
     const sm = sizeMultiplier;
-    // Flame texture is 256px wide; scaleStart×scaleX sets on-screen length. Keep
-    // it SHORT — a nozzle plume roughly the ship's own length, not a beam across
-    // the screen. (Old values reached ~800px — the giant streak in the report.)
-    const LEN = 0.13;   // 256 * 0.13 = ~33px base; ×scaleX below stays small
+    const bx = Math.cos(angle + Math.PI), by = Math.sin(angle + Math.PI); // slight backward nudge
 
-    // ── Layer 1: outer colored plume — the visible exhaust cone. ──
-    const plume = this.acquire("beam", this.behindLayer, getFlameTex(), true);
-    if (plume) {
-      plume.x = x; plume.y = y;
-      plume.vx = bx * 6; plume.vy = by * 6;
-      plume.life = 0.08; plume.maxLife = plume.life;
-      plume.startAlpha = 0.5 * intensity * alphaMultiplier;
-      plume.scaleStart = LEN * sm; plume.scaleEnd = LEN * sm;
-      plume.scaleX = (1.4 + intensity * 1.6) * flick;        // ~33*(1.4..3) ≈ 46-100px
-      plume.scaleY = (1.6 + intensity * 0.8) * sm;           // width relative to the short base
-      plume.anchorX = 1;                                     // nozzle at emit point
-      plume.rotation = beamRot;
-      plume.tint = color;
-      plume.angularVel = 0;
+    // Outer soft glow (colored) — small, fixed size.
+    const glow = this.acquire("beam", this.behindLayer, getSoftGlowTex(5), true);
+    if (glow) {
+      glow.x = x + bx * 1.5; glow.y = y + by * 1.5;
+      glow.vx = 0; glow.vy = 0;
+      glow.life = 0.05; glow.maxLife = glow.life;
+      glow.startAlpha = 0.7 * intensity * alphaMultiplier;
+      glow.scaleStart = 0.55 * sm; glow.scaleEnd = 0.55 * sm; // ~8px, no shrink → no pulse
+      glow.scaleX = 1; glow.scaleY = 1;                      // round, not stretched
+      glow.anchorX = 0.5;
+      glow.tint = color;
+      glow.rotation = 0; glow.angularVel = 0;
     }
 
-    // ── Layer 2: white-hot inner core — shorter, brighter, thinner. ──
-    const core = this.acquire("beam", this.behindLayer, getFlameTex(), true);
+    // White-hot inner dot — even smaller, on top.
+    const core = this.acquire("beam", this.behindLayer, getSoftGlowTex(4), true);
     if (core) {
-      core.x = x; core.y = y;
-      core.vx = bx * 5; core.vy = by * 5;
-      core.life = 0.07; core.maxLife = core.life;
+      core.x = x + bx * 1.5; core.y = y + by * 1.5;
+      core.vx = 0; core.vy = 0;
+      core.life = 0.05; core.maxLife = core.life;
       core.startAlpha = 0.85 * intensity * alphaMultiplier;
-      core.scaleStart = LEN * sm; core.scaleEnd = LEN * sm;
-      core.scaleX = (0.9 + intensity * 1.0) * flick;         // shorter than plume
-      core.scaleY = (0.9 + intensity * 0.4) * sm;            // thinner
-      core.anchorX = 1;
-      core.rotation = beamRot;
-      core.tint = lerpColor(color, 0xffffff, 0.72);
-      core.angularVel = 0;
-    }
-
-    // ── Layer 3: bright bloom at the nozzle mouth — a round hot spot where the
-    //    beam leaves the ship, so the origin glows instead of starting flat. ──
-    const mouth = this.acquire("beam", this.behindLayer, getSoftGlowTex(14), true);
-    if (mouth) {
-      mouth.x = x + bx * 2; mouth.y = y + by * 2;
-      mouth.vx = 0; mouth.vy = 0;
-      mouth.life = 0.07; mouth.maxLife = mouth.life;
-      mouth.startAlpha = 0.85 * intensity * alphaMultiplier;
-      mouth.scaleStart = (0.7 + intensity * 0.6) * flick * sm;
-      mouth.scaleEnd = mouth.scaleStart;
-      mouth.tint = lerpColor(color, 0xffffff, 0.5);
-      mouth.rotation = 0; mouth.angularVel = 0;
-    }
-
-    // ── Layer 4: billowing trail puffs — soft glows shed off the plume tail
-    //    that drift back, expand and fade. This is the lingering wake; only a
-    //    couple per frame so it stays a smooth ribbon, not a cloud. ──
-    const puffs = intensity > 0.5 ? 2 : 1;
-    for (let i = 0; i < puffs; i++) {
-      const puff = this.acquire("trail", this.behindLayer, getSoftGlowTex(8), true);
-      if (!puff) break;
-      const dist = (6 + Math.random() * 8 + intensity * 10) * sm;   // shed just behind the nozzle
-      const lat = (Math.random() - 0.5) * (4 + intensity * 5) * sm;
-      puff.x = x + bx * dist + px * lat;
-      puff.y = y + by * dist + py * lat;
-      puff.vx = bx * (22 + Math.random() * 22) * intensity + px * lat * 0.5;
-      puff.vy = by * (22 + Math.random() * 22) * intensity + py * lat * 0.5;
-      puff.life = VFX.THRUSTER_PARTICLE_LIFETIME * (0.9 + Math.random() * 0.6) * sm;
-      puff.maxLife = puff.life;
-      puff.startAlpha = 0.32 * intensity * alphaMultiplier;
-      puff.scaleStart = (0.3 + intensity * 0.35) * (0.8 + Math.random() * 0.4) * sm;
-      puff.scaleEnd = puff.scaleStart * 2.0;   // expands as it cools (billow)
-      puff.tint = lerpColor(color, 0xffffff, 0.15);
-      puff.rotation = Math.random() * Math.PI * 2;
-      puff.angularVel = (Math.random() - 0.5) * 1.2;
+      core.scaleStart = 0.4 * sm; core.scaleEnd = 0.4 * sm; // ~5px
+      core.scaleX = 1; core.scaleY = 1;
+      core.anchorX = 0.5;
+      core.tint = lerpColor(color, 0xffffff, 0.7);
+      core.rotation = 0; core.angularVel = 0;
     }
   }
 
