@@ -106,14 +106,47 @@ export default function AuthScreen({ onAuth }: Props) {
     >
       {/* darkening scrim so the login panel stays readable over the art */}
       <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, transparent 45%, rgba(2,4,10,0.4) 72%, rgba(2,4,10,0.75) 100%)", pointerEvents: "none" }} />
-      <style>{`@keyframes authTwinkle { 0%, 100% { opacity: 0.15; } 50% { opacity: 0.7; } }`}</style>
+      <style>{`
+        @keyframes authTwinkle { 0%, 100% { opacity: 0.15; } 50% { opacity: 0.7; } }
+        /* breathing cyan glow around the login panel */
+        @keyframes authPanelPulse {
+          0%, 100% { box-shadow: 0 6px 26px rgba(0,0,0,0.55), 0 0 16px rgba(78,226,255,0.18); }
+          50%      { box-shadow: 0 6px 26px rgba(0,0,0,0.55), 0 0 30px rgba(78,226,255,0.42); }
+        }
+        /* diagonal sheen sweeping slowly across the glass */
+        @keyframes authPanelSheen {
+          0%   { transform: translateX(-140%) skewX(-18deg); opacity: 0; }
+          12%  { opacity: 0.9; }
+          40%  { opacity: 0; }
+          100% { transform: translateX(140%) skewX(-18deg); opacity: 0; }
+        }
+        /* Semi-transparent glass: the key art shows through. Overrides the
+           opaque .panel fill for the login form only. */
+        .auth-glass {
+          background:
+            linear-gradient(180deg, rgba(14,24,44,0.52) 0%, rgba(8,14,28,0.58) 100%) !important;
+          backdrop-filter: blur(7px) saturate(1.05) !important;
+          -webkit-backdrop-filter: blur(7px) saturate(1.05) !important;
+          animation: authPanelPulse 4.5s ease-in-out infinite;
+          overflow: hidden;
+        }
+        .auth-glass .auth-sheen {
+          content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 45%;
+          background: linear-gradient(90deg, transparent, rgba(180,235,255,0.14), rgba(255,255,255,0.08), transparent);
+          pointer-events: none; z-index: 1;
+          animation: authPanelSheen 7s ease-in-out infinite;
+        }
+        /* keep all interactive content above the sheen */
+        .auth-glass > *:not(.auth-sheen) { position: relative; z-index: 4; }
+      `}</style>
 
       <form
         onSubmit={mode === "login" ? submitLogin : submitRegister}
-        className="panel"
+        className="panel auth-glass"
         style={{ width: "min(420px, 92vw)", display: "flex", flexDirection: "column", position: "relative", zIndex: 1, marginBottom: "8vh" }}
       >
-        <div className="hud-titleband" style={{ fontSize: 15, letterSpacing: "0.4em", padding: "10px 14px", justifyContent: "center" }}>
+        <span className="auth-sheen" />
+        <div className="hud-titleband" style={{ fontSize: 15, letterSpacing: "0.4em", padding: "10px 14px", justifyContent: "center", position: "relative", zIndex: 4 }}>
           Cosmic Realm
         </div>
 
