@@ -62,6 +62,7 @@ import { ExplosionSystem } from "./explosion-system";
 import { initExplosionDebug, destroyExplosionDebug } from "./explosion-debug";
 import { LaserSystem, laserPresetFor } from "./laser-system";
 import { initLaserDebug, destroyLaserDebug } from "./laser-debug";
+import { initMaterialDebug } from "./material-debug";
 import { ParallaxBackground } from "./parallax-background";
 import { initParallaxDebug, destroyParallaxDebug } from "./parallax-debug";
 import { SceneLighting } from "./scene-lighting";
@@ -1600,6 +1601,8 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
   // world visibility probe: __laserProbe().
   laserSystem = new LaserSystem(projectileLayer, projectileBehindLayer, effectsBehindLayer, effectsFrontLayer);
   initLaserDebug(app, projectileLayer);
+  // Space-material & lighting lab: Ctrl+Alt+G / __materialDebug().
+  initMaterialDebug();
 
   // DarkOrbit-style 5-layer parallax background: screen-space layers 1-3
   // under bgGraphics/starGraphics, world-decoration container at the very
