@@ -123,6 +123,7 @@ export function GameHud() {
         localStorage.setItem("sf-quest-tracker", state.showQuestTracker ? "on" : "off");
         bump();
       }}
+      onLogout={() => { state.showLogoutConfirm = true; bump(); }}
     />
   );
 

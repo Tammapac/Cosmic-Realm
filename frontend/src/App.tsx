@@ -6,7 +6,7 @@ import { initPixiRenderer, destroyPixiRenderer, pixiRender } from "./game/pixi-r
 import { init3DLayer, destroy3DLayer, getLoadingProgress, initStationLayer, renderStationLayer, destroyStationLayer } from "./game/three-ship-layer";
 import { destroyStation3DLayer } from "./game/three-station-layer";
 import { activeRenderer } from "./game/renderer-config";
-import { WorldTargetHud } from "./components/TopBar";
+import { WorldTargetHud, LogoutFlow } from "./components/TopBar";
 import { GameHud } from "./components/hud/GameHud";
 import "./styles/hud/hud-tokens.css";
 import "./styles/hud/hud-animations.css";
@@ -1085,6 +1085,7 @@ function GameApp() {
       <div style={{ pointerEvents: "auto" }}>
       <GameHud />
       <WorldTargetHud />
+      <LogoutFlow />
       <Notifications />
       <RiftConfirmDialog />
       <DungeonHud />

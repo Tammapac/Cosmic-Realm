@@ -173,3 +173,39 @@
   box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.8);
   background: linear-gradient(165deg, rgba(8, 13, 24, 0.97) 0%, rgba(4, 6, 11, 0.97) 100%);
 }
+
+/* Thin divider before the logout button so it reads as a separate,
+   destructive action at the far right of the strip. */
+.sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 3px;
+  background: linear-gradient(180deg, transparent, rgba(78, 226, 255, 0.35), transparent);
+  flex-shrink: 0;
+}
+
+/* Logout: RED variant of the same 3-layer button — red frame, red
+   bracket seam, red icon + red glow (danger accent). */
+.logoutButton .buttonFrame {
+  background:
+    radial-gradient(140% 100% at 50% -20%, rgba(255, 180, 190, 0.35) 0%, transparent 62%),
+    linear-gradient(160deg, #9e3244 0%, #68222f 40%, #2c0d12 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 210, 218, 0.5), inset 0 -2px 3px var(--hud-metal-lo);
+}
+.logoutButton .buttonBracket {
+  background: linear-gradient(160deg, color-mix(in srgb, var(--hud-hp) 26%, #17233a) 0%, #1a0a0e 70%);
+}
+.logoutButton .buttonInner {
+  color: #ff9aa4;
+  text-shadow: 0 0 8px rgba(255, 77, 94, 0.5);
+}
+.logoutButton {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 6px rgba(255, 77, 94, 0.45));
+}
+.logoutButton:hover .buttonInner {
+  color: #ffd0d6;
+  box-shadow: inset 0 0 0 1px rgba(255, 77, 94, 0.9), inset 0 3px 10px rgba(0, 0, 0, 0.5), inset 0 0 16px rgba(255, 77, 94, 0.22);
+}
+.logoutButton:hover {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 9px rgba(255, 77, 94, 0.7));
+}

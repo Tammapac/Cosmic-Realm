@@ -9,6 +9,7 @@ export type MenuPanelProps = {
   onOpenMissions?: () => void;
   onOpenCargo?: () => void;
   onOpenClan?: () => void;
+  onLogout?: () => void;
 };
 
 const MENU_BUTTONS = [
@@ -37,6 +38,7 @@ export function MenuPanel({
   onOpenMissions,
   onOpenCargo,
   onOpenClan,
+  onLogout,
 }: MenuPanelProps) {
   const handlers: Record<string, (() => void) | undefined> = {
     inventory: onOpenInventory,
@@ -68,6 +70,18 @@ export function MenuPanel({
               <span className={styles.buttonInner}>{b.icon}</span>
             </button>
           ))}
+          {/* separator + red logout button, set apart at the far right */}
+          <span className={styles.sep} />
+          <button
+            type="button"
+            className={`${styles.button} ${styles.logoutButton}`}
+            title="Logout"
+            onClick={onLogout}
+          >
+            <span className={styles.buttonFrame} />
+            <span className={styles.buttonBracket} />
+            <span className={styles.buttonInner}>⏻</span>
+          </button>
         </div>
       </div>
     </div>

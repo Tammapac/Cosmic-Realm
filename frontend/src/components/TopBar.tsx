@@ -277,7 +277,7 @@ function PanelStat({
   );
 }
 
-function LogoutFlow() {
+export function LogoutFlow() {
   const showConfirm = useGame((s) => s.showLogoutConfirm);
   const countingDown = useGame((s) => s.logoutCountdown);
   const [remaining, setRemaining] = useState(5);
