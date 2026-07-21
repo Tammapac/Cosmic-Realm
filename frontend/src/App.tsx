@@ -671,9 +671,10 @@ function LoadingScreen({ onReady }: { onReady: () => void }) {
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 200,
-      backgroundImage: "url(/assets/ui/loading-bg.jpg?v=1)",
-      backgroundSize: "cover",
-      backgroundPosition: "center",
+      // "contain" keeps the FULL loading art visible (no left/right crop on
+      // wide monitors); the dark base fills any letterbox bars.
+      background: "#04070e url(/assets/ui/loading-bg.jpg?v=1) no-repeat center center",
+      backgroundSize: "contain",
       display: "flex", flexDirection: "column",
       alignItems: "center", justifyContent: "flex-end",
       transition: "opacity 0.7s ease-out",
