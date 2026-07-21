@@ -15,17 +15,19 @@ function shipSeedHash(s: string): number {
 // enemy's "core" part, e.g. the overlord's blue crystal)? Compares hue and
 // requires the color to be reasonably saturated + not near-black, so plain
 // grey/dark hull plates never match.
-function materialMatchesAccentColor(m: THREE.MeshStandardMaterial, accentHex: number): boolean {
+function materialMatchesAccentColor(m: THREE.MeshStandardMaterial, accentHex: number, matchAny = false): boolean {
   const src = (m.emissive && (m.emissive.r + m.emissive.g + m.emissive.b) > 0.15)
     ? m.emissive : m.color;
   if (!src) return false;
   const hsl = { h: 0, s: 0, l: 0 };
   src.getHSL(hsl);
-  if (hsl.s < 0.28 || hsl.l < 0.12 || hsl.l > 0.9) return false; // grey/black/white → not the core
+  // Grey / black / white → never the core (leave plain hull plates alone).
+  if (hsl.s < 0.22 || hsl.l < 0.1 || hsl.l > 0.92) return false;
+  if (matchAny) return true; // any reasonably-colored material is the core
   const acc = new THREE.Color(accentHex);
   const ah = { h: 0, s: 0, l: 0 }; acc.getHSL(ah);
   let dh = Math.abs(hsl.h - ah.h); if (dh > 0.5) dh = 1 - dh; // circular hue distance
-  return dh < 0.09; // within ~32° of the accent hue
+  return dh < 0.14; // within ~50° of the accent hue (a bit looser)
 }
 import {
   ENABLE_THREE_NEBULA_SHADER,
@@ -579,7 +581,7 @@ function loadModel(shipClass: string): void {
       // shiny + self-lit (so only the interior/core glows, not a decal over
       // the whole ship).
       const coreAccent = accent && accent.kind === "core"
-        ? { color: accent.color, intensity: accent.intensity }
+        ? { color: accent.color, intensity: accent.intensity, matchAny: !!accent.matchAnyColored }
         : undefined;
       let hullMatCount = 0, glowSkipCount = 0;
       model.traverse((child) => {
@@ -613,6 +615,14 @@ function loadModel(shipClass: string): void {
           }
           if (m.map) m.map.colorSpace = THREE.SRGBColorSpace;
 
+          // Diagnostic: for core enemies, log every material's color so we can
+          // see whether the core is detected (and tune the hue match).
+          if (coreAccent && (window as any).__DEBUG_MAT) {
+            const hsl = { h: 0, s: 0, l: 0 }; (m.color ?? new THREE.Color()).getHSL(hsl);
+            const em = m.emissive ? m.emissive.getHexString() : "000000";
+            console.log(`[SpaceMat] ${shipClass} mat[${mi}] "${m.name || "?"}" color=#${m.color?.getHexString()} hsl=(${hsl.h.toFixed(2)},${hsl.s.toFixed(2)},${hsl.l.toFixed(2)}) emissive=#${em} hasMap=${!!m.map}`);
+          }
+
           // A GLOW SHELL is an enemy halo: transparent AND essentially unlit /
           // emissive-driven. Only these are skipped + hidden. A merely
           // alpha-flagged HULL material is NOT a glow shell and still gets the
@@ -642,13 +652,20 @@ function loadModel(shipClass: string): void {
               size: r * 2,
             };
             mesh.layers.set(FX_LAYER);
-          } else if (coreAccent && materialMatchesAccentColor(m, coreAccent.color)) {
-            // This material is the enemy's ACCENT-COLORED part (e.g. the
-            // overlord's blue core) → make it shiny + self-lit so ONLY the
-            // interior/core glows. The rest of the hull is untouched (falls to
-            // the dark space-metal branch below).
-            m.color = new THREE.Color(coreAccent.color).multiplyScalar(0.6);
-            m.emissive = new THREE.Color(coreAccent.color);
+          } else if (coreAccent && materialMatchesAccentColor(m, coreAccent.color, coreAccent.matchAny)) {
+            if ((window as any).__DEBUG_MAT) {
+              const hsl = { h: 0, s: 0, l: 0 }; (m.color ?? new THREE.Color()).getHSL(hsl);
+              console.log(`[SpaceMat] ${shipClass} CORE material "${m.name || "?"}" color=#${m.color?.getHexString()} hsl=(${hsl.h.toFixed(2)},${hsl.s.toFixed(2)},${hsl.l.toFixed(2)}) → made shiny+glowing`);
+            }
+            // This material is the enemy's core part (accent-colored, or — for
+            // matchAny models like the overlord — any non-grey colored material)
+            // → make it shiny + self-lit so ONLY the interior/core glows. The
+            // rest of the hull stays dark (falls to the space-metal branch).
+            // Keep the material's OWN hue (so bluish-green stays bluish-green),
+            // just make it glow that color.
+            const own = m.color ? m.color.clone() : new THREE.Color(coreAccent.color);
+            m.emissive = own.clone();
+            m.color = own.clone().multiplyScalar(0.55);
             m.emissiveIntensity = coreAccent.intensity ?? 2.0;
             m.metalness = 0.9;
             m.roughness = 0.12;          // very shiny

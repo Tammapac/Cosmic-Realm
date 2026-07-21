@@ -250,7 +250,10 @@ function detailNormalTex(): THREE.CanvasTexture {
 // the model center). All glow via emissive/bloom + a slow pulse.
 export type EnemyAccent =
   | { kind: "cracks"; color: number; intensity?: number }
-  | { kind: "core"; color: number; size?: number; intensity?: number; crystal?: boolean };
+  | { kind: "core"; color: number; size?: number; intensity?: number; crystal?: boolean;
+      // When true, ANY reasonably-colored (non-grey) material on the model is
+      // treated as the core (for models whose core isn't a specific hue).
+      matchAnyColored?: boolean };
 
 // `size` is a fraction of the hull's smaller footprint — kept small so the gem
 // lives INSIDE the model (the hull occludes it, only the inner glow peeks out).
@@ -268,7 +271,7 @@ export const ENEMY_ACCENTS: Record<string, EnemyAccent> = {
   enemy_dread:       { kind: "cracks", color: 0xff3b57, intensity: 1.8 },             // crimson
   enemy_titan:       { kind: "core",   color: 0xff7a2c, size: 0.34, intensity: 2.3 }, // orange reactor
   enemy_juggernaut:  { kind: "cracks", color: 0xff3a3a, intensity: 1.8 }, // red cracks only (the top orb was removed)
-  enemy_overlord:    { kind: "core",   color: 0x3a7bff, size: 0.34, intensity: 2.6, crystal: true }, // BLUE CRYSTAL inside
+  enemy_overlord:    { kind: "core",   color: 0x2fd8e0, size: 0.34, intensity: 2.6, crystal: true, matchAnyColored: true }, // bluish-green core, match any colored material
   enemy_leviathan:   { kind: "cracks", color: 0x35ff7a, intensity: 1.8 },             // green cracks
   enemy_zengas:      { kind: "core",   color: 0xff4de2, size: 0.3,  intensity: 2.3, crystal: true }, // magenta crystal
 };
