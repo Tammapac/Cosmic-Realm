@@ -243,6 +243,64 @@ function detailNormalTex(): THREE.CanvasTexture {
   return tex;
 }
 
+/**
+ * ENERGY-CRACK emissive map: branching glowing fractures over a black hull.
+ * Black = no glow (the hull stays dark, non-emissive), bright = a crack that
+ * bloom will pick up. Used as an emissiveMap; the emissive color (e.g. green)
+ * is set on the material. Stable per seed, generated once, cached.
+ */
+function energyCrackTex(seed: number): THREE.CanvasTexture {
+  const key = `crack-${seed}`;
+  const hit = _texCache.get(key);
+  if (hit) return hit;
+  const S = 512;
+  const c = document.createElement("canvas");
+  c.width = c.height = S;
+  const ctx = c.getContext("2d")!;
+  const rnd = seeded(seed ^ 0x1a2b3c4d);
+
+  ctx.fillStyle = "#000000"; // no glow anywhere by default
+  ctx.fillRect(0, 0, S, S);
+
+  ctx.lineCap = "round";
+  ctx.shadowColor = "#ffffff";
+  ctx.shadowBlur = 6;
+
+  // A handful of main fractures, each branching into thinner offshoots. Drawn
+  // white (color comes from the material's emissive); a soft halo via shadow.
+  const drawCrack = (x: number, y: number, ang: number, len: number, wid: number, depth: number) => {
+    let cx = x, cy = y, a = ang;
+    const steps = Math.max(3, Math.floor(len / 14));
+    for (let i = 0; i < steps; i++) {
+      const nx = cx + Math.cos(a) * (len / steps);
+      const ny = cy + Math.sin(a) * (len / steps);
+      // bright hot core
+      ctx.strokeStyle = `rgba(255,255,255,${0.75 * (1 - i / steps * 0.4)})`;
+      ctx.lineWidth = wid;
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(nx, ny); ctx.stroke();
+      cx = nx; cy = ny;
+      a += (rnd() - 0.5) * 0.9; // jitter → jagged fracture
+      // occasional branch
+      if (depth > 0 && rnd() < 0.3) {
+        drawCrack(cx, cy, a + (rnd() - 0.5) * 1.8, len * 0.5, Math.max(1, wid * 0.6), depth - 1);
+      }
+    }
+  };
+
+  const mains = 4;
+  for (let i = 0; i < mains; i++) {
+    const x = rnd() * S, y = rnd() * S;
+    drawCrack(x, y, rnd() * Math.PI * 2, 120 + rnd() * 140, 3 + rnd() * 2, 2);
+  }
+  ctx.shadowBlur = 0;
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  _texCache.set(key, tex);
+  return tex;
+}
+
 // ── Material presets ────────────────────────────────────────────────────────
 
 export type SpaceRole = "player" | "npc" | "boss" | "station" | "portal";
@@ -251,6 +309,9 @@ export interface SpaceMaterialOpts {
   seed?: number;           // stable per-object aging seed
   hullColor?: number;      // override base color (faction/rarity tint)
   keepMap?: THREE.Texture | null; // preserve the GLB's authored albedo if good
+  // Glowing energy cracks (e.g. the Leviathan): an emissive fracture map in
+  // this color, tagged for a slow pulse by the render loop. Hull still dark.
+  energyCracks?: { color: number; intensity?: number };
 }
 
 /**
@@ -332,9 +393,20 @@ export function applySpaceMaterial(
       mat.metalness = 0.5; mat.roughness = 0.5; mat.envMapIntensity = 1.0; break;
   }
 
-  // Hull never glows.
-  if (mat.emissive) mat.emissive.setHex(0x000000);
-  mat.emissiveIntensity = 0;
+  // Hull never glows — UNLESS energy cracks are requested. The base hull stays
+  // dark (emissive color multiplies the emissiveMap, which is black except on
+  // the cracks), so only the fractures light up.
+  if (opts.energyCracks) {
+    mat.emissive = new THREE.Color(opts.energyCracks.color);
+    mat.emissiveMap = energyCrackTex(seed);
+    const baseI = opts.energyCracks.intensity ?? 1.6;
+    mat.emissiveIntensity = baseI;
+    // Tag for the render loop's slow pulse (see three-ship-layer pulse pass).
+    mat.userData.pulseEmissive = { base: baseI, amp: baseI * 0.45, speed: 1.6 };
+  } else {
+    if (mat.emissive) mat.emissive.setHex(0x000000);
+    mat.emissiveIntensity = 0;
+  }
 
   if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace;
   mat.needsUpdate = true;

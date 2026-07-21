@@ -314,6 +314,7 @@ let cameraZoom = 1;
 let renderFrameCount = 0;
 let lastFrameTime = 0;
 let frameDt = 1 / 60;
+let _lastEmissivePulseUpdate = 0;
 
 // Station rendering moved to three-station-layer.ts (own canvas at zIndex 0)
 export function initStationLayer(_canvas: HTMLCanvasElement): void {}
@@ -550,6 +551,10 @@ function loadModel(shipClass: string): void {
       const isEnemy = shipClass.startsWith("enemy_");
       const role: SpaceRole = isEnemy ? "npc" : "player";
       const seed = shipSeedHash(shipClass);
+      // Special-case bodies get glowing energy cracks (Leviathan → green).
+      const energyCracks = shipClass === "enemy_leviathan"
+        ? { color: 0x35ff7a, intensity: 1.8 }
+        : undefined;
       let hullMatCount = 0, glowSkipCount = 0;
       model.traverse((child) => {
         const mesh = child as THREE.Mesh;
@@ -619,7 +624,7 @@ function loadModel(shipClass: string): void {
             (m as any).envMapIntensity = 0.8;
             m.needsUpdate = true;
           } else {
-            applySpaceMaterial(m, role, { seed });
+            applySpaceMaterial(m, role, { seed, energyCracks });
             hullMatCount++;
           }
           newList.push(m);
@@ -1195,6 +1200,22 @@ export function render3DLayer(): void {
   lastFrameTime = now;
   for (const ship of activeShips.values()) {
     if (ship.mixer) ship.mixer.update(frameDt);
+  }
+  // Emissive pulse (e.g. Leviathan energy cracks): materials tagged with
+  // userData.pulseEmissive breathe their emissiveIntensity around a base.
+  if (now - _lastEmissivePulseUpdate > 0.03) {
+    _lastEmissivePulseUpdate = now;
+    for (const ship of activeShips.values()) {
+      ship.model.traverse((child) => {
+        const mesh = child as THREE.Mesh;
+        if (!mesh.isMesh || !mesh.material) return;
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const m of mats) {
+          const p = (m as any).userData?.pulseEmissive;
+          if (p) (m as THREE.MeshStandardMaterial).emissiveIntensity = p.base + Math.sin(now * p.speed) * p.amp;
+        }
+      });
+    }
   }
   if (outlineRT && outlineScene && outlineCamera && fsQuad && brightMat && blurMat && outlineMat && bloomRTA && bloomRTB) {
     // Pass 1: solid hulls only (default layer) → offscreen target
