@@ -44,7 +44,15 @@ export function TopBar() {
         <IconBtn icon="ic-social" label="Social" short="Social" onClick={() => { state.showSocial = !state.showSocial; bump(); }} />
         <IconBtn icon="ic-clan" label="Clan (C)" short="Clan" onClick={() => { state.showClan = !state.showClan; bump(); }} />
         <IconBtn icon="ic-settings" label="Settings" short="Settings" onClick={() => { state.showSettings = !state.showSettings; bump(); }} />
-        <IconBtn icon="ic-logout" label="Logout" short="Logout" onClick={() => { state.showLogoutConfirm = true; bump(); }} />
+        {/* Logout — standalone RED button, set apart at the far right */}
+        <button
+          className="ic-btn ic-btn-logout"
+          title="Logout"
+          onClick={() => { state.showLogoutConfirm = true; bump(); }}
+          style={{ backgroundImage: `url(/assets/ui/atlas/ic-logout.png?v=4)`, marginLeft: 8 }}
+        >
+          <span className="ic-btn-label">Logout</span>
+        </button>
       </div>
     </div>
     <LogoutFlow />
