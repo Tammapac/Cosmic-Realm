@@ -73,34 +73,32 @@
   font-family: var(--font-display) !important;
   border: none !important;
   border-radius: 0 !important;
-  /* FULLY OPAQUE base metal body — the exact Hotbar/Minimap console fill.
-     A solid #060a14 floor sits under the gradient so NOTHING behind the
-     window ever shows through (the previous version left the lower band
-     effectively translucent, which is what read as "teilweise
-     transparent"). No backdrop-filter for the same reason. */
+  /* FROSTED GLASS body — same values as the login screen's .auth-glass
+     (which is the reference for this look): a low-alpha navy fill (~0.5) so
+     the map shows through, blurred by backdrop-filter. NO `filter` on this
+     element — a filter creates a stacking context that DISABLES
+     backdrop-filter (that was why earlier attempts didn't blur). */
   background:
-    linear-gradient(180deg, rgba(200, 225, 255, 0.12) 0%, rgba(200, 225, 255, 0.03) 26%, transparent 52%),
+    linear-gradient(180deg, rgba(200, 225, 255, 0.10) 0%, rgba(200, 225, 255, 0.03) 26%, transparent 52%),
     repeating-linear-gradient(90deg, var(--hud-brushed-line) 0px, var(--hud-brushed-line) 1px, transparent 1px, transparent 3px),
-    linear-gradient(180deg, #283a58 0%, #17233c 32%, #0d1626 62%, #060a14 100%),
-    #070c16 !important;
+    linear-gradient(180deg, rgba(14, 24, 44, 0.48) 0%, rgba(8, 14, 28, 0.54) 100%) !important;
+  -webkit-backdrop-filter: blur(7px) saturate(1.05) !important;
+  backdrop-filter: blur(7px) saturate(1.05) !important;
   clip-path: polygon(
     var(--panel-cut) 0, calc(100% - var(--panel-cut)) 0,
     100% var(--panel-cut), 100% calc(100% - var(--panel-cut)),
     calc(100% - var(--panel-cut)) 100%, var(--panel-cut) 100%,
     0 calc(100% - var(--panel-cut)), 0 var(--panel-cut)
   ) !important;
+  /* Glow + depth via box-shadow (NOT filter): a `filter` on this element
+     would create a stacking context that DISABLES backdrop-filter — that was
+     why the frosted glass didn't blur. box-shadow doesn't block it. The rim
+     weight comes from .panel-rim, so a bounding-box glow here is fine. */
   box-shadow:
-    /* inner top metal highlight + bottom shade (the machined bevel) */
     inset 0 2px 5px rgba(180, 220, 255, 0.16),
-    inset 0 -14px 24px rgba(0, 0, 0, 0.55) !important;
-  /* Outer glow rim as a FILTER, not box-shadow: drop-shadow follows the
-     chamfered clip-path silhouette (box-shadow only haloes the rectangular
-     bounding box, which is why the panel read flat vs. the Minimap).
-     Kept subtle — a soft cyan edge, not a bloom — matching the Minimap's
-     restrained rim. The double contour above carries the weight. */
-  filter:
-    drop-shadow(0 0 5px rgba(78, 226, 255, 0.22))
-    drop-shadow(0 6px 18px rgba(0, 0, 0, 0.55)) !important;
+    inset 0 -14px 24px rgba(0, 0, 0, 0.55),
+    0 0 6px rgba(78, 226, 255, 0.22),
+    0 6px 18px rgba(0, 0, 0, 0.55) !important;
 }
 
 /* Direct children of a panel float above the frame layers (which live at
@@ -156,35 +154,61 @@
 .panel-rim {
   position: absolute;
   inset: 0;
-  z-index: 1;    /* BELOW the content (z-index:2) — the inner fill layer just
-                    reproduces the panel body, content paints on top of it */
+  z-index: 1;    /* below the content (z-index:2), above the panel glass */
   pointer-events: none;
-  --rw: 2.5px;   /* rim thickness, uniform on every edge incl. chamfers */
-  /* outer layer = the metallic rim gradient, full panel silhouette */
+  --rw: 4px;     /* rim thickness, uniform on every edge incl. chamfers */
+  /* Metallic rim gradient shaped into a RING via ONE clip-path with the
+     evenodd fill-rule: the outer chamfer polygon minus the inner (inset by
+     --rw) chamfer polygon = an even-width border with the CENTRE cut out.
+     Unlike the erase-to-ring mask this keeps the border width identical on
+     straight AND diagonal edges (mask padding thinned the chamfers), AND
+     leaves the middle transparent so the panel glass + blur shows through. */
   background: linear-gradient(180deg, #d6f6ff 0%, var(--panel-accent) 58%, var(--panel-accent-deep) 100%);
   clip-path: polygon(
+    evenodd,
+    /* outer silhouette */
     var(--panel-cut) 0, calc(100% - var(--panel-cut)) 0,
     100% var(--panel-cut), 100% calc(100% - var(--panel-cut)),
     calc(100% - var(--panel-cut)) 100%, var(--panel-cut) 100%,
-    0 calc(100% - var(--panel-cut)), 0 var(--panel-cut)
+    0 calc(100% - var(--panel-cut)), 0 var(--panel-cut),
+    var(--panel-cut) 0,
+    /* inner silhouette (inset by --rw) — punched out */
+    var(--rw) calc(var(--panel-cut)),
+    var(--rw) calc(100% - var(--panel-cut)),
+    calc(var(--panel-cut)) calc(100% - var(--rw)),
+    calc(100% - var(--panel-cut)) calc(100% - var(--rw)),
+    calc(100% - var(--rw)) calc(100% - var(--panel-cut)),
+    calc(100% - var(--rw)) calc(var(--panel-cut)),
+    calc(100% - var(--panel-cut)) var(--rw),
+    calc(var(--panel-cut)) var(--rw),
+    var(--rw) calc(var(--panel-cut))
   );
 }
-/* inner layer = panel fill, inset by --rw on every side → leaves an even rim.
-   The chamfer value shrinks by --rw too so the diagonal stays parallel. */
+/* second thin inner contour, just inside the outer ring (no gap) */
 .panel-rim::before {
   content: "";
   position: absolute;
   inset: var(--rw);
   pointer-events: none;
-  background:
-    linear-gradient(180deg, rgba(200, 225, 255, 0.10) 0%, transparent 40%),
-    linear-gradient(180deg, #283a58 0%, #17233c 32%, #0d1626 62%, #060a14 100%),
-    #070c16;
+  background: linear-gradient(180deg, #a8e8ff 0%, var(--hud-cyan-dim) 60%, var(--panel-accent-deep) 100%);
+  opacity: 0.8;
+  --rw2: 1.5px;
   clip-path: polygon(
+    evenodd,
     calc(var(--panel-cut) - var(--rw)) 0, calc(100% - var(--panel-cut) + var(--rw)) 0,
     100% calc(var(--panel-cut) - var(--rw)), 100% calc(100% - var(--panel-cut) + var(--rw)),
     calc(100% - var(--panel-cut) + var(--rw)) 100%, calc(var(--panel-cut) - var(--rw)) 100%,
-    0 calc(100% - var(--panel-cut) + var(--rw)), 0 calc(var(--panel-cut) - var(--rw))
+    0 calc(100% - var(--panel-cut) + var(--rw)), 0 calc(var(--panel-cut) - var(--rw)),
+    calc(var(--panel-cut) - var(--rw)) 0,
+    var(--rw2) calc(var(--panel-cut) - var(--rw)),
+    var(--rw2) calc(100% - var(--panel-cut) + var(--rw)),
+    calc(var(--panel-cut) - var(--rw)) calc(100% - var(--rw2)),
+    calc(100% - var(--panel-cut) + var(--rw)) calc(100% - var(--rw2)),
+    calc(100% - var(--rw2)) calc(100% - var(--panel-cut) + var(--rw)),
+    calc(100% - var(--rw2)) calc(var(--panel-cut) - var(--rw)),
+    calc(100% - var(--panel-cut) + var(--rw)) var(--rw2),
+    calc(var(--panel-cut) - var(--rw)) var(--rw2),
+    var(--rw2) calc(var(--panel-cut) - var(--rw))
   );
 }
 
@@ -302,10 +326,14 @@
   font-family: var(--font-display) !important;
   border: none !important;
   border-radius: 0 !important;
+  /* Frosted glass like the panels — semi-transparent (a touch denser than
+     the window body so nested cards still read as distinct) + own backdrop
+     blur so the map/panel behind shows through. */
   background:
     linear-gradient(180deg, rgba(200, 225, 255, 0.06) 0%, transparent 42%),
-    linear-gradient(180deg, rgba(18, 30, 52, 0.92) 0%, rgba(10, 17, 32, 0.92) 60%, rgba(7, 12, 22, 0.94) 100%),
-    #070c16 !important;
+    linear-gradient(180deg, rgba(18, 30, 52, 0.55) 0%, rgba(10, 17, 32, 0.60) 60%, rgba(7, 12, 22, 0.62) 100%) !important;
+  -webkit-backdrop-filter: blur(6px) saturate(1.05) !important;
+  backdrop-filter: blur(6px) saturate(1.05) !important;
   clip-path: polygon(
     var(--panel-cut) 0, calc(100% - var(--panel-cut)) 0,
     100% var(--panel-cut), 100% calc(100% - var(--panel-cut)),
@@ -704,7 +732,12 @@ select.ginput {
 .sw-tooltip,
 .gtip,
 .tooltip-pixel {
-  background: linear-gradient(180deg, rgba(12, 20, 38, 0.97) 0%, rgba(6, 10, 20, 0.97) 100%);
+  /* frosted glass — same see-through level as the windows so the map/blur
+     shows through (was near-opaque before, which read as a solid dark box).
+     A stronger blur keeps the text legible over the busy map behind it. */
+  background: linear-gradient(180deg, rgba(12, 20, 38, 0.55) 0%, rgba(6, 10, 20, 0.58) 100%);
+  -webkit-backdrop-filter: blur(10px) saturate(1.08);
+  backdrop-filter: blur(10px) saturate(1.08);
   border: 1px solid rgba(78, 226, 255, 0.45);
   box-shadow:
     inset 0 1px 0 var(--hud-metal-hi),

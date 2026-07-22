@@ -1116,7 +1116,17 @@ function GameApp() {
     <div className="relative w-full h-full overflow-hidden" style={{ background: "#02040c" }}>
       {!assetsReady && <LoadingScreen onReady={handleAssetsReady} />}
       <GameCanvas />
-      <div style={{ transform: `scale(${currentUiScale})`, transformOrigin: "top left", width: `${100 / (currentUiScale || 1)}%`, height: `${100 / (currentUiScale || 1)}%`, position: "absolute", top: 0, left: 0, pointerEvents: "none", zIndex: 10 }}>
+      <div style={{
+        // Only apply the scale transform when actually scaling (<1). At 1:1 a
+        // `transform` still creates a containing block that DISABLES the
+        // backdrop-filter of HUD windows (they could no longer blur the game
+        // canvas behind them, which sits outside this wrapper). Omitting the
+        // transform at scale 1 lets the frosted-glass panels blur the map.
+        ...(currentUiScale !== 1
+          ? { transform: `scale(${currentUiScale})`, transformOrigin: "top left", width: `${100 / (currentUiScale || 1)}%`, height: `${100 / (currentUiScale || 1)}%` }
+          : { width: "100%", height: "100%" }),
+        position: "absolute", top: 0, left: 0, pointerEvents: "none", zIndex: 10,
+      }}>
       <div style={{ pointerEvents: "auto" }}>
       <GameHud />
       <WorldTargetHud />
