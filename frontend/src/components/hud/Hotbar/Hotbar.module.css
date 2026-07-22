@@ -55,7 +55,7 @@
   padding: 16px 36px 22px;
   background:
     radial-gradient(120% 90% at 50% -10%, rgba(120, 175, 220, 0.16) 0%, transparent 55%),
-    linear-gradient(180deg, #283a58 0%, #17233c 32%, #0d1626 62%, #060a14 100%);
+    linear-gradient(180deg, #3f5170 0%, #2a3a54 30%, #1a2740 60%, #0d1626 100%);
   box-shadow:
     inset 0 2px 5px rgba(180, 220, 255, 0.14),
     inset 0 -14px 22px rgba(0, 0, 0, 0.55),
