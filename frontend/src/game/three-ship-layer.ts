@@ -619,12 +619,12 @@ function loadModel(shipClass: string): void {
           }
           if (m.map) m.map.colorSpace = THREE.SRGBColorSpace;
 
-          // Diagnostic: for core enemies, log every material's color so we can
-          // see whether the core is detected (and tune the hue match).
-          if (coreAccent && (window as any).__DEBUG_MAT) {
-            const hsl = { h: 0, s: 0, l: 0 }; (m.color ?? new THREE.Color()).getHSL(hsl);
+          // Diagnostic: log EVERY material (all ships) so we can see type,
+          // color, emissive + which branch it will take.
+          if ((window as any).__DEBUG_MAT) {
             const em = m.emissive ? m.emissive.getHexString() : "000000";
-            console.log(`[SpaceMat] ${shipClass} mat[${mi}] "${m.name || "?"}" color=#${m.color?.getHexString()} hsl=(${hsl.h.toFixed(2)},${hsl.s.toFixed(2)},${hsl.l.toFixed(2)}) emissive=#${em} hasMap=${!!m.map}`);
+            const emSum = m.emissive ? (m.emissive.r + m.emissive.g + m.emissive.b) : 0;
+            console.log(`[SpaceMat] ${shipClass} mat[${mi}] type=${dbgType} "${m.name || "?"}" color=#${m.color?.getHexString() ?? "?"} emissive=#${em}(sum=${emSum.toFixed(2)},I=${(m.emissiveIntensity ?? 1).toFixed(1)}) transp=${m.transparent} op=${(m.opacity ?? 1).toFixed(2)} hasMap=${!!m.map}`);
           }
 
           // A GLOW SHELL is an enemy halo: transparent AND essentially unlit /
