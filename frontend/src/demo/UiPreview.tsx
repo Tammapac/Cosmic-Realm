@@ -73,6 +73,30 @@ export default function UiPreview() {
         <Swatch name="text muted" varName="--ui-text-muted" />
       </Section>
 
+      <Section title="Frame scales — window (.panel) vs inner card (.panel-inset)">
+        <div className="panel" style={{ width: 260 }}>
+          <div className="hud-titleband" style={{ padding: "7px 12px", letterSpacing: "0.28em" }}>Window · .panel</div>
+          <div style={{ padding: "14px 14px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ color: "var(--ui-text-primary)", fontSize: 12, lineHeight: 1.6 }}>
+              Heavy console frame: crisp cyan edge ring + inner corner brackets. For top-level windows only.
+            </div>
+            <div className="panel-inset p-3" style={{ ["--edge" as any]: "var(--hud-cyan)" }}>
+              <div style={{ color: "var(--ui-text-primary)", fontSize: 11, lineHeight: 1.55 }}>
+                Nested <strong>.panel-inset</strong> card — single cyan hairline, no stray inner lines through the text. Reads as machined into the window.
+              </div>
+            </div>
+            <div className="panel-inset panel-inset--gold p-3">
+              <div style={{ color: "var(--ui-text-primary)", fontSize: 11, lineHeight: 1.55 }}>
+                Gold inset variant for featured / currency rows.
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--hud-text-dim)", maxWidth: 280, lineHeight: 1.7 }}>
+          The old problem: the window's inner ring drew two horizontal lines across the body wherever text didn't fill it. Fix: the inner accent is now corner brackets (window) and small nested cards use <strong>.panel-inset</strong> — one hairline, content stays clear.
+        </div>
+      </Section>
+
       <Section title="Windows (HudWindow — standard & gold)">
         <HudWindow title="Standard Window" width={280} onClose={() => {}}>
           <div style={{ padding: "12px 14px", color: "var(--ui-text-primary)", fontSize: 12, lineHeight: 1.6 }}>

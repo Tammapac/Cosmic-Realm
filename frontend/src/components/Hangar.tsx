@@ -334,7 +334,7 @@ function BountiesTab() {
               const has = player.activeQuests.find((x: any) => x.id === q.id);
               const tierColor = tierColors[q.tier ?? 1] ?? "#888";
               return (
-                <div key={q.id} className="panel p-3 flex items-center gap-3" style={{ borderLeft: `3px solid ${tierColor}` }}>
+                <div key={q.id} className="panel-inset p-3 flex items-center gap-3" style={{ ["--edge" as any]: tierColor }}>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-[11px] font-bold px-1 shrink-0" style={{ background: tierColor + "22", color: tierColor, border: `1px solid ${tierColor}55` }}>T{q.tier ?? 1}</span>
@@ -376,7 +376,7 @@ function BountiesTab() {
               <div className="text-mute text-sm italic">No active contracts. Take one from the board.</div>
             )}
             {player.activeQuests.map((q: any) => (
-              <div key={q.id} className="panel p-3">
+              <div key={q.id} className="panel-inset p-3">
                 <div className="flex items-center justify-between gap-2 min-w-0">
                   <span className="text-amber text-[13px] font-bold tracking-wide truncate">{q.title}</span>
                   <span className="text-[12px] tabular-nums shrink-0" style={{ color: q.completed ? "#5cff8a" : "#8f96a6" }}>
@@ -521,7 +521,7 @@ function RocketAmmoBadge() {
       </span>
       {showTip && (
         <div
-          className="absolute z-50 bottom-full left-0 mb-1.5 panel p-2 text-[12px] leading-relaxed"
+          className="absolute z-50 bottom-full left-0 mb-1.5 panel-inset p-2 text-[12px] leading-relaxed"
           style={{ width: 200, pointerEvents: "none", color: "var(--text-dim)" }}
         >
           <div className="text-[12px] font-bold tracking-widest mb-1" style={{ color: "var(--hud-gold)" }}>AMMO SYSTEM</div>
@@ -1155,7 +1155,7 @@ function DungeonsTab() {
         Each dungeon is a wave-based instance. Clear all waves for credits, materials and a guaranteed module drop.
       </div>
       {/* Daily featured banner */}
-      <div className="panel p-2.5" style={{ borderColor: "#ffd24a", background: "rgba(255,210,74,0.06)" }}>
+      <div className="panel-inset panel-inset--gold p-2.5">
         <div className="flex items-center gap-2">
           <span className="text-[14px]">⭐</span>
           <div>
@@ -1169,7 +1169,7 @@ function DungeonsTab() {
         </div>
       </div>
       {dungeon && (
-        <div className="panel p-2" style={{ borderColor: "#ffd24a" }}>
+        <div className="panel-inset panel-inset--gold p-2">
           <div className="text-amber text-[13px] font-bold tracking-widest">⚠ DUNGEON IN PROGRESS — {DUNGEONS[dungeon.id].name.toUpperCase()}</div>
           <div className="text-mute text-[13px]">Wave {dungeon.wave}/{dungeon.totalWaves}. Undock to fight.</div>
         </div>
@@ -1184,11 +1184,7 @@ function DungeonsTab() {
           return (
             <div
               key={d.id}
-              className="panel p-2.5"
-              style={{
-                borderColor: isFeatured ? "#ffd24a" : d.color,
-                background: isFeatured ? "rgba(255,210,74,0.05)" : undefined,
-              }}
+              className={`panel-inset p-2.5 ${isFeatured ? "panel-inset--gold" : ""}`}
             >
               {isFeatured && (
                 <div className="flex items-center gap-1 mb-1.5 -mt-0.5">
@@ -1418,7 +1414,7 @@ function DronesTab() {
           {player.drones.map((d) => {
             const def = DRONE_DEFS[d.kind];
             return (
-              <div key={d.id} className="panel p-3 flex items-center gap-3">
+              <div key={d.id} className="panel-inset p-3 flex items-center gap-3">
                 <div
                   className="flex items-center justify-center text-xl shrink-0"
                   style={{ width: 44, height: 44, background: `${def.color}22`, border: `1px solid ${def.color}`, color: def.color }}
@@ -1470,7 +1466,7 @@ function DronesTab() {
             const price = dronePrice(def.id);
             const owned = player.drones.filter((d) => d.kind === def.id).length;
             return (
-              <div key={def.id} className="panel p-3">
+              <div key={def.id} className="panel-inset p-3">
                 <div className="flex items-center justify-between gap-2 mb-1 min-w-0">
                   <div className="font-bold text-[13px] tracking-wide truncate" style={{ color: def.color }}>
                     {def.name}
@@ -1756,7 +1752,7 @@ function CargoTab() {
         {player.cargo.map((c) => {
           const r = RESOURCES[c.resourceId];
           return (
-            <div key={c.resourceId} className="panel p-3 flex items-center gap-3">
+            <div key={c.resourceId} className="panel-inset p-3 flex items-center gap-3">
               <div
                 className="flex items-center justify-center"
                 style={{ width: 36, height: 36, background: `${r.color}22`, border: `1px solid ${r.color}`, color: r.color, fontSize: 16 }}
@@ -1980,7 +1976,7 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
     <div className="p-5 space-y-4 max-w-2xl">
       <div className="dob-hdr mb-2"><span>✚ STATION SERVICES</span></div>
 
-      <div className="panel p-4 flex items-center gap-4">
+      <div className="panel-inset p-4 flex items-center gap-4">
         <div className="text-3xl text-green">✚</div>
         <div className="flex-1">
           <div className="text-green font-bold tracking-widest">HULL REPAIR</div>
@@ -1991,7 +1987,7 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
         </button>
       </div>
 
-      <div className="panel p-4 flex items-center gap-4">
+      <div className="panel-inset p-4 flex items-center gap-4">
         <div className="text-3xl text-cyan">⟁</div>
         <div className="flex-1">
           <div className="text-cyan font-bold tracking-widest">SHIELD RECHARGE</div>
@@ -2002,7 +1998,7 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
         </button>
       </div>
 
-      <div className="panel p-4 flex items-center gap-4">
+      <div className="panel-inset p-4 flex items-center gap-4">
         <div className="text-3xl text-amber">✦</div>
         <div className="flex-1">
           <div className="text-amber font-bold tracking-widest">DRONE OVERHAUL</div>
@@ -2015,7 +2011,7 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
         </button>
       </div>
 
-      <div className="panel p-4 flex items-center gap-4">
+      <div className="panel-inset p-4 flex items-center gap-4">
         <div className="text-3xl" style={{ color: "var(--hud-gold)" }}>⟳</div>
         <div className="flex-1">
           <div className="font-bold tracking-widest" style={{ color: "var(--hud-gold)" }}>AUTO-RESTOCK AMMO</div>
@@ -2028,7 +2024,7 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
         </GameButton>
       </div>
 
-      <div className="panel p-4 flex items-center gap-4">
+      <div className="panel-inset p-4 flex items-center gap-4">
         <div className="text-3xl text-green">⚙</div>
         <div className="flex-1">
           <div className="text-green font-bold tracking-widest">AUTO-REPAIR HULL</div>
@@ -2041,7 +2037,7 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
         </GameButton>
       </div>
 
-      <div className="panel p-4 flex items-center gap-4">
+      <div className="panel-inset p-4 flex items-center gap-4">
         <div className="text-3xl text-cyan">↺</div>
         <div className="flex-1">
           <div className="text-cyan font-bold tracking-widest">AUTO-SHIELD RECHARGE</div>
@@ -2054,7 +2050,7 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
         </GameButton>
       </div>
 
-      <div className="panel p-4">
+      <div className="panel-inset p-4">
         <div className="text-cyan tracking-widest text-sm mb-2">▶ INSURANCE & RESPAWN</div>
         <div className="text-dim text-[13px]">
           Death penalty: <span className="text-red font-bold">10% credit loss</span> · Hull and shield refilled · Respawn at last station.
@@ -2345,7 +2341,7 @@ function MissionsTab() {
     return (
       <div
         key={m.id}
-        className="panel p-3"
+        className="panel-inset p-3"
         style={{
           opacity: claimed ? 0.5 : 1,
           borderColor: ready ? "#5cff8a" : "var(--border-soft)",
@@ -2432,7 +2428,7 @@ function MissionsTab() {
           <div className="text-cyan tracking-widest text-sm mt-4 mb-2">LIFETIME MILESTONES</div>
           <div className="grid grid-cols-3 gap-2">
             {Object.entries(player.milestones).map(([k, v]) => (
-              <div key={k} className="panel p-2 min-w-0">
+              <div key={k} className="panel-inset p-2 min-w-0">
                 <div
                   className="uppercase truncate"
                   style={{ color: "var(--text-mute)", fontSize: 10, letterSpacing: "0.15em" }}
@@ -2502,7 +2498,7 @@ function AmmoTab() {
             All weapons share one ammo pool. Select your active type and buy rounds.
           </div>
         </div>
-        <div className="panel px-3 py-2 text-right">
+        <div className="panel-inset px-3 py-2 text-right">
           <div className="text-mute text-[12px] tracking-widest">MAX CAPACITY</div>
           <div className="text-amber font-bold tabular-nums">{ammoMax} rounds</div>
         </div>
@@ -2603,7 +2599,7 @@ function AmmoTab() {
               Rocket launchers use separate ammo. Select type with key 2.
             </div>
           </div>
-          <div className="panel px-3 py-2 text-right">
+          <div className="panel-inset px-3 py-2 text-right">
             <div className="text-mute text-[12px] tracking-widest">MAX CAPACITY</div>
             <div className="font-bold tabular-nums" style={{ color: "var(--hud-gold)" }}>{rocketMax} rounds</div>
           </div>

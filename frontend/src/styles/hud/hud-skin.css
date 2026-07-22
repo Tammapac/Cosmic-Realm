@@ -133,30 +133,48 @@
     inset 0 0 10px rgba(3, 6, 12, 0.5);
 }
 
-/* ::after — the INNER FRAME: a second crisp accent line inset ~5px from
-   the outer one, with a visible dark gap between them, exactly the
-   Minimap/Chat "Doppelrahmen" (two distinct rings, not one thick border).
-   Drawn with the erase-to-ring mask so its width stays even through the
-   chamfered corners. */
+/* ::after — INNER CORNER BRACKETS (the machined "Doppelrahmen" accent),
+   drawn ONLY at the four corners via a gradient grid, NOT as a full inner
+   rectangle. The old full ring floated two horizontal lines across the
+   window body wherever text didn't fill it — that was the "billige Ränder
+   die durch die Schrift ragen". Corner brackets keep the Minimap's layered
+   corner detail while leaving the content area completely clear. */
 .panel::after,
 .hud-plate::after {
   content: "";
   position: absolute;
-  inset: 6px;
+  inset: 5px;
   z-index: 1;
   pointer-events: none;
-  padding: 1.5px;
-  background: linear-gradient(180deg, rgba(210, 235, 255, 0.55) 0%, var(--panel-accent-deep) 55%, rgba(6, 12, 22, 0.6) 100%);
-  clip-path: polygon(
-    calc(var(--panel-cut) - 6px) 0, calc(100% - var(--panel-cut) + 6px) 0,
-    100% calc(var(--panel-cut) - 6px), 100% calc(100% - var(--panel-cut) + 6px),
-    calc(100% - var(--panel-cut) + 6px) 100%, calc(var(--panel-cut) - 6px) 100%,
-    0 calc(100% - var(--panel-cut) + 6px), 0 calc(var(--panel-cut) - 6px)
-  );
-  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  opacity: 0.85;
+  clip-path: inherit;
+  --bk: 14px;   /* bracket arm length */
+  --bt: 1.5px;  /* bracket line thickness */
+  --bc: rgba(120, 195, 235, 0.5);
+  background-image:
+    /* top-left */
+    linear-gradient(90deg, var(--bc) 0 var(--bk), transparent var(--bk)),
+    linear-gradient(180deg, var(--bc) 0 var(--bk), transparent var(--bk)),
+    /* top-right */
+    linear-gradient(90deg, transparent calc(100% - var(--bk)), var(--bc) calc(100% - var(--bk))),
+    linear-gradient(180deg, var(--bc) 0 var(--bk), transparent var(--bk)),
+    /* bottom-left */
+    linear-gradient(90deg, var(--bc) 0 var(--bk), transparent var(--bk)),
+    linear-gradient(0deg, var(--bc) 0 var(--bk), transparent var(--bk)),
+    /* bottom-right */
+    linear-gradient(90deg, transparent calc(100% - var(--bk)), var(--bc) calc(100% - var(--bk))),
+    linear-gradient(0deg, var(--bc) 0 var(--bk), transparent var(--bk));
+  background-repeat: no-repeat;
+  background-size:
+    var(--bk) var(--bt), var(--bt) var(--bk),   /* TL: horiz, vert */
+    var(--bk) var(--bt), var(--bt) var(--bk),   /* TR */
+    var(--bk) var(--bt), var(--bt) var(--bk),   /* BL */
+    var(--bk) var(--bt), var(--bt) var(--bk);   /* BR */
+  background-position:
+    top left, top left,
+    top right, top right,
+    bottom left, bottom left,
+    bottom right, bottom right;
+  opacity: 0.9;
 }
 
 /* Title band: cyan tick + tracked uppercase title, sitting flush on the
@@ -211,6 +229,68 @@
   --panel-accent-deep: var(--hud-gold-deep) !important;
   --panel-glow: rgba(232, 185, 77, 0.26) !important;
 }
+/* ── 3b. Inset sub-panels (item cards, chips, ammo rows, tooltips) ────────
+      The full `.panel` frame (chamfered clip-path + PCB veins + DOUBLE
+      contour ring + 6px-inset inner ring) is a WINDOW-scale treatment. On a
+      small nested card it collapses onto the content and reads as two thin
+      stray lines cutting through the text — the "billige Ränder".
+
+      `.panel-inset` is the same console MATERIAL and cyan accent, but as a
+      flush inner surface: ONE crisp cyan hairline rim, a subtle recessed
+      bevel, a small 6px corner cut, and NO second ring / NO PCB veins. It
+      sits inside a `.panel` window as if machined into it, not floating as
+      its own framed box. Use it for every sub-element that is NOT a
+      top-level window. */
+.panel-inset {
+  --panel-cut: 6px;
+  position: relative;
+  font-family: var(--font-display) !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background:
+    linear-gradient(180deg, rgba(200, 225, 255, 0.06) 0%, transparent 42%),
+    linear-gradient(180deg, rgba(18, 30, 52, 0.92) 0%, rgba(10, 17, 32, 0.92) 60%, rgba(7, 12, 22, 0.94) 100%),
+    #070c16 !important;
+  clip-path: polygon(
+    var(--panel-cut) 0, calc(100% - var(--panel-cut)) 0,
+    100% var(--panel-cut), 100% calc(100% - var(--panel-cut)),
+    calc(100% - var(--panel-cut)) 100%, var(--panel-cut) 100%,
+    0 calc(100% - var(--panel-cut)), 0 var(--panel-cut)
+  ) !important;
+  /* single crisp cyan rim + recessed bevel — NO second ring.
+     --edge (optional) draws a colored left accent bar for data cards
+     (e.g. quest tier color) without a real border fighting the frame. */
+  --edge: transparent;
+  box-shadow:
+    inset 3px 0 0 var(--edge),
+    inset 0 1px 0 rgba(180, 220, 255, 0.12),
+    inset 0 -8px 16px rgba(0, 0, 0, 0.4),
+    inset 0 0 0 1px rgba(78, 226, 255, 0.32),
+    0 2px 10px rgba(0, 0, 0, 0.45) !important;
+}
+.panel-inset::before,
+.panel-inset::after {
+  /* explicitly cancel the heavy window frame layers if a small element ever
+     carries both `.panel` and `.panel-inset` — the inset surface wins. */
+  content: none !important;
+}
+.panel-inset:hover {
+  box-shadow:
+    inset 0 1px 0 rgba(180, 220, 255, 0.14),
+    inset 0 -8px 16px rgba(0, 0, 0, 0.4),
+    inset 0 0 0 1px rgba(78, 226, 255, 0.5),
+    0 0 10px rgba(78, 226, 255, 0.14),
+    0 2px 10px rgba(0, 0, 0, 0.45) !important;
+}
+/* gold-accented inset (featured cards / currency rows) */
+.panel-inset.panel-inset--gold {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 235, 190, 0.12),
+    inset 0 -8px 16px rgba(0, 0, 0, 0.4),
+    inset 0 0 0 1px rgba(232, 185, 77, 0.42),
+    0 2px 10px rgba(0, 0, 0, 0.45) !important;
+}
+
 /* recolor the gold panels' PCB veins + title accents to match */
 .panel-gold::before {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='120' viewBox='0 0 360 120'%3E%3Cg fill='none' stroke='%23E8B94D' stroke-width='1.4'%3E%3Cpath d='M0 20 L60 20 L60 12 L120 12 L120 20 L200 20'/%3E%3Cpath d='M0 34 L40 34 L40 44 L100 44 L100 34 L170 34'/%3E%3Cpath d='M0 96 L60 96 L60 104 L130 104 L130 96 L210 96'/%3E%3Cpath d='M0 82 L50 82 L50 74 L110 74 L110 82 L190 82'/%3E%3Cpath d='M200 20 L260 20 L260 30 L320 30'/%3E%3Cpath d='M210 96 L270 96 L270 88 L330 88'/%3E%3Cpath d='M320 30 L360 30'/%3E%3Cpath d='M330 88 L360 88'/%3E%3C/g%3E%3Cg fill='%23E8B94D'%3E%3Ccircle cx='120' cy='12' r='2'/%3E%3Ccircle cx='100' cy='44' r='1.8'/%3E%3Ccircle cx='130' cy='104' r='1.8'/%3E%3Ccircle cx='110' cy='74' r='1.8'/%3E%3Ccircle cx='320' cy='30' r='2'/%3E%3Ccircle cx='330' cy='88' r='1.8'/%3E%3C/g%3E%3C/svg%3E");
