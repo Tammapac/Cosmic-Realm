@@ -26,12 +26,12 @@
 .crispEdge {
   position: absolute;
   inset: -1px;
-  background: linear-gradient(180deg, #d6f6ff 0%, var(--hud-cyan) 60%, var(--hud-shield-deep) 100%);
+  background: linear-gradient(180deg, #f2f8ff 0%, #c3d5ea 22%, #8098b5 50%, #3f5c7c 74%, var(--hud-shield-deep) 100%);
   clip-path: polygon(var(--mp-cut) 0, 100% 0, 100% 100%, 0 100%, 0 var(--mp-cut));
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
-  padding: 1.5px;
+  padding: 2.5px;
   pointer-events: none;
 }
 
@@ -40,7 +40,7 @@
   width: fit-content;
   padding: 10px 14px;
   background:
-    linear-gradient(180deg, rgba(120, 175, 220, 0.14) 0%, transparent 40%),
+    linear-gradient(180deg, rgba(150, 195, 235, 0.30) 0%, transparent 38%),
     linear-gradient(180deg, #283a58 0%, #17233c 32%, #0d1626 62%, #060a14 100%);
   box-shadow:
     inset 0 2px 5px rgba(180, 220, 255, 0.14),
@@ -72,7 +72,7 @@
   z-index: 0;
   pointer-events: none;
   padding: 3px;
-  background: linear-gradient(180deg, rgba(210, 235, 255, 0.22) 0%, rgba(0, 0, 0, 0.35) 100%);
+  background: linear-gradient(180deg, rgba(235, 245, 255, 0.5) 0%, rgba(140, 175, 210, 0.15) 40%, rgba(0, 0, 0, 0.5) 100%);
   clip-path: polygon(var(--mp-cut) 0, 100% 0, 100% 100%, 0 100%, 0 var(--mp-cut));
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
@@ -248,7 +248,7 @@
 /* Phase 10 — slow light travel across the console metal (~24s, a few %). */
 @keyframes lt_MenuPanel_MenuPanel {
   0%   { transform: translateX(-140%) skewX(-14deg); opacity: 0; }
-  6%   { opacity: 0.06; }
+  9%   { opacity: 0.18; }
   14%  { opacity: 0; }
   100% { transform: translateX(240%) skewX(-14deg); opacity: 0; }
 }
@@ -262,7 +262,7 @@
   background: linear-gradient(100deg, transparent 42%, rgba(200, 230, 255, 0.8) 50%, transparent 58%);
   mix-blend-mode: screen;
   opacity: 0;
-  animation: lt_MenuPanel_MenuPanel 24s ease-in-out infinite;
+  animation: lt_MenuPanel_MenuPanel 13s ease-in-out infinite;
   animation-delay: 20s;
   will-change: transform, opacity;
 }

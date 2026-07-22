@@ -71,7 +71,7 @@
 .portraitCrispEdge {
   position: absolute;
   inset: -1px;
-  background: linear-gradient(180deg, #d6f6ff 0%, var(--hud-cyan) 60%, var(--hud-shield-deep) 100%);
+  background: linear-gradient(180deg, #f2f8ff 0%, #c3d5ea 22%, #8098b5 50%, #3f5c7c 74%, var(--hud-shield-deep) 100%);
   clip-path: polygon(
     22% 0, 78% 0, 100% 22%, 100% 78%,
     78% 100%, 22% 100%, 0 78%, 0 22%
@@ -511,7 +511,7 @@
 .mainCrispEdge {
   position: absolute;
   inset: -1px;
-  background: linear-gradient(180deg, #d6f6ff 0%, var(--hud-cyan) 60%, var(--hud-shield-deep) 100%);
+  background: linear-gradient(180deg, #f2f8ff 0%, #c3d5ea 22%, #8098b5 50%, #3f5c7c 74%, var(--hud-shield-deep) 100%);
   clip-path: polygon(
     30px 0, 34% 0, 42% 6px, 58% 6px, 66% 0,
     calc(100% - 26px) 0, 100% 14px,
@@ -532,7 +532,7 @@
   height: 100%;
   min-height: 118px;
   background:
-    linear-gradient(180deg, rgba(120, 175, 220, 0.14) 0%, transparent 40%),
+    linear-gradient(180deg, rgba(150, 195, 235, 0.30) 0%, transparent 38%),
     linear-gradient(180deg, #283a58 0%, #17233c 32%, #0d1626 62%, #060a14 100%);
   /* Phase 5/14 — directional bevel + deeper AO (was the flattest strip). */
   box-shadow:
@@ -551,7 +551,7 @@
 /* Phase 10 — slow light travel across the top bar (~24s, staggered). */
 @keyframes tpLightTravel {
   0%   { transform: translateX(-140%) skewX(-14deg); opacity: 0; }
-  6%   { opacity: 0.06; }
+  9%   { opacity: 0.18; }
   14%  { opacity: 0; }
   100% { transform: translateX(240%) skewX(-14deg); opacity: 0; }
 }
@@ -565,7 +565,7 @@
   background: linear-gradient(100deg, transparent 44%, rgba(200, 230, 255, 0.8) 50%, transparent 56%);
   mix-blend-mode: screen;
   opacity: 0;
-  animation: tpLightTravel 24s ease-in-out infinite;
+  animation: tpLightTravel 13s ease-in-out infinite;
   animation-delay: 3s;
   will-change: transform, opacity;
 }

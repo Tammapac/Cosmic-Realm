@@ -38,7 +38,7 @@
 .crispEdge {
   position: absolute;
   inset: -1px;
-  background: linear-gradient(180deg, #d6f6ff 0%, var(--hud-cyan) 60%, var(--hud-shield-deep) 100%);
+  background: linear-gradient(180deg, #f2f8ff 0%, #c3d5ea 22%, #8098b5 50%, #3f5c7c 74%, var(--hud-shield-deep) 100%);
   clip-path: polygon(
     var(--cp-chamfer) 0, var(--cp-notch-a) 0, var(--cp-notch-mid-a) var(--cp-notch-d), var(--cp-notch-mid-b) var(--cp-notch-d), var(--cp-notch-b) 0,
     calc(100% - var(--cp-chamfer)) 0, 100% var(--cp-chamfer),
@@ -49,7 +49,7 @@
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
-  padding: 1.5px;
+  padding: 2.5px;
   pointer-events: none;
 }
 
@@ -80,7 +80,7 @@
   flex-direction: column;
   padding: 8px 8px 10px;
   background:
-    linear-gradient(180deg, rgba(120, 175, 220, 0.14) 0%, transparent 40%),
+    linear-gradient(180deg, rgba(150, 195, 235, 0.30) 0%, transparent 38%),
     linear-gradient(180deg, #283a58 0%, #17233c 32%, #0d1626 62%, #060a14 100%);
   box-shadow:
     inset 0 2px 5px rgba(180, 220, 255, 0.14),
@@ -118,7 +118,7 @@
   z-index: 0;
   pointer-events: none;
   padding: 3px;
-  background: linear-gradient(180deg, rgba(210, 235, 255, 0.22) 0%, rgba(0, 0, 0, 0.35) 100%);
+  background: linear-gradient(180deg, rgba(235, 245, 255, 0.5) 0%, rgba(140, 175, 210, 0.15) 40%, rgba(0, 0, 0, 0.5) 100%);
   clip-path: polygon(
     var(--cp-chamfer) 0, var(--cp-notch-a) 0, var(--cp-notch-mid-a) var(--cp-notch-d), var(--cp-notch-mid-b) var(--cp-notch-d), var(--cp-notch-b) 0,
     calc(100% - var(--cp-chamfer)) 0, 100% var(--cp-chamfer),
@@ -353,7 +353,7 @@
 /* Phase 10 — slow light travel across the console metal (~24s, a few %). */
 @keyframes lt_ChatPanel_ChatPanel {
   0%   { transform: translateX(-140%) skewX(-14deg); opacity: 0; }
-  6%   { opacity: 0.06; }
+  9%   { opacity: 0.18; }
   14%  { opacity: 0; }
   100% { transform: translateX(240%) skewX(-14deg); opacity: 0; }
 }
@@ -367,7 +367,7 @@
   background: linear-gradient(100deg, transparent 42%, rgba(200, 230, 255, 0.8) 50%, transparent 58%);
   mix-blend-mode: screen;
   opacity: 0;
-  animation: lt_ChatPanel_ChatPanel 24s ease-in-out infinite;
+  animation: lt_ChatPanel_ChatPanel 13s ease-in-out infinite;
   animation-delay: 15s;
   will-change: transform, opacity;
 }
@@ -381,9 +381,9 @@
   z-index: 2;
   pointer-events: none;
   --scr: radial-gradient(circle at center,
-      rgba(0,0,0,0.55) 0 1px, rgba(160,190,220,0.35) 1px 2.2px, rgba(0,0,0,0.4) 2.2px 3px, transparent 3px);
+      rgba(0,0,0,0.7) 0 1.5px, rgba(190,215,245,0.7) 1.5px 3px, rgba(20,40,60,0.6) 3px 4.2px, transparent 4.2px);
   background-image: var(--scr), var(--scr), var(--scr), var(--scr);
   background-repeat: no-repeat;
-  background-position: 9px 9px, calc(100% - 9px) 9px, 9px calc(100% - 9px), calc(100% - 9px) calc(100% - 9px);
-  background-size: 6px 6px;
+  background-position: 11px 11px, calc(100% - 11px) 11px, 11px calc(100% - 11px), calc(100% - 11px) calc(100% - 11px);
+  background-size: 9px 9px;
 }
