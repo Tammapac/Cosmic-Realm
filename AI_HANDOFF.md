@@ -1,8 +1,9 @@
 # AI Handoff — Cosmic Realm
 
-*Last updated: 2026-07-06 (post-Phase 2.8)*
+*Last updated: 2026-07-22*
 
-> **READ THIS FIRST before touching any code.**
+> **Start with `CLAUDE.md`** (orientation, VPS/SSH, deploy, rules). This file is the
+> deeper handoff: history, debug flags, key concepts.
 
 ## What This Project Is
 
@@ -61,6 +62,32 @@ Cosmic Realm is a browser-based multiplayer Space MMO inspired by DarkOrbit. Pla
 | DB schema | `backend/src/db/schema.ts` |
 
 ---
+
+## Recent Work (2026-07-20 → 2026-07-22 session)
+
+Worked in the `explosion-hit-effects` worktree. All deployed to the live site.
+
+- **HUD / popup unification + Mission Journal repair** — see `HUD_UI_SYSTEM.md` for the
+  full system. Added `--ui-*` alias tokens; fixed the Journal black-on-dark bug (stale
+  `.j-row { color:#2a2214 }` in `index.css`) by re-theming every `.j-row` state in
+  `hud-skin.css`; added title/description/category fallbacks + progress-division guards
+  + selection reconciliation in `QuestTracker.tsx`; swept orange/off-theme colors
+  (`.gtip`, `.q-ticks`, BossBar name, Hangar ammo accents, blue/grey buttons) onto
+  tokens; introduced `.panel-inset` for nested cards and changed the `.panel` inner ring
+  to **corner brackets** (killed the "thin lines through popup text"); added the
+  `/?ui-preview` harness.
+- **PvP** — factions mutually attackable, players click-targetable; server target
+  resolution via `pvpTargetId`; `player:die` event + zone broadcast + explosions/VFX.
+- **Ship & station visual overhaul** — `frontend/src/game/space-material.ts`
+  (`applySpaceMaterial` with player/npc/boss/station/portal presets, procedural
+  detail/dirt/normal maps, energy-crack tex, per-enemy accent glow, light rig). Root
+  cause fixed: broken white-emissive GLB exports made all hulls self-lit/flat — detect
+  near-white desaturated emissive and kill it.
+- **Selection outline** — black model outlines removed; red rim (post-process edge pass,
+  `SELECT_LAYER=2`) on click-targeted ships. *Visibility of the rim was still being
+  tuned when the session pivoted to HUD work — may need revisiting.*
+- **Thruster beam/trail redesign**, remote-projectile invisibility fix, icon extraction
+  to `CR_Icons`.
 
 ## Recent Work (Phases 2 → 2.8)
 
@@ -122,9 +149,18 @@ The VPS runs the backend as `pnpm run dev` (= `tsx watch src/index.ts`). Uploadi
 
 ---
 
-## Current Priority Issues (as of 2026-07-06)
+## Current Priority Issues (as of 2026-07-22)
 
-**None.** All open issues resolved through Phase 2.8. See `CURRENT_ISSUES.md` for the full list of what was fixed.
+- **HUD/popup consolidation (in progress).** Hand-rolled popups not yet on the shared
+  components — App `RiftConfirmDialog`/notifications, `InventoryPanel` inner cells,
+  `ZoneMapOverlay`, `TopBar` logout, `EventBanners`, shadcn `components/ui/*`. Small
+  nested `.panel` cards in components other than Hangar still need migrating to
+  `.panel-inset`. Full checklist in `HUD_UI_SYSTEM.md` §8.
+- **Red selection rim visibility** — may still be too faint (see Recent Work). If asked,
+  enable `window.__DEBUG_SEL` and check the edge-pass falloff in `three-ship-layer.ts`.
+
+Netcode / hardpoint issues from Phases 2 → 2.8 remain 🟢 fixed — see below and
+`CURRENT_ISSUES.md`.
 
 Watch for new issues by monitoring:
 - Cyan rings drifting off visible weapons → `getShipMuzzleWorldPositionsAt` math bug
@@ -135,6 +171,8 @@ Watch for new issues by monitoring:
 
 ## See Also
 
+- `CLAUDE.md` — **start here**: orientation, VPS/SSH, deploy, hard rules, key files
+- `HUD_UI_SYSTEM.md` — the unified HUD/popup design system, tokens, components, status
 - `PROJECT_CONTEXT.md` — game overview, zones, ship classes
 - `ARCHITECTURE.md` — system architecture, layer stack, data flow
 - `NETCODE_SYNC_NOTES.md` — delta/snapshot system, projectile pipeline (post-Phase 2.7), coordinate systems

@@ -1,8 +1,10 @@
 # Deployment — Cosmic Realm
 
-*Last updated: 2026-07-06*
+*Last updated: 2026-07-22*
 
 > **Do not deploy, restart PM2, change nginx, or modify production unless explicitly asked by the user.**
+> (Exception: background agents working in a worktree may deploy their own frontend build
+> to let the user test on the live site, since the user always tests on cosmicrealm.net.)
 
 ---
 
@@ -22,30 +24,51 @@
 
 ---
 
-## Frontend Build & Deploy (production pattern used through Phase 2.8)
+## Frontend Build & Deploy
 
-Build from Windows dev machine, deploy only the changed code files to avoid overwriting 370 MB of static assets on each push:
+Build from the dev machine, deploy **only the changed web bundle** — never the ~370 MB
+of static `models/ stations/ bg/ ships/ sprites/ audio/` on the VPS, which change rarely
+and already exist there.
+
+### Preferred pattern (web bundle only, ~0.7 MB) — used 2026-07-22
 
 ```bash
-# Build
-cd "E:/Program Files/Claude Code/Cosmic-Realm/frontend"
+cd "E:/Program Files/Claude Code/Cosmic-Realm/frontend"    # or your worktree's frontend/
 npm run build
 
-# Package ONLY assets/ + index.html (excludes models/, sprites/, audio/, stations/, bg/, ships/)
-# This is much smaller (~1.9 MB) and doesn't touch static assets on the VPS.
+# Package ONLY html + hashed js/css + fonts.
 cd dist
-tar -czf ../dist-code.tar.gz assets/ index.html
+tar -czf ../webbundle.tar.gz index.html assets/*.js assets/*.css assets/fonts
 cd ..
 
-# Upload
-scp -i ~/.ssh/id_ed25519 dist-code.tar.gz root@46.224.121.242:/root/Cosmic-Realm/frontend/dist-code.tar.gz
+scp -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no \
+  webbundle.tar.gz root@46.224.121.242:/tmp/webbundle.tar.gz
 
-# Extract on VPS (SSH)
-ssh -i ~/.ssh/id_ed25519 root@46.224.121.242 \
-  "cd /root/Cosmic-Realm/frontend/dist && tar -xzf ../dist-code.tar.gz && rm ../dist-code.tar.gz"
+ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@46.224.121.242 \
+  "cd /root/Cosmic-Realm/frontend/dist && tar -xzf /tmp/webbundle.tar.gz"
+
+rm -f webbundle.tar.gz
+
+# Verify the LIVE site serves the hash you just built:
+curl -s "https://cosmicrealm.net/?_cb=$(date +%s)" \
+  | grep -o 'assets/index-[A-Za-z0-9_-]*\.js' | head -1
 ```
 
-nginx serves the static `dist/` folder directly — no PM2 restart needed for frontend-only changes.
+> **Windows/Git-Bash gotcha:** `tar -czf "$CLAUDE_JOB_DIR/tmp/..."` fails ("Cannot
+> connect to C:") because the gzip child mishandles the drive-letter path. Write the
+> tarball to a relative path inside `frontend/` instead (as above).
+
+> **Consistency:** `index.html` references the hashed bundle names. If you `git checkout`
+> `dist/index.html` after building, it reverts to OLD hashes and the deployed page 404s
+> the bundle. Always deploy the freshly-built `index.html` together with its assets; only
+> revert `dist/` artifacts AFTER a successful deploy, when committing source.
+
+### Older pattern (`dist-code.tar.gz`, assets/ + index.html, ~1.9 MB)
+Still works; the web-bundle pattern above is just leaner. Extract target is the same
+`/root/Cosmic-Realm/frontend/dist`.
+
+nginx serves the static `dist/` folder directly — no PM2 restart needed for frontend-only
+changes. Cloudflare caches hashed assets; `index.html` is no-cache.
 
 **After deploy:** Hard-refresh browser (`Ctrl+Shift+R`) — Vite hashes bundle filenames so old cache is bypassed automatically for JS, but `index.html` may be cached.
 
