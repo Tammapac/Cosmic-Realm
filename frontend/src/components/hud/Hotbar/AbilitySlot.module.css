@@ -123,9 +123,10 @@
 
 /* ── Pressed ── */
 .pressed {
-  transform: translate(1px, 1px);
-  box-shadow: inset 0 0 14px rgba(0, 0, 0, 0.8) !important;
-  background: linear-gradient(165deg, rgba(8, 13, 24, 0.97) 0%, rgba(4, 6, 11, 0.97) 100%) !important;
+  /* Phase 13 — mechanical key: the face sinks in when pressed. */
+  transform: translateY(1.5px) scale(0.97);
+  box-shadow: inset 0 3px 12px rgba(0, 0, 0, 0.85), inset 0 0 0 1px rgba(0, 0, 0, 0.5) !important;
+  background: linear-gradient(165deg, rgba(6, 10, 20, 0.97) 0%, rgba(3, 5, 9, 0.98) 100%) !important;
 }
 
 /* ── Selected / active: gold ring across all layers, plus a soft outer

@@ -17,7 +17,7 @@
   position: absolute;
   inset: -3px;
   background: linear-gradient(180deg, #baf3ff 0%, var(--hud-cyan) 55%, var(--hud-shield-deep) 100%);
-  opacity: 0.8;
+  opacity: 0.34;
   filter: blur(6px);
   clip-path: polygon(var(--mp-cut) 0, 100% 0, 100% 100%, 0 100%, 0 var(--mp-cut));
   pointer-events: none;
@@ -45,7 +45,7 @@
   box-shadow:
     inset 0 2px 5px rgba(180, 220, 255, 0.14),
     inset 0 -10px 16px rgba(0, 0, 0, 0.55),
-    0 0 22px rgba(78, 226, 255, 0.18);
+    0 0 12px rgba(78, 226, 255, 0.08);
   clip-path: polygon(var(--mp-cut) 0, 100% 0, 100% 100%, 0 100%, 0 var(--mp-cut));
   overflow: hidden;
 }
@@ -244,3 +244,26 @@
 .logoutButton:hover {
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 9px rgba(255, 77, 94, 0.7));
 }
+
+/* Phase 10 — slow light travel across the console metal (~24s, a few %). */
+@keyframes lt_MenuPanel_MenuPanel {
+  0%   { transform: translateX(-140%) skewX(-14deg); opacity: 0; }
+  6%   { opacity: 0.06; }
+  14%  { opacity: 0; }
+  100% { transform: translateX(240%) skewX(-14deg); opacity: 0; }
+}
+.console::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  clip-path: inherit;
+  background: linear-gradient(100deg, transparent 42%, rgba(200, 230, 255, 0.8) 50%, transparent 58%);
+  mix-blend-mode: screen;
+  opacity: 0;
+  animation: lt_MenuPanel_MenuPanel 24s ease-in-out infinite;
+  animation-delay: 20s;
+  will-change: transform, opacity;
+}
+@media (prefers-reduced-motion: reduce) { .console::after { animation: none; } }

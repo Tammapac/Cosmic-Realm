@@ -98,21 +98,41 @@ to a token.
 | Phase | What | Status |
 |---|---|---|
 | 1 | Analyse materials, build shared system | ✅ done (this doc + tokens) |
-| 2 | Titanium/carbon metal surfaces | ☐ |
-| 3 | Tech glass (tinted, faint fresnel) | ☐ |
-| 4 | Specular highlights (edges/screws only) | ☐ |
-| 5 | Directional bevel lighting | ☐ |
-| 6 | Ambient occlusion / contact shadows | ☐ |
-| 7 | Multiple material layers per element | ☐ |
-| 8 | Rim lighting (fine cold cyan) | ☐ |
-| 9 | Micro-details (screws, engravings, vents) | ☐ |
-| 10 | Slow light travel (15–30 s, few %) | ☐ |
-| 11 | Reduce glow (energy-only) | ☐ |
-| 12 | Per-material light response | ☐ |
-| 13 | Buttons = mechanical keys | ☐ |
-| 14 | Windows = thicker material depth | ☐ |
-| 15 | Minimap = military radar | ☐ |
-| 16 | Performance pass | ☐ |
+| 2 | Titanium/carbon metal surfaces | ✅ carbon `.panel-inset` vs titanium `.panel` |
+| 3 | Tech glass (tinted, faint fresnel) | ✅ fresnel glass edge on `.panel`, sensor-glass reflection |
+| 4 | Specular highlights (edges/screws only) | ✅ button metal top glint, collar sheen arc |
+| 5 | Directional bevel lighting | ✅ top+left lit / right+bottom shaded on panels, buttons, TopPanel |
+| 6 | Ambient occlusion / contact shadows | ✅ slot/inset contact AO, recess shadows |
+| 7 | Multiple material layers per element | ✅ (kept the layered shells; slots 3-layer) |
+| 8 | Rim lighting (fine cold cyan) | ✅ 2px cold rim on `.panel` |
+| 9 | Micro-details (screws, engravings, vents) | ✅ corner screws on Hotbar/Chat + Minimap collar bolts |
+| 10 | Slow light travel (15–30 s, few %) | ✅ ~24s screen-blend sweep on every console (staggered) |
+| 11 | Reduce glow (energy-only) | ✅ glowRim 0.8→0.34, outer glow 0.18→0.08 |
+| 12 | Per-material light response | ✅ titanium vs carbon-insert vs glass |
+| 13 | Buttons = mechanical keys | ✅ press sinks the face (AbilitySlot + .gbtn) |
+| 14 | Windows = thicker material depth | ✅ TopPanel bevel/AO added (was flattest) |
+| 15 | Minimap = military radar | ✅ metal collar + bolts + sensor-glass reflection + fresnel |
+| 16 | Performance pass | ✅ transform/opacity-only anims, no fullscreen shaders, shared values |
 
-Deliverables after completion: materials added, shaders changed, new effects, performance
-impact, before/after screenshots.
+## Implementation summary (2026-07-22)
+
+**Materials added:** shared `--mat-*` token set (fill, sheen, brushed, directional bevel,
+contact AO, specular, rim, drop, glow) in `hud-tokens.css`; carbon-insert treatment for
+`.panel-inset`; sensor-glass reflection + fresnel on the Minimap dome.
+
+**Shaders/CSS changed:** `.panel` box-shadow → directional bevel + fresnel edge + reduced
+rim; `.gbtn` face bevel + gold-frame fix + mechanical press; `.sw-slot` un-inverted bevel +
+contact AO; `.gtip` chamfer instead of 1px border; TopPanel `mainBody` bevel/AO; every
+console `glowRim` opacity 0.8→0.34 and outer glow 0.18→0.08.
+
+**New effects:** slow light-travel sweep (~24s, screen blend, few %, staggered per console);
+corner micro-screws (Hotbar/Chat); Minimap collar bolts + specular arc.
+
+**Performance:** animations use only `transform`+`opacity` (GPU compositor), `will-change`
+set, `prefers-reduced-motion` honored, no fullscreen filters, no new blur stacks; all
+material values shared via tokens. Negligible impact.
+
+**Before/after:** captured via headless screenshots of `?hud-showcase` (glow visibly
+reduced, material depth, radar-style minimap).
+
+Rollback point (pre-pass): commit `7045abb`.
