@@ -607,3 +607,9 @@ export function adminGetPlayer(playerId: number, cb: (data: any) => void) {
 export function adminUpdatePlayer(playerId: number, updates: any, cb: (data: any) => void) {
   socket?.emit("admin:update", { playerId, updates }, cb);
 }
+
+// Spawn `count` enemies of `type` into the admin's current zone (server picks
+// the zone from the admin's player, so it can't be spoofed). Broadcast to all.
+export function adminSpawnEnemy(type: string, count: number, cb: (data: any) => void) {
+  socket?.emit("admin:spawnEnemy", { type, count }, cb);
+}

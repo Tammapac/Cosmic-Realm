@@ -1296,6 +1296,85 @@ export class GameEngine {
     return Array.from(zs.enemies.values()).map(enemyToClient);
   }
 
+  /**
+   * Admin spawn: drop one enemy of an explicit type into a zone, near `near`
+   * if given (e.g. the admin's own position). Adds it to the live zone state
+   * and returns the client payload so the caller can broadcast enemy:spawn.
+   * Same object shape as the auto-spawner (tickEnemySpawns) so the AI tick and
+   * hit-testing treat it identically. Returns null on unknown zone/type.
+   */
+  spawnEnemyOfType(zone: string, type: string, near?: Vec2): ClientEnemy | null {
+    const zs = this.zones.get(zone);
+    const zoneDef = ZONES[zone as ZoneId];
+    const baseDef = (ENEMY_DEFS as any)[type];
+    if (!zs || !zoneDef || !baseDef) return null;
+
+    // Faction tint/mods (same source as the auto-spawner), no tier multiplier.
+    const fMods = FACTION_ENEMY_MODS[zoneDef.faction]?.[type as EnemyType];
+    const hullMul = fMods?.hullMul ?? 1;
+    const dmgMul = fMods?.damageMul ?? 1;
+    const spdMul = fMods?.speedMul ?? 1;
+    const color = fMods?.color ?? baseDef.color;
+
+    // Position: a ring around `near` (the admin) if provided, else random.
+    let spawnPos: Vec2 | null = null;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      let cand: Vec2;
+      if (near) {
+        const ang = Math.random() * Math.PI * 2;
+        const d = 350 + Math.random() * 450;
+        cand = {
+          x: clamp(near.x + Math.cos(ang) * d, -MAP_RADIUS, MAP_RADIUS),
+          y: clamp(near.y + Math.sin(ang) * d, -MAP_RADIUS, MAP_RADIUS),
+        };
+      } else {
+        cand = {
+          x: randRange(-MAP_RADIUS * 0.95, MAP_RADIUS * 0.95),
+          y: randRange(-MAP_RADIUS * 0.95, MAP_RADIUS * 0.95),
+        };
+      }
+      if (!isInStationSafeZone(zone, cand)) { spawnPos = cand; break; }
+    }
+    if (!spawnPos) return null;
+
+    const names = ENEMY_NAMES[type as EnemyType] ?? [type];
+    const name = names[Math.floor(Math.random() * names.length)];
+
+    const enemy: ServerEnemy = {
+      id: eid("e"),
+      type: type as EnemyType,
+      behavior: baseDef.behavior,
+      name,
+      pos: { ...spawnPos },
+      vel: { x: 0, y: 0 },
+      angle: Math.random() * Math.PI * 2,
+      hull: Math.round(baseDef.hullMax * hullMul),
+      hullMax: Math.round(baseDef.hullMax * hullMul),
+      damage: Math.round(baseDef.damage * dmgMul),
+      speed: Math.round(baseDef.speed * spdMul),
+      exp: baseDef.exp,
+      credits: baseDef.credits,
+      honor: baseDef.honor,
+      loot: pickLoot(type),
+      color,
+      size: baseDef.size,
+      isBoss: false,
+      bossPhase: 0,
+      phaseTimer: 0,
+      fireTimer: randRange(1, 3),
+      burstCd: 0,
+      burstShots: 0,
+      aggroTarget: null, retargetCd: 0,
+      aggroRange: 400,
+      spawnPos: { ...spawnPos },
+      stunUntil: 0,
+      combo: new Map(),
+    };
+
+    zs.enemies.set(enemy.id, enemy);
+    return enemyToClient(enemy);
+  }
+
   getZoneAsteroids(zone: string): ClientAsteroid[] {
     const zs = this.zones.get(zone);
     if (!zs) return [];

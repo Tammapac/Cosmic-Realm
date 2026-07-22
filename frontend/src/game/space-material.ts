@@ -256,7 +256,10 @@ export type EnemyAccent =
       matchAnyColored?: boolean }
   // "shimmer": the WHOLE hull glows in `color`, slightly translucent, and
   // pulses. Not a decal or a core — the entire ship shimmers.
-  | { kind: "shimmer"; color: number; intensity?: number; opacity?: number };
+  | { kind: "shimmer"; color: number; intensity?: number; opacity?: number }
+  // "aura": the hull stays SOLID/normal; a transparent liquid glow halo runs
+  // around the model and pulses. The glow is translucent, the ship is not.
+  | { kind: "aura"; color: number; intensity?: number; size?: number };
 
 // `size` is a fraction of the hull's smaller footprint — kept small so the gem
 // lives INSIDE the model (the hull occludes it, only the inner glow peeks out).
@@ -277,7 +280,7 @@ export const ENEMY_ACCENTS: Record<string, EnemyAccent> = {
   enemy_overlord:    { kind: "core",   color: 0x2fd8e0, size: 0.34, intensity: 2.6, crystal: true, matchAnyColored: true }, // bluish-green core, match any colored material
   enemy_leviathan:   { kind: "cracks", color: 0x35ff7a, intensity: 1.8 },             // green cracks
   enemy_zengas:      { kind: "core",   color: 0xff4de2, size: 0.3,  intensity: 2.3, crystal: true }, // magenta crystal
-  enemy_erix:        { kind: "shimmer", color: 0xff2a2a, intensity: 1.6, opacity: 0.72 }, // whole-hull red shimmer + pulse
+  enemy_erix:        { kind: "aura",    color: 0xff2a2a, intensity: 1.7, size: 1.35 }, // solid hull + red liquid glow halo
 };
 
 /**
@@ -353,6 +356,39 @@ function coreGlowTex(): THREE.CanvasTexture {
   g.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = g; ctx.fillRect(0, 0, S, S);
   const tex = new THREE.CanvasTexture(c);
+  _texCache.set(key, tex);
+  return tex;
+}
+
+// Seamless liquid-flow texture: soft blobs of light that tile in both axes, so
+// scrolling the UVs makes the glow LOOK LIKE it's running over the surface like
+// water/energy. White (colour comes from the material's emissive).
+function flowTex(): THREE.CanvasTexture {
+  const key = "flowtex";
+  const hit = _texCache.get(key);
+  if (hit) return hit;
+  const S = 256;
+  const c = document.createElement("canvas"); c.width = c.height = S;
+  const ctx = c.getContext("2d")!;
+  ctx.fillStyle = "#000"; ctx.fillRect(0, 0, S, S);
+  const rnd = seeded(0x9e3779b9);
+  ctx.globalCompositeOperation = "lighter";
+  // Draw soft radial blobs; duplicate each across the wrap edges so the tile
+  // is seamless when the UV offset scrolls.
+  const blobs = 26;
+  for (let i = 0; i < blobs; i++) {
+    const bx = rnd() * S, by = rnd() * S, r = 22 + rnd() * 46;
+    const a = 0.35 + rnd() * 0.5;
+    for (const dx of [-S, 0, S]) for (const dy of [-S, 0, S]) {
+      const g = ctx.createRadialGradient(bx + dx, by + dy, 0, bx + dx, by + dy, r);
+      g.addColorStop(0, `rgba(255,255,255,${a})`);
+      g.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = g;
+      ctx.fillRect(bx + dx - r, by + dy - r, r * 2, r * 2);
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   _texCache.set(key, tex);
   return tex;
 }
@@ -434,6 +470,53 @@ export function makeEnemyCore(color: number, opts?: { crystal?: boolean; intensi
   grp.add(halo);
 
   grp.userData.pulseSprite = { base: inten, amp: inten * 0.5, speed: 1.5, coreMat, haloMat };
+  return grp;
+}
+
+/**
+ * A liquid FLOW SHELL for a solid model (e.g. Erix): a translucent copy of the
+ * model's meshes, scaled up a hair and rendered additively in `color`, with a
+ * seamless flow texture as its emissive map. The render loop scrolls the UV
+ * offset so the glow visibly RUNS OVER the hull like water/energy — it hugs the
+ * model's shape (a shell clone) instead of sitting as a flat blob in the
+ * centre. The original hull is untouched (stays solid). Meshes are tagged
+ * `flowShell` so the render loop can animate their maps.
+ */
+export function makeEnemyFlowShell(model: THREE.Object3D, color: number, intensity = 1.6): THREE.Group {
+  const grp = new THREE.Group();
+  grp.userData.flowShellRoot = true;
+  const col = new THREE.Color(color);
+  const tex = flowTex();
+
+  model.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (!mesh.isMesh || !mesh.geometry) return;
+    // Own texture instance per mesh so each can scroll independently.
+    const t = tex.clone(); t.needsUpdate = true;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(2, 2);
+    const shellMat = new THREE.MeshBasicMaterial({
+      color: col,
+      map: t,
+      transparent: true,
+      opacity: 0.55,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      depthTest: true,
+      side: THREE.FrontSide,
+    });
+    const shell = new THREE.Mesh(mesh.geometry, shellMat);
+    // Match the source mesh's local transform, puffed out slightly so the flow
+    // sits just above the hull surface.
+    shell.position.copy(mesh.position);
+    shell.quaternion.copy(mesh.quaternion);
+    shell.scale.copy(mesh.scale).multiplyScalar(1.03);
+    shell.userData.noOutline = true;
+    shell.userData.flowShell = { tex: t, base: intensity };
+    grp.add(shell);
+  });
+
+  grp.userData.flowShell = { base: intensity };
   return grp;
 }
 

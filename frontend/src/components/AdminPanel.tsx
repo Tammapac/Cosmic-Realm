@@ -1,13 +1,19 @@
 import { useState, useEffect, useCallback } from "react";
 import { state, bump, useGame, pushChat, save as saveGame } from "../game/store";
 import { serverPlayerId } from "../game/loop";
-import { adminListPlayers, adminGetPlayer, adminUpdatePlayer } from "../net/socket";
+import { adminListPlayers, adminGetPlayer, adminUpdatePlayer, adminSpawnEnemy } from "../net/socket";
 
 const ADMIN_ID = 3;
 const SHIP_CLASSES = [
   "skimmer","wasp","vanguard","reaver","obsidian","marauder",
   "phalanx","titan","leviathan","specter","colossus","harbinger",
   "eclipse","sovereign","apex"
+];
+// All enemy types (mirrors backend/data.ts EnemyType) for the spawn dropdown.
+const ENEMY_TYPES = [
+  "scout","raider","interceptor","corvette","destroyer","sentinel","specter",
+  "phantom","wraith","voidling","dread","titan","juggernaut","overlord",
+  "leviathan","erix",
 ];
 
 type PlayerRow = { id: number; name: string; level: number; credits: number; shipClass: string; honor: number };
@@ -19,7 +25,7 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
   const [detail, setDetail] = useState<PlayerDetail | null>(null);
   const [edits, setEdits] = useState<Record<string, any>>({});
   const [status, setStatus] = useState("");
-  const [tab, setTab] = useState<"players" | "quick">("players");
+  const [tab, setTab] = useState<"players" | "quick" | "spawn">("players");
 
   const isAdmin = serverPlayerId === ADMIN_ID;
 
@@ -93,7 +99,7 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <span style={{ flex: "0 0 auto" }}>ADMIN PANEL</span>
             <div style={{ display: "flex", gap: 4 }}>
-              {(["players", "quick"] as const).map((t) => (
+              {(["players", "quick", "spawn"] as const).map((t) => (
                 <button key={t} onClick={() => setTab(t)} className={tab === t ? "gbtn" : "gbtn"} style={{
                   padding: "2px 10px", fontSize: 10,
                   filter: tab === t ? undefined : "grayscale(0.5) brightness(0.8)",
@@ -133,6 +139,9 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
           <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
             {tab === "quick" && (
               <QuickActions onStatus={setStatus} refresh={refresh} players={players} />
+            )}
+            {tab === "spawn" && (
+              <SpawnEnemy onStatus={setStatus} />
             )}
             {tab === "players" && !detail && (
               <div style={{ color: "#556", fontSize: 12, textAlign: "center", paddingTop: 60 }}>
@@ -289,6 +298,52 @@ function QuickActions({ onStatus, refresh, players }: {
       <div style={{ fontSize: 9, color: "#445", marginTop: 8 }}>
         Quick actions add the amount to the player's current value.
         Use the Players tab for precise edits.
+      </div>
+    </div>
+  );
+}
+
+function SpawnEnemy({ onStatus }: { onStatus: (s: string) => void }) {
+  const [type, setType] = useState("erix");
+  const [count, setCount] = useState(1);
+
+  const spawn = () => {
+    const n = Math.min(Math.max(1, Math.floor(count) || 1), 50);
+    adminSpawnEnemy(type, n, (res) => {
+      if (res?.ok) onStatus(`Spawned ${res.spawned}× ${type} in your zone (all players see it)`);
+      else onStatus("Error: " + (res?.error || "unknown"));
+    });
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ fontSize: 12, color: "#4ee2ff", fontWeight: "bold" }}>Spawn Enemy</div>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <span style={{ color: "#889", fontSize: 10, width: 55 }}>Type</span>
+        <select value={type} onChange={(e) => setType(e.target.value)}
+          style={{ background: "#0a0e1a", border: "1px solid #2a3a5c", color: "#dde", fontSize: 11, padding: "4px 8px", borderRadius: 3, width: 160 }}>
+          {ENEMY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <span style={{ color: "#889", fontSize: 10, width: 55 }}>Count</span>
+        <input value={count} onChange={(e) => setCount(Number(e.target.value))} type="number" min={1} max={50}
+          style={{ background: "#0a0e1a", border: "1px solid #2a3a5c", color: "#dde", fontSize: 11, padding: "4px 8px", borderRadius: 3, width: 80 }} />
+        <button onClick={spawn} style={{
+          background: "rgba(255,90,110,0.14)", border: "1px solid #5c2a3a",
+          color: "#ffb0b8", fontSize: 11, padding: "5px 16px", borderRadius: 3, cursor: "pointer", fontWeight: "bold",
+        }}>SPAWN</button>
+      </div>
+      {/* quick-spawn shortcuts for common counts */}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {[1, 5, 10, 25].map((n) => (
+          <button key={n} onClick={() => { setCount(n); adminSpawnEnemy(type, n, (res) => onStatus(res?.ok ? `Spawned ${res.spawned}× ${type}` : "Error: " + (res?.error || "?"))); }}
+            style={{ background: "rgba(78,226,255,0.08)", border: "1px solid #2a3a5c", color: "#8ac", fontSize: 10, padding: "5px 12px", borderRadius: 3, cursor: "pointer" }}>
+            +{n} {type}
+          </button>
+        ))}
+      </div>
+      <div style={{ fontSize: 9, color: "#445", marginTop: 8 }}>
+        Spawns into YOUR current zone, near you. Server-authoritative — every
+        player in the zone sees them. Max 50 per click.
       </div>
     </div>
   );

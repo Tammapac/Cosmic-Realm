@@ -474,6 +474,28 @@ export function setupSocket(io: Server) {
       } catch (e) { cb?.({ error: 'DB error: ' + (e as Error).message }); }
     });
 
+    // Admin: spawn N enemies of a type into the admin's current zone, near the
+    // admin, and broadcast enemy:spawn to EVERYONE in that zone (same pipeline
+    // as the auto-spawner). Server uses player.zone authoritatively.
+    socket.on('admin:spawnEnemy', (data: { type: string; count?: number }, cb: Function) => {
+      if (user.playerId !== ADMIN_PLAYER_ID) { cb?.({ error: 'Unauthorized' }); return; }
+      try {
+        const p = getPlayer(user.playerId);
+        if (!p) { cb?.({ error: 'Player not online' }); return; }
+        const zone = p.zone;
+        const near = { x: p.posX, y: p.posY };
+        const count = Math.min(Math.max(1, Math.floor(data.count ?? 1)), 50);
+        let spawned = 0;
+        for (let i = 0; i < count; i++) {
+          const ce = engine.spawnEnemyOfType(zone, data.type, near);
+          if (ce) { io.to(`zone:${zone}`).emit('enemy:spawn', ce); spawned++; }
+        }
+        if (spawned === 0) { cb?.({ error: 'Unknown type or zone' }); return; }
+        console.log(`[ADMIN] ${user.username} spawned ${spawned}x ${data.type} in ${zone}`);
+        cb?.({ ok: true, spawned });
+      } catch (e) { cb?.({ error: 'Spawn error: ' + (e as Error).message }); }
+    });
+
     // ── DISCONNECT ──────────────────────────────────────────────────
     socket.on("disconnect", () => {
       console.log(`[IO] ${user.username} disconnected`);

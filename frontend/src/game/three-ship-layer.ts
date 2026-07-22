@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { ThreeNebulaBackground } from "./three-nebula-background";
-import { applySpaceMaterial, makeEnemyCore, ENEMY_ACCENTS, type SpaceRole } from "./space-material";
+import { applySpaceMaterial, makeEnemyCore, makeEnemyFlowShell, ENEMY_ACCENTS, type SpaceRole } from "./space-material";
 
 // Stable string hash → seed for reproducible per-class surface aging.
 function shipSeedHash(s: string): number {
@@ -646,9 +646,8 @@ function loadModel(shipClass: string): void {
       const energyCracks = accent && accent.kind === "cracks"
         ? { color: accent.color, intensity: accent.intensity }
         : undefined;
-      const shimmer = accent && accent.kind === "shimmer"
-        ? { color: accent.color, intensity: accent.intensity, opacity: accent.opacity }
-        : undefined;
+      // "aura" accent (e.g. Erix) is applied per-instance in updateShip3D as a
+      // separate glow halo — the hull material stays normal/solid here.
       // For "core" enemies, the accent-colored material on the model is made
       // shiny + self-lit (so only the interior/core glows, not a decal over
       // the whole ship).
@@ -728,16 +727,6 @@ function loadModel(shipClass: string): void {
           const strongEmissive = !brokenWhiteEmissive && !!m.emissive &&
             emSum > 0.35 && emHsl.s >= 0.25 &&
             (m.emissiveIntensity ?? 1) > 0.3;
-
-          // SHIMMER enemies (e.g. Erix): the WHOLE hull glows + pulses in the
-          // accent colour. Every material takes the shimmer treatment; skip the
-          // normal glow-shell / core / metal branches entirely.
-          if (shimmer) {
-            applySpaceMaterial(m, role, { seed, shimmer });
-            hullMatCount++;
-            newList.push(m);
-            continue;
-          }
 
           if (isGlowShell) {
             dbgGlow++;
@@ -1224,6 +1213,16 @@ export function updateShip3D(
     wrapper.add(model);
     scene.add(wrapper);
 
+    // "aura" enemies (e.g. Erix): a translucent red LIQUID FLOW that runs over
+    // the solid model like water — a shell clone with a scrolling flow texture
+    // (animated in the render loop). The hull itself is untouched/solid.
+    const auraAcc = ENEMY_ACCENTS[shipClass];
+    if (auraAcc && auraAcc.kind === "aura") {
+      const flow = makeEnemyFlowShell(model, auraAcc.color, auraAcc.intensity ?? 1.6);
+      flow.traverse((o) => o.layers.set(FX_LAYER));
+      model.add(flow);
+    }
+
     // NOTE: the separate glowing "core" object was removed — it always read as
     // a glow OVER the whole model. Instead, the enemy's OWN accent-colored
     // material is made shiny + self-lit in the material traversal above (see
@@ -1405,6 +1404,15 @@ export function render3DLayer(): void {
         for (const m of mats) {
           const p = (m as any).userData?.pulseEmissive;
           if (p) (m as THREE.MeshStandardMaterial).emissiveIntensity = p.base + Math.sin(now * p.speed) * p.amp;
+        }
+        // Liquid FLOW SHELL (Erix): scroll the emissive/colour map over the
+        // hull so the red glow runs across it like water, and breathe opacity.
+        const fs = (mesh.userData as any)?.flowShell;
+        if (fs && fs.tex) {
+          fs.tex.offset.x = (now * 0.08) % 1;
+          fs.tex.offset.y = (Math.sin(now * 0.35) * 0.5) % 1;
+          const bm = mesh.material as THREE.MeshBasicMaterial;
+          if (bm) bm.opacity = 0.4 + (0.5 + 0.5 * Math.sin(now * 1.6)) * 0.35;
         }
       });
       // Signature core (inner gem) pulse — emissive breathing + a slow spin.
