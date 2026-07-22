@@ -62,7 +62,9 @@
   --panel-cut: 16px;
   --panel-accent: var(--hud-cyan);
   --panel-accent-deep: var(--hud-shield-deep);
-  --panel-glow: rgba(78, 226, 255, 0.30);
+  /* stronger outer glow rim to match the showcase panels' visible cyan halo
+     (Minimap/Hotbar read as glowing consoles, not flat cards) */
+  --panel-glow: rgba(78, 226, 255, 0.42);
   position: relative;
   /* NO isolation:isolate here — it traps the frame pseudo-elements in a
      stacking context where z-index:-1 hides them behind the opaque body.
@@ -90,10 +92,15 @@
   box-shadow:
     /* inner top metal highlight + bottom shade (the machined bevel) */
     inset 0 2px 5px rgba(180, 220, 255, 0.16),
-    inset 0 -14px 24px rgba(0, 0, 0, 0.55),
-    /* outer depth drop + soft accent glow rim (= .glowRim, softened) */
-    0 8px 28px rgba(0, 0, 0, 0.62),
-    0 0 22px var(--panel-glow) !important;
+    inset 0 -14px 24px rgba(0, 0, 0, 0.55) !important;
+  /* Outer glow rim as a FILTER, not box-shadow: drop-shadow follows the
+     chamfered clip-path silhouette (box-shadow only haloes the rectangular
+     bounding box, which is why the panel read flat vs. the Minimap).
+     Kept subtle — a soft cyan edge, not a bloom — matching the Minimap's
+     restrained rim. The double contour above carries the weight. */
+  filter:
+    drop-shadow(0 0 5px rgba(78, 226, 255, 0.22))
+    drop-shadow(0 6px 18px rgba(0, 0, 0, 0.55)) !important;
 }
 
 /* Direct children of a panel float above the frame layers (which live at
@@ -103,6 +110,11 @@
 .hud-plate > * {
   position: relative;
   z-index: 2;
+}
+/* …except the rim layer, which must stay BEHIND the content */
+.panel > .panel-rim,
+.hud-plate > .panel-rim {
+  z-index: 1;
 }
 
 /* ::before — the DOUBLE CONTOUR + PCB veins, drawn ABOVE the body
@@ -125,12 +137,55 @@
   background-size: 360px 120px;
   -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0.10) 40%, transparent 74%);
   mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0.10) 40%, transparent 74%);
-  /* the whole double-contour frame, on top of the veins */
-  box-shadow:
-    inset 0 0 0 1.5px var(--panel-accent),
-    inset 0 0 0 3px rgba(3, 6, 12, 0.65),
-    inset 0 0 0 4.5px rgba(160, 205, 235, 0.20),
-    inset 0 0 10px rgba(3, 6, 12, 0.5);
+}
+
+/* ── The REAL metallic rim (copied from Minimap .crispEdge + .innerFrame) ──
+   A separate pseudo can't be added (::before/::after taken), so the rim is
+   drawn on .panel-rim, an extra child inside HudWindow / .hud-plate. It is a
+   GRADIENT-filled contour (bright #d6f6ff top → cyan → shield-deep bottom)
+   masked to a ring — box-shadow can't do a gradient rim, which is exactly
+   why the panels looked flat next to the Minimap. Two rings (outer crispEdge
+   + inner frame) give the substantial Hotbar/Chat-weight border. */
+/* Two-layer rim (NOT an erase-to-ring mask): the mask approach measures
+   `padding` axis-aligned, so a 45° chamfer edge came out ~0.7× as thin as the
+   straight edges. Instead we stack two clip-path layers — an outer layer in
+   the rim gradient, and an inner layer (offset inward by the rim width) in the
+   panel fill. The visible border is the difference, and because both layers
+   share the same chamfer geometry the rim width is IDENTICAL on straight and
+   diagonal edges. --rw = rim thickness. */
+.panel-rim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;    /* BELOW the content (z-index:2) — the inner fill layer just
+                    reproduces the panel body, content paints on top of it */
+  pointer-events: none;
+  --rw: 2.5px;   /* rim thickness, uniform on every edge incl. chamfers */
+  /* outer layer = the metallic rim gradient, full panel silhouette */
+  background: linear-gradient(180deg, #d6f6ff 0%, var(--panel-accent) 58%, var(--panel-accent-deep) 100%);
+  clip-path: polygon(
+    var(--panel-cut) 0, calc(100% - var(--panel-cut)) 0,
+    100% var(--panel-cut), 100% calc(100% - var(--panel-cut)),
+    calc(100% - var(--panel-cut)) 100%, var(--panel-cut) 100%,
+    0 calc(100% - var(--panel-cut)), 0 var(--panel-cut)
+  );
+}
+/* inner layer = panel fill, inset by --rw on every side → leaves an even rim.
+   The chamfer value shrinks by --rw too so the diagonal stays parallel. */
+.panel-rim::before {
+  content: "";
+  position: absolute;
+  inset: var(--rw);
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(200, 225, 255, 0.10) 0%, transparent 40%),
+    linear-gradient(180deg, #283a58 0%, #17233c 32%, #0d1626 62%, #060a14 100%),
+    #070c16;
+  clip-path: polygon(
+    calc(var(--panel-cut) - var(--rw)) 0, calc(100% - var(--panel-cut) + var(--rw)) 0,
+    100% calc(var(--panel-cut) - var(--rw)), 100% calc(100% - var(--panel-cut) + var(--rw)),
+    calc(100% - var(--panel-cut) + var(--rw)) 100%, calc(var(--panel-cut) - var(--rw)) 100%,
+    0 calc(100% - var(--panel-cut) + var(--rw)), 0 calc(var(--panel-cut) - var(--rw))
+  );
 }
 
 /* ::after — INNER CORNER BRACKETS (the machined "Doppelrahmen" accent),

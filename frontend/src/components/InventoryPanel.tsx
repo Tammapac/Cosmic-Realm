@@ -133,7 +133,8 @@ export function InventoryPanel() {
 
   return (
     <div className="fixed z-50" style={{ top: 64, right: 14, width: 400, pointerEvents: "auto", ...drag.style }}>
-      <div className="hud-plate" style={{ display: "flex", flexDirection: "column", maxHeight: "72vh" }} onContextMenu={(e) => e.preventDefault()}>
+      <div className="panel" style={{ display: "flex", flexDirection: "column", maxHeight: "72vh" }} onContextMenu={(e) => e.preventDefault()}>
+        <span className="panel-rim" aria-hidden="true" />
         <div className="hud-titleband" onPointerDown={drag.handleProps.onPointerDown} style={{ letterSpacing: "0.3em", ...drag.handleProps.style }}>
           <span style={{ flex: 1 }}>Inventory · {items.length}</span>
           <button className="gbtn gbtn-red" style={{ padding: "1px 8px", fontSize: 10 }} onClick={close} title={"Close inventory (I)"}>✕</button>

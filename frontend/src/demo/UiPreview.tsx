@@ -29,6 +29,20 @@ const Section = ({ title, children }: { title: string; children: React.ReactNode
   </section>
 );
 
+// Demo inventory items — glyph, rarity color, equipped flag, item level.
+const INV_DEMO = [
+  { g: "⚔", c: "#ffd24a", eq: true,  lvl: 42 },
+  { g: "✦", c: "#b866ff", eq: false, lvl: 38 },
+  { g: "◈", c: "#4ee2ff", eq: true,  lvl: 40 },
+  { g: "⬡", c: "#5cff8a", eq: false, lvl: 31 },
+  { g: "☄", c: "#ff8a4e", eq: false, lvl: 28 },
+  { g: "◇", c: "#9fb4d4", eq: false, lvl: 22 },
+  { g: "✧", c: "#4ee2ff", eq: false, lvl: 19 },
+  { g: "⟁", c: "#ff4d5e", eq: false, lvl: 15 },
+  { g: "◆", c: "#e8b94d", eq: false, lvl: 12 },
+  { g: "▲", c: "#9fb4d4", eq: false, lvl: 8 },
+];
+
 const Swatch = ({ name, varName }: { name: string; varName: string }) => (
   <div style={{ display: "flex", flexDirection: "column", gap: 4, width: 96 }}>
     <div style={{ height: 44, background: `var(${varName})`, border: "1px solid var(--hud-border)", borderRadius: 0 }} />
@@ -40,6 +54,7 @@ const Swatch = ({ name, varName }: { name: string; varName: string }) => (
 export default function UiPreview() {
   const [showDialog, setShowDialog] = useState(false);
   const [sel, setSel] = useState("q2");
+  const [invSel, setInvSel] = useState(2);
 
   const rows = [
     { id: "q1", label: "Patrol the Alpha Gate", state: "" },
@@ -75,6 +90,7 @@ export default function UiPreview() {
 
       <Section title="Frame scales — window (.panel) vs inner card (.panel-inset)">
         <div className="panel" style={{ width: 260 }}>
+          <span className="panel-rim" aria-hidden="true" />
           <div className="hud-titleband" style={{ padding: "7px 12px", letterSpacing: "0.28em" }}>Window · .panel</div>
           <div style={{ padding: "14px 14px 18px", display: "flex", flexDirection: "column", gap: 10 }}>
             <div style={{ color: "var(--ui-text-primary)", fontSize: 12, lineHeight: 1.6 }}>
@@ -94,6 +110,55 @@ export default function UiPreview() {
         </div>
         <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--hud-text-dim)", maxWidth: 280, lineHeight: 1.7 }}>
           The old problem: the window's inner ring drew two horizontal lines across the body wherever text didn't fill it. Fix: the inner accent is now corner brackets (window) and small nested cards use <strong>.panel-inset</strong> — one hairline, content stays clear.
+        </div>
+      </Section>
+
+      <Section title="Inventory popup — showcase frame + slots (no login needed)">
+        <div className="panel" style={{ width: 320, display: "flex", flexDirection: "column" }}>
+          <span className="panel-rim" aria-hidden="true" />
+          <div className="hud-titleband" style={{ padding: "8px 14px", letterSpacing: "0.3em" }}>
+            <span style={{ flex: 1 }}>Inventory · 12</span>
+            <button className="gbtn gbtn-red" style={{ padding: "1px 8px", fontSize: 10 }}>✕</button>
+          </div>
+          {/* category tabs */}
+          <div style={{ display: "flex", borderBottom: "1px solid var(--hud-border-dim)" }}>
+            {["Alle", "Waffen", "Generatoren", "Module"].map((t, i) => (
+              <div key={t} style={{
+                flex: 1, padding: "6px 2px", textAlign: "center",
+                fontFamily: "var(--font-display)", fontSize: 9.5, letterSpacing: "0.12em", textTransform: "uppercase",
+                fontWeight: i === 0 ? 700 : 400,
+                color: i === 0 ? "var(--hud-cyan)" : "var(--hud-text-dim)",
+                background: i === 0 ? "rgba(78,226,255,0.1)" : "transparent",
+                borderBottom: i === 0 ? "2px solid var(--hud-cyan)" : "2px solid transparent",
+                textShadow: i === 0 ? "0 0 8px rgba(78,226,255,0.45)" : "none",
+              }}>{t}</div>
+            ))}
+          </div>
+          <div style={{ padding: "10px" }}>
+            <div className="hud-titleband" style={{ margin: "0 -2px 8px", padding: "3px 8px", fontSize: 10, letterSpacing: "0.24em" }}>
+              <span style={{ flex: 1 }}>Waffen</span><span style={{ color: "var(--hud-text-dim)" }}>2 aktiv · 6</span>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6 }}>
+              {INV_DEMO.map((it, i) => (
+                <div
+                  key={i}
+                  className={`sw-slot${invSel === i ? " sw-slot--active" : ""}`}
+                  onClick={() => setInvSel(invSel === i ? -1 : i)}
+                  style={{
+                    aspectRatio: "1", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+                    ["--slot-accent" as any]: invSel === i ? "var(--hud-gold)" : it.eq ? "#5cff8a" : it.c,
+                  }}
+                >
+                  <span style={{ fontSize: 21, color: it.c, textShadow: `0 0 8px ${it.c}66`, lineHeight: 1, position: "relative", zIndex: 2 }}>{it.g}</span>
+                  {it.eq && <span style={{ position: "absolute", left: "8%", top: "4%", fontSize: 9, fontWeight: 800, color: "#5cff8a", textShadow: "0 1px 2px #000", zIndex: 2 }}>E</span>}
+                  {it.lvl && <span style={{ position: "absolute", right: "8%", bottom: "5%", fontSize: 9, fontWeight: 700, color: "#9fe0ff", textShadow: "0 1px 2px #000", zIndex: 2 }}>{it.lvl}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--hud-text-dim)", maxWidth: 260, lineHeight: 1.7 }}>
+          Same console frame + glow rim as the showcase panels, and the slots now use the Hotbar <strong>AbilitySlot</strong> look: sheared cut, brushed-metal border, cyan seam, recessed glass face, corner ticks. Click a slot → gold selected state (like the hotbar). Compare side-by-side with <code>?hud-showcase</code>.
         </div>
       </Section>
 
@@ -123,6 +188,7 @@ export default function UiPreview() {
 
       <Section title="Mission list rows (.j-row — all states)">
         <div style={{ width: 300 }} className="panel">
+          <span className="panel-rim" aria-hidden="true" />
           <div className="hud-titleband" style={{ padding: "7px 12px", letterSpacing: "0.28em" }}>Journal</div>
           <div style={{ padding: "8px 8px 10px" }}>
             {rows.map((r) => {
@@ -155,6 +221,7 @@ export default function UiPreview() {
 
       <Section title="Reward cards & divider">
         <div className="panel" style={{ padding: 14, width: 320 }}>
+          <span className="panel-rim" aria-hidden="true" />
           <div style={{ textAlign: "center", fontFamily: "var(--font-display)", fontSize: 12, fontWeight: 700, letterSpacing: "0.3em", color: "var(--hud-cyan)", textShadow: "0 0 8px rgba(78,226,255,0.6)", marginBottom: 8 }}>REWARD</div>
           <div style={{ display: "flex", gap: 8 }}>
             {[["CREDITS", "12.4K"], ["HONOR", "180"], ["TIER", "3"], ["XP", "3.2K"]].map(([l, v]) => (

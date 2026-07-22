@@ -55,6 +55,7 @@ export function HudWindow({
       className={`panel ${gold ? "panel-gold" : ""}`}
       style={{ width, maxWidth: "94vw", maxHeight: "88vh", display: "flex", flexDirection: "column", ...style }}
     >
+      <span className="panel-rim" aria-hidden="true" />
       <div
         className="hud-titleband"
         onPointerDown={dragHandle?.onPointerDown}
