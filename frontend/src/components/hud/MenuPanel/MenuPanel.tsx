@@ -12,16 +12,20 @@ export type MenuPanelProps = {
   onLogout?: () => void;
 };
 
+// `img` = PNG icon in /assets/ui/icons/. When present it replaces the Unicode
+// glyph; `icon` stays as a fallback (used for `cargo`, which has no PNG yet).
 const MENU_BUTTONS = [
-  { key: "inventory", icon: "▦", title: "Inventory" },
-  { key: "cargo", icon: "⬡", title: "Cargo" },
-  { key: "skills", icon: "✦", title: "Skills" },
-  { key: "missions", icon: "⚑", title: "Missions" },
-  { key: "map", icon: "◈", title: "Star Map" },
-  { key: "clan", icon: "⛊", title: "Clan" },
-  { key: "friends", icon: "☺", title: "Friends" },
-  { key: "settings", icon: "⚙", title: "Settings" },
+  { key: "inventory", icon: "▦", img: "inventory",  title: "Inventory" },
+  { key: "cargo",     icon: "⬡", img: "cargo",       title: "Cargo" },
+  { key: "skills",    icon: "✦", img: "skills",     title: "Skills" },
+  { key: "missions",  icon: "⚑", img: "missions",   title: "Missions" },
+  { key: "map",       icon: "◈", img: "galaxy-map", title: "Star Map" },
+  { key: "clan",      icon: "⛊", img: "clan",       title: "Clan" },
+  { key: "friends",   icon: "☺", img: "friends",    title: "Friends" },
+  { key: "settings",  icon: "⚙", img: "settings",   title: "Settings" },
 ] as const;
+
+const ICON_SRC = (name: string) => `/assets/ui/icons/${name}.png`;
 
 /**
  * MenuPanel — Formfamily H. Standalone icon-button strip (inventory,
@@ -67,7 +71,11 @@ export function MenuPanel({
             <button key={b.key} type="button" className={styles.button} title={b.title} onClick={handlers[b.key]}>
               <span className={styles.buttonFrame} />
               <span className={styles.buttonBracket} />
-              <span className={styles.buttonInner}>{b.icon}</span>
+              <span className={styles.buttonInner}>
+                {b.img
+                  ? <img className={styles.buttonIcon} src={ICON_SRC(b.img)} alt="" aria-hidden="true" draggable={false} />
+                  : b.icon}
+              </span>
             </button>
           ))}
           {/* separator + red logout button, set apart at the far right */}
@@ -80,7 +88,9 @@ export function MenuPanel({
           >
             <span className={styles.buttonFrame} />
             <span className={styles.buttonBracket} />
-            <span className={styles.buttonInner}>⏻</span>
+            <span className={styles.buttonInner}>
+              <img className={styles.buttonIcon} src={ICON_SRC("log-out")} alt="" aria-hidden="true" draggable={false} />
+            </span>
           </button>
         </div>
       </div>
