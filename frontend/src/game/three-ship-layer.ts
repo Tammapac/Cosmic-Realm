@@ -192,6 +192,7 @@ interface Ship3D {
   hardpoints: ShipHardpoints;
   engineGlows: THREE.Sprite[];
   mixer: THREE.AnimationMixer | null;
+  selectionOutline?: THREE.Group | null; // red backface-hull, built lazily on select
   lastCamX: number;
   lastCamY: number;
   lastWorldX: number;
@@ -223,13 +224,8 @@ uniform vec2 texel;
 varying vec2 vUv;
 void main() {
   vec4 c = texture2D(tDiffuse, vUv);
-  if (c.a < 0.5) {
-    float n = texture2D(tDiffuse, vUv + vec2(texel.x, 0.0)).a;
-    n = max(n, texture2D(tDiffuse, vUv - vec2(texel.x, 0.0)).a);
-    n = max(n, texture2D(tDiffuse, vUv + vec2(0.0, texel.y)).a);
-    n = max(n, texture2D(tDiffuse, vUv - vec2(0.0, texel.y)).a);
-    if (n > 0.5) c = vec4(0.0, 0.0, 0.0, 1.0);
-  }
+  // Black silhouette outline REMOVED — it made every model read as a flat
+  // cut-out sticker. Ships now sit directly in the scene with no hard rim.
   // Emissive bloom: bulbs, cores and strips bleed light like real lamps
   vec3 b = texture2D(tBloom, vUv).rgb * 0.85;
   c.rgb += b;
@@ -327,6 +323,50 @@ const loadedModels = new Map<string, THREE.Group>();
 const loadingModels = new Set<string>();
 const failedModels = new Set<string>();
 const activeShips = new Map<string, Ship3D>();
+
+// Entity ids currently selected (clicked) → drawn with a red outline. Set each
+// frame from the renderer. Format matches updateShip3D's entityId ("player",
+// remote player o.id, or "enemy:<id>").
+let _selectedShipIds = new Set<string>();
+export function setSelectedShipIds(ids: Set<string>): void { _selectedShipIds = ids; }
+
+// A shared red material for selection outlines (backface, so it shows as a rim
+// around the model). One instance, reused by every selected ship.
+let _selOutlineMat: THREE.MeshBasicMaterial | null = null;
+function selOutlineMat(): THREE.MeshBasicMaterial {
+  if (!_selOutlineMat) {
+    _selOutlineMat = new THREE.MeshBasicMaterial({
+      color: 0xff2a2a, side: THREE.BackSide, transparent: true, opacity: 0.9,
+      depthWrite: false, depthTest: true, blending: THREE.NormalBlending,
+    });
+  }
+  return _selOutlineMat;
+}
+
+// Build a red rim by CLONING the whole model (keeps the exact hierarchy/
+// transforms), swapping every material to the shared red backface material and
+// scaling the clone up a touch so it pokes out behind the hull as an outline.
+// Added as a sibling of the model under the wrapper, so it inherits the same
+// ship transform. Geometry is shared with the clone source (cheap).
+function buildSelectionOutline(model: THREE.Group): THREE.Group {
+  const clone = model.clone(true);
+  const mat = selOutlineMat();
+  clone.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (mesh.isMesh) {
+      mesh.material = mat;
+      mesh.castShadow = false; mesh.receiveShadow = false;
+      mesh.renderOrder = -1;
+      mesh.layers.set(0);
+    } else if ((child as any).isSprite) {
+      child.visible = false; // don't duplicate glow sprites
+    }
+  });
+  clone.scale.multiplyScalar(1.06);
+  const grp = new THREE.Group();
+  grp.add(clone);
+  return grp;
+}
 const activeThisFrame = new Set<string>();
 
 let cameraZoom = 1;
@@ -1286,8 +1326,15 @@ export function render3DLayer(): void {
   const now = performance.now() / 1000;
   if (lastFrameTime > 0) frameDt = Math.min(0.1, now - lastFrameTime);
   lastFrameTime = now;
-  for (const ship of activeShips.values()) {
+  for (const [id, ship] of activeShips) {
     if (ship.mixer) ship.mixer.update(frameDt);
+    // Red selection outline — shown only for clicked ships.
+    const selected = _selectedShipIds.has(id);
+    if (selected && !ship.selectionOutline) {
+      ship.selectionOutline = buildSelectionOutline(ship.model);
+      ship.wrapper.add(ship.selectionOutline); // sibling of model, same ship transform
+    }
+    if (ship.selectionOutline) ship.selectionOutline.visible = selected;
   }
   // Emissive pulse (e.g. Leviathan energy cracks): materials tagged with
   // userData.pulseEmissive breathe their emissiveIntensity around a base.

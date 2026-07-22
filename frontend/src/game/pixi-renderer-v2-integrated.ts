@@ -12,7 +12,7 @@
 import * as PIXI from "pixi.js";
 import { initHardpointEditor, toggleHardpointEditor, isEditorActive } from "./debug/HardpointEditor";
 import { DIRECTIONS_32 } from "./debug/hardpointTypes";
-import { has3DModel, is3DReady, updateShip3D, setCameraZoom, beginFrame, markActive, endFrame, render3DLayer, getShipHardpointPositions, getShipMuzzleWorldPositionsAt, updateEngineGlow, updateNebulaBackground, removeShip3D, preload3DModels, getLoadingProgress, debugEnumerateAllMuzzles } from "./three-ship-layer";
+import { has3DModel, is3DReady, updateShip3D, setCameraZoom, beginFrame, markActive, endFrame, render3DLayer, getShipHardpointPositions, getShipMuzzleWorldPositionsAt, updateEngineGlow, updateNebulaBackground, removeShip3D, preload3DModels, getLoadingProgress, debugEnumerateAllMuzzles, setSelectedShipIds } from "./three-ship-layer";
 import { setStationCameraZoom, beginStationFrame, updateStationOnly, endStationFrame, renderStation3DLayer, removeStation3D, initStation3DLayer } from "./three-station-layer";
 // Second, independent instance of the ship layer (separate module via query
 // suffix): renders ENEMY ships — with the same outline + bloom pipeline — to
@@ -29,6 +29,7 @@ import {
   markActive as markEnemyActive,
   endFrame as endEnemyFrame,
   render3DLayer as renderEnemy3DLayer,
+  setSelectedShipIds as setEnemySelectedShipIds,
 } from "./three-ship-layer?instance=enemy";
 import { enemyModelKey as sharedEnemyModelKey, enemySizeScale as sharedEnemySizeScale, shipHullRadius } from "../../../lib/hitbox";
 import { state } from "./store";
@@ -1980,6 +1981,18 @@ export function pixiRender(): void {
     stationSprite.width = app!.screen.width;
     stationSprite.height = app!.screen.height;
   }
+  // Selection outline: which ship (enemy or player) is currently clicked. Map
+  // the selected target to the 3D-layer entity-id format ("enemy:<id>" for
+  // enemies, the raw other-player id for players).
+  const _selEnemy = new Set<string>();
+  const _selPlayer = new Set<string>();
+  const swt = state.selectedWorldTarget;
+  if (swt?.kind === "enemy") _selEnemy.add("enemy:" + swt.id);
+  else if (swt?.kind === "player") _selPlayer.add(swt.id);
+  if (state.selectedPlayerId) _selPlayer.add(state.selectedPlayerId);
+  setSelectedShipIds(_selPlayer);      // player-instance holds local + other players
+  setEnemySelectedShipIds(_selEnemy);  // enemy-instance holds enemies
+
   // Enemy 3D pass: render offscreen, sync pixels, and counter-transform the
   // sprite against worldLayer (pivot=cam, scale=zoom) so it stays screen-aligned.
   renderEnemy3DLayer();
