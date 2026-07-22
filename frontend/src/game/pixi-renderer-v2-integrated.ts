@@ -1679,6 +1679,7 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
   enemyShipCanvas = document.createElement("canvas");
   enemyShipCanvas.width = window.innerWidth;
   enemyShipCanvas.height = window.innerHeight;
+  enemyShipCanvas.dataset.perfName = "3d-enemies"; // perf overlay label
   initEnemy3DLayer(enemyShipCanvas);
   enemyShipBaseTexture = new PIXI.BaseTexture(enemyShipCanvas, {
     scaleMode: PIXI.SCALE_MODES.LINEAR, // crisp full-res 3D pass — no pixelated composite

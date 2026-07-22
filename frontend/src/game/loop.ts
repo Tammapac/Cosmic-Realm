@@ -13,6 +13,7 @@ import {
   rankFor,
 RESOURCES, pickAsteroidYield, SHIP_SIZE_SCALE, } from "./types";
 import { sfx } from "./sound";
+import { perfBegin, perfEnd, perfCount } from "./perf";
 import { type ServerEnemy, type ServerAsteroid, type ServerNpc, type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent, type DeltaPayload, type SnapshotPayload, type WelcomePayload, type DeltaEntity, type ProjectileSpawnEvent } from "../net/socket";
 import { sendInstanceEnemyHit } from "../net/socket";
 import { getShipMuzzleWorldPositions, getShipMuzzleWorldPositionsAt } from "./three-ship-layer";
@@ -940,7 +941,11 @@ export function startLoop(): void {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     try {
-      if (!state.paused && !state.dockedAt) tickWorld(dt);
+      if (!state.paused && !state.dockedAt) {
+        perfBegin("sim");
+        tickWorld(dt);
+        perfEnd("sim");
+      }
     } catch (err) { console.error("[LOOP] tickWorld error:", err); }
     raf = requestAnimationFrame(step);
   };
@@ -2755,7 +2760,9 @@ let serverEnemiesReceived = false;
 export function onServerZoneEnemies(enemies: ServerEnemy[]): void {
   if (state.dungeon) return; // Dont overwrite client-side dungeon enemies
   serverEnemiesReceived = true;
+  const bench = state.enemies.filter((e) => e.id.startsWith("bench-"));
   state.enemies = enemies.map(serverEnemyToLocal);
+  if (bench.length) state.enemies.push(...bench);
   scheduleBump();
 }
 
@@ -3616,6 +3623,7 @@ export function onWelcome(data: WelcomePayload): void {
 export function onDelta(data: DeltaPayload): void {
   serverAuthoritative = true;
   _deltaCount++;
+  perfCount("net");
   const p = state.player;
   const self = data.self;
 
@@ -3643,6 +3651,7 @@ export function onDelta(data: DeltaPayload): void {
 
 export function onSnapshot(data: SnapshotPayload): void {
   serverAuthoritative = true;
+  perfCount("net");
   const p = state.player;
   const self = data.self;
 
@@ -3663,7 +3672,9 @@ export function onSnapshot(data: SnapshotPayload): void {
 
   // Snapshot is a full state resync - remove entities not present (out of view or dead)
   if (!state.dungeon) {
-    state.enemies = state.enemies.filter(e => snapshotIds.has(e.id));
+    // bench- entities are client-local render-benchmark dummies (perf.ts) —
+    // never in server snapshots, must survive the resync filter.
+    state.enemies = state.enemies.filter(e => snapshotIds.has(e.id) || e.id.startsWith("bench-"));
     state.npcShips = state.npcShips.filter(n => snapshotIds.has(n.id));
     state.others = state.others.filter(o => snapshotIds.has(`p-${o.id}`));
     // Clean up stale entity targets

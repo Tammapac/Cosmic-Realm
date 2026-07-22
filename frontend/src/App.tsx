@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { state, bump, useGame, save, pushNotification, pushChat, abandonDungeon, useConsumable, runDockingServices, loadServerPlayer, collectCargoBox, enterDungeon, stationPrice, completeDungeon, pushEvent } from "./game/store";
 import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats, hasRocketWeapon, setEntityTarget, applyKill } from "./game/loop";
+import { initPerf, perfBegin, perfEnd, perfFrame } from "./game/perf";
 import { render } from "./game/render";
 import { initPixiRenderer, destroyPixiRenderer, pixiRender } from "./game/pixi-renderer-v2-integrated";
 import { init3DLayer, destroy3DLayer, getLoadingProgress, initStationLayer, renderStationLayer, destroyStationLayer } from "./game/three-ship-layer";
@@ -77,9 +78,13 @@ function GameCanvas() {
         console.log("[App] Three.js ship canvas initialized");
       }
 
+      initPerf();
       let raf = 0;
       const draw = () => {
+        perfBegin("render");
         try { pixiRender(); } catch (err) { console.error("[PIXI] Render error:", err); }
+        perfEnd("render");
+        perfFrame();
         raf = requestAnimationFrame(draw);
       };
       raf = requestAnimationFrame(draw);

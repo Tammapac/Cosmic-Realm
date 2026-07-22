@@ -3,6 +3,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { ThreeNebulaBackground } from "./three-nebula-background";
 import { applySpaceMaterial, makeEnemyCore, makeEnemyFlowShell, ENEMY_ACCENTS, type SpaceRole } from "./space-material";
+import { perfRegisterThree } from "./perf";
 
 // Stable string hash → seed for reproducible per-class surface aging.
 function shipSeedHash(s: string): number {
@@ -438,6 +439,11 @@ export function init3DLayer(canvas: HTMLCanvasElement): void {
   }
   renderer.setClearColor(0x000000, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  // Perf overlay: register this renderer's draw-call info. This module is
+  // loaded twice (ship layer + `?instance=enemy` duplicate); the enemy
+  // instance tags its offscreen canvas with data-perf-name (query strings on
+  // import.meta.url don't survive the production bundle).
+  perfRegisterThree(canvas.dataset?.perfName ?? "3d-ships", renderer.info);
 
   // Self-shadowing: plates/limbs cast onto the hull for a lived-in look
   renderer.shadowMap.enabled = true;
@@ -1218,9 +1224,9 @@ export function updateShip3D(
     // (animated in the render loop). The hull itself is untouched/solid.
     const auraAcc = ENEMY_ACCENTS[shipClass];
     if (auraAcc && auraAcc.kind === "aura") {
-      const flow = makeEnemyFlowShell(model, auraAcc.color, auraAcc.intensity ?? 1.6);
-      flow.traverse((o) => o.layers.set(FX_LAYER));
-      model.add(flow);
+      // Attaches flow shells directly under each hull mesh (they sit ON the
+      // surface). No add() needed; the render loop finds them by userData tag.
+      makeEnemyFlowShell(model, auraAcc.color, auraAcc.intensity ?? 1.6);
     }
 
     // NOTE: the separate glowing "core" object was removed — it always read as

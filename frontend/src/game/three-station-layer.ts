@@ -4,6 +4,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import { PIXELATE_3D, PIXELATE_3D_SCALE } from "./renderer-config";
 import { STATIONS } from "./types";
 import { applySpaceMaterial } from "./space-material";
+import { perfRegisterThree } from "./perf";
 
 // Effective downscale factor for the fake pixel-art render mode (1 = off).
 // The Pixi stationSprite stretches this canvas back to screen size with
@@ -273,6 +274,7 @@ export function initStation3DLayer(width?: number, height?: number): HTMLCanvasE
   }
   renderer.setClearColor(0x000000, 0); // Transparent — Pixi composites this over its bgLayer
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  perfRegisterThree("3d-station", renderer.info);
   // Real inter-module shadows (modules occlude each other under the key light).
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;

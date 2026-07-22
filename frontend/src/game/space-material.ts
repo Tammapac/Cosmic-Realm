@@ -488,10 +488,15 @@ export function makeEnemyFlowShell(model: THREE.Object3D, color: number, intensi
   const col = new THREE.Color(color);
   const tex = flowTex();
 
+  // Collect first (don't add children while traversing the same tree).
+  const meshes: THREE.Mesh[] = [];
   model.traverse((child) => {
     const mesh = child as THREE.Mesh;
-    if (!mesh.isMesh || !mesh.geometry) return;
-    // Own texture instance per mesh so each can scroll independently.
+    if (mesh.isMesh && mesh.geometry && !(mesh.userData?.flowShell)) meshes.push(mesh);
+  });
+
+  for (const mesh of meshes) {
+    // Own scrolling texture per mesh.
     const t = tex.clone(); t.needsUpdate = true;
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     t.repeat.set(2, 2);
@@ -499,23 +504,27 @@ export function makeEnemyFlowShell(model: THREE.Object3D, color: number, intensi
       color: col,
       map: t,
       transparent: true,
-      opacity: 0.55,
+      opacity: 0.5,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
-      depthTest: true,
+      depthTest: true,           // occluded by the hull, so it reads as ON it
+      polygonOffset: true,       // pull it a hair toward the camera, no scaling
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
       side: THREE.FrontSide,
     });
+    // Parent the shell to the SOURCE MESH so it inherits every transform in the
+    // hierarchy exactly — identity local transform means it sits ON the hull
+    // surface (same geometry, same place), not floating over the whole ship.
     const shell = new THREE.Mesh(mesh.geometry, shellMat);
-    // Match the source mesh's local transform, puffed out slightly so the flow
-    // sits just above the hull surface.
-    shell.position.copy(mesh.position);
-    shell.quaternion.copy(mesh.quaternion);
-    shell.scale.copy(mesh.scale).multiplyScalar(1.03);
     shell.userData.noOutline = true;
     shell.userData.flowShell = { tex: t, base: intensity };
-    grp.add(shell);
-  });
+    mesh.add(shell);
+    grp.userData.flowShell = { base: intensity };
+  }
 
+  // grp stays empty (shells live under their source meshes); returned only so
+  // the caller has a handle / can set the FX layer via the model traverse.
   grp.userData.flowShell = { base: intensity };
   return grp;
 }
