@@ -489,15 +489,15 @@ function modStatPills(stats: typeof MODULE_DEFS[string]["stats"]) {
   if (stats.damage)          pills.push({ k: "DMG", v: `+${stats.damage}`, c: "#ff5c6c" });
   if (stats.fireRate && stats.fireRate !== 1) pills.push({ k: "RATE", v: `×${stats.fireRate.toFixed(2)}`, c: "#ffd24a" });
   if (stats.critChance)      pills.push({ k: "CRIT", v: `+${Math.round(stats.critChance * 100)}%`, c: "#ff5cf0" });
-  if (stats.aoeRadius)       pills.push({ k: "AOE", v: `${stats.aoeRadius}`, c: "#ff8a4e" });
+  if (stats.aoeRadius)       pills.push({ k: "AOE", v: `${stats.aoeRadius}`, c: "#e8b94d" });
   if (stats.shieldMax)       pills.push({ k: "SHD", v: `+${stats.shieldMax}`, c: "#4ee2ff" });
   if (stats.shieldRegen)     pills.push({ k: "REG", v: `+${stats.shieldRegen}`, c: "#4ee2ff" });
   if (stats.hullMax)         pills.push({ k: "HUL", v: `+${stats.hullMax}`, c: "#5cff8a" });
   if (stats.speed)           pills.push({ k: "SPD", v: `+${stats.speed}`, c: "#aaff5c" });
-  if (stats.damageReduction) pills.push({ k: "DR",  v: `${Math.round(stats.damageReduction * 100)}%`, c: "#ff8a4e" });
+  if (stats.damageReduction) pills.push({ k: "DR",  v: `${Math.round(stats.damageReduction * 100)}%`, c: "#e8b94d" });
   if (stats.cargoBonus)      pills.push({ k: "CRG", v: `+${Math.round(stats.cargoBonus * 100)}%`, c: "#c69060" });
   if (stats.lootBonus)       pills.push({ k: "LOOT", v: `+${stats.lootBonus}`, c: "#ffd24a" });
-  if (stats.ammoCapacity)    pills.push({ k: "AMMO", v: `+${stats.ammoCapacity}`, c: "#ff8a4e" });
+  if (stats.ammoCapacity)    pills.push({ k: "AMMO", v: `+${stats.ammoCapacity}`, c: "#e8b94d" });
   return (
     <div className="flex flex-wrap gap-1 mt-1">
       {pills.map((p, i) => statChip(p.k, p.v, p.c))}
@@ -512,7 +512,7 @@ function RocketAmmoBadge() {
     <div className="relative inline-block mt-1">
       <span
         className="text-[12px] tracking-widest cursor-help inline-flex items-center gap-1"
-        style={{ color: "#ff8a4e", border: "1px solid #ff8a4e55", padding: "1px 5px" }}
+        style={{ color: "var(--hud-gold)", border: "1px solid rgba(232,185,77,0.4)", padding: "1px 5px" }}
         onMouseEnter={() => setShowTip(true)}
         onMouseLeave={() => setShowTip(false)}
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowTip((v) => !v); }}
@@ -524,7 +524,7 @@ function RocketAmmoBadge() {
           className="absolute z-50 bottom-full left-0 mb-1.5 panel p-2 text-[12px] leading-relaxed"
           style={{ width: 200, pointerEvents: "none", color: "var(--text-dim)" }}
         >
-          <div className="text-[12px] font-bold tracking-widest mb-1" style={{ color: "#ff8a4e" }}>AMMO SYSTEM</div>
+          <div className="text-[12px] font-bold tracking-widest mb-1" style={{ color: "var(--hud-gold)" }}>AMMO SYSTEM</div>
           Rocket weapons fire limited rounds. Restock at any station for <span style={{ color: "#ffd24a" }}>{ROCKET_AMMO_COST_PER}cr per round</span>.
           Current max capacity: <span style={{ color: "#4ee2ff" }}>{maxAmmo} rounds</span>.
           Equip a <span style={{ color: "#ff5cf0" }}>Munitions Bay</span> module to increase capacity.
@@ -755,7 +755,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
         {/* hovered equipped-module inspect pane */}
         <div
           className="flex-1 min-h-0 overflow-y-auto"
-          style={{ background: "linear-gradient(180deg, rgba(22,22,28,0.92), rgba(13,13,17,0.92))", border: "1px solid #33353e", padding: "8px 10px", minHeight: 76 }}
+          style={{ background: "linear-gradient(180deg, rgba(22,22,28,0.92), rgba(13,13,17,0.92))", border: "1px solid var(--hud-border-dim)", padding: "8px 10px", minHeight: 76 }}
         >
           {hoverEquip?.def ? (
             <>
@@ -886,7 +886,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
                       <span style={{ position: "absolute", top: 0, right: 3, fontSize: 10, color: "#ffd24a", textShadow: "0 0 6px #ffd24a" }}>★</span>
                     )}
                     {def.weaponKind === "rocket" && (
-                      <span style={{ position: "absolute", top: 0, left: 4, fontSize: 8, color: "#ff8a4e" }}>⟁</span>
+                      <span style={{ position: "absolute", top: 0, left: 4, fontSize: 8, color: "var(--hud-gold)" }}>⟁</span>
                     )}
                   </div>
                 );
@@ -936,7 +936,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
                       <span style={{ position: "absolute", top: 1, right: 4, fontSize: 8, fontWeight: 700, color: "#5cff8a", textShadow: "0 0 5px #5cff8a" }}>E</span>
                     )}
                     {def.weaponKind === "rocket" && (
-                      <span style={{ position: "absolute", top: 0, left: 4, fontSize: 8, color: "#ff8a4e" }}>⟁</span>
+                      <span style={{ position: "absolute", top: 0, left: 4, fontSize: 8, color: "var(--hud-gold)" }}>⟁</span>
                     )}
                   </div>
                 );
@@ -1054,7 +1054,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
             )}
             {/* comparison block: green gains, red losses */}
             {!isSame && (
-              <div className="mt-2 pt-1.5" style={{ borderTop: "1px solid #33353e" }}>
+              <div className="mt-2 pt-1.5" style={{ borderTop: "1px solid var(--hud-border-dim)" }}>
                 <div className="text-[10px] tracking-widest mb-1" style={{ color: "#8f96a6" }}>
                   {eqDef ? `VS EQUIPPED · ${eqItem && isRolledItem(eqItem) ? lootItemName(eqItem, eqDef) : eqDef.name}` : "VS EMPTY SLOT"}
                 </div>
@@ -1074,7 +1074,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
                 )}
               </div>
             )}
-            <div className="flex items-center justify-between mt-2 pt-1.5 text-[11px]" style={{ borderTop: "1px solid #33353e" }}>
+            <div className="flex items-center justify-between mt-2 pt-1.5 text-[11px]" style={{ borderTop: "1px solid var(--hud-border-dim)" }}>
               {cardHover.kind === "shop" ? (
                 <>
                   <span style={{ color: player.credits >= def.price ? "var(--accent-amber)" : "#ff5c6c" }} className="font-bold tabular-nums">
@@ -1218,7 +1218,7 @@ function DungeonsTab() {
                 Materials: {d.rewardMaterials.map((m) => `${m.qty}× ${RESOURCES[m.resourceId].name}`).join(" · ")}
               </div>
               <div className="flex items-center gap-2 mt-1.5">
-                <div className="text-[12px]" style={{ color: clears > 0 ? "#5cff8a" : "#555" }}>
+                <div className="text-[12px]" style={{ color: clears > 0 ? "var(--hud-green)" : "var(--hud-text-mute)" }}>
                   ✓ {clears === 0 ? "Never cleared" : `${clears}× cleared`}
                 </div>
                 {bestMs !== undefined && (
@@ -1227,8 +1227,8 @@ function DungeonsTab() {
               </div>
               {confirmId === d.id ? (
                 <div className="mt-2" style={{ display: "flex", gap: 6 }}>
-                  <button className="gbtn w-full" style={{ padding: "4px 8px", fontSize: 12, background: "#333", color: "#ccc", border: "1px solid #555" }} onClick={() => setConfirmId(null)}>Cancel</button>
-                  <button className="gbtn gbtn-gold w-full" style={{ padding: "4px 8px", fontSize: 12, background: "#4a6cf7" }} onClick={() => { setConfirmId(null); state.dockedAt = null; sendDockLeave(); enterDungeon(d.id as DungeonId); }}>Confirm Entry</button>
+                  <button className="gbtn w-full" style={{ padding: "4px 8px", fontSize: 12 }} onClick={() => setConfirmId(null)}>Cancel</button>
+                  <button className="gbtn gbtn-gold w-full" style={{ padding: "4px 8px", fontSize: 12 }} onClick={() => { setConfirmId(null); state.dockedAt = null; sendDockLeave(); enterDungeon(d.id as DungeonId); }}>Confirm Entry</button>
                 </div>
               ) : (
                 <button
@@ -1590,7 +1590,7 @@ save(); bump();
             Buy low here, sell high elsewhere — stations specialize in different resources. ▼ green price = cheap, ▲ red = expensive.
           </div>
 
-          <div className="grid gap-2 px-2 py-1.5 text-[11px] tracking-widest text-mute" style={{ background: "linear-gradient(180deg, #24252d 0%, #15161b 100%)", border: "1px solid #33353e", gridTemplateColumns: MARKET_COLS }}>
+          <div className="grid gap-2 px-2 py-1.5 text-[11px] tracking-widest text-mute" style={{ background: "var(--hud-bg-panel)", border: "1px solid var(--hud-border-dim)", gridTemplateColumns: MARKET_COLS }}>
             <div>RESOURCE</div>
             <div className="text-right">PRICE HERE</div>
             <div className="text-right">OWNED</div>
@@ -1889,7 +1889,7 @@ function RefineryTab({ stationId }: { stationId: string }) {
           const timeSec = Math.round(recipe.timeSeconds * speedMul);
 
           return (
-            <div key={recipe.id} className="p-3 border" style={{ borderColor: locked ? "#333" : "var(--border-soft)", opacity: locked ? 0.5 : 1 }}>
+            <div key={recipe.id} className="p-3 border" style={{ borderColor: locked ? "var(--hud-border-dim)" : "var(--border-soft)", opacity: locked ? 0.5 : 1 }}>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <div style={{ width: 28, height: 28, background: (outRes?.color ?? "#aaa") + "22", border: "1px solid " + (outRes?.color ?? "#aaa"), color: outRes?.color ?? "#aaa", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -2016,14 +2016,14 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
       </div>
 
       <div className="panel p-4 flex items-center gap-4">
-        <div className="text-3xl" style={{ color: "#ff8a4e" }}>⟳</div>
+        <div className="text-3xl" style={{ color: "var(--hud-gold)" }}>⟳</div>
         <div className="flex-1">
-          <div className="font-bold tracking-widest" style={{ color: "#ff8a4e" }}>AUTO-RESTOCK AMMO</div>
+          <div className="font-bold tracking-widest" style={{ color: "var(--hud-gold)" }}>AUTO-RESTOCK AMMO</div>
           <div className="text-dim text-[13px]">
             Automatically top up rocket ammo when docking, if you have enough credits.
           </div>
         </div>
-        <GameButton style={{ color: player.autoRestock ? "#ff8a4e" : "#888", minWidth: 64 }} onClick={() => setAutoRestock(!player.autoRestock)}>
+        <GameButton style={{ color: player.autoRestock ? "var(--hud-gold)" : "var(--hud-text-dim)", minWidth: 64 }} onClick={() => setAutoRestock(!player.autoRestock)}>
           {player.autoRestock ? "ON" : "OFF"}
         </GameButton>
       </div>
@@ -2036,7 +2036,7 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
             Automatically repair hull damage when docking, if you have enough credits (2cr/HP).
           </div>
         </div>
-        <GameButton style={{ color: player.autoRepairHull ? "#5cff8a" : "#888", minWidth: 64 }} onClick={() => setAutoRepairHull(!player.autoRepairHull)}>
+        <GameButton style={{ color: player.autoRepairHull ? "#5cff8a" : "var(--hud-text-dim)", minWidth: 64 }} onClick={() => setAutoRepairHull(!player.autoRepairHull)}>
           {player.autoRepairHull ? "ON" : "OFF"}
         </GameButton>
       </div>
@@ -2049,7 +2049,7 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
             Automatically recharge shields to full when docking. Always free.
           </div>
         </div>
-        <GameButton style={{ color: player.autoShieldRecharge ? "#4ee2ff" : "#888", minWidth: 64 }} onClick={() => setAutoShieldRecharge(!player.autoShieldRecharge)}>
+        <GameButton style={{ color: player.autoShieldRecharge ? "#4ee2ff" : "var(--hud-text-dim)", minWidth: 64 }} onClick={() => setAutoShieldRecharge(!player.autoShieldRecharge)}>
           {player.autoShieldRecharge ? "ON" : "OFF"}
         </GameButton>
       </div>
@@ -2546,8 +2546,8 @@ function AmmoTab() {
                       className="text-[13px] px-1.5 py-0.5 tracking-widest"
                       style={{
                         background: (buyAmounts[type] ?? 100) === n ? tDef.color + "30" : "transparent",
-                        color: (buyAmounts[type] ?? 100) === n ? tDef.color : "#666",
-                        border: `1px solid ${(buyAmounts[type] ?? 100) === n ? tDef.color + "99" : "#444"}`,
+                        color: (buyAmounts[type] ?? 100) === n ? tDef.color : "var(--hud-text-dim)",
+                        border: `1px solid ${(buyAmounts[type] ?? 100) === n ? tDef.color + "99" : "var(--hud-border-dim)"}`,
                         cursor: "pointer",
                       }}
                       onClick={() => setBuyAmounts((prev) => ({ ...prev, [type]: n }))}
@@ -2559,8 +2559,8 @@ function AmmoTab() {
                     className="text-[13px] px-1.5 py-0.5 tracking-widest"
                     style={{
                       background: (buyAmounts[type] ?? 100) === missing ? tDef.color + "30" : "transparent",
-                      color: (buyAmounts[type] ?? 100) === missing ? tDef.color : "#666",
-                      border: `1px solid ${(buyAmounts[type] ?? 100) === missing ? tDef.color + "99" : "#444"}`,
+                      color: (buyAmounts[type] ?? 100) === missing ? tDef.color : "var(--hud-text-dim)",
+                      border: `1px solid ${(buyAmounts[type] ?? 100) === missing ? tDef.color + "99" : "var(--hud-border-dim)"}`,
                       cursor: "pointer",
                     }}
                     onClick={() => setBuyAmounts((prev) => ({ ...prev, [type]: missing }))}
@@ -2595,17 +2595,17 @@ function AmmoTab() {
         })}
       </div>
 
-      <div style={{ borderTop: "1px solid #334", paddingTop: 16 }}>
+      <div style={{ borderTop: "1px solid var(--hud-border-dim)", paddingTop: 16 }}>
         <div className="flex items-center justify-between">
           <div>
-            <div className="tracking-widest text-sm" style={{ color: "#ff8a4e" }}>ROCKET AMMO</div>
+            <div className="tracking-widest text-sm" style={{ color: "var(--hud-gold)" }}>ROCKET AMMO</div>
             <div className="text-dim text-[13px] mt-1">
               Rocket launchers use separate ammo. Select type with key 2.
             </div>
           </div>
           <div className="panel px-3 py-2 text-right">
             <div className="text-mute text-[12px] tracking-widest">MAX CAPACITY</div>
-            <div className="font-bold tabular-nums" style={{ color: "#ff8a4e" }}>{rocketMax} rounds</div>
+            <div className="font-bold tabular-nums" style={{ color: "var(--hud-gold)" }}>{rocketMax} rounds</div>
           </div>
         </div>
 
@@ -2647,8 +2647,8 @@ function AmmoTab() {
                         className="text-[13px] px-1.5 py-0.5 tracking-widest"
                         style={{
                           background: (buyAmounts[type] ?? 20) === n ? tDef.color + "30" : "transparent",
-                          color: (buyAmounts[type] ?? 20) === n ? tDef.color : "#666",
-                          border: `1px solid ${(buyAmounts[type] ?? 20) === n ? tDef.color + "99" : "#444"}`,
+                          color: (buyAmounts[type] ?? 20) === n ? tDef.color : "var(--hud-text-dim)",
+                          border: `1px solid ${(buyAmounts[type] ?? 20) === n ? tDef.color + "99" : "var(--hud-border-dim)"}`,
                           cursor: "pointer",
                         }}
                         onClick={() => setBuyAmounts((prev) => ({ ...prev, [type]: n }))}
@@ -2660,8 +2660,8 @@ function AmmoTab() {
                       className="text-[13px] px-1.5 py-0.5 tracking-widest"
                       style={{
                         background: (buyAmounts[type] ?? 20) === missing ? tDef.color + "30" : "transparent",
-                        color: (buyAmounts[type] ?? 20) === missing ? tDef.color : "#666",
-                        border: `1px solid ${(buyAmounts[type] ?? 20) === missing ? tDef.color + "99" : "#444"}`,
+                        color: (buyAmounts[type] ?? 20) === missing ? tDef.color : "var(--hud-text-dim)",
+                        border: `1px solid ${(buyAmounts[type] ?? 20) === missing ? tDef.color + "99" : "var(--hud-border-dim)"}`,
                         cursor: "pointer",
                       }}
                       onClick={() => setBuyAmounts((prev) => ({ ...prev, [type]: missing }))}

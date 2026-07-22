@@ -14,6 +14,11 @@ if (params.has("hud-showcase")) {
   import("./demo/HudShowcase").then(({ default: HudShowcase }) => {
     root.render(<HudShowcase />);
   });
+} else if (params.has("ui-preview")) {
+  // Unified popup/window system verification harness (see UiPreview.tsx).
+  import("./demo/UiPreview").then(({ default: UiPreview }) => {
+    root.render(<UiPreview />);
+  });
 } else if (params.has("hud-editor")) {
   import("./editor/HudEditor").then(({ default: HudEditor }) => {
     root.render(<HudEditor />);

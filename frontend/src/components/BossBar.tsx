@@ -36,8 +36,8 @@ export function BossBar() {
       <div
         className="text-center font-bold truncate"
         style={{
-          color: "#ff8a4e", fontSize: 15, letterSpacing: "0.22em",
-          fontFamily: "var(--font-display)", textShadow: "0 0 10px #ff8a4e66, 0 1px 2px #000",
+          color: "var(--hud-gold)", fontSize: 15, letterSpacing: "0.22em",
+          fontFamily: "var(--font-display)", textShadow: "0 0 10px rgba(232,185,77,0.4), 0 1px 2px #000",
           marginBottom: 2,
         }}
       >

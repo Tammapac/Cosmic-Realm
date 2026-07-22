@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { useDraggable } from "./useDraggable";
 import { useGame, state, bump } from "../game/store";
@@ -15,6 +15,15 @@ const TYPE_GLYPHS: Record<string, string> = {
 // HUD accent (was amber #f7a832 in the old art-window skin)
 const AMBER = "#4ee2ff";
 
+// Fallbacks for missing mission data — never render black/empty placeholders.
+const titleOf = (q: any): string =>
+  (typeof q?.title === "string" && q.title.trim()) || "Unbenannte Mission";
+const descOf = (q: any): string =>
+  (typeof q?.description === "string" && q.description.trim()) ||
+  "Für diese Mission liegen keine weiteren Details vor.";
+const categoryOf = (q: any): string =>
+  (typeof q?.category === "string" && q.category.trim()) || "Allgemein";
+
 function fmtNum(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M";
   if (n >= 10_000) return (n / 1_000).toFixed(1).replace(/\.0$/, "") + "K";
@@ -29,7 +38,9 @@ function QuestRow({
 }: { q: any; highlighted?: boolean; onClick?: () => void; size?: number }) {
   const done = q.completed;
   const color = done ? "#7dff9c" : AMBER;
-  const count = `${Math.min(q.progress, q.killCount)}/${q.killCount}`;
+  const goal = Math.max(0, q.killCount ?? 0);
+  const cur = Math.min(Math.max(0, q.progress ?? 0), goal);
+  const count = goal > 0 ? `${cur}/${goal}` : "—";
   return (
     <div className="q-row" onClick={onClick} style={{ cursor: onClick ? "pointer" : "default" }}>
       <div className="flex items-center justify-center gap-2" style={{ padding: "4px 2px 3px" }}>
@@ -46,9 +57,9 @@ function QuestRow({
             fontWeight: highlighted ? 700 : 400,
             maxWidth: "78%",
           }}
-          title={`${q.title}\n${q.description ?? ""}\nPROGRESS ${count}${q.completed ? " · COMPLETE" : ""}\nREWARDS: ${(q.rewardCredits ?? 0).toLocaleString()} CR · ${q.rewardExp ?? 0} XP · ${q.rewardHonor ?? 0} HONOR`}
+          title={`${titleOf(q)}\n${descOf(q)}\nPROGRESS ${count}${q.completed ? " · COMPLETE" : ""}\nREWARDS: ${(q.rewardCredits ?? 0).toLocaleString()} CR · ${q.rewardExp ?? 0} XP · ${q.rewardHonor ?? 0} HONOR`}
         >
-          {done ? "✓ " : ""}{q.title}
+          {done ? "✓ " : ""}{titleOf(q)}
         </span>
         <span
           className="tabular-nums shrink-0"
@@ -126,7 +137,21 @@ function JournalWindow() {
   const off = Math.min(offset, maxOffset);
   const quests = activeQuests.slice(off, off + 12);
   const selId = localSel ?? storeSel;
-  const selected = activeQuests.find((q) => q.id === selId) ?? quests[0] ?? null;
+  // Resolve the selection against the LIVE list. If the chosen mission was
+  // completed/turned-in/deleted (or the id is invalid), fall back to the
+  // first valid mission so the detail pane never goes blank.
+  const selected = activeQuests.find((q) => q.id === selId) ?? activeQuests[0] ?? null;
+
+  // Reconcile the persisted selection whenever the mission list changes: if
+  // the selected id no longer exists, auto-pick the first valid mission (or
+  // clear when the list is empty). Runs after accept/complete/reload.
+  useEffect(() => {
+    const exists = selId != null && activeQuests.some((q) => q.id === selId);
+    if (exists) return;
+    const next = activeQuests[0]?.id ?? null;
+    if (localSel !== null) setLocalSel(next);
+    if (storeSel !== next) { state.journalQuestId = next; }
+  }, [activeQuests, selId, localSel, storeSel]);
 
   const close = () => { state.showJournal = false; state.journalQuestId = null; bump(); };
   const drag = useDraggable("journal");
@@ -150,20 +175,26 @@ function JournalWindow() {
           <div style={{ width: 240, flexShrink: 0, overflowY: "auto", padding: "8px 6px 8px 10px", borderRight: "1px solid rgba(90,130,180,0.25)" }}>
             {activeQuests.map((q) => {
               const sel = selected && q.id === selected.id;
+              const locked = q.locked === true;
+              const cls = [
+                "j-row",
+                sel ? "j-row--sel" : "",
+                q.completed ? "j-row--done" : "",
+                locked ? "j-row--locked" : "",
+              ].filter(Boolean).join(" ");
               return (
                 <button
                   key={q.id}
                   onClick={() => setLocalSel(q.id)}
-                  className={`j-row ${sel ? "j-row--sel" : ""}`}
-                  title={q.title}
+                  className={cls}
+                  title={titleOf(q)}
                   style={{
                     position: "relative", display: "block", width: "100%", minHeight: 26,
                     marginBottom: 4, textAlign: "left", padding: "4px 8px",
-                    color: q.completed && !sel ? "#4fae62" : undefined,
                   }}
                 >
                   <span className="truncate" style={{ display: "block", maxWidth: "100%" }}>
-                    {q.completed ? "✓ " : ""}{q.title}
+                    {q.completed ? "✓ " : ""}{titleOf(q)}
                   </span>
                 </button>
               );
@@ -181,7 +212,7 @@ function JournalWindow() {
                   paddingBottom: 6, borderBottom: "1px solid rgba(78,226,255,0.25)",
                 }}
               >
-                {selected.title}
+                {titleOf(selected)}
               </div>
             )}
             <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "8px 2px" }}>
@@ -221,9 +252,11 @@ function JournalWindow() {
 }
 
 function DetailPane({ q }: { q: any }) {
-  const pct = Math.min(1, q.progress / q.killCount);
+  const goal = Math.max(0, q.killCount ?? 0);
+  const cur = Math.min(Math.max(0, q.progress ?? 0), goal);
+  const pct = goal > 0 ? Math.min(1, cur / goal) : 0;
   const done = q.completed;
-  const zoneName = (ZONES as any)[q.zone]?.name ?? q.zone;
+  const zoneName = (ZONES as any)[q.zone]?.name ?? q.zone ?? "";
   const zoneLabel = (ZONES as any)[q.zone]?.label ?? "";
   const body: CSSProperties = {
     color: `${AMBER}dd`,
@@ -237,14 +270,14 @@ function DetailPane({ q }: { q: any }) {
   return (
     <div style={{ paddingRight: 8, paddingTop: 2 }}>
       <div style={body}>
-        {zoneLabel && `SECTOR [${zoneLabel}] ${zoneName} — `}
-        TARGET: {(ENEMY_DEFS[q.killType]?.name ?? q.killType)} × {q.killCount} · PROGRESS {Math.min(q.progress, q.killCount)}/{q.killCount}
+        SECTOR [{categoryOf(q)}]{zoneLabel ? ` ${zoneLabel}` : ""}{zoneName ? ` ${zoneName}` : ""} —{" "}
+        TARGET: {(ENEMY_DEFS[q.killType]?.name ?? q.killType ?? "—")}{goal > 0 ? ` × ${goal}` : ""} · PROGRESS {goal > 0 ? `${cur}/${goal}` : "—"}
         {done && <span style={{ color: "#7dff9c", textShadow: "0 0 6px #7dff9c88" }}> · ✓ READY TO TURN IN</span>}
       </div>
-      <div className="overflow-hidden" style={{ height: 5, background: "rgba(247,168,50,0.12)", margin: "8px 0 10px" }}>
+      <div className="overflow-hidden" style={{ height: 5, background: "rgba(78,226,255,0.12)", margin: "8px 0 10px" }}>
         <div style={{ height: "100%", width: `${pct * 100}%`, background: done ? "#7dff9c" : AMBER, boxShadow: `0 0 6px ${done ? "#7dff9c" : AMBER}88` }} />
       </div>
-      <div style={body}>{q.description}</div>
+      <div style={body}>{descOf(q)}</div>
     </div>
   );
 }

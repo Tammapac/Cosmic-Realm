@@ -64,78 +64,99 @@
   --panel-accent-deep: var(--hud-shield-deep);
   --panel-glow: rgba(78, 226, 255, 0.30);
   position: relative;
-  isolation: isolate;
+  /* NO isolation:isolate here — it traps the frame pseudo-elements in a
+     stacking context where z-index:-1 hides them behind the opaque body.
+     The frame layers sit at positive z-index instead (see ::before /
+     .panelFrame below), above the body, below the content. */
   font-family: var(--font-display) !important;
   border: none !important;
   border-radius: 0 !important;
-  /* base metal body — the exact Hotbar/Minimap console fill, plus the
-     top sheen fade layered above it so the "heller oben, verblassend"
-     read holds without a separate .consoleSheen element. */
+  /* FULLY OPAQUE base metal body — the exact Hotbar/Minimap console fill.
+     A solid #060a14 floor sits under the gradient so NOTHING behind the
+     window ever shows through (the previous version left the lower band
+     effectively translucent, which is what read as "teilweise
+     transparent"). No backdrop-filter for the same reason. */
   background:
     linear-gradient(180deg, rgba(200, 225, 255, 0.12) 0%, rgba(200, 225, 255, 0.03) 26%, transparent 52%),
     repeating-linear-gradient(90deg, var(--hud-brushed-line) 0px, var(--hud-brushed-line) 1px, transparent 1px, transparent 3px),
-    linear-gradient(180deg, #283a58 0%, #17233c 32%, #0d1626 62%, #060a14 100%) !important;
+    linear-gradient(180deg, #283a58 0%, #17233c 32%, #0d1626 62%, #060a14 100%),
+    #070c16 !important;
   clip-path: polygon(
     var(--panel-cut) 0, calc(100% - var(--panel-cut)) 0,
     100% var(--panel-cut), 100% calc(100% - var(--panel-cut)),
     calc(100% - var(--panel-cut)) 100%, var(--panel-cut) 100%,
     0 calc(100% - var(--panel-cut)), 0 var(--panel-cut)
   ) !important;
-  backdrop-filter: blur(3px);
   box-shadow:
     /* inner top metal highlight + bottom shade (the machined bevel) */
     inset 0 2px 5px rgba(180, 220, 255, 0.16),
     inset 0 -14px 24px rgba(0, 0, 0, 0.55),
-    /* crisp accent ring hugging the whole silhouette (= .crispEdge) */
-    inset 0 0 0 1.5px var(--panel-accent),
-    inset 0 0 0 3px rgba(3, 6, 12, 0.55),
     /* outer depth drop + soft accent glow rim (= .glowRim, softened) */
     0 8px 28px rgba(0, 0, 0, 0.62),
     0 0 22px var(--panel-glow) !important;
 }
 
-/* ::before — PCB energy veins, the SAME trace/node SVG language as the
-   Hotbar/TopPanel, tiled across the panel and faded in from the top so
-   they read as circuitry embedded in the body, never fighting content. */
+/* Direct children of a panel float above the frame layers (which live at
+   z-index 0/1). Without this the frame's ::after ring would paint over the
+   title band + content. */
+.panel > *,
+.hud-plate > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* ::before — the DOUBLE CONTOUR + PCB veins, drawn ABOVE the body
+   (z-index:1) so it's actually visible. This single layer reproduces
+   three of the Minimap's separate rings at once via stacked box-shadows:
+     • inset 1.5px CRISP CYAN edge      (= .crispEdge)
+     • inset dark gap                    (the dark seam between rings)
+     • inset light-top inner bevel lip   (= .innerBevel / .innerFrame)
+   plus the tiled PCB energy traces faded in from the top edge. */
 .panel::before,
 .hud-plate::before {
   content: "";
   position: absolute;
   inset: 0;
-  z-index: -1;
+  z-index: 1;
   pointer-events: none;
-  opacity: 0.5;
   clip-path: inherit;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='120' viewBox='0 0 360 120'%3E%3Cg fill='none' stroke='%2378E2FF' stroke-width='1.4'%3E%3Cpath d='M0 20 L60 20 L60 12 L120 12 L120 20 L200 20'/%3E%3Cpath d='M0 34 L40 34 L40 44 L100 44 L100 34 L170 34'/%3E%3Cpath d='M0 96 L60 96 L60 104 L130 104 L130 96 L210 96'/%3E%3Cpath d='M0 82 L50 82 L50 74 L110 74 L110 82 L190 82'/%3E%3Cpath d='M200 20 L260 20 L260 30 L320 30'/%3E%3Cpath d='M210 96 L270 96 L270 88 L330 88'/%3E%3Cpath d='M320 30 L360 30'/%3E%3Cpath d='M330 88 L360 88'/%3E%3C/g%3E%3Cg fill='%2378E2FF'%3E%3Ccircle cx='120' cy='12' r='2'/%3E%3Ccircle cx='100' cy='44' r='1.8'/%3E%3Ccircle cx='130' cy='104' r='1.8'/%3E%3Ccircle cx='110' cy='74' r='1.8'/%3E%3Ccircle cx='320' cy='30' r='2'/%3E%3Ccircle cx='330' cy='88' r='1.8'/%3E%3C/g%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='120' viewBox='0 0 360 120'%3E%3Cg fill='none' stroke='%2378E2FF' stroke-width='1.4' stroke-opacity='0.5'%3E%3Cpath d='M0 20 L60 20 L60 12 L120 12 L120 20 L200 20'/%3E%3Cpath d='M0 34 L40 34 L40 44 L100 44 L100 34 L170 34'/%3E%3Cpath d='M0 96 L60 96 L60 104 L130 104 L130 96 L210 96'/%3E%3Cpath d='M0 82 L50 82 L50 74 L110 74 L110 82 L190 82'/%3E%3Cpath d='M200 20 L260 20 L260 30 L320 30'/%3E%3Cpath d='M210 96 L270 96 L270 88 L330 88'/%3E%3Cpath d='M320 30 L360 30'/%3E%3Cpath d='M330 88 L360 88'/%3E%3C/g%3E%3Cg fill='%2378E2FF' fill-opacity='0.6'%3E%3Ccircle cx='120' cy='12' r='2'/%3E%3Ccircle cx='100' cy='44' r='1.8'/%3E%3Ccircle cx='130' cy='104' r='1.8'/%3E%3Ccircle cx='110' cy='74' r='1.8'/%3E%3Ccircle cx='320' cy='30' r='2'/%3E%3Ccircle cx='330' cy='88' r='1.8'/%3E%3C/g%3E%3C/svg%3E");
   background-repeat: repeat;
   background-size: 360px 120px;
-  -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.7) 0%, rgba(0, 0, 0, 0.12) 42%, transparent 78%);
-  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.7) 0%, rgba(0, 0, 0, 0.12) 42%, transparent 78%);
+  -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0.10) 40%, transparent 74%);
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0.10) 40%, transparent 74%);
+  /* the whole double-contour frame, on top of the veins */
+  box-shadow:
+    inset 0 0 0 1.5px var(--panel-accent),
+    inset 0 0 0 3px rgba(3, 6, 12, 0.65),
+    inset 0 0 0 4.5px rgba(160, 205, 235, 0.20),
+    inset 0 0 10px rgba(3, 6, 12, 0.5);
 }
 
-/* ::after — inner bevel ring (= .innerBevel): a light-top → dark-bottom
-   contour inset a few px from the rim, so the frame reads as a genuine
-   double edge (crisp accent line outside, machined lip inside) instead of
-   one flat border. Drawn with the erase-to-ring mask trick so its width
-   stays even through the chamfered corners. */
+/* ::after — the INNER FRAME: a second crisp accent line inset ~5px from
+   the outer one, with a visible dark gap between them, exactly the
+   Minimap/Chat "Doppelrahmen" (two distinct rings, not one thick border).
+   Drawn with the erase-to-ring mask so its width stays even through the
+   chamfered corners. */
 .panel::after,
 .hud-plate::after {
   content: "";
   position: absolute;
-  inset: 3px;
-  z-index: -1;
+  inset: 6px;
+  z-index: 1;
   pointer-events: none;
-  padding: 2px;
-  background: linear-gradient(180deg, rgba(210, 235, 255, 0.22) 0%, rgba(0, 0, 0, 0.35) 100%);
+  padding: 1.5px;
+  background: linear-gradient(180deg, rgba(210, 235, 255, 0.55) 0%, var(--panel-accent-deep) 55%, rgba(6, 12, 22, 0.6) 100%);
   clip-path: polygon(
-    calc(var(--panel-cut) - 3px) 0, calc(100% - var(--panel-cut) + 3px) 0,
-    100% calc(var(--panel-cut) - 3px), 100% calc(100% - var(--panel-cut) + 3px),
-    calc(100% - var(--panel-cut) + 3px) 100%, calc(var(--panel-cut) - 3px) 100%,
-    0 calc(100% - var(--panel-cut) + 3px), 0 calc(var(--panel-cut) - 3px)
+    calc(var(--panel-cut) - 6px) 0, calc(100% - var(--panel-cut) + 6px) 0,
+    100% calc(var(--panel-cut) - 6px), 100% calc(100% - var(--panel-cut) + 6px),
+    calc(100% - var(--panel-cut) + 6px) 100%, calc(var(--panel-cut) - 6px) 100%,
+    0 calc(100% - var(--panel-cut) + 6px), 0 calc(var(--panel-cut) - 6px)
   );
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
+  opacity: 0.85;
 }
 
 /* Title band: cyan tick + tracked uppercase title, sitting flush on the
@@ -181,7 +202,6 @@
   border: none !important;
   border-image: none !important;
 }
-.panel-framed::before { opacity: 0.42; }
 
 /* Gold-accent variant (featured windows: hangar, dossier, loot, idle
    reward) — the identical console recolored to the gold accent via the
@@ -454,13 +474,51 @@ select.ginput {
   background: rgba(8, 14, 26, 0.7);
   border: 1px solid rgba(90, 130, 180, 0.28);
 }
-.j-row--sel {
-  background: linear-gradient(180deg, rgba(18, 40, 62, 0.9) 0%, rgba(10, 22, 38, 0.9) 100%);
-  border-color: rgba(78, 226, 255, 0.55);
+/* ── Journal / mission list rows — full HUD re-theme ──────────────────────
+   Overrides the stale light-skin values in index.css (black #2a2214 text on
+   dark plates, amber selection). Every state is legible on the navy panel:
+     normal    = dark navy fill, light primary text
+     hover     = subtle cyan brighten
+     selected  = cyan border + glow, bright text
+     completed = clear green, not glaring (via .j-row--done)
+     locked    = dimmed but readable (via .j-row--locked) */
+.j-row {
+  color: var(--ui-text-primary);
+  background: linear-gradient(180deg, rgba(14, 24, 42, 0.72) 0%, rgba(9, 16, 30, 0.72) 100%);
+  border: 1px solid var(--ui-border-dim);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  border-radius: var(--ui-radius);
 }
+.j-row:hover:not(.j-row--sel) {
+  color: var(--ui-text-primary);
+  background: rgba(78, 226, 255, 0.1);
+  border-color: rgba(78, 226, 255, 0.4);
+  box-shadow: inset 0 0 0 1px rgba(78, 226, 255, 0.28), 0 0 6px rgba(78, 226, 255, 0.18);
+}
+.j-row--done:not(.j-row--sel) {
+  color: var(--ui-success);
+  text-shadow: 0 0 6px rgba(92, 255, 138, 0.35), 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+.j-row--locked:not(.j-row--sel) {
+  color: var(--ui-text-muted);
+  opacity: 0.72;
+}
+.j-row--sel {
+  background: linear-gradient(180deg, rgba(18, 40, 62, 0.95) 0%, rgba(10, 22, 38, 0.95) 100%);
+  border: 1px solid var(--hud-cyan);
+  color: var(--ui-text-primary);
+  text-shadow: 0 0 8px rgba(78, 226, 255, 0.55), 0 1px 2px rgba(0, 0, 0, 0.7);
+  box-shadow:
+    inset 0 0 0 1px rgba(78, 226, 255, 0.6),
+    inset 0 0 10px rgba(78, 226, 255, 0.14),
+    0 0 12px rgba(78, 226, 255, 0.4);
+}
+/* neutralize the old amber bracket caps — cyan tick accents instead */
 .j-row--sel::before,
 .j-row--sel::after {
-  border-color: rgba(78, 226, 255, 0.8);
+  background: var(--hud-cyan);
+  border-color: var(--hud-cyan);
+  box-shadow: 0 0 8px rgba(78, 226, 255, 0.8);
 }
 .hover-row:hover {
   background: rgba(78, 226, 255, 0.07);
@@ -526,6 +584,11 @@ select.ginput {
 .sw-tooltip::after, .gtip::after {
   border-bottom-color: rgba(78, 226, 255, 0.8);
   border-right-color: rgba(78, 226, 255, 0.8);
+}
+/* item-name header line — was orange #ffb63f in the legacy skin */
+.gtip::first-line {
+  color: var(--hud-cyan);
+  text-shadow: 0 0 8px rgba(78, 226, 255, 0.4);
 }
 
 /* ── 11. Scrollbars ─────────────────────────────────────────────────────── */

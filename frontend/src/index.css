@@ -483,8 +483,8 @@ button {
   width: 15px;
   height: 10px;
   flex-shrink: 0;
-  background: repeating-linear-gradient(90deg, #f7a832 0 3px, transparent 3px 6px);
-  box-shadow: 0 0 6px rgba(247, 168, 50, 0.6);
+  background: repeating-linear-gradient(90deg, var(--hud-gold) 0 3px, transparent 3px 6px);
+  box-shadow: 0 0 6px rgba(232, 185, 77, 0.6);
 }
 
 /* Journal index rows (journalexample2 style):

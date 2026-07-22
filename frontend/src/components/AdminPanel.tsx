@@ -201,10 +201,10 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
                       fontWeight: "bold",
                     }}>Save Changes</button>
                     <button onClick={() => { setEdits({}); setStatus(""); }} style={{
-                      background: "transparent", border: "1px solid #333",
-                      color: "#888", fontSize: 11, padding: "6px 12px", borderRadius: 4, cursor: "pointer",
+                      background: "transparent", border: "1px solid var(--hud-border-dim)",
+                      color: "var(--hud-text-dim)", fontSize: 11, padding: "6px 12px", borderRadius: 4, cursor: "pointer",
                     }}>Reset</button>
-                    <span style={{ color: "#556", fontSize: 10 }}>
+                    <span style={{ color: "var(--hud-text-mute)", fontSize: 10 }}>
                       {Object.keys(edits).length} field(s) changed
                     </span>
                   </div>

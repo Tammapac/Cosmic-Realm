@@ -73,4 +73,31 @@
   --hud-fs-sm: clamp(10px, 0.75vw, 12px);
   --hud-fs-md: clamp(12px, 0.9vw, 15px);
   --hud-fs-lg: clamp(16px, 1.2vw, 20px);
+
+  /* ── UI aliases ─────────────────────────────────────────────────────────
+     Semantic --ui-* names for the unified popup/window system. These are
+     PURE ALIASES onto the existing --hud-* palette — no new colors, borders,
+     radii or materials are introduced. Popup components reference --ui-* so
+     the single source of truth stays the main HUD. */
+  --ui-bg-primary:   var(--hud-bg-panel);        /* window/panel fill        */
+  --ui-bg-solid:     var(--hud-bg-panel-solid);  /* opaque floor             */
+  --ui-bg-raised:    var(--hud-bg-panel-raised); /* raised inner surfaces    */
+  --ui-border:       var(--hud-border);          /* default frame border     */
+  --ui-border-bright:var(--hud-border-bright);   /* focused/active border    */
+  --ui-border-dim:   var(--hud-border-dim);      /* dividers, faint edges    */
+  --ui-border-width: var(--hud-border-w);
+  --ui-cyan:         var(--hud-cyan);            /* primary accent           */
+  --ui-cyan-glow:    var(--hud-cyan-glow);
+  --ui-gold:         var(--hud-gold);            /* rewards/credits accent   */
+  --ui-danger:       var(--hud-hp);              /* destructive / warning    */
+  --ui-success:      var(--hud-green);           /* completed / positive     */
+  --ui-warning:      var(--hud-energy);          /* caution (NOT orange)     */
+  --ui-text-primary: var(--hud-text-bright);     /* body/primary text        */
+  --ui-text-secondary:var(--hud-text-dim);       /* secondary/label text     */
+  --ui-text-muted:   var(--hud-text-mute);       /* disabled/locked text     */
+  --ui-radius:       var(--hud-radius);          /* 0 — HUD never rounds      */
+  --ui-cut:          var(--hud-cut);             /* panel bevel/notch        */
+  --ui-cut-sm:       var(--hud-cut-sm);
+  --ui-glow-soft:    var(--hud-glow-soft);
+  --ui-glow-med:     var(--hud-glow-med);
 }
