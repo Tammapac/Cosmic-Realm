@@ -268,18 +268,26 @@ uniform vec2 texel;
 uniform float thickness;
 varying vec2 vUv;
 void main() {
-  float a = texture2D(tMask, vUv).a;
-  // edge = inside the mask near a boundary, OR just outside it. We draw the rim
-  // just OUTSIDE the silhouette so it never covers the ship.
-  if (a > 0.5) { discard; }          // inside the ship → no rim (no red fill)
-  float n = 0.0;
-  for (float dx = -2.0; dx <= 2.0; dx += 1.0) {
-    for (float dy = -2.0; dy <= 2.0; dy += 1.0) {
-      n = max(n, texture2D(tMask, vUv + vec2(dx, dy) * texel * thickness).a);
+  float inside = texture2D(tMask, vUv).a;
+  if (inside > 0.5) { discard; }     // never cover the ship (no red fill)
+  // Distance-to-silhouette by sampling a small ring of offsets. The nearest
+  // hit gives a soft falloff → a THIN crisp core line + a MINI glow outside.
+  float near = 0.0;   // strong near the edge (thin line)
+  float glow = 0.0;   // softer, wider (mini glow)
+  for (float dx = -3.0; dx <= 3.0; dx += 1.0) {
+    for (float dy = -3.0; dy <= 3.0; dy += 1.0) {
+      float d = length(vec2(dx, dy));
+      float m = texture2D(tMask, vUv + vec2(dx, dy) * texel * thickness).a;
+      if (m > 0.5) {
+        near = max(near, 1.0 - smoothstep(0.0, 1.6, d)); // crisp thin core
+        glow = max(glow, 1.0 - smoothstep(0.0, 3.2, d)); // wider soft halo
+      }
     }
   }
-  if (n < 0.5) discard;              // not near an edge → transparent
-  gl_FragColor = vec4(1.0, 0.16, 0.16, 0.95); // red rim
+  float rim = max(near, glow * 0.45);
+  if (rim < 0.02) discard;
+  // Slightly transparent red; the thin line reads ~0.7 alpha, the glow fades.
+  gl_FragColor = vec4(1.0, 0.18, 0.2, rim * 0.72);
 }`;
 
 let bloomRTA: THREE.WebGLRenderTarget | null = null;
@@ -342,7 +350,7 @@ function setupOutlinePass(bufW: number, bufH: number): void {
     uniforms: {
       tMask: { value: selectRT.texture },
       texel: { value: new THREE.Vector2(1 / bufW, 1 / bufH) },
-      thickness: { value: 1.4 },
+      thickness: { value: 1.0 },
     },
     vertexShader: QUAD_VERT,
     fragmentShader: SELECT_FRAG,

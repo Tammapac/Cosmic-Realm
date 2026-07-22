@@ -2452,22 +2452,9 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
     }
 
     // Selection ring (animated pulse)
-    if (state.selectedWorldTarget?.kind === "enemy" && state.selectedWorldTarget.id === e.id) {
-      if (!data.selectionRing) {
-        data.selectionRing = new PIXI.Graphics();
-        data.container.addChildAt(data.selectionRing, 0);
-      }
-      data.selectionRing.clear();
-      const pulse = 0.6 + 0.4 * Math.sin(state.tick * 5);
-      const ringR = e.size + 12 + Math.sin(state.tick * 3) * 2;
-      data.selectionRing.lineStyle(2, 0xff3b4d, pulse);
-      data.selectionRing.drawCircle(0, 0, ringR);
-      data.selectionRing.lineStyle(1, 0xff3b4d, pulse * 0.4);
-      data.selectionRing.drawCircle(0, 0, ringR + 4);
-      data.selectionRing.visible = true;
-    } else if (data.selectionRing) {
-      data.selectionRing.visible = false;
-    }
+    // Old selection ring (red circle under the ship) REMOVED — selection is now
+    // shown by the 3D red outline around the model. Keep it hidden if it exists.
+    if (data.selectionRing) data.selectionRing.visible = false;
   }
 
   // Remove sprites for dead enemies
