@@ -259,11 +259,38 @@ void main() {
 
 const QUAD_VERT = `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
 
+// Red SELECTION outline: the selected ship is rendered (flat white) into a mask
+// target; this pass draws a red rim on the mask's silhouette edge — a clean
+// thin line, NOT a filled area. Blended over the final image.
+const SELECT_FRAG = `
+uniform sampler2D tMask;
+uniform vec2 texel;
+uniform float thickness;
+varying vec2 vUv;
+void main() {
+  float a = texture2D(tMask, vUv).a;
+  // edge = inside the mask near a boundary, OR just outside it. We draw the rim
+  // just OUTSIDE the silhouette so it never covers the ship.
+  if (a > 0.5) { discard; }          // inside the ship → no rim (no red fill)
+  float n = 0.0;
+  for (float dx = -2.0; dx <= 2.0; dx += 1.0) {
+    for (float dy = -2.0; dy <= 2.0; dy += 1.0) {
+      n = max(n, texture2D(tMask, vUv + vec2(dx, dy) * texel * thickness).a);
+    }
+  }
+  if (n < 0.5) discard;              // not near an edge → transparent
+  gl_FragColor = vec4(1.0, 0.16, 0.16, 0.95); // red rim
+}`;
+
 let bloomRTA: THREE.WebGLRenderTarget | null = null;
 let bloomRTB: THREE.WebGLRenderTarget | null = null;
 let brightMat: THREE.ShaderMaterial | null = null;
 let blurMat: THREE.ShaderMaterial | null = null;
 let fsQuad: THREE.Mesh | null = null;
+let _anySelected = false;
+let selectRT: THREE.WebGLRenderTarget | null = null;
+let selectMat: THREE.ShaderMaterial | null = null;
+let selectMaskMat: THREE.MeshBasicMaterial | null = null;
 
 function setupOutlinePass(bufW: number, bufH: number): void {
   const hw = Math.max(1, Math.floor(bufW / 2));
@@ -307,6 +334,21 @@ function setupOutlinePass(bufW: number, bufH: number): void {
   fsQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), outlineMat);
   fsQuad.frustumCulled = false;
   outlineScene.add(fsQuad);
+
+  // Selection mask target + red-edge material.
+  selectRT = new THREE.WebGLRenderTarget(bufW, bufH, { depthBuffer: true, format: THREE.RGBAFormat });
+  selectMaskMat = new THREE.MeshBasicMaterial({ color: 0xffffff }); // flat mask
+  selectMat = new THREE.ShaderMaterial({
+    uniforms: {
+      tMask: { value: selectRT.texture },
+      texel: { value: new THREE.Vector2(1 / bufW, 1 / bufH) },
+      thickness: { value: 1.4 },
+    },
+    vertexShader: QUAD_VERT,
+    fragmentShader: SELECT_FRAG,
+    blending: THREE.NormalBlending,
+    depthTest: false, depthWrite: false, transparent: true,
+  });
 }
 
 function resizeOutlinePass(bufW: number, bufH: number): void {
@@ -317,6 +359,8 @@ function resizeOutlinePass(bufW: number, bufH: number): void {
   if (bloomRTA) bloomRTA.setSize(hw, hh);
   if (bloomRTB) bloomRTB.setSize(hw, hh);
   (outlineMat.uniforms.texel.value as THREE.Vector2).set(1 / bufW, 1 / bufH);
+  if (selectRT) selectRT.setSize(bufW, bufH);
+  if (selectMat) (selectMat.uniforms.texel.value as THREE.Vector2).set(1 / bufW, 1 / bufH);
 }
 
 const loadedModels = new Map<string, THREE.Group>();
@@ -330,43 +374,11 @@ const activeShips = new Map<string, Ship3D>();
 let _selectedShipIds = new Set<string>();
 export function setSelectedShipIds(ids: Set<string>): void { _selectedShipIds = ids; }
 
-// A shared red material for selection outlines (backface, so it shows as a rim
-// around the model). One instance, reused by every selected ship.
-let _selOutlineMat: THREE.MeshBasicMaterial | null = null;
-function selOutlineMat(): THREE.MeshBasicMaterial {
-  if (!_selOutlineMat) {
-    _selOutlineMat = new THREE.MeshBasicMaterial({
-      color: 0xff2a2a, side: THREE.BackSide, transparent: true, opacity: 0.9,
-      depthWrite: false, depthTest: true, blending: THREE.NormalBlending,
-    });
-  }
-  return _selOutlineMat;
-}
-
-// Build a red rim by CLONING the whole model (keeps the exact hierarchy/
-// transforms), swapping every material to the shared red backface material and
-// scaling the clone up a touch so it pokes out behind the hull as an outline.
-// Added as a sibling of the model under the wrapper, so it inherits the same
-// ship transform. Geometry is shared with the clone source (cheap).
-function buildSelectionOutline(model: THREE.Group): THREE.Group {
-  const clone = model.clone(true);
-  const mat = selOutlineMat();
-  clone.traverse((child) => {
-    const mesh = child as THREE.Mesh;
-    if (mesh.isMesh) {
-      mesh.material = mat;
-      mesh.castShadow = false; mesh.receiveShadow = false;
-      mesh.renderOrder = -1;
-      mesh.layers.set(0);
-    } else if ((child as any).isSprite) {
-      child.visible = false; // don't duplicate glow sprites
-    }
-  });
-  clone.scale.multiplyScalar(1.06);
-  const grp = new THREE.Group();
-  grp.add(clone);
-  return grp;
-}
+// Selection outline is drawn as a POST-PROCESS silhouette edge (see the red
+// outline pass in render3DLayer) — NOT a backface-hull (that filled the whole
+// ship red instead of a clean rim). We just track which ships are selected and
+// mark their meshes so the selection pass can render only them into a mask.
+const SELECT_LAYER = 2; // layer used to isolate selected meshes for the mask
 const activeThisFrame = new Set<string>();
 
 let cameraZoom = 1;
@@ -1326,16 +1338,22 @@ export function render3DLayer(): void {
   const now = performance.now() / 1000;
   if (lastFrameTime > 0) frameDt = Math.min(0.1, now - lastFrameTime);
   lastFrameTime = now;
+  let anySelected = false;
   for (const [id, ship] of activeShips) {
     if (ship.mixer) ship.mixer.update(frameDt);
-    // Red selection outline — shown only for clicked ships.
+    // Mark selected ships' meshes onto SELECT_LAYER so the post-process pass
+    // can render just them into a silhouette mask → a clean red edge. The main
+    // pass renders layer 0, so this is additive (meshes stay on layer 0 too).
     const selected = _selectedShipIds.has(id);
-    if (selected && !ship.selectionOutline) {
-      ship.selectionOutline = buildSelectionOutline(ship.model);
-      ship.wrapper.add(ship.selectionOutline); // sibling of model, same ship transform
-    }
-    if (ship.selectionOutline) ship.selectionOutline.visible = selected;
+    if (selected) anySelected = true;
+    ship.model.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      if (selected) mesh.layers.enable(SELECT_LAYER);
+      else mesh.layers.disable(SELECT_LAYER);
+    });
   }
+  _anySelected = anySelected;
   // Emissive pulse (e.g. Leviathan energy cracks): materials tagged with
   // userData.pulseEmissive breathe their emissiveIntensity around a base.
   if (now - _lastEmissivePulseUpdate > 0.03) {
@@ -1388,10 +1406,30 @@ export function render3DLayer(): void {
       renderer.render(outlineScene, outlineCamera);
     }
 
-    // Pass 3: blit with 1px black outline + additive bloom
+    // Pass 3: blit with additive bloom (black outline removed)
     fsQuad.material = outlineMat;
     renderer.setRenderTarget(null);
     renderer.render(outlineScene, outlineCamera);
+
+    // Pass 3b: RED SELECTION OUTLINE. Render only the selected ship(s) (on
+    // SELECT_LAYER) into a flat-white mask, then draw a thin red rim on the
+    // mask's silhouette edge over the screen. A clean line, not a filled area.
+    if (_anySelected && selectRT && selectMat && selectMaskMat && fsQuad) {
+      camera.layers.set(SELECT_LAYER);
+      scene.overrideMaterial = selectMaskMat;
+      renderer.setRenderTarget(selectRT);
+      renderer.setClearColor(0x000000, 0);
+      renderer.clear();
+      renderer.render(scene, camera);
+      scene.overrideMaterial = null;
+      camera.layers.set(0);
+      // draw red rim over the final image
+      fsQuad.material = selectMat;
+      renderer.setRenderTarget(null);
+      renderer.autoClear = false;
+      renderer.render(outlineScene, outlineCamera);
+      renderer.autoClear = true;
+    }
 
     // Pass 4: glow FX (halos, engine sprites) on top, no outline/bloom
     camera.layers.set(FX_LAYER);
