@@ -141,34 +141,35 @@
    difference; because both share the chamfer geometry, the rim width is
    IDENTICAL on straight and diagonal edges. --rw = rim thickness. */
 .panel-rim {
+  /* Metallic rim as a RING (evenodd: outer silhouette minus inner one inset
+     by --rw). The CENTRE is punched out so the panel's own frosted glass +
+     backdrop blur shows through — the rim only paints the border, never
+     covers the fill (a full fill made the inventory go opaque). */
   position: absolute;
   inset: 0;
-  z-index: 3;
+  z-index: 1;
   pointer-events: none;
   --rw: 2.5px;
   background: linear-gradient(180deg, #d6f6ff 0%, var(--panel-accent) 58%, var(--panel-accent-deep) 100%);
   clip-path: polygon(
+    evenodd,
     var(--panel-cut) 0, calc(100% - var(--panel-cut)) 0,
     100% var(--panel-cut), 100% calc(100% - var(--panel-cut)),
     calc(100% - var(--panel-cut)) 100%, var(--panel-cut) 100%,
-    0 calc(100% - var(--panel-cut)), 0 var(--panel-cut)
+    0 calc(100% - var(--panel-cut)), 0 var(--panel-cut),
+    var(--panel-cut) 0,
+    var(--rw) calc(var(--panel-cut)),
+    var(--rw) calc(100% - var(--panel-cut)),
+    calc(var(--panel-cut)) calc(100% - var(--rw)),
+    calc(100% - var(--panel-cut)) calc(100% - var(--rw)),
+    calc(100% - var(--rw)) calc(100% - var(--panel-cut)),
+    calc(100% - var(--rw)) calc(var(--panel-cut)),
+    calc(100% - var(--panel-cut)) var(--rw),
+    calc(var(--panel-cut)) var(--rw),
+    var(--rw) calc(var(--panel-cut))
   );
 }
-.panel-rim::before {
-  content: "";
-  position: absolute;
-  inset: var(--rw);
-  pointer-events: none;
-  background:
-    linear-gradient(180deg, rgba(200, 225, 255, 0.08) 0%, transparent 40%),
-    linear-gradient(180deg, rgba(14, 24, 44, 0.50) 0%, rgba(8, 14, 28, 0.56) 100%);
-  clip-path: polygon(
-    calc(var(--panel-cut) - var(--rw)) 0, calc(100% - var(--panel-cut) + var(--rw)) 0,
-    100% calc(var(--panel-cut) - var(--rw)), 100% calc(100% - var(--panel-cut) + var(--rw)),
-    calc(100% - var(--panel-cut) + var(--rw)) 100%, calc(var(--panel-cut) - var(--rw)) 100%,
-    0 calc(100% - var(--panel-cut) + var(--rw)), 0 calc(var(--panel-cut) - var(--rw))
-  );
-}
+.panel-rim::before { content: none; }
 
 /* ::after — INNER CORNER BRACKETS (the machined "Doppelrahmen" accent),
    drawn ONLY at the four corners via a gradient grid, NOT as a full inner
