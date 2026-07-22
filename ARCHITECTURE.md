@@ -1,6 +1,9 @@
 # Architecture — Cosmic Realm
 
-*Last updated: 2026-07-06 (post-Phase 2.8)*
+*Last updated: 2026-07-22*
+
+> See `CLAUDE.md` for orientation/deploy, `RENDERING_PIPELINE.md` for the render detail,
+> `NETCODE_SYNC_NOTES.md` for the sync protocol, `HUD_UI_SYSTEM.md` for the UI system.
 
 ## High-Level System Diagram
 
@@ -126,7 +129,9 @@ User input (keyboard/mouse)
 | `src/game/pixi-renderer-v2-integrated.ts` | PixiJS renderer. Sprite pools, layer management, per-frame draw. `syncDebugMuzzleMarkers()` for Phase 2.6 overlay. Thruster trails via `getShipMuzzleWorldPositionsAt`, muzzle flashes at `pr.pos`. ~3800 lines. |
 | `src/game/three-ship-layer.ts` | Three.js ship 3D layer. Loads GLBs, snapshots model-local hardpoints at template load, manages `activeShips` map with `worldUnitsPerModelUnit`. Exports: `getShipMuzzleWorldPositionsAt` (analytic, tilt-corrected), `getShipMuzzleWorldPositions` / `getShipHardpointPositions` (legacy, live transform), `debugEnumerateAllMuzzles`, `SHIP_WRAPPER_TILT_X`. |
 | `src/game/three-station-layer.ts` | Three.js renderer for station. Renders to offscreen canvas, blit into PixiJS as `stationSprite`. |
+| `src/game/space-material.ts` | **Ship/station material system** (2026-07). `applySpaceMaterial` with player/npc/boss/station/portal presets; procedural detail/dirt/normal maps (cached, tiled via `.repeat`); `energyCrackTex`; `ENEMY_ACCENTS` per-enemy glow table; `addSpaceLightRig`. Also the broken-white-emissive kill heuristic. |
 | `src/game/pixi-effect-manager.ts` | Pooled sprite manager: `spawnThrusterTrail`, `spawnMuzzleFlash`, `spawnRocketLaunch`, `spawnPlasmaWake`. |
+| `src/styles/hud/*.css` + `src/components/hud-ui.tsx` | HUD/popup design system — see `HUD_UI_SYSTEM.md`. |
 | `src/game/render.ts` | Canvas2D fallback renderer (used for texture baking). |
 | `src/net/socket.ts` | Socket.IO client. Type definitions for `ProjectileSpawnEvent` (with `hardpointIndex/Ring/shipClass/targetId`), `DeltaEntity`, `WireDrone`. `setSocketListeners()`, `sendInput()`, etc. |
 
@@ -150,6 +155,51 @@ User input (keyboard/mouse)
 | `lib/game-constants.ts` | `MOVEMENT`, `NETCODE` constants shared between frontend and backend. |
 
 ---
+
+## Three.js Renderer Instances (2026-07)
+
+The 3D layer uses **three separate `WebGLRenderer` instances**, not one shared scene:
+
+1. **Player/remote ships** — `three-ship-layer.ts`, canvas at z=1.
+2. **Enemy ships** — the same module loaded a second time via `?instance=enemy` (a
+   duplicate module instance) so enemy hulls render independently of player hulls.
+3. **Stations** — `three-station-layer.ts`, offscreen canvas blit into PixiJS.
+
+Common setup: `OrthographicCamera` top-down, `ACESFilmicToneMapping`, PMREM
+`RoomEnvironment`, `PCFSoftShadowMap`, `MeshStandardMaterial`. Two render layers are
+used: `FX_LAYER = 1` (effects) and `SELECT_LAYER = 2` (selection rim).
+
+## Ship / Station Material System (`space-material.ts`, 2026-07)
+
+`applySpaceMaterial(model, preset)` retextures every hull/station on load with one of
+five presets (`player` / `npc` / `boss` / `station` / `portal`): metalness/roughness,
+procedural detail-roughness-AO, dirt and normal maps (cached and tiled via
+`texture.repeat.set(tile, tile)` — a missing `.repeat` was the "flat/cheap, no material
+depth" bug), plus `envMapIntensity`. Per-enemy signature accents come from
+`ENEMY_ACCENTS` (e.g. overlord blue crystal, juggernaut red), and `energyCrackTex` drives
+the leviathan's pulsing green cracks. `addSpaceLightRig` adds the local key/fill/rim.
+
+**Root-cause fix:** several GLB exports shipped their albedo in the *emissive* slot
+(`emissive ≈ #ffffff`, sum ≈ 3.0), making hulls self-lit and flat regardless of the
+light rig — the real cause of every "too bright / flat / cut-out" complaint. The loader
+detects near-white desaturated emissive (`emSum > 0.35 && emHsl.s < 0.25`) and kills it.
+
+## PvP (2026-07)
+
+Factions are mutually attackable and every player is click-targetable. The client sends
+`pvpTargetId`; the server resolves player targets alongside enemy targets, applies
+damage, and on death emits a `player:die` event broadcast to the zone (with an explosion
+/ VFX + a `pendingPlayerDeaths` queue). Combat stays server-authoritative — the client
+only fires the request and plays the resulting VFX. See `NETCODE_SYNC_NOTES.md`.
+
+## Ship Selection Rim (2026-07)
+
+Click-targeting a ship adds its id to `_selectedShipIds` (`setSelectedShipIds()` export in
+`three-ship-layer.ts`). Selected ships render on `SELECT_LAYER = 2`; a post-process edge
+pass (`SELECT_FRAG`, distance falloff) draws a thin, slightly transparent red rim with a
+mini glow. The older filled-area/circle-under-ship selection and the black model outline
+were removed. `window.__DEBUG_SEL` prints diagnostics. *(Rim visibility was still being
+tuned when work pivoted to HUD — may need revisiting.)*
 
 ## Camera System
 

@@ -1,6 +1,6 @@
 # Asset Structure — Cosmic Realm
 
-*Last updated: 2026-07-06 (post-Phase 2.5 GLB audit)*
+*Last updated: 2026-07-06 (post-Phase 2.5 GLB audit) — hardpoint audit still current as of 2026-07-22. GLB **materials** are now retextured at load by `space-material.ts`; see `RENDERING_PIPELINE.md`.*
 
 ## 3D Ship Models
 

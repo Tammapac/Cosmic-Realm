@@ -1,6 +1,6 @@
 # Netcode & Sync Notes — Cosmic Realm
 
-*Last updated: 2026-07-06 (post-Phase 2.8)*
+*Last updated: 2026-07-22*
 
 ## Overview
 
@@ -31,7 +31,8 @@ Full snapshot every 30 ticks (~1s).
 | `enemy:die` | `{ id }` | Enemy killed |
 | `enemy:hit` | `EnemyHitEvent` | Enemy took damage |
 | `enemy:attack` | `EnemyAttackEvent` | Enemy fired at player |
-| `player:hit` | hit data | Local player took damage |
+| `player:hit` | hit data | Local player took damage (also used for PvP hits) |
+| `player:die` | `{ id, killerId? }` | A player died (PvP or otherwise); broadcast to the zone → death VFX/explosion. Server queues in `pendingPlayerDeaths`. (2026-07) |
 | `zone:enemies` / `zone:asteroids` / `zone:npcs` | full arrays | On zone enter |
 | `asteroid:mine` / `asteroid:destroy` / `asteroid:respawn` | | Mining events |
 | `boss:warn` | warn data | Boss spawn imminent |
@@ -46,7 +47,7 @@ Full snapshot every 30 ticks (~1s).
 | Event | Payload | When |
 |---|---|---|
 | `input:move` | `{ dx, dy, angle }` | Every frame (throttled) |
-| `input:attack` | `{ enemyId, laser, rocket, laserAmmo, rocketAmmo }` | When firing |
+| `input:attack` | `{ enemyId, pvpTargetId?, laser, rocket, laserAmmo, rocketAmmo }` | When firing. `pvpTargetId` targets another player; server resolves player targets alongside enemies (server-authoritative). (2026-07) |
 | `input:mine` | `{ targetId }` | When mining |
 | `warp` | `{ zone }` | Zone travel |
 | `dock:enter` / `dock:leave` | station data | Docking |
