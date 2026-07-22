@@ -39,6 +39,7 @@ const MODELS = {
   enemy_overlord: "/models/enemies/enemy_overlord.glb",
   enemy_leviathan: "/models/enemies/enemy_leviathan.glb",
   enemy_zengas: "/models/enemies/enemy_zengas.glb",
+  enemy_erix: "/models/enemies/enemy_erix.glb",
 };
 
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);

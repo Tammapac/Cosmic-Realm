@@ -16,7 +16,7 @@ export type ZoneId =
   | "danger1" | "danger2" | "danger3" | "danger4" | "danger5"
   | "debug";
 
-export type EnemyType = "scout" | "raider" | "destroyer" | "voidling" | "dread" | "sentinel" | "wraith" | "titan" | "overlord" | "interceptor" | "corvette" | "specter" | "phantom" | "juggernaut" | "leviathan";
+export type EnemyType = "scout" | "raider" | "destroyer" | "voidling" | "dread" | "sentinel" | "wraith" | "titan" | "overlord" | "interceptor" | "corvette" | "specter" | "phantom" | "juggernaut" | "leviathan" | "erix";
 export type EnemyBehavior = "fast" | "chaser" | "tank" | "ranged";
 
 export type ShipClassId =
@@ -345,6 +345,12 @@ export const ENEMY_DEFS: Record<EnemyType, {
     color: "#e11d48", size: 40,
     loot: { resourceId: "dread", qty: 8 },
   },
+  erix: {
+    type: "erix", behavior: "chaser",
+    hullMax: 150, damage: 18, speed: 95, exp: 15, credits: 40, honor: 1,
+    color: "#5ce1ff", size: 14,
+    loot: { resourceId: "scrap", qty: 3 },
+  },
 };
 
 // ── FACTION-SPECIFIC ENEMY MODS ──────────────────────────────────────────────
@@ -391,7 +397,7 @@ export const ZONES: Record<ZoneId, {
   // Earth Faction (1-1 to 1-5)
   alpha: {
     id: "alpha", name: "Alpha Sector", label: "1-1", faction: "earth",
-    enemyTier: 1, enemyTypes: ["scout", "raider", "interceptor"], unlockLevel: 1,
+    enemyTier: 1, enemyTypes: ["scout", "raider", "interceptor", "erix"], unlockLevel: 1,
   },
   nebula: {
     id: "nebula", name: "Veil Nebula", label: "1-2", faction: "earth",
@@ -412,7 +418,7 @@ export const ZONES: Record<ZoneId, {
   // Mars Faction (2-1 to 2-5)
   corona: {
     id: "corona", name: "Mars Frontier", label: "2-1", faction: "mars",
-    enemyTier: 1, enemyTypes: ["scout", "raider", "interceptor"], unlockLevel: 1,
+    enemyTier: 1, enemyTypes: ["scout", "raider", "interceptor", "erix"], unlockLevel: 1,
   },
   fracture: {
     id: "fracture", name: "Dust Expanse", label: "2-2", faction: "mars",
@@ -433,7 +439,7 @@ export const ZONES: Record<ZoneId, {
   // Venus Faction (3-1 to 3-5)
   venus1: {
     id: "venus1", name: "Venus Cloud Gate", label: "3-1", faction: "venus",
-    enemyTier: 1, enemyTypes: ["scout", "raider", "interceptor"], unlockLevel: 1,
+    enemyTier: 1, enemyTypes: ["scout", "raider", "interceptor", "erix"], unlockLevel: 1,
   },
   venus2: {
     id: "venus2", name: "Sulphur Winds", label: "3-2", faction: "venus",
@@ -454,7 +460,7 @@ export const ZONES: Record<ZoneId, {
   // Danger Zones (4-1 to 4-5)
   danger1: {
     id: "danger1", name: "Outer Rift", label: "4-1", faction: "earth",
-        enemyTier: 4, enemyTypes: ["sentinel", "wraith", "titan"], unlockLevel: 20,
+        enemyTier: 4, enemyTypes: ["sentinel", "wraith", "titan", "erix"], unlockLevel: 20,
   },
   danger2: {
     id: "danger2", name: "Dead Zone", label: "4-2", faction: "mars",
@@ -1346,4 +1352,5 @@ export const ENEMY_NAMES: Record<EnemyType, string[]> = {
   phantom:     ["Phantom"],
   juggernaut:  ["Juggernaut"],
   leviathan:   ["Leviathan"],
+  erix:        ["Erix"],
 };

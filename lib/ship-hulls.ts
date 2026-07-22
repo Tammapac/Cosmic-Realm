@@ -1896,3 +1896,8 @@ export const SHIP_HULLS: Record<string, ShipHull> = {
   ]
  }
 };
+
+// Erix — new NPC (x-1 maps). Reuses the raider silhouette as a hit-hull until
+// a dedicated one is generated (similar size class). Keeps erix shootable
+// without running the GLB hitbox generator.
+SHIP_HULLS.enemy_erix = SHIP_HULLS.enemy_raider;

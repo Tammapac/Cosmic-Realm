@@ -20,7 +20,7 @@ export type Zone = {
   unlockLevel: number;
 };
 
-export type EnemyType = "scout" | "raider" | "destroyer" | "voidling" | "dread" | "sentinel" | "wraith" | "titan" | "overlord" | "interceptor" | "corvette" | "specter" | "phantom" | "juggernaut" | "leviathan";
+export type EnemyType = "scout" | "raider" | "destroyer" | "voidling" | "dread" | "sentinel" | "wraith" | "titan" | "overlord" | "interceptor" | "corvette" | "specter" | "phantom" | "juggernaut" | "leviathan" | "erix";
 export type EnemyBehavior = "fast" | "chaser" | "tank" | "ranged";
 
 export type ShipClassId =
@@ -812,7 +812,7 @@ export const ZONES: Record<ZoneId, Zone> = {
   alpha: {
     id: "alpha", name: "Alpha Sector", label: "1-1", faction: "earth",
     bgHueA: "#0a1240", bgHueB: "#020414", enemyTier: 1,
-    enemyTypes: ["scout", "raider", "interceptor"],
+    enemyTypes: ["scout", "raider", "interceptor", "erix"],
     description: "Frontier territory. Pirates and scouts patrol the lanes.", unlockLevel: 1,
   },
   nebula: {
@@ -843,7 +843,7 @@ export const ZONES: Record<ZoneId, Zone> = {
   corona: {
     id: "corona", name: "Mars Frontier", label: "2-1", faction: "mars",
     bgHueA: "#3a1800", bgHueB: "#1a0800", enemyTier: 1,
-    enemyTypes: ["scout", "raider", "interceptor"],
+    enemyTypes: ["scout", "raider", "interceptor", "erix"],
     description: "The outer Martian reaches. Raiders rule the rust-colored lanes.", unlockLevel: 1,
   },
   fracture: {
@@ -874,7 +874,7 @@ export const ZONES: Record<ZoneId, Zone> = {
   venus1: {
     id: "venus1", name: "Venus Cloud Gate", label: "3-1", faction: "venus",
     bgHueA: "#2a1a00", bgHueB: "#0e0800", enemyTier: 1,
-    enemyTypes: ["scout", "raider", "interceptor"],
+    enemyTypes: ["scout", "raider", "interceptor", "erix"],
     description: "The upper cloud layers. Strange energy-based pirates lurk in the mist.", unlockLevel: 1,
   },
   venus2: {
@@ -905,7 +905,7 @@ export const ZONES: Record<ZoneId, Zone> = {
   danger1: {
     id: "danger1", name: "Outer Rift", label: "4-1", faction: "earth",
     bgHueA: "#1a0000", bgHueB: "#0a0000", enemyTier: 4,
-    enemyTypes: ["sentinel", "wraith", "titan"],
+    enemyTypes: ["sentinel", "wraith", "titan", "erix"],
     description: "Contested space. All factions fight here. PvP enabled.", unlockLevel: 20,
   },
   danger2: {
@@ -1199,7 +1199,12 @@ export const ENEMY_DEFS: Record<
     color: "#e11d48", size: 40,
     loot: { resourceId: "dread", qty: 8 },
   },
-
+  erix: {
+    type: "erix", behavior: "chaser",
+    hullMax: 150, damage: 18, speed: 95, exp: 15, credits: 40, honor: 1,
+    color: "#5ce1ff", size: 14,
+    loot: { resourceId: "scrap", qty: 3 },
+  },
 };
 
 // Faction-specific stat/color overrides applied at enemy spawn time.
@@ -1770,6 +1775,7 @@ export const ENEMY_NAMES: Record<EnemyType, string[]> = {
   phantom:     ["Phantom"],
   juggernaut:  ["Juggernaut"],
   leviathan:   ["Leviathan"],
+  erix:        ["Erix"],
 };
 
 // ── DRONES ────────────────────────────────────────────────────────────────

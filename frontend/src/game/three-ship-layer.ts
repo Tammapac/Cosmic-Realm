@@ -149,6 +149,8 @@ const SHIP_3D_MODELS: Record<string, string> = {
   enemy_leviathan: "/models/enemies/enemy_leviathan.glb?v=18",
   // Zengas — x-4 tier ship, registered and render-ready (not yet mapped to a type)
   enemy_zengas: "/models/enemies/enemy_zengas.glb?v=18",
+  // Erix — new NPC on all x-1 maps
+  enemy_erix: "/models/enemies/enemy_erix.glb?v=18",
 };
 
 interface ShipHardpoints {
