@@ -274,20 +274,71 @@ function GameCanvas() {
     }
   };
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement | HTMLDivElement>) => {
-    if (e.buttons !== 1 || state.dockedAt) return;
-    const rect = (e.target as HTMLElement).getBoundingClientRect();
-    const cx = e.clientX - rect.left;
-    const cy = e.clientY - rect.top;
+  // Steer cameraTarget toward a remembered screen-space cursor position.
+  const steerToHeld = () => {
+    const h = heldMouse.current;
+    if (!h || state.dockedAt) return;
     state.cameraTarget = {
-      x: state.player.pos.x + (cx - rect.width / 2) / state.cameraZoom,
-      y: state.player.pos.y + (cy - rect.height / 2) / state.cameraZoom,
+      x: state.player.pos.x + (h.x - h.w / 2) / state.cameraZoom,
+      y: state.player.pos.y + (h.y - h.h / 2) / state.cameraZoom,
     };
   };
+
+  const rememberMouse = (e: React.MouseEvent<HTMLElement>) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    heldMouse.current = {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+      w: rect.width,
+      h: rect.height,
+    };
+  };
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLElement>) => {
+    if (e.button !== 0 || state.dockedAt) return;
+    rememberMouse(e);
+    // If the press landed on a pickable target (enemy/player/asteroid/cargo/
+    // rift), don't fly — let the click handler select it. Only start steering
+    // when the press is on empty space (then holding flies toward the cursor).
+    const { x: wx, y: wy } = screenToWorld(e as unknown as React.MouseEvent<HTMLDivElement>);
+    const onTarget =
+      pickEnemyAt(wx, wy) ||
+      pickPlayerAt(wx, wy) ||
+      state.asteroids.some((a) => a.zone === state.player.zone && Math.hypot(a.pos.x - wx, a.pos.y - wy) < a.size + 10) ||
+      state.cargoBoxes.some((cb) => Math.hypot(cb.pos.x - wx, cb.pos.y - wy) < 24);
+    if (onTarget) { heldMouse.current = null; return; }
+    steerToHeld();
+  };
+
+  const handleMouseUp = () => { heldMouse.current = null; };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement | HTMLDivElement>) => {
+    if (e.buttons !== 1 || state.dockedAt) { heldMouse.current = null; return; }
+    rememberMouse(e);
+    steerToHeld();
+  };
+
+  // Hold-to-fly tick: while the button is held, re-aim every frame so a still
+  // cursor doesn't leave the ship parked at the last point.
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => { steerToHeld(); raf = requestAnimationFrame(tick); };
+    raf = requestAnimationFrame(tick);
+    const onUp = () => { heldMouse.current = null; };
+    window.addEventListener("mouseup", onUp);
+    window.addEventListener("blur", onUp);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("mouseup", onUp); window.removeEventListener("blur", onUp); };
+  }, []);
 
   // ── Pinch-to-zoom for mobile ──
   const lastPinchDist = useRef<number>(0);
   const lastTouchPos = useRef<{ x: number; y: number } | null>(null);
+  // Hold-to-fly: while the left button is held, keep steering the ship toward
+  // the cursor every frame — even when the mouse ISN'T moving (a mousemove
+  // event only fires on motion, so a held-but-still mouse used to stop the
+  // ship dead). We remember the last cursor screen position + rect and re-aim
+  // cameraTarget on a tick until the button is released.
+  const heldMouse = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length === 2) {
@@ -345,6 +396,8 @@ function GameCanvas() {
           ref={pixiContainerRef}
           onClick={handleClick}
           onDoubleClick={handleDoubleClick}
+          onMouseDown={handleMouseDown}
+          onMouseUp={handleMouseUp}
           onMouseMove={handleMouseMove}
           onWheel={handleWheel}
           onTouchStart={handleTouchStart}
@@ -370,6 +423,8 @@ function GameCanvas() {
         ref={canvasRef}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
         onMouseMove={handleMouseMove}
         onWheel={handleWheel}
         onContextMenu={(e) => e.preventDefault()}
