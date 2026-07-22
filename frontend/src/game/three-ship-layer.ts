@@ -635,11 +635,26 @@ function loadModel(shipClass: string): void {
             (m.emissive.r + m.emissive.g + m.emissive.b) > 0.05;
           const isGlowShell = isEnemy && m.transparent && (m.opacity ?? 1) < 0.9 && glowByEmissive;
 
-          // An EMISSIVE PART (engine core, weapon strip) glows and must keep its
-          // emissive — but we still want it lit as metal, so we only skip the
-          // dark-metal override for STRONGLY emissive materials, not faint ones.
-          const strongEmissive = !!m.emissive &&
-            (m.emissive.r + m.emissive.g + m.emissive.b) > 0.35 &&
+          // MANY of these GLBs ship a BROKEN export: emissive set to WHITE with
+          // the albedo map plugged into the emissive slot (emissive≈#ffffff,
+          // sum≈3). That makes the whole hull self-lit and unlit-flat — the real
+          // cause of the "too bright / flat / cut-out" look. Detect it (near-
+          // white / desaturated emissive) and KILL it so the material becomes a
+          // normal lit hull that the space-metal treatment then darkens.
+          const emHsl = { h: 0, s: 0, l: 0 };
+          if (m.emissive) m.emissive.getHSL(emHsl);
+          const emSum = m.emissive ? (m.emissive.r + m.emissive.g + m.emissive.b) : 0;
+          const brokenWhiteEmissive = emSum > 0.35 && emHsl.s < 0.25; // white/grey glow = bug
+          if (brokenWhiteEmissive) {
+            m.emissive = new THREE.Color(0x000000);
+            m.emissiveIntensity = 0;
+            m.emissiveMap = null;
+          }
+
+          // A GENUINE emissive part (engine core, weapon strip) glows in a real
+          // COLOR — keep it. White/grey was handled above.
+          const strongEmissive = !brokenWhiteEmissive && !!m.emissive &&
+            emSum > 0.35 && emHsl.s >= 0.25 &&
             (m.emissiveIntensity ?? 1) > 0.3;
 
           if (isGlowShell) {

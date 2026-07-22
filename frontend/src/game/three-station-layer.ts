@@ -214,9 +214,17 @@ function loadTemplate(url: string): void {
           m.blending = THREE.NormalBlending;
           m.premultipliedAlpha = false;
           // Only STRONGLY emissive materials (real windows/lights) are kept as
-          // glowing; a faint emissive hull still gets the dark-metal treatment.
+          // Kill the broken white/grey emissive export (albedo plugged into the
+          // emissive slot → self-lit flat hull), same bug as the ships.
+          const emHsl = { h: 0, s: 0, l: 0 };
+          if (m.emissive) m.emissive.getHSL(emHsl);
+          const emSum = m.emissive ? (m.emissive.r + m.emissive.g + m.emissive.b) : 0;
+          if (emSum > 0.35 && emHsl.s < 0.25) {
+            m.emissive = new THREE.Color(0x000000); m.emissiveIntensity = 0; m.emissiveMap = null;
+          }
+          // Only a genuine COLORED emissive (real windows/lights) is kept.
           const strongEmissive = !!m.emissive &&
-            (m.emissive.r + m.emissive.g + m.emissive.b) > 0.35 &&
+            emSum > 0.35 && emHsl.s >= 0.25 &&
             (m.emissiveIntensity ?? 1) > 0.3;
           if (strongEmissive) { m.needsUpdate = true; stEmis++; continue; }
           applySpaceMaterial(m as THREE.MeshStandardMaterial, "station", { seed });
