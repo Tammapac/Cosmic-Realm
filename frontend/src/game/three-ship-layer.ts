@@ -153,6 +153,15 @@ const SHIP_3D_MODELS: Record<string, string> = {
   enemy_erix: "/models/enemies/enemy_erix.glb?v=18",
 };
 
+// Per-model heading offset (radians), added to the computed yaw so a GLB whose
+// nose is NOT authored along -Z still flies/aims the right way. The existing
+// enemies are all nose=-Z (offset 0, the default). New NPCs exported from a
+// different tool may need a quarter/half turn — set it here instead of
+// re-exporting the GLB. Baked into the model at load (see loadModel).
+export const MODEL_YAW_OFFSET: Record<string, number> = {
+  // enemy_erix: Math.PI,  // uncomment/adjust if Erix faces the wrong way
+};
+
 interface ShipHardpoints {
   thrusters: THREE.Object3D[];
   muzzles: THREE.Object3D[];
@@ -189,6 +198,7 @@ interface ModelLocalHardpoints {
 
 interface Ship3D {
   lastYRot: number;
+  yawFix?: number;   // per-model heading offset (nose not authored on -Z)
   wrapper: THREE.Group;
   model: THREE.Group;
   hardpoints: ShipHardpoints;
@@ -636,6 +646,9 @@ function loadModel(shipClass: string): void {
       const energyCracks = accent && accent.kind === "cracks"
         ? { color: accent.color, intensity: accent.intensity }
         : undefined;
+      const shimmer = accent && accent.kind === "shimmer"
+        ? { color: accent.color, intensity: accent.intensity, opacity: accent.opacity }
+        : undefined;
       // For "core" enemies, the accent-colored material on the model is made
       // shiny + self-lit (so only the interior/core glows, not a decal over
       // the whole ship).
@@ -715,6 +728,16 @@ function loadModel(shipClass: string): void {
           const strongEmissive = !brokenWhiteEmissive && !!m.emissive &&
             emSum > 0.35 && emHsl.s >= 0.25 &&
             (m.emissiveIntensity ?? 1) > 0.3;
+
+          // SHIMMER enemies (e.g. Erix): the WHOLE hull glows + pulses in the
+          // accent colour. Every material takes the shimmer treatment; skip the
+          // normal glow-shell / core / metal branches entirely.
+          if (shimmer) {
+            applySpaceMaterial(m, role, { seed, shimmer });
+            hullMatCount++;
+            newList.push(m);
+            continue;
+          }
 
           if (isGlowShell) {
             dbgGlow++;
@@ -1142,6 +1165,8 @@ export function updateShip3D(
   if (!ship) {
     const template = loadedModels.get(shipClass)!;
     const model = template.clone();
+    // Per-model heading correction for GLBs not authored nose=-Z.
+    const yawFix = MODEL_YAW_OFFSET[shipClass] ?? 0;
 
     // Clone hardpoint references (they move with the cloned model)
     const templateHardpoints = template.userData.hardpoints as ShipHardpoints;
@@ -1242,6 +1267,7 @@ export function updateShip3D(
 
     ship = {
       wrapper, model, hardpoints, engineGlows, mixer,
+      yawFix,
       lastYRot: -angle + Math.PI,
       lastCamX: camX, lastCamY: camY,
       lastWorldX: worldX, lastWorldY: worldY,
@@ -1284,7 +1310,7 @@ export function updateShip3D(
     const rotLerp = 1 - Math.exp(-4.5 * frameDt);
     ship.lastYRot += rotDiff * rotLerp;
   }
-  ship.model.rotation.set(0, ship.lastYRot, 0);
+  ship.model.rotation.set(0, ship.lastYRot + (ship.yawFix ?? 0), 0);
   ship.lastCamX = camX;
   ship.lastCamY = camY;
   ship.lastWorldX = worldX;

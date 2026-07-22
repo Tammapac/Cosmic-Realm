@@ -253,7 +253,10 @@ export type EnemyAccent =
   | { kind: "core"; color: number; size?: number; intensity?: number; crystal?: boolean;
       // When true, ANY reasonably-colored (non-grey) material on the model is
       // treated as the core (for models whose core isn't a specific hue).
-      matchAnyColored?: boolean };
+      matchAnyColored?: boolean }
+  // "shimmer": the WHOLE hull glows in `color`, slightly translucent, and
+  // pulses. Not a decal or a core — the entire ship shimmers.
+  | { kind: "shimmer"; color: number; intensity?: number; opacity?: number };
 
 // `size` is a fraction of the hull's smaller footprint — kept small so the gem
 // lives INSIDE the model (the hull occludes it, only the inner glow peeks out).
@@ -274,6 +277,7 @@ export const ENEMY_ACCENTS: Record<string, EnemyAccent> = {
   enemy_overlord:    { kind: "core",   color: 0x2fd8e0, size: 0.34, intensity: 2.6, crystal: true, matchAnyColored: true }, // bluish-green core, match any colored material
   enemy_leviathan:   { kind: "cracks", color: 0x35ff7a, intensity: 1.8 },             // green cracks
   enemy_zengas:      { kind: "core",   color: 0xff4de2, size: 0.3,  intensity: 2.3, crystal: true }, // magenta crystal
+  enemy_erix:        { kind: "shimmer", color: 0xff2a2a, intensity: 1.6, opacity: 0.72 }, // whole-hull red shimmer + pulse
 };
 
 /**
@@ -444,6 +448,9 @@ export interface SpaceMaterialOpts {
   // Glowing energy cracks (e.g. the Leviathan): an emissive fracture map in
   // this color, tagged for a slow pulse by the render loop. Hull still dark.
   energyCracks?: { color: number; intensity?: number };
+  // Whole-hull shimmer (e.g. Erix): the ENTIRE material glows in `color`,
+  // slightly translucent, and pulses. Overrides the normal dark-hull rule.
+  shimmer?: { color: number; intensity?: number; opacity?: number };
 }
 
 /**
@@ -528,7 +535,22 @@ export function applySpaceMaterial(
   // Hull never glows — UNLESS energy cracks are requested. The base hull stays
   // dark (emissive color multiplies the emissiveMap, which is black except on
   // the cracks), so only the fractures light up.
-  if (opts.energyCracks) {
+  if (opts.shimmer) {
+    // WHOLE-HULL shimmer: the entire material glows in `color`, tinted toward
+    // it, slightly translucent, and pulses strongly. No emissive MAP → the
+    // glow is even across the whole ship (not fractures).
+    const col = new THREE.Color(opts.shimmer.color);
+    mat.color = col.clone().multiplyScalar(0.6);   // hull reads red even unlit
+    mat.emissive = col;
+    mat.emissiveMap = null;
+    const baseI = opts.shimmer.intensity ?? 1.6;
+    mat.emissiveIntensity = baseI;
+    mat.transparent = true;
+    mat.opacity = opts.shimmer.opacity ?? 0.72;
+    mat.depthWrite = false;   // translucent — don't occlude its own far side
+    // Strong, obvious pulse (bigger amplitude than the crack pulse).
+    mat.userData.pulseEmissive = { base: baseI, amp: baseI * 0.6, speed: 1.9 };
+  } else if (opts.energyCracks) {
     mat.emissive = new THREE.Color(opts.energyCracks.color);
     mat.emissiveMap = energyCrackTex(seed);
     const baseI = opts.energyCracks.intensity ?? 1.6;
