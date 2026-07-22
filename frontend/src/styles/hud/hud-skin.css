@@ -73,11 +73,9 @@
   font-family: var(--font-display) !important;
   border: none !important;
   border-radius: 0 !important;
-  /* FROSTED GLASS body — same values as the login screen's .auth-glass
-     (which is the reference for this look): a low-alpha navy fill (~0.5) so
-     the map shows through, blurred by backdrop-filter. NO `filter` on this
-     element — a filter creates a stacking context that DISABLES
-     backdrop-filter (that was why earlier attempts didn't blur). */
+  /* TRANSPARENT frosted-glass body (unchanged) — the SOLID opaque titanium
+     frame is drawn as an inset-covering ring on ::before, so the fill stays
+     see-through in the middle but you can't see through the metal border. */
   background:
     linear-gradient(180deg, rgba(200, 225, 255, 0.10) 0%, rgba(200, 225, 255, 0.03) 26%, transparent 52%),
     repeating-linear-gradient(90deg, var(--hud-brushed-line) 0px, var(--hud-brushed-line) 1px, transparent 1px, transparent 3px),
@@ -90,15 +88,18 @@
     calc(100% - var(--panel-cut)) 100%, var(--panel-cut) 100%,
     0 calc(100% - var(--panel-cut)), 0 var(--panel-cut)
   ) !important;
-  /* Glow + depth via box-shadow (NOT filter): a `filter` on this element
-     would create a stacking context that DISABLES backdrop-filter — that was
-     why the frosted glass didn't blur. box-shadow doesn't block it. The rim
-     weight comes from .panel-rim, so a bounding-box glow here is fine. */
+  /* Depth via box-shadow (NOT filter — a filter kills backdrop-filter).
+     AAA material pass: DIRECTIONAL bevel (top+left lifted, right+bottom
+     shaded) for real machined depth instead of a symmetric ring, plus the
+     outer seating drop. Glow drastically cut — metal does NOT glow; only a
+     hair of cold rim survives as material light, not a halo. */
   box-shadow:
-    inset 0 2px 5px rgba(180, 220, 255, 0.16),
-    inset 0 -14px 24px rgba(0, 0, 0, 0.55),
-    0 0 6px rgba(78, 226, 255, 0.22),
-    0 6px 18px rgba(0, 0, 0, 0.55) !important;
+    inset 0 2px 5px rgba(180, 220, 255, 0.16),      /* top highlight   */
+    inset 2px 0 5px rgba(150, 195, 235, 0.09),      /* left lift       */
+    inset -2px 0 6px rgba(0, 0, 0, 0.34),           /* right shade     */
+    inset 0 -15px 26px rgba(0, 0, 0, 0.58),         /* bottom deep AO  */
+    0 0 3px rgba(120, 200, 255, 0.20),              /* fine rim light  */
+    0 8px 22px rgba(0, 0, 0, 0.6) !important;       /* seating drop    */
 }
 
 /* Direct children of a panel float above the frame layers (which live at
@@ -115,13 +116,8 @@
   z-index: 1;
 }
 
-/* ::before — the DOUBLE CONTOUR + PCB veins, drawn ABOVE the body
-   (z-index:1) so it's actually visible. This single layer reproduces
-   three of the Minimap's separate rings at once via stacked box-shadows:
-     • inset 1.5px CRISP CYAN edge      (= .crispEdge)
-     • inset dark gap                    (the dark seam between rings)
-     • inset light-top inner bevel lip   (= .innerBevel / .innerFrame)
-   plus the tiled PCB energy traces faded in from the top edge. */
+/* ::before — PCB energy-vein traces faded in from the top edge (the subtle
+   tech detail on the glass surface). */
 .panel::before,
 .hud-plate::before {
   content: "";
@@ -137,78 +133,39 @@
   mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0.10) 40%, transparent 74%);
 }
 
-/* ── The REAL metallic rim (copied from Minimap .crispEdge + .innerFrame) ──
-   A separate pseudo can't be added (::before/::after taken), so the rim is
-   drawn on .panel-rim, an extra child inside HudWindow / .hud-plate. It is a
-   GRADIENT-filled contour (bright #d6f6ff top → cyan → shield-deep bottom)
-   masked to a ring — box-shadow can't do a gradient rim, which is exactly
-   why the panels looked flat next to the Minimap. Two rings (outer crispEdge
-   + inner frame) give the substantial Hotbar/Chat-weight border. */
-/* Two-layer rim (NOT an erase-to-ring mask): the mask approach measures
-   `padding` axis-aligned, so a 45° chamfer edge came out ~0.7× as thin as the
-   straight edges. Instead we stack two clip-path layers — an outer layer in
-   the rim gradient, and an inner layer (offset inward by the rim width) in the
-   panel fill. The visible border is the difference, and because both layers
-   share the same chamfer geometry the rim width is IDENTICAL on straight and
-   diagonal edges. --rw = rim thickness. */
+/* ── The metallic rim — the thin two-layer chamfered border that worked ──
+   Drawn on .panel-rim (a child of HudWindow / Inventory / ui-preview). Two
+   stacked clip-path layers: an outer layer in the rim gradient + an inner
+   layer (offset inward by --rw) in the panel fill. The visible border is the
+   difference; because both share the chamfer geometry, the rim width is
+   IDENTICAL on straight and diagonal edges. --rw = rim thickness. */
 .panel-rim {
   position: absolute;
   inset: 0;
-  z-index: 1;    /* below the content (z-index:2), above the panel glass */
+  z-index: 3;
   pointer-events: none;
-  --rw: 4px;     /* rim thickness, uniform on every edge incl. chamfers */
-  /* Metallic rim gradient shaped into a RING via ONE clip-path with the
-     evenodd fill-rule: the outer chamfer polygon minus the inner (inset by
-     --rw) chamfer polygon = an even-width border with the CENTRE cut out.
-     Unlike the erase-to-ring mask this keeps the border width identical on
-     straight AND diagonal edges (mask padding thinned the chamfers), AND
-     leaves the middle transparent so the panel glass + blur shows through. */
+  --rw: 2.5px;
   background: linear-gradient(180deg, #d6f6ff 0%, var(--panel-accent) 58%, var(--panel-accent-deep) 100%);
   clip-path: polygon(
-    evenodd,
-    /* outer silhouette */
     var(--panel-cut) 0, calc(100% - var(--panel-cut)) 0,
     100% var(--panel-cut), 100% calc(100% - var(--panel-cut)),
     calc(100% - var(--panel-cut)) 100%, var(--panel-cut) 100%,
-    0 calc(100% - var(--panel-cut)), 0 var(--panel-cut),
-    var(--panel-cut) 0,
-    /* inner silhouette (inset by --rw) — punched out */
-    var(--rw) calc(var(--panel-cut)),
-    var(--rw) calc(100% - var(--panel-cut)),
-    calc(var(--panel-cut)) calc(100% - var(--rw)),
-    calc(100% - var(--panel-cut)) calc(100% - var(--rw)),
-    calc(100% - var(--rw)) calc(100% - var(--panel-cut)),
-    calc(100% - var(--rw)) calc(var(--panel-cut)),
-    calc(100% - var(--panel-cut)) var(--rw),
-    calc(var(--panel-cut)) var(--rw),
-    var(--rw) calc(var(--panel-cut))
+    0 calc(100% - var(--panel-cut)), 0 var(--panel-cut)
   );
 }
-/* second thin inner contour, just inside the outer ring (no gap) */
 .panel-rim::before {
   content: "";
   position: absolute;
   inset: var(--rw);
   pointer-events: none;
-  background: linear-gradient(180deg, #a8e8ff 0%, var(--hud-cyan-dim) 60%, var(--panel-accent-deep) 100%);
-  opacity: 0.8;
-  --rw2: 1.5px;
+  background:
+    linear-gradient(180deg, rgba(200, 225, 255, 0.08) 0%, transparent 40%),
+    linear-gradient(180deg, rgba(14, 24, 44, 0.50) 0%, rgba(8, 14, 28, 0.56) 100%);
   clip-path: polygon(
-    evenodd,
     calc(var(--panel-cut) - var(--rw)) 0, calc(100% - var(--panel-cut) + var(--rw)) 0,
     100% calc(var(--panel-cut) - var(--rw)), 100% calc(100% - var(--panel-cut) + var(--rw)),
     calc(100% - var(--panel-cut) + var(--rw)) 100%, calc(var(--panel-cut) - var(--rw)) 100%,
-    0 calc(100% - var(--panel-cut) + var(--rw)), 0 calc(var(--panel-cut) - var(--rw)),
-    calc(var(--panel-cut) - var(--rw)) 0,
-    var(--rw2) calc(var(--panel-cut) - var(--rw)),
-    var(--rw2) calc(100% - var(--panel-cut) + var(--rw)),
-    calc(var(--panel-cut) - var(--rw)) calc(100% - var(--rw2)),
-    calc(100% - var(--panel-cut) + var(--rw)) calc(100% - var(--rw2)),
-    calc(100% - var(--rw2)) calc(100% - var(--panel-cut) + var(--rw)),
-    calc(100% - var(--rw2)) calc(var(--panel-cut) - var(--rw)),
-    calc(100% - var(--panel-cut) + var(--rw)) var(--rw2),
-    calc(var(--panel-cut) - var(--rw)) var(--rw2),
-    var(--rw2) calc(var(--panel-cut) - var(--rw))
+    0 calc(100% - var(--panel-cut) + var(--rw)), 0 calc(var(--panel-cut) - var(--rw))
   );
 }
 
@@ -466,12 +423,16 @@
     6px 0, 100% 0, 100% calc(100% - 6px),
     calc(100% - 6px) 100%, 0 100%, 0 6px
   ) !important;
+  /* Recessed key face — directional bevel + deeper contact AO so it reads as
+     a machined button punched into the metal plate, not a flat rectangle. */
   box-shadow:
-    inset 0 1px 0 rgba(210, 235, 255, 0.14),
-    inset 0 3px 8px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(210, 235, 255, 0.16),        /* top lip highlight */
+    inset 1px 0 2px rgba(150, 195, 235, 0.07),      /* left lift         */
+    inset -1px 0 3px rgba(0, 0, 0, 0.35),           /* right shade       */
+    inset 0 4px 9px rgba(0, 0, 0, 0.6),             /* recess contact AO */
     inset 0 0 0 1.5px color-mix(in srgb, var(--btn-accent) 55%, transparent) !important;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
-  transition: filter var(--hud-t-fast), box-shadow var(--hud-t-fast), color var(--hud-t-fast), background var(--hud-t-fast);
+  transition: filter var(--hud-t-fast), box-shadow var(--hud-t-fast), color var(--hud-t-fast), background var(--hud-t-fast), transform var(--hud-t-fast);
 }
 /* ::before = outer metal frame (layer 1), sitting behind, the brushed
    steel plate the recessed face is punched into. */
@@ -486,12 +447,23 @@
     calc(100% - 8px) 100%, 0 100%, 0 8px
   );
   background:
+    /* sharp specular glint on the top edge (milled-metal highlight) */
+    linear-gradient(160deg, rgba(216, 240, 255, 0.85) 0%, transparent 8%),
     radial-gradient(140% 100% at 50% -20%, rgba(180, 215, 245, 0.30) 0%, transparent 62%),
     linear-gradient(160deg, #5a749e 0%, #324768 40%, #12192c 100%);
-  box-shadow: inset 0 1px 0 rgba(220, 238, 255, 0.5), inset 0 -2px 3px var(--hud-metal-lo);
+  box-shadow: inset 0 1px 0 rgba(220, 238, 255, 0.55), inset 0 -2px 3px var(--hud-metal-lo);
   display: block !important;
 }
 .gbtn::after { display: none !important; }
+/* gold buttons get their OWN gold metal frame (was inheriting the blue-grey
+   plate — the P0 inconsistency). */
+.gbtn-gold::before {
+  background:
+    linear-gradient(160deg, rgba(255, 244, 214, 0.85) 0%, transparent 8%),
+    radial-gradient(140% 100% at 50% -20%, rgba(245, 220, 160, 0.30) 0%, transparent 62%),
+    linear-gradient(160deg, #b79a52 0%, #7c6428 40%, #2a2110 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 238, 200, 0.5), inset 0 -2px 3px var(--hud-metal-lo);
+}
 .gbtn:hover:not(:disabled) {
   color: #ffffff !important;
   box-shadow:
@@ -502,8 +474,12 @@
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 8px var(--btn-glow));
 }
 .gbtn:active:not(:disabled) {
-  transform: translate(1px, 1px);
+  transform: translateY(1px) scale(0.985);
   background: linear-gradient(165deg, rgba(8, 13, 24, 0.97) 0%, rgba(4, 6, 11, 0.97) 100%) !important;
+  /* pressed = face sinks: deeper all-round inset shadow, lip highlight gone */
+  box-shadow:
+    inset 0 3px 10px rgba(0, 0, 0, 0.8),
+    inset 0 0 0 1.5px color-mix(in srgb, var(--btn-accent) 45%, transparent) !important;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
 }
 .gbtn:disabled {
@@ -595,10 +571,18 @@ select.ginput {
     var(--hud-cut-sm) 0, 100% 0, 100% calc(100% - var(--hud-cut-sm)),
     calc(100% - var(--hud-cut-sm)) 100%, 0 100%, 0 var(--hud-cut-sm)
   );
+  /* Recessed slot: deep contact AO from the TOP rim (light comes from above,
+     so the top wall casts down), a faint highlight where the floor catches
+     the bottom lip, a cyan hairline, and an OUTER contact shadow so the slot
+     sits machined-into the panel instead of floating. (Fixes the inverted
+     bevel — the highlight was mistakenly on top before.) */
   box-shadow:
-    inset 0 3px 7px rgba(0, 0, 0, 0.75),
-    inset 0 -1px 0 rgba(140, 190, 220, 0.06),
-    inset 0 0 0 1px rgba(120, 200, 255, 0.14);
+    inset 0 3px 7px rgba(0, 0, 0, 0.78),            /* top-wall recess AO */
+    inset 0 -2px 3px rgba(0, 0, 0, 0.4),            /* bottom-wall shade  */
+    inset 0 -3px 2px -2px rgba(150, 195, 235, 0.10),/* floor lip catch    */
+    inset 0 0 0 1px rgba(120, 200, 255, 0.14),      /* cyan hairline      */
+    0 1px 0 rgba(150, 195, 235, 0.05),              /* outer top edge     */
+    0 -1px 3px rgba(0, 0, 0, 0.4);                  /* outer contact AO   */
   transition: box-shadow var(--hud-t-fast), filter var(--hud-t-fast);
 }
 .sw-slot:hover {
@@ -732,26 +716,31 @@ select.ginput {
 .sw-tooltip,
 .gtip,
 .tooltip-pixel {
-  /* frosted glass — same see-through level as the windows so the map/blur
-     shows through (was near-opaque before, which read as a solid dark box).
-     A stronger blur keeps the text legible over the busy map behind it. */
+  /* Frosted glass, now on the HUD chamfer silhouette (was a plain 1px-border
+     rectangle that fell out of the skin — P0 fix). Directional bevel + cyan
+     hairline ring via box-shadow so it matches the windows' machined look. */
   background: linear-gradient(180deg, rgba(12, 20, 38, 0.55) 0%, rgba(6, 10, 20, 0.58) 100%);
   -webkit-backdrop-filter: blur(10px) saturate(1.08);
   backdrop-filter: blur(10px) saturate(1.08);
-  border: 1px solid rgba(78, 226, 255, 0.45);
+  border: none;
+  clip-path: polygon(
+    7px 0, 100% 0, 100% calc(100% - 7px),
+    calc(100% - 7px) 100%, 0 100%, 0 7px
+  );
   box-shadow:
-    inset 0 1px 0 var(--hud-metal-hi),
-    0 0 14px rgba(78, 226, 255, 0.12),
-    0 8px 24px rgba(0, 0, 0, 0.7);
+    inset 0 1px 0 rgba(180, 220, 255, 0.16),        /* top highlight */
+    inset 1px 0 3px rgba(150, 195, 235, 0.07),      /* left lift     */
+    inset -1px 0 4px rgba(0, 0, 0, 0.30),           /* right shade   */
+    inset 0 -6px 12px rgba(0, 0, 0, 0.4),           /* bottom AO     */
+    inset 0 0 0 1px rgba(78, 226, 255, 0.4),        /* cyan hairline */
+    0 8px 24px rgba(0, 0, 0, 0.7);                  /* seating drop  */
   color: var(--hud-text-bright);
 }
-.sw-tooltip::before, .gtip::before {
-  border-top-color: rgba(78, 226, 255, 0.8);
-  border-left-color: rgba(78, 226, 255, 0.8);
-}
+/* legacy corner-border ticks removed — the chamfer + cyan hairline now carry
+   the frame (border ticks would sit outside the clipped silhouette). */
+.sw-tooltip::before, .gtip::before,
 .sw-tooltip::after, .gtip::after {
-  border-bottom-color: rgba(78, 226, 255, 0.8);
-  border-right-color: rgba(78, 226, 255, 0.8);
+  display: none !important;
 }
 /* item-name header line — was orange #ffb63f in the legacy skin */
 .gtip::first-line {
