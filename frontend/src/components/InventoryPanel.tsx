@@ -25,7 +25,7 @@ export function InventoryPanel() {
   const tick = useGame((s) => s.tick);
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<"all" | "weapon" | "generator" | "module">("all");
-  const drag = useDraggable("inventory");
+  const drag = useDraggable("inventory", { resetOnMount: true });
 
   const items = useMemo(() => {
     const list = [...player.inventory].filter((it) => MODULE_DEFS[it.defId]);
@@ -132,7 +132,7 @@ export function InventoryPanel() {
   };
 
   return (
-    <div className="fixed z-50" style={{ top: 64, right: 14, width: 400, pointerEvents: "auto", ...drag.style }}>
+    <div className="fixed z-50" style={{ top: 44, left: "calc(50% + 20px)", width: 400, pointerEvents: "auto", ...drag.style }}>
       <div className="panel" style={{ display: "flex", flexDirection: "column", maxHeight: "72vh" }} onContextMenu={(e) => e.preventDefault()}>
         <span className="panel-rim" aria-hidden="true" />
         <div className="hud-titleband" onPointerDown={drag.handleProps.onPointerDown} style={{ letterSpacing: "0.3em", ...drag.handleProps.style }}>

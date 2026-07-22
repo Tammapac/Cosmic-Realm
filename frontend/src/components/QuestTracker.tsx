@@ -90,7 +90,7 @@ export function QuestTracker() {
 
 function TrackerPanel({ quests }: { quests: any[] }) {
   const [hovered, setHovered] = useState<string | null>(null);
-  const drag = useDraggable("quest-tracker");
+  const drag = useDraggable("quest-tracker", { resetOnMount: true });
   const open = (id: string) => {
     state.journalQuestId = id;
     state.showJournal = true;
@@ -101,7 +101,7 @@ function TrackerPanel({ quests }: { quests: any[] }) {
   return (
     <div
       className="hud-plate absolute z-30 pointer-events-none"
-      style={{ top: 104, right: 8, width: 300, maxHeight: 380, display: "flex", flexDirection: "column", ...drag.style }}
+      style={{ top: 280, left: 16, width: 300, maxHeight: 380, display: "flex", flexDirection: "column", ...drag.style }}
     >
       <div className="hud-titleband pointer-events-auto" onPointerDown={drag.handleProps.onPointerDown} style={drag.handleProps.style}>Quests</div>
       <div

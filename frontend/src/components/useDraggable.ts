@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 
 /**
@@ -20,12 +20,25 @@ const sessionPositions = new Map<string, { x: number; y: number }>();
 
 const EDGE = 70; // px of the window that must stay reachable
 
-export function useDraggable(id: string): {
+export function useDraggable(
+  id: string,
+  opts?: { resetOnMount?: boolean },
+): {
   style: CSSProperties;
   handleProps: { onPointerDown: (e: ReactPointerEvent) => void; style: CSSProperties };
 } {
-  const [pos, setPos] = useState(() => sessionPositions.get(id) ?? { x: 0, y: 0 });
+  // resetOnMount: the window always opens at its fixed CSS default position;
+  // any drag offset from a previous open is cleared each time it mounts, so
+  // re-opening always lands it back at the default (dragging still works for
+  // the current session until it's closed again).
+  const [pos, setPos] = useState(() =>
+    opts?.resetOnMount ? { x: 0, y: 0 } : sessionPositions.get(id) ?? { x: 0, y: 0 },
+  );
   const drag = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
+
+  useEffect(() => {
+    if (opts?.resetOnMount) sessionPositions.delete(id);
+  }, [id, opts?.resetOnMount]);
 
   const onPointerDown = useCallback((e: ReactPointerEvent) => {
     if (e.button !== 0) return;
