@@ -270,24 +270,21 @@ varying vec2 vUv;
 void main() {
   float inside = texture2D(tMask, vUv).a;
   if (inside > 0.5) { discard; }     // never cover the ship (no red fill)
-  // Distance-to-silhouette by sampling a small ring of offsets. The nearest
-  // hit gives a soft falloff → a THIN crisp core line + a MINI glow outside.
-  float near = 0.0;   // strong near the edge (thin line)
-  float glow = 0.0;   // softer, wider (mini glow)
-  for (float dx = -3.0; dx <= 3.0; dx += 1.0) {
-    for (float dy = -3.0; dy <= 3.0; dy += 1.0) {
-      float d = length(vec2(dx, dy));
-      float m = texture2D(tMask, vUv + vec2(dx, dy) * texel * thickness).a;
-      if (m > 0.5) {
-        near = max(near, 1.0 - smoothstep(0.0, 1.6, d)); // crisp thin core
-        glow = max(glow, 1.0 - smoothstep(0.0, 3.2, d)); // wider soft halo
+  // Nearest silhouette hit within a radius → distance-based falloff. A THIN
+  // bright core (dist 1-2) + a soft MINI glow further out (up to ~5px).
+  float best = 999.0;
+  for (float dx = -5.0; dx <= 5.0; dx += 1.0) {
+    for (float dy = -5.0; dy <= 5.0; dy += 1.0) {
+      if (texture2D(tMask, vUv + vec2(dx, dy) * texel * thickness).a > 0.5) {
+        best = min(best, length(vec2(dx, dy)));
       }
     }
   }
-  float rim = max(near, glow * 0.45);
-  if (rim < 0.02) discard;
-  // Slightly transparent red; the thin line reads ~0.7 alpha, the glow fades.
-  gl_FragColor = vec4(1.0, 0.18, 0.2, rim * 0.72);
+  if (best > 6.0) discard;                 // too far from the ship → nothing
+  float core = 1.0 - smoothstep(0.0, 2.6, best);   // thin crisp line
+  float glow = 1.0 - smoothstep(0.0, 6.0, best);   // soft outer halo
+  float a = core * 0.85 + glow * 0.4;              // line + mini glow, semi-transparent
+  gl_FragColor = vec4(1.0, 0.2, 0.22, min(0.9, a));
 }`;
 
 let bloomRTA: THREE.WebGLRenderTarget | null = null;
@@ -1354,13 +1351,18 @@ export function render3DLayer(): void {
     // pass renders layer 0, so this is additive (meshes stay on layer 0 too).
     const selected = _selectedShipIds.has(id);
     if (selected) anySelected = true;
+    let markedMeshes = 0;
     ship.model.traverse((child) => {
       const mesh = child as THREE.Mesh;
       if (!mesh.isMesh) return;
-      if (selected) mesh.layers.enable(SELECT_LAYER);
+      if (selected) { mesh.layers.enable(SELECT_LAYER); markedMeshes++; }
       else mesh.layers.disable(SELECT_LAYER);
     });
+    if (selected && (window as any).__DEBUG_SEL) {
+      console.log(`[SelOutline] "${id}" selected, ${markedMeshes} meshes marked on SELECT_LAYER`);
+    }
   }
+  if (anySelected && !_anySelected && (window as any).__DEBUG_SEL) console.log("[SelOutline] pass ACTIVE");
   _anySelected = anySelected;
   // Emissive pulse (e.g. Leviathan energy cracks): materials tagged with
   // userData.pulseEmissive breathe their emissiveIntensity around a base.
