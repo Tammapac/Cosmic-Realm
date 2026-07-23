@@ -966,6 +966,12 @@ if (typeof window !== "undefined") {
 // Reusable vector to avoid allocation
 const tempVec3 = new THREE.Vector3();
 
+// Reusable quaternions/axes for the heading+bank composition (no per-frame alloc)
+const _qHeading = new THREE.Quaternion();
+const _qRoll = new THREE.Quaternion();
+const _axisY = new THREE.Vector3(0, 1, 0);
+const _axisZ = new THREE.Vector3(0, 0, 1);
+
 export function getShipHardpointPositions(
   entityId: string,
   camX: number,
@@ -1425,9 +1431,14 @@ export function updateShip3D(
   ship.prevWorldX = worldX;
   ship.prevWorldY = worldY;
 
-  // Heading on Y (drives muzzles), roll on Z. Model-local so it composes
-  // under the wrapper's fixed camera tilt.
-  ship.model.rotation.set(0, ship.lastYRot + (ship.yawFix ?? 0), ship.bank);
+  // Heading (Y) first, THEN roll around the model's OWN forward axis (its
+  // nose, local -Z). Applying bank as a plain euler .z rotates in model space
+  // BEFORE the heading, so after a Y turn it read as a nose pitch instead of a
+  // side-roll. Composing the roll as a post-multiply about the local forward
+  // axis makes it a true bank (wing dips) regardless of heading.
+  _qHeading.setFromAxisAngle(_axisY, ship.lastYRot + (ship.yawFix ?? 0));
+  _qRoll.setFromAxisAngle(_axisZ, ship.bank); // local Z = fore-aft; roll about it
+  ship.model.quaternion.copy(_qHeading).multiply(_qRoll);
   ship.lastCamX = camX;
   ship.lastCamY = camY;
   ship.lastWorldX = worldX;
