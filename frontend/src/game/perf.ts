@@ -50,6 +50,10 @@ export function perfCount(name: string, n = 1): void {
 type ThreeInfo = { name: string; info: { render: { calls: number; triangles: number } } };
 const threeInfos: ThreeInfo[] = [];
 export function perfRegisterThree(name: string, info: any): void {
+  // Multi-pass composers reset info on every internal render() — disable
+  // autoReset and reset manually once per frame (perfFrame) so the overlay
+  // shows FULL-frame draw calls, not just the last pass.
+  info.autoReset = false;
   // allow re-register on renderer rebuild — replace by name
   const i = threeInfos.findIndex((t) => t.name === name);
   if (i >= 0) threeInfos[i] = { name, info };
@@ -92,6 +96,8 @@ export function perfFrame(): void {
     maxFrame = 0;
     renderOverlay();
   }
+  // reset AFTER the (1x/s) overlay read so it shows one full frame's calls
+  for (const t of threeInfos) t.info.reset?.();
 }
 
 // ── overlay ─────────────────────────────────────────────────────────────────

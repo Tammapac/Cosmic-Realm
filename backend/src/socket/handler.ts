@@ -522,9 +522,17 @@ export function setupSocket(io: Server) {
   type EntitySnapshot = { id: string; x: number; y: number; vx: number; vy: number; version: number; [key: string]: any };
   const playerPreviousEntities = new Map<number, Map<string, EntitySnapshot>>();
 
+  // ── tick-duration instrumentation (perf task): logs engine-vs-broadcast
+  // cost + entity counts every 10s so server load at 100+ NPCs is measurable
+  // from `pm2 logs`. Pure measurement, no behavior change.
+  let _perfEngAcc = 0, _perfEngMax = 0, _perfAllAcc = 0, _perfAllMax = 0, _perfN = 0;
+
   const runTick = () => {
+    const _t0 = performance.now();
+    let _tEng = 0;
     try {
       const events = engine.tick(FIXED_DT, (zone: string) => getPlayersInZone(zone).filter(p => !instanceMgr.isInInstance(p.playerId)));
+      _tEng = performance.now() - _t0;
       broadcastEvents(io, events);
 
       // Tick all active instances
@@ -793,6 +801,22 @@ export function setupSocket(io: Server) {
       }
     } catch (err) {
       console.error("[tick] error:", err);
+    }
+
+    {
+      const _tAll = performance.now() - _t0;
+      _perfEngAcc += _tEng; if (_tEng > _perfEngMax) _perfEngMax = _tEng;
+      _perfAllAcc += _tAll; if (_tAll > _perfAllMax) _perfAllMax = _tAll;
+      if (++_perfN >= 300) {
+        let _enemies = 0;
+        for (const zs of engine.zones.values()) _enemies += zs.enemies.size;
+        console.log(
+          `[perf] tick avg ${(_perfAllAcc / _perfN).toFixed(2)}ms max ${_perfAllMax.toFixed(1)}ms ` +
+          `(engine avg ${(_perfEngAcc / _perfN).toFixed(2)}ms max ${_perfEngMax.toFixed(1)}ms) ` +
+          `enemies ${_enemies} players ${io.engine?.clientsCount ?? "?"}`
+        );
+        _perfEngAcc = _perfEngMax = _perfAllAcc = _perfAllMax = 0; _perfN = 0;
+      }
     }
 
     nextTickAt += TICK_MS;
