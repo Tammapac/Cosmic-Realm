@@ -116,7 +116,7 @@ function renderOverlay(): void {
 
   overlay.textContent =
     `FPS ${fmt(fps, 0)}  frame ${fmt(avg)}ms  max ${fmt(maxFrame)}ms  1%low ${fmt(onePctLowFps, 0)}fps\n` +
-    `sim ${fmt(secAvg["sim"] ?? 0, 2)}ms  render ${fmt(secAvg["render"] ?? 0, 2)}ms\n` +
+    `sim ${fmt(secAvg["sim"] ?? 0, 2)}ms  render ${fmt(secAvg["render"] ?? 0, 2)}ms  pixi ${fmt(secAvg["pixi"] ?? 0, 2)}ms\n` +
     `enemies ${state.enemies.length}${benchCount ? ` (${benchCount} bench)` : ""}  ` +
     `proj ${state.projectiles.length}  players ${state.others.length}  npcs ${state.npcShips?.length ?? 0}\n` +
     three +

@@ -2277,6 +2277,11 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
   const activeIds = _reuseEnemySyncIds;
   _enemyGlowFrameCounter = (_enemyGlowFrameCounter + 1) & 3; // 0-3 cycle
   const drawWeaponGlowThisFrame = _enemyGlowFrameCounter === 0;
+  // Debug-only cost attribution for the perf task: set e.g.
+  // __PERF_HIDE = {names:true} in the console to measure what each enemy
+  // sub-element costs. No effect unless explicitly set.
+  const perfHide = (window as any).__PERF_HIDE || {};
+  enemyLayer.visible = !perfHide.enemies;
 
   for (const e of state.enemies) {
     // Viewport culling
@@ -2370,8 +2375,14 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
       if (data.coreGlow) data.coreGlow.visible = true;
     }
 
+    if (perfHide.glows) {
+      if (data.coreGlow) data.coreGlow.visible = false;
+      if (data.weaponGlow) { data.weaponGlow.visible = false; data.weaponGlow.clear(); }
+    } else if (data.weaponGlow) data.weaponGlow.visible = true;
+    if (perfHide.bodies) data.body.visible = false;
+
     // Animate alien core glow
-    if (data.coreGlow) {
+    if (data.coreGlow && !perfHide.glows) {
       const pulse = 0.2 + 0.15 * Math.sin(state.tick * 3 + e.size * 0.5);
       data.coreGlow.alpha = pulse;
       const scale = 0.9 + 0.1 * Math.sin(state.tick * 2.5);
@@ -2379,7 +2390,7 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
     }
 
     // Animate weapon glow — throttled to every 4th frame (see _enemyGlowFrameCounter)
-    if (data.weaponGlow && drawWeaponGlowThisFrame) {
+    if (data.weaponGlow && drawWeaponGlowThisFrame && !perfHide.glows) {
       data.weaponGlow.clear();
       const wColor = PIXI.utils.string2hex(e.color);
       const wPulse = 0.4 + 0.4 * Math.sin(state.tick * 5 + e.pos.x * 0.01);
@@ -2432,6 +2443,8 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
     }
 
     // Health bar
+    data.healthBar.visible = !perfHide.bars;
+    if (!perfHide.bars) {
     const barW = e.isBoss ? 64 : 28;
     const pct = Math.max(0, Math.min(1, e.hull / e.hullMax));
     data.healthBar.clear();
@@ -2445,10 +2458,13 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
     data.healthBar.beginFill(hpColor);
     data.healthBar.drawRect(0, 0, barW * pct, 4);
     data.healthBar.endFill();
+    }
 
     // Name — constant screen size at any zoom (counter-scaled against the
     // world transform) and offset by the ship's silhouette radius so it
     // clears the hull. Red for every enemy; bosses keep their amber flair.
+    data.nameText.visible = !perfHide.names;
+    if (!perfHide.names) {
     const zoomN = state.cameraZoom;
     const eHullKey = sharedEnemyModelKey(e.type, e.id);
     const rWorldN = eHullKey
@@ -2464,6 +2480,7 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
       data.nameText.position.set(0, -(rWorldN + 10 / zoomN));
     } else {
       data.nameText.text = "";
+    }
     }
 
     // Selection ring (animated pulse)

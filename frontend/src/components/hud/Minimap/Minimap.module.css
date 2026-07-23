@@ -468,6 +468,17 @@
   z-index: 2;
 }
 
+/* All blips render into this one canvas (see BlipCanvas in Minimap.tsx) —
+   per-blip DOM nodes with animations/blur were the #1 frame-time cost at
+   100+ NPCs. The .blip* classes below are kept as the visual reference the
+   canvas reproduces. */
+.blipCanvas {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
 .blip {
   position: absolute;
   width: 6px;
