@@ -967,6 +967,7 @@ if (typeof window !== "undefined") {
 // Reusable vector to avoid allocation
 const tempVec3 = new THREE.Vector3();
 
+
 // Reusable quaternions/axes for the heading+roll composition (no alloc/frame)
 const _qHeading = new THREE.Quaternion();
 const _qRoll = new THREE.Quaternion();
@@ -1064,30 +1065,33 @@ export function getShipMuzzleWorldPositionsAt(
   if (!ship) return null;
   const localHp = ship.model.userData.localHardpoints as ModelLocalHardpoints | undefined;
   if (!localHp) return null;
-  const s = ship.worldUnitsPerModelUnit;
-  const theta = ship.lastYRot;
-  const ca = Math.cos(theta);
-  const sa = Math.sin(theta);
   const originX = ship.lastWorldX;
   const originY = ship.lastWorldY;
-  const dbg = (window as any).__DEBUG_HARDPOINTS;
+
+  // Project a model-local hardpoint through the ACTUAL rendered model matrix
+  // (heading + bank + wrapper camera-tilt + scale, exactly as Three.js drew
+  // it this frame), then map screen space back to world. Using the real matrix
+  // instead of re-deriving the rotations by hand guarantees muzzles/thrusters
+  // coincide with the visible weapon at ANY bank/heading — the previous manual
+  // reconstruction drifted up to ~20px once the ship leaned.
+  ship.wrapper.updateWorldMatrix(true, false);
+  ship.model.updateWorldMatrix(true, false);
+  const mMat = ship.model.matrixWorld;
 
   const project = (mx: number, my: number, mz: number, label: string, idx: number, nodeName: string): { x: number; y: number } => {
-    // Step 1: Y-axis (heading) rotation.
-    const x1 =  mx * ca + mz * sa;
-    const y1 =  my;
-    const z1 = -mx * sa + mz * ca;
-    // Step 2: X-axis (tilt) rotation. Only z2 is needed (camera drops y2).
-    const x2 = x1;
-    const z2 = y1 * SIN_TILT + z1 * COS_TILT;
-    // Step 3: scale to world units and translate to ship world position.
-    const dx = x2 * s;
-    const dy = z2 * s;
-    const wx = originX + dx;
-    const wy = originY + dy;
-    if (dbg) {
-      console.log(`[HP:analytic] entityId=${entityId} ${label}[${idx}] name=${nodeName} modelLocal=(${mx.toFixed(3)},${my.toFixed(3)},${mz.toFixed(3)}) lastYRot=${theta.toFixed(3)} tilt=${SHIP_WRAPPER_TILT_X.toFixed(3)} scale=${s.toFixed(3)} shipWorld=(${originX.toFixed(1)},${originY.toFixed(1)}) muzzleWorld=(${wx.toFixed(1)},${wy.toFixed(1)}) delta=(${dx.toFixed(1)},${dy.toFixed(1)})`);
-    }
+    // local hardpoint -> world (in the three.js scene, which is screen-space:
+    // x = screen px offset, z = screen px offset, y = depth the camera drops).
+    tempVec3.set(mx, my, mz).applyMatrix4(mMat);
+    // model.matrixWorld already includes wrapper.position (the ship's screen
+    // pos) and scale; screen offset from ship centre = local scene coords.
+    // The ship centre in scene space is wrapper.position (x, 0, z).
+    const dxScene = tempVec3.x - ship.wrapper.position.x;
+    const dzScene = tempVec3.z - ship.wrapper.position.z;
+    // scene px -> world units: the wrapper scale already turned model units
+    // into screen px (targetPixels * zoom). Divide by zoom to get world units.
+    const wx = originX + dxScene / cameraZoom;
+    const wy = originY + dzScene / cameraZoom;
+    void label; void idx; void nodeName;
     return { x: wx, y: wy };
   };
 
