@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { state, bump, useGame, save, pushNotification, pushChat, abandonDungeon, useConsumable, runDockingServices, loadServerPlayer, collectCargoBox, enterDungeon, stationPrice, completeDungeon, pushEvent } from "./game/store";
+import { state, bump, useGame, save, pushNotification, pushChat, abandonDungeon, useConsumable, runDockingServices, loadServerPlayer, collectCargoBox, enterDungeon, stationPrice, completeDungeon, pushEvent, getActiveRocketAmmoType } from "./game/store";
 import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats, hasRocketWeapon, setEntityTarget, applyKill } from "./game/loop";
 import { initPerf, perfBegin, perfEnd, perfFrame } from "./game/perf";
 import { render } from "./game/render";
@@ -376,10 +376,18 @@ function GameCanvas() {
         state.isLaserFiring = true;
         state.isAttacking = true;
         lmbFiring.current = true;
-      } else if (e.button === 2 && hasRocketWeapon()) {
-        state.isRocketFiring = true;
-        state.isAttacking = true;
-        rmbFiring.current = true;
+      } else if (e.button === 2) {
+        // Explicit feedback instead of silently doing nothing — the #1
+        // reason rockets "don't launch" is no launcher / empty ammo.
+        if (!hasRocketWeapon()) {
+          pushNotification("No rocket launcher equipped", "bad");
+        } else if ((state.player.rocketAmmo[getActiveRocketAmmoType()] ?? 0) < 1) {
+          pushNotification("Rocket ammo empty", "bad");
+        } else {
+          state.isRocketFiring = true;
+          state.isAttacking = true;
+          rmbFiring.current = true;
+        }
       }
       bump();
       return;

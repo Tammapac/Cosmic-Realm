@@ -192,6 +192,7 @@ function bench(n: number, type?: string): string {
 // ── bootstrap ───────────────────────────────────────────────────────────────
 export function initPerf(): void {
   (window as any).__BENCH = (n: number, type?: string) => { const r = bench(n | 0, type); console.log(r); return r; };
+  (window as any).__STATE = state; // debug/benchmark introspection
   Object.defineProperty(window, "__PERF", {
     configurable: true,
     get: () => enabled,

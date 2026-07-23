@@ -1774,18 +1774,28 @@ function tickWorld(dt: number): void {
     const tp = state.others.find((o) => o.id === state.selectedPlayerId);
     if (tp) atkTarget = { pos: { x: tp.pos.x, y: tp.pos.y } };
   }
-  // Free-aim (WASD scheme): the cursor ray replaces the target lock — local
-  // muzzle visuals fire straight ahead, matching the server (which fires
-  // along aimAngle too). Overrides a locked target so client and server
-  // shots never diverge.
+  // Free-aim (WASD scheme): the cursor ray replaces the target lock. Mirrors
+  // the server's soft-lock: an enemy within the assist cone of the ray
+  // becomes the visual aim point (server computes the real firing solution
+  // against its authoritative copy); empty space fires perfectly straight.
   const freeAimFire = state.aimAngle != null && (state.isLaserFiring || state.isRocketFiring);
+  let freeAimAssist: Enemy | null = null;
   if (freeAimFire) {
-    atkTarget = {
+    let bestDiff = 0.28; // keep in sync with server assist cone
+    for (const e of state.enemies) {
+      const d = Math.hypot(e.pos.x - p.pos.x, e.pos.y - p.pos.y);
+      if (d > 440) continue;
+      let diff = Math.atan2(e.pos.y - p.pos.y, e.pos.x - p.pos.x) - state.aimAngle!;
+      while (diff > Math.PI) diff -= 2 * Math.PI;
+      while (diff < -Math.PI) diff += 2 * Math.PI;
+      if (Math.abs(diff) < bestDiff) { bestDiff = Math.abs(diff); freeAimAssist = e; }
+    }
+    atkTarget = freeAimAssist ?? ({
       pos: {
         x: p.pos.x + Math.cos(state.aimAngle!) * 380,
         y: p.pos.y + Math.sin(state.aimAngle!) * 380,
       },
-    } as any;
+    } as any);
   }
   const FIRE_RANGE = 400;
   if ((state.isLaserFiring || state.isRocketFiring) && atkTarget) {
@@ -1857,6 +1867,7 @@ function tickWorld(dt: number): void {
           const shotAng = aimFromMuzzle(ox, oy);
           fireProjectile("player", ox, oy, shotAng, dmg, laserColor, 6, {
             weaponKind: "laser", speedMul: 3.2, targetId: atkTarget.id,
+            ttl: freeAimFire ? Math.min(1.5, 440 / (230 * 3.2)) : undefined, // match server free-aim reach
           });
           recordDebugSpawn({ spawnX: ox, spawnY: oy, entityId: "player", ring: "muzzle", index: 0, source: "local" });
           state.particles.push({ id: `mf-${Math.random().toString(36).slice(2, 8)}`, pos: { x: ox, y: oy }, vel: { x: 0, y: 0 }, ttl: 0.25, maxTtl: 0.25, color: "#ffffff", size: 90, kind: "flash" });
@@ -1876,6 +1887,7 @@ function tickWorld(dt: number): void {
             const spreadAng = aimFromMuzzle(ox, oy) + (si - 1) * spread;
             fireProjectile("player", ox, oy, spreadAng, perPellet, laserColor, 4, {
               weaponKind: "laser", speedMul: 1.8, targetId: atkTarget.id,
+              ttl: freeAimFire ? Math.min(1.5, 440 / (230 * 1.8)) : undefined,
             });
             recordDebugSpawn({ spawnX: ox, spawnY: oy, entityId: "player", ring: "muzzle", index: si, source: "local" });
           }
@@ -1895,6 +1907,7 @@ function tickWorld(dt: number): void {
             const burstAng = aimFromMuzzle(ox, oy) + (Math.random() - 0.5) * 0.04;
             fireProjectile("player", ox, oy, burstAng, perBurst, laserColor, 4, {
               weaponKind: "laser", speedMul: 2.5, targetId: atkTarget.id,
+              ttl: freeAimFire ? Math.min(1.5, 440 / (230 * 2.5)) : undefined,
             });
             recordDebugSpawn({ spawnX: ox, spawnY: oy, entityId: "player", ring: "muzzle", index: bi, source: "local" });
             state.particles.push({ id: `mf-${Math.random().toString(36).slice(2, 8)}`, pos: { x: ox, y: oy }, vel: { x: 0, y: 0 }, ttl: 0.12, maxTtl: 0.12, color: laserColor, size: 55, kind: "flash" });
@@ -1918,6 +1931,7 @@ function tickWorld(dt: number): void {
             const shotAng = aimFromMuzzle(ox, oy) - side * 0.03;
             fireProjectile("player", ox, oy, shotAng, perShot, laserColor, 4, {
               weaponKind: "laser", speedMul: 2.14, targetId: atkTarget.id,
+              ttl: freeAimFire ? Math.min(1.5, 440 / (230 * 2.14)) : undefined,
             });
             recordDebugSpawn({ spawnX: ox, spawnY: oy, entityId: "player", ring: "muzzle", index: hpBase + si, source: "local" });
             state.particles.push({ id: `mf-${Math.random().toString(36).slice(2, 8)}`, pos: { x: ox, y: oy }, vel: { x: 0, y: 0 }, ttl: 0.18, maxTtl: 0.18, color: laserColor, size: 70, kind: "flash" });
@@ -1960,11 +1974,15 @@ function tickWorld(dt: number): void {
           // firing along the ship heading made wing-mounted rockets fly a
           // parallel line past the enemy's middle until homing caught up.
           const rAng = Math.atan2(atkTarget.pos.y - roy, atkTarget.pos.x - rox);
+          // Free-aim: rockets home when the assist cone found an enemy,
+          // otherwise fly straight with clamped reach (server matches).
+          const rHoming = freeAimFire ? !!freeAimAssist : true;
           fireProjectile("player", rox, roy, rAng, rDmg, rocketColor, 5, {
             weaponKind: "rocket",
-            homing: !freeAimFire, // free-aim rockets fly straight (server matches)
+            homing: rHoming,
             speedMul: 1.18,
-            targetId: freeAimFire ? undefined : atkTarget.id,
+            targetId: freeAimFire ? freeAimAssist?.id : atkTarget.id,
+            ttl: rHoming ? undefined : 1.7,
           });
         }
         // Muzzle flash + smoke burst at ship (radial, not directional)
@@ -2128,7 +2146,10 @@ function tickWorld(dt: number): void {
     }
     // Redirect fresh player laser projectiles toward the on-screen attack target
     // so the visual matches the enemy sprite position (not the server-side position).
-    if (pr.fromPlayer && !pr.renderOnly && !pr.homing && pr.ttl > 1.2 && state.attackTargetId) {
+    // NEVER in free-aim (WASD): there the server fires straight along aimAngle —
+    // bending the local visual toward the lock made shots "hit" visually while
+    // the authoritative projectile flew straight past (and vice versa).
+    if (state.aimAngle == null && pr.fromPlayer && !pr.renderOnly && !pr.homing && pr.ttl > 1.2 && state.attackTargetId) {
       const visTarget = state.enemies.find(e => e.id === state.attackTargetId);
       if (visTarget) {
         const spd = Math.sqrt(pr.vel.x * pr.vel.x + pr.vel.y * pr.vel.y);
@@ -2170,9 +2191,11 @@ function tickWorld(dt: number): void {
     }
     // Homing steering (rockets) — renderOnly rockets must not home toward local targets
     if (pr.homing && pr.fromPlayer && !pr.renderOnly && state.enemies.length > 0) {
-      // Rockets home on the LOCKED attack target's center first; only when
-      // there is no lock (e.g. salvo consumable) do they pick the nearest.
+      // Rockets home on their OWN spawn target first (free-aim assist),
+      // then the locked attack target; only without both (e.g. salvo
+      // consumable) do they pick the nearest.
       let target: Enemy | null =
+        (pr.targetId && state.enemies.find((e) => e.id === pr.targetId)) ||
         (state.attackTargetId && state.enemies.find((e) => e.id === state.attackTargetId)) || null;
       if (!target) {
         let bestD = 9999;

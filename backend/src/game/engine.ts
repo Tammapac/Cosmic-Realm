@@ -19,12 +19,16 @@ import { shipHitTestSwept, enemyModelKey, enemySizeScale, PLAYER_SIZE_SCALE } fr
 // falls back to the legacy circle when a hull is missing.
 function projHitsEnemy(proj: ServerProjectile, e: ServerEnemy, dt: number): boolean {
   const key = enemyModelKey(e.type, e.id);
-  if (!key) return dist(proj.pos, e.pos) < e.size + 4;
+  // Free-aim shots aim at the RENDERED enemy position (client interpolation
+  // runs ~2-3 ticks behind the server), so their hit test is more generous —
+  // otherwise straight shots that visibly cross a moving ship miss server-side.
+  const inflate = proj.freeAim ? 1.35 : 1.06;
+  if (!key) return dist(proj.pos, e.pos) < (e.size + 4) * (proj.freeAim ? 1.3 : 1);
   return shipHitTestSwept(
     key, e.pos.x, e.pos.y, e.angle, enemySizeScale(e.size),
     proj.pos.x - proj.vel.x * dt, proj.pos.y - proj.vel.y * dt,
     proj.pos.x, proj.pos.y,
-    1.06, // slightly generous toward the shooter
+    inflate,
   );
 }
 
@@ -129,6 +133,10 @@ export type ServerProjectile = {
   aoeRadius: number;
   empStun: number;
   armorPiercing: boolean;
+  // Free-aim (WASD) shot: hit test uses a slightly larger inflate to
+  // compensate the client's interpolation delay (the shooter aims at where
+  // the enemy is RENDERED, ~2-3 ticks behind the server position).
+  freeAim?: boolean;
 };
 
 // ── SERVER ENTITY TYPES ──────────────────────────────────────────────────
@@ -784,6 +792,36 @@ export class GameEngine {
       if (!stats) continue;
       const ang = freeAim ? p.aimAngle! : angleFromTo({ x: p.posX, y: p.posY }, target!.pos);
 
+      // Free-aim assist ("soft lock"): straight shots can't hit orbiting
+      // enemies — measured aim error vs the server position is up to
+      // ~0.26rad (client interpolation delay + input latency), plus the
+      // enemy moves 50-80u during projectile flight. If an enemy lies
+      // within the assist cone of the cursor ray, compute the firing
+      // solution against IT (same travel-time prediction locked fire
+      // uses). Aiming at empty space still fires perfectly straight.
+      let assistEnemy: ServerEnemy | null = null;
+      if (freeAim) {
+        let bestDiff = 0.28; // ~16deg cone
+        for (const e of zs.enemies.values()) {
+          const d = dist({ x: p.posX, y: p.posY }, e.pos);
+          if (d > 440) continue;
+          let diff = angleFromTo({ x: p.posX, y: p.posY }, e.pos) - ang;
+          while (diff > Math.PI) diff -= 2 * Math.PI;
+          while (diff < -Math.PI) diff += 2 * Math.PI;
+          if (Math.abs(diff) < bestDiff) { bestDiff = Math.abs(diff); assistEnemy = e; }
+        }
+      }
+      // Firing solution from a muzzle toward the assist enemy's intercept
+      // point at the given projectile speed; raw aim when no assist target.
+      const freeAimAng = (ox: number, oy: number, spd: number): number => {
+        if (!assistEnemy) return ang;
+        const t = Math.hypot(assistEnemy.pos.x - ox, assistEnemy.pos.y - oy) / spd;
+        return Math.atan2(
+          assistEnemy.pos.y + assistEnemy.vel.y * t - oy,
+          assistEnemy.pos.x + assistEnemy.vel.x * t - ox,
+        );
+      };
+
       // Fire laser
       if (p.isLaserFiring && p.laserFireCd <= 0) {
         const ammoDef = ROCKET_AMMO_TYPE_DEFS[p.laserAmmoType as RocketAmmoType];
@@ -820,6 +858,7 @@ export class GameEngine {
             damage: dmg, ttl, color: laserColor, size: sz, crit,
             weaponKind: "laser", homing: false, homingTargetId: null,
             aoeRadius: stats.aoeRadius, empStun: 0, armorPiercing: false,
+            freeAim,
           };
           zs.projectiles.set(proj.id, proj);
           events.push({
@@ -829,7 +868,7 @@ export class GameEngine {
             crit: proj.crit, weaponKind: proj.weaponKind, homing: proj.homing,
             ammoType: p.laserAmmoType, ttl: proj.ttl,
             hardpointIndex: hpIdx, hardpointRing: "muzzle", shipClass: p.shipClass,
-            targetId: freeAim ? undefined : (target as any)?.id,
+            targetId: freeAim ? assistEnemy?.id : (target as any)?.id,
           });
         };
 
@@ -839,7 +878,7 @@ export class GameEngine {
           const dmg = Math.round(laserDmg);
           const ox = p.posX + Math.cos(ang) * 10;
           const oy = p.posY + Math.sin(ang) * 10;
-          fireProj(ox, oy, ang, dmg, 6, 736, 0); // 230 * 3.2
+          fireProj(ox, oy, freeAim ? freeAimAng(ox, oy, 736) : ang, dmg, 6, 736, 0); // 230 * 3.2
         } else if (firingPattern === "scatter") {
           const pellets = 3;
           const perPellet = Math.round(laserDmg * 2.5 / pellets);
@@ -848,7 +887,7 @@ export class GameEngine {
             const side = si === 0 ? -1 : si === 2 ? 1 : 0;
             const ox = p.posX + Math.cos(perpAng) * 5 * side;
             const oy = p.posY + Math.sin(perpAng) * 5 * side;
-            const baseAng = freeAim ? ang : angleFromTo({ x: ox, y: oy }, target!.pos);
+            const baseAng = freeAim ? freeAimAng(ox, oy, 414) : angleFromTo({ x: ox, y: oy }, target!.pos);
             const spreadAng = baseAng + (si - 1) * spread;
             fireProj(ox, oy, spreadAng, perPellet, 4, 414, si); // 230 * 1.8
           }
@@ -858,7 +897,7 @@ export class GameEngine {
             const side = bi === 0 ? -1 : bi === 1 ? 1 : 0;
             const ox = p.posX + Math.cos(perpAng) * 5 * side;
             const oy = p.posY + Math.sin(perpAng) * 5 * side;
-            const baseAng = freeAim ? ang : angleFromTo({ x: ox, y: oy }, target!.pos);
+            const baseAng = freeAim ? freeAimAng(ox, oy, 575) : angleFromTo({ x: ox, y: oy }, target!.pos);
             const burstAng = baseAng + (Math.random() - 0.5) * 0.04;
             fireProj(ox, oy, burstAng, perBurst, 4, 575, bi); // 230 * 2.5
           }
@@ -879,8 +918,10 @@ export class GameEngine {
             const side = si === 0 ? -1 : 1;
             const ox = p.posX + Math.cos(perpAng) * 4 * side;
             const oy = p.posY + Math.sin(perpAng) * 4 * side;
-            let fireAng = ang;
-            if (!freeAim) {
+            let fireAng: number;
+            if (freeAim) {
+              fireAng = freeAimAng(ox, oy, projSpeed);
+            } else {
               const travelDist = Math.sqrt((target!.pos.x - ox) ** 2 + (target!.pos.y - oy) ** 2);
               const travelTime = travelDist / projSpeed;
               const predictedX = target!.pos.x + ((target as any).vel?.x ?? 0) * travelTime;
@@ -911,6 +952,11 @@ export class GameEngine {
         const rocketColor = "#ff8a4e";
         const projSpeed = 272; // 230 * 1.18 — matches frontend rocket speedMul
 
+        // Free-aim rockets: with an assist target in the cone they keep
+        // their homing (fired along the intercept solution); into empty
+        // space they fly straight with clamped reach.
+        const rocketAng = freeAim ? freeAimAng(p.posX, p.posY, projSpeed) : ang;
+        const rocketHoming = freeAim ? assistEnemy != null : true;
         const proj: ServerProjectile = {
           id: eid("proj"),
           zone: zoneId,
@@ -918,20 +964,19 @@ export class GameEngine {
           fromEnemyId: null,
           fromNpcId: null,
           pos: { x: p.posX, y: p.posY },
-          vel: { x: Math.cos(ang) * projSpeed, y: Math.sin(ang) * projSpeed },
+          vel: { x: Math.cos(rocketAng) * projSpeed, y: Math.sin(rocketAng) * projSpeed },
           damage: rocketDmg,
-          // Free-aim rockets fly straight down the cursor ray (no homing,
-          // reach clamped to ~ the locked engagement range).
-          ttl: freeAim ? 1.7 : 4.0, // locked value matches frontend homing ttl
+          ttl: rocketHoming ? 4.0 : 1.7, // homing value matches frontend ttl
           color: rocketColor,
           size: 5,
           crit,
           weaponKind: "rocket",
-          homing: !freeAim,
-          homingTargetId: freeAim ? null : ((target as any)?.id ?? null),
+          homing: rocketHoming,
+          homingTargetId: freeAim ? (assistEnemy?.id ?? null) : ((target as any)?.id ?? null),
           aoeRadius: stats.aoeRadius,
           empStun: 0,
           armorPiercing: false,
+          freeAim,
         };
         zs.projectiles.set(proj.id, proj);
         events.push({
