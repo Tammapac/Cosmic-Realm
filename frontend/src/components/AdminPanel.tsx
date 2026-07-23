@@ -14,6 +14,7 @@ const ENEMY_TYPES = [
   "scout","raider","interceptor","corvette","destroyer","sentinel","specter",
   "phantom","wraith","voidling","dread","titan","juggernaut","overlord",
   "leviathan","erix",
+  "angin","crobium","draug","knoton","maron","nabas","silikum","simonit",
 ];
 
 type PlayerRow = { id: number; name: string; level: number; credits: number; shipClass: string; honor: number };

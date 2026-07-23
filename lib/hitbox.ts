@@ -26,6 +26,14 @@ export const ENEMY_MODEL_KEY: Record<string, string> = {
   overlord: "enemy_overlord",
   leviathan: "enemy_leviathan",
   erix: "enemy_erix",
+  angin: "enemy_angin",
+  crobium: "enemy_crobium",
+  draug: "enemy_draug",
+  knoton: "enemy_knoton",
+  maron: "enemy_maron",
+  nabas: "enemy_nabas",
+  silikum: "enemy_silikum",
+  simonit: "enemy_simonit",
 };
 
 // Beginner player hulls pirates fly; bounty bosses get the Marauder.

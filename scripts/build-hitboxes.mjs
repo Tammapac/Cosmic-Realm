@@ -40,6 +40,14 @@ const MODELS = {
   enemy_leviathan: "/models/enemies/enemy_leviathan.glb",
   enemy_zengas: "/models/enemies/enemy_zengas.glb",
   enemy_erix: "/models/enemies/enemy_erix.glb",
+  enemy_angin: "/models/enemies/enemy_angin.glb",
+  enemy_crobium: "/models/enemies/enemy_crobium.glb",
+  enemy_draug: "/models/enemies/enemy_draug.glb",
+  enemy_knoton: "/models/enemies/enemy_knoton.glb",
+  enemy_maron: "/models/enemies/enemy_maron.glb",
+  enemy_nabas: "/models/enemies/enemy_nabas.glb",
+  enemy_silikum: "/models/enemies/enemy_silikum.glb",
+  enemy_simonit: "/models/enemies/enemy_simonit.glb",
 };
 
 const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);

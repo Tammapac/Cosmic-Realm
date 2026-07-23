@@ -1901,3 +1901,15 @@ export const SHIP_HULLS: Record<string, ShipHull> = {
 // a dedicated one is generated (similar size class). Keeps erix shootable
 // without running the GLB hitbox generator.
 SHIP_HULLS.enemy_erix = SHIP_HULLS.enemy_raider;
+
+// New-generation NPCs — same alias approach: each borrows the hit-hull of
+// the existing enemy in its size/tier class until dedicated silhouettes are
+// generated from the GLBs.
+SHIP_HULLS.enemy_angin = SHIP_HULLS.enemy_sentinel;
+SHIP_HULLS.enemy_crobium = SHIP_HULLS.enemy_phantom;
+SHIP_HULLS.enemy_draug = SHIP_HULLS.enemy_wraith;
+SHIP_HULLS.enemy_knoton = SHIP_HULLS.enemy_juggernaut;
+SHIP_HULLS.enemy_maron = SHIP_HULLS.enemy_titan;
+SHIP_HULLS.enemy_nabas = SHIP_HULLS.enemy_dread;
+SHIP_HULLS.enemy_silikum = SHIP_HULLS.enemy_overlord;
+SHIP_HULLS.enemy_simonit = SHIP_HULLS.enemy_leviathan;

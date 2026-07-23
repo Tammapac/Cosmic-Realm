@@ -152,6 +152,14 @@ const SHIP_3D_MODELS: Record<string, string> = {
   enemy_zengas: "/models/enemies/enemy_zengas.glb?v=18",
   // Erix — new NPC on all x-1 maps
   enemy_erix: "/models/enemies/enemy_erix.glb?v=19",
+  enemy_angin: "/models/enemies/enemy_angin.glb?v=1",
+  enemy_crobium: "/models/enemies/enemy_crobium.glb?v=1",
+  enemy_draug: "/models/enemies/enemy_draug.glb?v=1",
+  enemy_knoton: "/models/enemies/enemy_knoton.glb?v=1",
+  enemy_maron: "/models/enemies/enemy_maron.glb?v=1",
+  enemy_nabas: "/models/enemies/enemy_nabas.glb?v=1",
+  enemy_silikum: "/models/enemies/enemy_silikum.glb?v=1",
+  enemy_simonit: "/models/enemies/enemy_simonit.glb?v=1",
 };
 
 // Per-model heading offset (radians), added to the computed yaw so a GLB whose
