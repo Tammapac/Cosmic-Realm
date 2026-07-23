@@ -385,6 +385,7 @@ function GameCanvas() {
         state.isLaserFiring = true;
         state.isAttacking = true;
         lmbFiring.current = true;
+        window.dispatchEvent(new Event("cr-input-flush"));
       } else if (e.button === 2) {
         // Explicit feedback instead of silently doing nothing — the #1
         // reason rockets "don't launch" is no launcher / empty ammo.
@@ -396,6 +397,7 @@ function GameCanvas() {
           state.isRocketFiring = true;
           state.isAttacking = true;
           rmbFiring.current = true;
+          window.dispatchEvent(new Event("cr-input-flush"));
         }
       }
       bump();
@@ -423,6 +425,7 @@ function GameCanvas() {
     state.isLaserFiring = false;
     if (!rmbFiring.current) state.isAttacking = false;
     bump();
+    window.dispatchEvent(new Event("cr-input-flush"));
   };
 
   const stopRmbFire = () => {
@@ -431,6 +434,7 @@ function GameCanvas() {
     state.isRocketFiring = false;
     if (!lmbFiring.current) state.isAttacking = false;
     bump();
+    window.dispatchEvent(new Event("cr-input-flush"));
   };
 
   const handleMouseUp = (e?: React.MouseEvent<HTMLElement>) => {
@@ -475,11 +479,19 @@ function GameCanvas() {
     const onKeyDown = (e: KeyboardEvent) => {
       const k = KEYMAP[e.code];
       if (!k || isTyping(e.target)) return;
-      wasdKeys.current[k] = true;
+      if (!wasdKeys.current[k]) {
+        wasdKeys.current[k] = true;
+        // steer FIRST so the flush sends the fresh thrust target, not the
+        // previous one (steerWasd otherwise runs on the next RAF).
+        if (state.controlMode === "wasd") { steerWasd(); window.dispatchEvent(new Event("cr-input-flush")); }
+      }
     };
     const onKeyUp = (e: KeyboardEvent) => {
       const k = KEYMAP[e.code];
-      if (k) wasdKeys.current[k] = false;
+      if (k && wasdKeys.current[k]) {
+        wasdKeys.current[k] = false;
+        if (state.controlMode === "wasd") { steerWasd(); window.dispatchEvent(new Event("cr-input-flush")); }
+      }
     };
     const onBlurKeys = () => { wasdKeys.current = { w: false, a: false, s: false, d: false }; };
     window.addEventListener("keydown", onKeyDown);
@@ -1155,7 +1167,7 @@ function GameApp() {
     const HEARTBEAT_MS = 1000;
     const MOVE_EPSILON = 1.5;
 
-    const id = setInterval(() => {
+    const sendNow = () => {
       const cur = {
         targetX: state.cameraTarget.x,
         targetY: state.cameraTarget.y,
@@ -1189,8 +1201,13 @@ function GameApp() {
 
       sendInput(cur);
       Object.assign(last, cur, { sentAt: now });
-    }, 50);
-    return () => clearInterval(id);
+    };
+    const id = setInterval(sendNow, 50);
+    // Input edges (WASD press/release, fire buttons) flush IMMEDIATELY
+    // instead of waiting up to 50ms for the next interval tick — shaves the
+    // largest client-side chunk off the start/stop reaction time.
+    window.addEventListener("cr-input-flush", sendNow);
+    return () => { clearInterval(id); window.removeEventListener("cr-input-flush", sendNow); };
   }, []);
 
   // Keyboard shortcuts
