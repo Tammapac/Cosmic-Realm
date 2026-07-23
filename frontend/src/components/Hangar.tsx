@@ -7,6 +7,7 @@ import {
 } from "../game/types";
 import type { HangarTab } from "../game/store";
 import { useDraggable } from "./useDraggable";
+import { WeaponIcon } from "./hud-ui";
 import { effectiveStats } from "../game/loop";
 import { isRolledItem, lootItemColor, lootItemName, lootSellPrice, lootTipText } from "../game/loot-ui";
 import { affixLine, resolveAffixStats } from "../../../lib/loot/loot";
@@ -593,7 +594,7 @@ function SlotCell({
       <span className="equip-num">{index + 1}</span>
       {def ? (
         <>
-          <span style={{ color: def.color, fontSize: 20, lineHeight: 1, textShadow: `0 0 8px ${def.color}` }}>{def.glyph}</span>
+          <WeaponIcon def={def} size={34} />
           <span className="equip-tier" style={{ color }}>{"\u25aa".repeat(Math.min(5, def.tier))}</span>
         </>
       ) : (
@@ -761,8 +762,8 @@ function LoadoutTab({ stationId }: { stationId: string }) {
             <>
               <div className="flex items-center gap-2 mb-1 min-w-0">
                 <div className="shrink-0 flex items-center justify-center"
-                  style={{ width: 24, height: 24, background: `${hoverEquip.def.color}22`, border: `1px solid ${hoverEquip.def.color}`, color: hoverEquip.def.color, fontSize: 13 }}>
-                  {hoverEquip.def.glyph}
+                  style={{ width: 24, height: 24, background: `${hoverEquip.def.color}22`, border: `1px solid ${hoverEquip.def.color}` }}>
+                  <WeaponIcon def={hoverEquip.def} size={20} />
                 </div>
                 <span className="text-[12px] font-bold tracking-widest truncate" style={{ color: RARITY_COLOR[hoverEquip.def.rarity] }}>{hoverEquip.def.name}</span>
               </div>
@@ -880,7 +881,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
                       save(); bump();
                     }}
                   >
-                    <span style={{ color: def.color, fontSize: 17, lineHeight: 1, textShadow: `0 0 8px ${def.color}` }}>{def.glyph}</span>
+                    <WeaponIcon def={def} size={30} />
                     <span className="equip-tier" style={{ color: RARITY_COLOR[def.rarity] }}>{"▪".repeat(Math.min(5, def.tier))}</span>
                     {isBestUpgrade && (
                       <span style={{ position: "absolute", top: 0, right: 3, fontSize: 10, color: "#ffd24a", textShadow: "0 0 6px #ffd24a" }}>★</span>
@@ -930,7 +931,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
                       equipModule(it.instanceId, def.slot, idx);
                     }}
                   >
-                    <span style={{ color: def.color, fontSize: 17, lineHeight: 1, textShadow: `0 0 8px ${def.color}` }}>{def.glyph}</span>
+                    <WeaponIcon def={def} size={30} />
                     <span className="equip-tier" style={{ color }}>{"▪".repeat(Math.min(5, def.tier))}</span>
                     {isEquipped && (
                       <span style={{ position: "absolute", top: 1, right: 4, fontSize: 8, fontWeight: 700, color: "#5cff8a", textShadow: "0 0 5px #5cff8a" }}>E</span>
@@ -1031,8 +1032,8 @@ function LoadoutTab({ stationId }: { stationId: string }) {
             <div className="console-corner bl" /><div className="console-corner br" />
             <div className="flex items-center gap-2 min-w-0">
               <div className="shrink-0 flex items-center justify-center"
-                style={{ width: 30, height: 30, background: `${def.color}22`, border: `1px solid ${def.color}`, color: def.color, fontSize: 15 }}>
-                {def.glyph}
+                style={{ width: 30, height: 30, background: `${def.color}22`, border: `1px solid ${def.color}` }}>
+                <WeaponIcon def={def} size={26} />
               </div>
               <div className="min-w-0">
                 <div className="font-bold tracking-wide text-[13px] truncate" style={{ color: nameColor, fontFamily: "var(--font-display)" }}>

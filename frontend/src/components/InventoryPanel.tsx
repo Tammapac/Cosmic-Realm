@@ -3,6 +3,7 @@ import { useDraggable } from "./useDraggable";
 import { useGame, state, bump, equipModule, unequipInstance, sellInventoryItem } from "../game/store";
 import { MODULE_DEFS, type ModuleItem } from "../game/types";
 import { isRolledItem, lootItemColor, lootTipText } from "../game/loot-ui";
+import { WeaponIcon } from "./hud-ui";
 import { RARITY_ORDER } from "../../../lib/loot/loot";
 
 const COLS = 5;
@@ -99,9 +100,8 @@ export function InventoryPanel() {
           transition: "box-shadow 0.08s",
         }}
       >
-        <span style={{ fontSize: 21, color, textShadow: `0 0 8px ${color}66`, lineHeight: 1 }}>
-          {def.glyph}
-        </span>
+        <WeaponIcon def={def} size={40} color={color} />
+
         {rolled && (
           <span style={{
             position: "absolute", right: "7%", bottom: "4%",

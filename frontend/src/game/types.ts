@@ -94,6 +94,24 @@ export type ModuleDef = {
   firingPattern?: string;
 };
 
+// Laser weapons that have a rendered PNG icon in /assets/ui/weapons/<id>.png
+// (low tier = plain metal mount, high tier = glowing energy core). Rockets +
+// mining lasers intentionally keep their Unicode glyph. Kept as an explicit
+// set so a missing/renamed sprite fails loudly instead of 404-ing per cell.
+export const WEAPON_SPRITE_IDS = new Set<string>([
+  "wp-pulse-1", "wp-sniper-0", "wp-rail-0", "wp-scatter-0",
+  "wp-pulse-2", "wp-ion", "wp-rail-1", "wp-scatter", "wp-sniper-1",
+  "wp-phase", "wp-arc", "wp-pulse-3", "wp-plasma", "wp-rail-2",
+  "wp-scatter-2", "wp-sniper-2",
+  "wp-solar", "wp-scatter-3", "wp-rail-3", "wp-sniper",
+  "wp-void-lance", "wp-singular",
+]);
+
+/** PNG icon URL for a weapon that has one, else null (caller shows the glyph). */
+export function weaponSpriteUrl(defId: string): string | null {
+  return WEAPON_SPRITE_IDS.has(defId) ? `/assets/ui/weapons/${defId}.png` : null;
+}
+
 export type ModuleItem = {
   instanceId: string;
   defId: string;
