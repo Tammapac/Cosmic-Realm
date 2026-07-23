@@ -762,19 +762,27 @@ export class GameEngine {
         const victim = players.find(pl => String(pl.playerId) === p.pvpTargetId);
         if (victim && !victim.isDocked) target = { pos: { x: victim.posX, y: victim.posY } };
       }
+
+      // Free-aim (WASD scheme): when the client drives the heading via
+      // input:aim, shots fly straight down the cursor ray — no lock needed,
+      // and an existing lock does NOT bend the shots. Projectile collision
+      // (silhouette hulls / PvP rules) decides what gets hit, damage math
+      // is identical to locked fire.
+      const freeAim = p.aimAngle != null && (p.isLaserFiring || p.isRocketFiring);
+
       if (!target) {
         if (p.attackTargetId) p.attackTargetId = null;
-        continue;
+        if (!freeAim) continue;
+      } else if (!freeAim) {
+        const atkDist = dist({ x: p.posX, y: p.posY }, target.pos);
+        if (atkDist > 400) continue;
       }
-
-      const atkDist = dist({ x: p.posX, y: p.posY }, target.pos);
-      if (atkDist > 400) continue;
 
       const pData = this.playerDataCache.get(p.playerId);
       if (!pData) continue;
       const stats = this.playerStatsCache.get(p.playerId);
       if (!stats) continue;
-      const ang = angleFromTo({ x: p.posX, y: p.posY }, target.pos);
+      const ang = freeAim ? p.aimAngle! : angleFromTo({ x: p.posX, y: p.posY }, target!.pos);
 
       // Fire laser
       if (p.isLaserFiring && p.laserFireCd <= 0) {
@@ -800,12 +808,16 @@ export class GameEngine {
         }
 
         const fireProj = (ox: number, oy: number, fireAng: number, dmg: number, sz: number, spd: number, hpIdx: number) => {
+          // Free-aim shots clamp their flight time so the effective reach
+          // (~440 units) matches the 400-unit locked engagement range —
+          // free aiming must not extend weapon range.
+          const ttl = freeAim ? Math.min(1.5, 440 / spd) : 1.5;
           const proj: ServerProjectile = {
             id: eid("proj"), zone: zoneId, fromPlayerId: p.playerId,
             fromEnemyId: null, fromNpcId: null,
             pos: { x: ox, y: oy },
             vel: { x: Math.cos(fireAng) * spd, y: Math.sin(fireAng) * spd },
-            damage: dmg, ttl: 1.5, color: laserColor, size: sz, crit,
+            damage: dmg, ttl, color: laserColor, size: sz, crit,
             weaponKind: "laser", homing: false, homingTargetId: null,
             aoeRadius: stats.aoeRadius, empStun: 0, armorPiercing: false,
           };
@@ -817,7 +829,7 @@ export class GameEngine {
             crit: proj.crit, weaponKind: proj.weaponKind, homing: proj.homing,
             ammoType: p.laserAmmoType, ttl: proj.ttl,
             hardpointIndex: hpIdx, hardpointRing: "muzzle", shipClass: p.shipClass,
-            targetId: target.id,
+            targetId: freeAim ? undefined : (target as any)?.id,
           });
         };
 
@@ -836,7 +848,7 @@ export class GameEngine {
             const side = si === 0 ? -1 : si === 2 ? 1 : 0;
             const ox = p.posX + Math.cos(perpAng) * 5 * side;
             const oy = p.posY + Math.sin(perpAng) * 5 * side;
-            const baseAng = angleFromTo({ x: ox, y: oy }, target.pos);
+            const baseAng = freeAim ? ang : angleFromTo({ x: ox, y: oy }, target!.pos);
             const spreadAng = baseAng + (si - 1) * spread;
             fireProj(ox, oy, spreadAng, perPellet, 4, 414, si); // 230 * 1.8
           }
@@ -846,7 +858,7 @@ export class GameEngine {
             const side = bi === 0 ? -1 : bi === 1 ? 1 : 0;
             const ox = p.posX + Math.cos(perpAng) * 5 * side;
             const oy = p.posY + Math.sin(perpAng) * 5 * side;
-            const baseAng = angleFromTo({ x: ox, y: oy }, target.pos);
+            const baseAng = freeAim ? ang : angleFromTo({ x: ox, y: oy }, target!.pos);
             const burstAng = baseAng + (Math.random() - 0.5) * 0.04;
             fireProj(ox, oy, burstAng, perBurst, 4, 575, bi); // 230 * 2.5
           }
@@ -867,11 +879,14 @@ export class GameEngine {
             const side = si === 0 ? -1 : 1;
             const ox = p.posX + Math.cos(perpAng) * 4 * side;
             const oy = p.posY + Math.sin(perpAng) * 4 * side;
-            const travelDist = Math.sqrt((target.pos.x - ox) ** 2 + (target.pos.y - oy) ** 2);
-            const travelTime = travelDist / projSpeed;
-            const predictedX = target.pos.x + (target.vel?.x ?? 0) * travelTime;
-            const predictedY = target.pos.y + (target.vel?.y ?? 0) * travelTime;
-            const fireAng = angleFromTo({ x: ox, y: oy }, { x: predictedX, y: predictedY });
+            let fireAng = ang;
+            if (!freeAim) {
+              const travelDist = Math.sqrt((target!.pos.x - ox) ** 2 + (target!.pos.y - oy) ** 2);
+              const travelTime = travelDist / projSpeed;
+              const predictedX = target!.pos.x + ((target as any).vel?.x ?? 0) * travelTime;
+              const predictedY = target!.pos.y + ((target as any).vel?.y ?? 0) * travelTime;
+              fireAng = angleFromTo({ x: ox, y: oy }, { x: predictedX, y: predictedY });
+            }
             fireProj(ox, oy, fireAng, perShot, 4, projSpeed, hpBase + si);
           }
           p.nextMuzzlePair = (p.nextMuzzlePair + 1) % LASER_PAIR_COUNT;
@@ -905,13 +920,15 @@ export class GameEngine {
           pos: { x: p.posX, y: p.posY },
           vel: { x: Math.cos(ang) * projSpeed, y: Math.sin(ang) * projSpeed },
           damage: rocketDmg,
-          ttl: 4.0, // matches frontend homing ttl
+          // Free-aim rockets fly straight down the cursor ray (no homing,
+          // reach clamped to ~ the locked engagement range).
+          ttl: freeAim ? 1.7 : 4.0, // locked value matches frontend homing ttl
           color: rocketColor,
           size: 5,
           crit,
           weaponKind: "rocket",
-          homing: true,
-          homingTargetId: target.id,
+          homing: !freeAim,
+          homingTargetId: freeAim ? null : ((target as any)?.id ?? null),
           aoeRadius: stats.aoeRadius,
           empStun: 0,
           armorPiercing: false,

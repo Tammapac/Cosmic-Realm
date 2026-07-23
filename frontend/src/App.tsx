@@ -351,11 +351,13 @@ function GameCanvas() {
   };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLElement>) => {
-    if (e.button !== 0 || state.dockedAt) return;
+    if (state.dockedAt) return;
 
     if (state.controlMode === "wasd") {
-      // WASD mode: left button = shoot. Pick a fresh target under the cursor
-      // (falls back to the current attack target) and fire while held.
+      // WASD mode: free-aim combat. LMB = lasers, RMB = rockets — both fire
+      // straight down the cursor ray (server mirrors via input:aim), no
+      // target lock required. Clicking an enemy still selects it for the
+      // target HUD.
       rememberCursor(e);
       const { x: wx, y: wy } = screenToWorld(e as unknown as React.MouseEvent<HTMLDivElement>);
       const enemy = pickEnemyAt(wx, wy);
@@ -370,16 +372,20 @@ function GameCanvas() {
         state.miningTargetId = null;
         state.selectedPlayerId = null;
       }
-      if (state.attackTargetId) {
+      if (e.button === 0) {
         state.isLaserFiring = true;
-        state.isRocketFiring = hasRocketWeapon();
         state.isAttacking = true;
         lmbFiring.current = true;
-        bump();
+      } else if (e.button === 2 && hasRocketWeapon()) {
+        state.isRocketFiring = true;
+        state.isAttacking = true;
+        rmbFiring.current = true;
       }
+      bump();
       return;
     }
 
+    if (e.button !== 0) return;
     rememberMouse(e);
     // If the press landed on a pickable target (enemy/player/asteroid/cargo/
     // rift), don't fly — let the click handler select it. Only start steering
@@ -397,15 +403,23 @@ function GameCanvas() {
   const stopLmbFire = () => {
     if (!lmbFiring.current) return;
     lmbFiring.current = false;
-    state.isAttacking = false;
     state.isLaserFiring = false;
-    state.isRocketFiring = false;
+    if (!rmbFiring.current) state.isAttacking = false;
     bump();
   };
 
-  const handleMouseUp = () => {
+  const stopRmbFire = () => {
+    if (!rmbFiring.current) return;
+    rmbFiring.current = false;
+    state.isRocketFiring = false;
+    if (!lmbFiring.current) state.isAttacking = false;
+    bump();
+  };
+
+  const handleMouseUp = (e?: React.MouseEvent<HTMLElement>) => {
     heldMouse.current = null;
-    stopLmbFire();
+    if (!e || e.button === 0) stopLmbFire();
+    if (!e || e.button === 2) stopRmbFire();
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement | HTMLDivElement>) => {
@@ -426,7 +440,12 @@ function GameCanvas() {
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    const onUp = () => { heldMouse.current = null; stopLmbFire(); };
+    const onUp = (ev: MouseEvent | FocusEvent) => {
+      heldMouse.current = null;
+      const btn = (ev as MouseEvent).button;
+      if (ev.type === "blur" || btn === 0) stopLmbFire();
+      if (ev.type === "blur" || btn === 2) stopRmbFire();
+    };
     window.addEventListener("mouseup", onUp);
     window.addEventListener("blur", onUp);
 
@@ -473,6 +492,7 @@ function GameCanvas() {
   const wasdKeys = useRef({ w: false, a: false, s: false, d: false });
   const wasdWasThrusting = useRef(false);
   const lmbFiring = useRef(false);
+  const rmbFiring = useRef(false);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length === 2) {

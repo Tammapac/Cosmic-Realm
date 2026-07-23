@@ -1774,6 +1774,19 @@ function tickWorld(dt: number): void {
     const tp = state.others.find((o) => o.id === state.selectedPlayerId);
     if (tp) atkTarget = { pos: { x: tp.pos.x, y: tp.pos.y } };
   }
+  // Free-aim (WASD scheme): the cursor ray replaces the target lock — local
+  // muzzle visuals fire straight ahead, matching the server (which fires
+  // along aimAngle too). Overrides a locked target so client and server
+  // shots never diverge.
+  const freeAimFire = state.aimAngle != null && (state.isLaserFiring || state.isRocketFiring);
+  if (freeAimFire) {
+    atkTarget = {
+      pos: {
+        x: p.pos.x + Math.cos(state.aimAngle!) * 380,
+        y: p.pos.y + Math.sin(state.aimAngle!) * 380,
+      },
+    } as any;
+  }
   const FIRE_RANGE = 400;
   if ((state.isLaserFiring || state.isRocketFiring) && atkTarget) {
     const ang = Math.atan2(atkTarget.pos.y - p.pos.y, atkTarget.pos.x - p.pos.x);
@@ -1949,9 +1962,9 @@ function tickWorld(dt: number): void {
           const rAng = Math.atan2(atkTarget.pos.y - roy, atkTarget.pos.x - rox);
           fireProjectile("player", rox, roy, rAng, rDmg, rocketColor, 5, {
             weaponKind: "rocket",
-            homing: true,
+            homing: !freeAimFire, // free-aim rockets fly straight (server matches)
             speedMul: 1.18,
-            targetId: atkTarget.id,
+            targetId: freeAimFire ? undefined : atkTarget.id,
           });
         }
         // Muzzle flash + smoke burst at ship (radial, not directional)
