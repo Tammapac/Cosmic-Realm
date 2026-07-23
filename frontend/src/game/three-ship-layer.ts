@@ -226,11 +226,12 @@ interface Ship3D {
   // visual; the analytic muzzle transform uses lastYRot + wrapper tilt only,
   // so projectile spawns are unaffected. Smoothed toward a target each frame.
   bank: number;     // current roll (rad, +/- ~0.5)
-  pitch: number;    // current pitch (rad)
+  pitch: number;    // current pitch (rad) — always 0 now, kept for the debug hook
   prevYRot?: number; // last heading, to derive turn rate
   prevWorldX?: number;
   prevWorldY?: number;
-  smoothSpeed?: number; // low-pass filtered forward speed (for stable accel)
+  prevMoveAng?: number; // last MOVEMENT-direction angle, to derive turn rate for bank
+  smoothSpeed?: number; // low-pass filtered speed
   hardpoints: ShipHardpoints;
   engineGlows: THREE.Sprite[];
   mixer: THREE.AnimationMixer | null;
@@ -1389,56 +1390,66 @@ export function updateShip3D(
     ship.lastYRot += rotDiff * rotLerp;
   }
 
-  // ── Flight lean (visual only): SIDE-ROLL ONLY ─────────────────────────
-  // The ship banks (rolls) into turns — left in a left turn, right in a
-  // right turn — and levels out when flying straight. No pitch (nose never
-  // tilts up/down). Bank is derived from the per-frame heading change (turn
-  // rate) and scaled by speed so a stationary pivot doesn't roll; eased so
-  // it settles smoothly.
+  // ── Flight lean (visual only): SCREEN-SIDE BANK ───────────────────────
+  // When the ship curves left, the LEFT screen side dips (and vice versa) —
+  // a bank about the camera depth axis, applied to the wrapper below. The
+  // bank amount comes from how fast the MOVEMENT DIRECTION is turning (not
+  // the aim/heading — in WASD mode heading follows the cursor and would bank
+  // when you only look around). Scaled by speed so a slow drift barely rolls.
   const dt = Math.max(1 / 240, Math.min(frameDt, 1 / 20));
   let bankTarget = 0;
 
-  // Speed source: prefer the authoritative velocity (server-smoothed, stable);
-  // fall back to differentiating position only when no velocity was passed.
-  const haveVel = velX != null && velY != null;
-  const rawSpeed = haveVel
-    ? Math.hypot(velX!, velY!)
-    : (ship.prevWorldX != null && ship.prevWorldY != null
-        ? Math.hypot(worldX - ship.prevWorldX, worldY - ship.prevWorldY) / dt
-        : 0);
+  // Movement direction + speed from the authoritative velocity (server-
+  // smoothed); fall back to position deltas only if no velocity was passed.
+  let mvx: number, mvy: number, rawSpeed: number;
+  if (velX != null && velY != null) {
+    mvx = velX; mvy = velY; rawSpeed = Math.hypot(velX, velY);
+  } else if (ship.prevWorldX != null && ship.prevWorldY != null) {
+    mvx = (worldX - ship.prevWorldX) / dt; mvy = (worldY - ship.prevWorldY) / dt;
+    rawSpeed = Math.hypot(mvx, mvy);
+  } else { mvx = 0; mvy = 0; rawSpeed = 0; }
   const speedLerp = 1 - Math.exp(-10 * dt);
   const prevSpeed = ship.smoothSpeed ?? rawSpeed;
   const speed = prevSpeed + (rawSpeed - prevSpeed) * speedLerp;
   ship.smoothSpeed = speed;
 
-  if (ship.prevYRot != null) {
-    // BANK from turn rate (rad/s) of the rendered heading.
-    let dYaw = ship.lastYRot - ship.prevYRot;
-    while (dYaw > Math.PI) dYaw -= Math.PI * 2;
-    while (dYaw < -Math.PI) dYaw += Math.PI * 2;
-    const turnRate = dYaw / dt;
-    const MAX_BANK = 0.5;          // ~29° max roll
-    // only bank meaningfully while actually moving (no roll while spinning in place)
-    const moveFrac = Math.min(1, speed / 120);
-    bankTarget = Math.max(-MAX_BANK, Math.min(MAX_BANK, turnRate * 0.09 * moveFrac));
+  // Heading of the MOVEMENT (game angle: atan2(vy, vx)). Its rate of change
+  // is the turn rate that drives the bank.
+  if (speed > 8) {
+    const moveAng = Math.atan2(mvy, mvx);
+    if (ship.prevMoveAng != null) {
+      let dA = moveAng - ship.prevMoveAng;
+      while (dA > Math.PI) dA -= Math.PI * 2;
+      while (dA < -Math.PI) dA += Math.PI * 2;
+      const turnRate = dA / dt;             // rad/s, + = turning "left" in game space
+      const MAX_BANK = 0.6;                 // ~34° max roll
+      const moveFrac = Math.min(1, speed / 60);
+      // Higher gain: real turns are gentle (the ship coasts through them), so
+      // a low gain barely banked. This reaches full bank on a brisk turn.
+      bankTarget = Math.max(-MAX_BANK, Math.min(MAX_BANK, turnRate * 0.35 * moveFrac));
+    }
+    ship.prevMoveAng = moveAng;
+  } else {
+    ship.prevMoveAng = undefined; // stopped: no reference heading, level out
   }
 
   // ease toward target — well-damped so nothing snaps or shivers.
   const bankLerp = 1 - Math.exp(-7 * dt);
   ship.bank += (bankTarget - ship.bank) * bankLerp;
-  ship.pitch = 0; // side-roll only — no nose pitch
+  ship.pitch = 0; // no nose pitch
   ship.prevYRot = ship.lastYRot;
   ship.prevWorldX = worldX;
   ship.prevWorldY = worldY;
 
-  // Heading (Y) first, THEN roll around the model's OWN forward axis (its
-  // nose, local -Z). Applying bank as a plain euler .z rotates in model space
-  // BEFORE the heading, so after a Y turn it read as a nose pitch instead of a
-  // side-roll. Composing the roll as a post-multiply about the local forward
-  // axis makes it a true bank (wing dips) regardless of heading.
-  _qHeading.setFromAxisAngle(_axisY, ship.lastYRot + (ship.yawFix ?? 0));
-  _qRoll.setFromAxisAngle(_axisZ, ship.bank); // local Z = fore-aft; roll about it
-  ship.model.quaternion.copy(_qHeading).multiply(_qRoll);
+  // Heading only on the model (drives the muzzle transform via lastYRot).
+  ship.model.rotation.set(0, ship.lastYRot + (ship.yawFix ?? 0), 0);
+
+  // BANK is applied to the WRAPPER as a roll about the camera's depth axis
+  // (world Z — the screen's vertical, since the top-down camera looks down -Y
+  // with up = -Z). This tilts one SCREEN side down regardless of heading
+  // (left turn -> left side dips), never the model's nose/tail. The wrapper's
+  // fixed -0.85 camera tilt stays; the bank composes on top of it.
+  ship.wrapper.rotation.set(SHIP_WRAPPER_TILT_X, 0, ship.bank);
   ship.lastCamX = camX;
   ship.lastCamY = camY;
   ship.lastWorldX = worldX;
