@@ -2368,7 +2368,7 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
     if (enemyUse3D) {
       data.body.visible = false;
       if (data.coreGlow) data.coreGlow.visible = false;
-      updateEnemyShip3D("enemy:" + e.id, enemyModelKey, e.pos.x, e.pos.y, e.angle, e.size / 15.2, cam.x, cam.y);
+      updateEnemyShip3D("enemy:" + e.id, enemyModelKey, e.pos.x, e.pos.y, e.angle, e.size / 15.2, cam.x, cam.y, e.vel?.x, e.vel?.y);
       markEnemyActive("enemy:" + e.id);
     } else {
       data.body.visible = true;
@@ -3085,7 +3085,7 @@ function syncPlayer(): void {
     playerVisual.container.visible = false;
     const cam = state.player.pos;
     const sizeScale = SHIP_SIZE_SCALE[p.shipClass] ?? 1;
-    updateShip3D("player", p.shipClass, p.pos.x, p.pos.y, p.angle, sizeScale, cam.x, cam.y);
+    updateShip3D("player", p.shipClass, p.pos.x, p.pos.y, p.angle, sizeScale, cam.x, cam.y, p.vel.x, p.vel.y);
     markActive("player");
   } else if (playerVisual) {
     playerVisual.container.visible = true;
@@ -3360,7 +3360,7 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
       
       // Update Three.js 3D ship
       const sizeScale = SHIP_SIZE_SCALE[o.shipClass] ?? 1;
-      updateShip3D(o.id, o.shipClass, o.pos.x, o.pos.y, o.angle, sizeScale, cam.x, cam.y);
+      updateShip3D(o.id, o.shipClass, o.pos.x, o.pos.y, o.angle, sizeScale, cam.x, cam.y, o.vel?.x, o.vel?.y);
       markActive(o.id);
     } else if (data && data.body) {
       // Ensure PixiJS sprite is visible for non-3D ships

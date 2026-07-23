@@ -1212,6 +1212,13 @@ export function updateShip3D(
   sizeScale: number,
   camX: number,
   camY: number,
+  // Optional authoritative velocity (server-smoothed). When provided, the
+  // flight-lean pitch uses THIS instead of differentiating the interpolated
+  // world position — the position is nudged by netcode reconciliation every
+  // frame, which made the derived accel (and thus the pitch) jitter. vel is
+  // already low-passed by applyServerSmoothing, so it's stable.
+  velX?: number,
+  velY?: number,
 ): void {
   if (!scene || !loadedModels.has(shipClass)) return;
 
@@ -1384,37 +1391,44 @@ export function updateShip3D(
   // target so the ship banks/settles smoothly instead of snapping.
   const dt = Math.max(1 / 240, Math.min(frameDt, 1 / 20));
   let bankTarget = 0, pitchTarget = 0;
-  if (ship.prevYRot != null && ship.prevWorldX != null && ship.prevWorldY != null) {
-    // turn rate (rad/s) from the rendered heading — same sign space as lastYRot
+
+  // Speed source: prefer the authoritative velocity (server-smoothed, stable);
+  // fall back to differentiating position only when no velocity was passed.
+  const haveVel = velX != null && velY != null;
+  const rawSpeed = haveVel
+    ? Math.hypot(velX!, velY!)
+    : (ship.prevWorldX != null && ship.prevWorldY != null
+        ? Math.hypot(worldX - ship.prevWorldX, worldY - ship.prevWorldY) / dt
+        : 0);
+  // extra low-pass on top (kills the last bit of frame-to-frame flutter)
+  const speedLerp = 1 - Math.exp(-10 * dt);
+  const prevSpeed = ship.smoothSpeed ?? rawSpeed;
+  const speed = prevSpeed + (rawSpeed - prevSpeed) * speedLerp;
+  ship.smoothSpeed = speed;
+
+  if (ship.prevYRot != null) {
+    // BANK from turn rate (rad/s) of the rendered heading.
     let dYaw = ship.lastYRot - ship.prevYRot;
     while (dYaw > Math.PI) dYaw -= Math.PI * 2;
     while (dYaw < -Math.PI) dYaw += Math.PI * 2;
     const turnRate = dYaw / dt;
-    // world heading -Z of the model at lastYRot maps back to game angle;
-    // bank sign chosen so turning toward the inside of the curve rolls that way.
-    const MAX_BANK = 0.55;         // ~31° max roll
-    bankTarget = Math.max(-MAX_BANK, Math.min(MAX_BANK, turnRate * 0.10));
+    const MAX_BANK = 0.5;          // ~29° max roll
+    // only bank meaningfully while actually moving (no roll while spinning in place)
+    const moveFrac = Math.min(1, speed / 120);
+    bankTarget = Math.max(-MAX_BANK, Math.min(MAX_BANK, turnRate * 0.09 * moveFrac));
 
-    // forward speed from world movement, low-pass filtered so a single
-    // network jitter frame doesn't register as huge accel (which used to
-    // leave the pitch stuck tilted). accel = d(smoothSpeed)/dt.
-    const vx = (worldX - ship.prevWorldX) / dt;
-    const vy = (worldY - ship.prevWorldY) / dt;
-    const rawSpeed = Math.hypot(vx, vy);
-    const speedLerp = 1 - Math.exp(-12 * dt);
-    const prev = ship.smoothSpeed ?? rawSpeed;
-    const speed = prev + (rawSpeed - prev) * speedLerp;
-    const accel = (speed - prev) / dt;
-    ship.smoothSpeed = speed;
-    const MAX_PITCH = 0.24;        // ~14° nose up/down
-    // deadzone so cruising jitter reads as level; nose UP on accel, DOWN on brake
-    const pitchRaw = Math.abs(accel) < 20 ? 0 : -accel * 0.0013;
+    // PITCH from accel (change of the smoothed speed). Deadzone + clamp so
+    // steady cruise reads level; nose UP on accel, DOWN on brake.
+    const accel = (speed - prevSpeed) / dt;
+    const MAX_PITCH = 0.20;        // ~11° nose up/down
+    const pitchRaw = Math.abs(accel) < 60 ? 0 : -accel * 0.0011;
     pitchTarget = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitchRaw));
   }
-  // ease toward target. Pitch settles back to level faster than it tilts, so
-  // the nose "kicks" on accel/brake and quickly returns rather than lingering.
-  const bankLerp = 1 - Math.exp(-9 * dt);
-  const pitchLerp = 1 - Math.exp(-(pitchTarget === 0 ? 6 : 10) * dt);
+
+  // ease toward target. Slower, well-damped rates so nothing snaps or shivers;
+  // pitch returns to level a touch faster than it tilts so it "kicks" then settles.
+  const bankLerp = 1 - Math.exp(-7 * dt);
+  const pitchLerp = 1 - Math.exp(-(pitchTarget === 0 ? 5 : 8) * dt);
   ship.bank += (bankTarget - ship.bank) * bankLerp;
   ship.pitch += (pitchTarget - ship.pitch) * pitchLerp;
   ship.prevYRot = ship.lastYRot;
