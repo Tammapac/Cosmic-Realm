@@ -1427,8 +1427,8 @@ export function updateShip3D(
     const turnRate = dYaw / dt;            // rad/s
     const MAX_BANK = 0.7;                  // ~40° max lean
     const moveFrac = Math.min(1, speed / 60);
-    // model lastYRot turns opposite to game heading, so negate for correct side
-    bankTarget = Math.max(-MAX_BANK, Math.min(MAX_BANK, -turnRate * 0.5 * moveFrac));
+    // sign: roll INTO the turn (left turn -> left side dips). Verified live.
+    bankTarget = Math.max(-MAX_BANK, Math.min(MAX_BANK, turnRate * 0.5 * moveFrac));
   }
 
   // ease toward target — well-damped so nothing snaps or shivers.
