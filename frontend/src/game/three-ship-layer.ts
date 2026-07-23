@@ -1383,14 +1383,14 @@ export function updateShip3D(
     ship.lastYRot += rotDiff * rotLerp;
   }
 
-  // ── Starblast-style flight lean (visual only) ──────────────────────────
-  // BANK: roll into turns. Derived from the per-frame change in HEADING
-  // (turn rate) — a fast left turn rolls the ship left, and it levels out
-  // when flying straight. PITCH: nose lifts on acceleration, dips on braking,
-  // derived from the change in forward speed. Both are eased toward their
-  // target so the ship banks/settles smoothly instead of snapping.
+  // ── Flight lean (visual only): SIDE-ROLL ONLY ─────────────────────────
+  // The ship banks (rolls) into turns — left in a left turn, right in a
+  // right turn — and levels out when flying straight. No pitch (nose never
+  // tilts up/down). Bank is derived from the per-frame heading change (turn
+  // rate) and scaled by speed so a stationary pivot doesn't roll; eased so
+  // it settles smoothly.
   const dt = Math.max(1 / 240, Math.min(frameDt, 1 / 20));
-  let bankTarget = 0, pitchTarget = 0;
+  let bankTarget = 0;
 
   // Speed source: prefer the authoritative velocity (server-smoothed, stable);
   // fall back to differentiating position only when no velocity was passed.
@@ -1400,7 +1400,6 @@ export function updateShip3D(
     : (ship.prevWorldX != null && ship.prevWorldY != null
         ? Math.hypot(worldX - ship.prevWorldX, worldY - ship.prevWorldY) / dt
         : 0);
-  // extra low-pass on top (kills the last bit of frame-to-frame flutter)
   const speedLerp = 1 - Math.exp(-10 * dt);
   const prevSpeed = ship.smoothSpeed ?? rawSpeed;
   const speed = prevSpeed + (rawSpeed - prevSpeed) * speedLerp;
@@ -1416,28 +1415,19 @@ export function updateShip3D(
     // only bank meaningfully while actually moving (no roll while spinning in place)
     const moveFrac = Math.min(1, speed / 120);
     bankTarget = Math.max(-MAX_BANK, Math.min(MAX_BANK, turnRate * 0.09 * moveFrac));
-
-    // PITCH from accel (change of the smoothed speed). Deadzone + clamp so
-    // steady cruise reads level; nose UP on accel, DOWN on brake.
-    const accel = (speed - prevSpeed) / dt;
-    const MAX_PITCH = 0.20;        // ~11° nose up/down
-    const pitchRaw = Math.abs(accel) < 60 ? 0 : -accel * 0.0011;
-    pitchTarget = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitchRaw));
   }
 
-  // ease toward target. Slower, well-damped rates so nothing snaps or shivers;
-  // pitch returns to level a touch faster than it tilts so it "kicks" then settles.
+  // ease toward target — well-damped so nothing snaps or shivers.
   const bankLerp = 1 - Math.exp(-7 * dt);
-  const pitchLerp = 1 - Math.exp(-(pitchTarget === 0 ? 5 : 8) * dt);
   ship.bank += (bankTarget - ship.bank) * bankLerp;
-  ship.pitch += (pitchTarget - ship.pitch) * pitchLerp;
+  ship.pitch = 0; // side-roll only — no nose pitch
   ship.prevYRot = ship.lastYRot;
   ship.prevWorldX = worldX;
   ship.prevWorldY = worldY;
 
-  // Heading on Y (drives muzzles), lean on X (pitch) + Z (roll). Model-local
-  // so it composes under the wrapper's fixed camera tilt.
-  ship.model.rotation.set(ship.pitch, ship.lastYRot + (ship.yawFix ?? 0), ship.bank);
+  // Heading on Y (drives muzzles), roll on Z. Model-local so it composes
+  // under the wrapper's fixed camera tilt.
+  ship.model.rotation.set(0, ship.lastYRot + (ship.yawFix ?? 0), ship.bank);
   ship.lastCamX = camX;
   ship.lastCamY = camY;
   ship.lastWorldX = worldX;
