@@ -970,6 +970,7 @@ const tempVec3 = new THREE.Vector3();
 // Reusable quaternions/axes for the heading+roll composition (no alloc/frame)
 const _qHeading = new THREE.Quaternion();
 const _qRoll = new THREE.Quaternion();
+const _axisX = new THREE.Vector3(1, 0, 0);
 const _axisY = new THREE.Vector3(0, 1, 0);
 const _axisZfwd = new THREE.Vector3(0, 0, 1); // model fore-aft axis (roll axis)
 
@@ -1444,11 +1445,17 @@ export function updateShip3D(
   // slightly toward the horizon (see camera init) this reads as a real
   // side-lean the way Starblast does, instead of nose/tail lift. The muzzle
   // transform still uses lastYRot only, so projectile spawns are unaffected.
+  // Heading about world Y, THEN bank about the model's local X axis. Under
+  // the fixed -0.85rad wrapper camera tilt, model-local X is what points along
+  // the SCREEN VERTICAL, so a roll about it dips one screen SIDE (a true side-
+  // lean) while the nose/tail stay level — verified empirically vs Z (which
+  // pitched the nose fore/aft) and Y (which twisted it in-plane). Composed as
+  // quaternions so the bank rides on top of the heading regardless of facing.
   _qHeading.setFromAxisAngle(_axisY, ship.lastYRot + (ship.yawFix ?? 0));
-  _qRoll.setFromAxisAngle(_axisZfwd, ship.bank);
+  _qRoll.setFromAxisAngle(_axisX, ship.bank);
   ship.model.quaternion.copy(_qHeading).multiply(_qRoll);
 
-  // Wrapper keeps ONLY the fixed camera-depth tilt (no bank here anymore).
+  // Wrapper keeps ONLY the fixed camera-depth tilt.
   ship.wrapper.rotation.set(SHIP_WRAPPER_TILT_X, 0, 0);
   ship.lastCamX = camX;
   ship.lastCamY = camY;
