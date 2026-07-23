@@ -268,26 +268,18 @@ export function ClanPanel() {
       style={{ background: "rgba(2,4,12,0.88)" }}
       onClick={(e) => { if (e.target === e.currentTarget) { state.showClan = false; bump(); } }}
     >
-      <div className="panel-framed" style={{ position: "relative", width: 500, filter: "drop-shadow(0 10px 40px rgba(0,0,0,0.8))" }}>
-        {/* title in the window's amber glass band */}
-        <div
-          style={{
-            position: "absolute", top: -37, left: "12%", right: "12%", height: 28,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontFamily: "var(--font-display)", fontSize: 15, fontWeight: 800,
-            letterSpacing: "0.32em", color: "#3a2000",
-            textShadow: "0 1px 0 rgba(255,255,255,0.25)", userSelect: "none",
-          }}
-        >
-          CLAN COMMAND
+      <div className="panel panel-framed" style={{ position: "relative", width: 500, display: "flex", flexDirection: "column" }}>
+        <span className="panel-rim" aria-hidden="true" />
+        <div className="hud-titleband" style={{ letterSpacing: "0.3em" }}>
+          <span style={{ flex: 1 }}>CLAN COMMAND</span>
+          <button
+            className="gbtn gbtn-red"
+            style={{ padding: "1px 8px", fontSize: 10 }}
+            onClick={() => { state.showClan = false; bump(); }}
+          >
+            ✕
+          </button>
         </div>
-        <button
-          className="gbtn gbtn-red"
-          style={{ position: "absolute", top: -38, right: -16, padding: "2px 8px", fontSize: 11 }}
-          onClick={() => { state.showClan = false; bump(); }}
-        >
-          ✕
-        </button>
 
         <div className="p-2">
           {player.clan ? (
@@ -501,35 +493,26 @@ export function GalaxyMap() {
       onClick={(e) => { if (e.target === e.currentTarget) { state.showMap = false; bump(); } }}
     >
       <div
-        className="panel-framed"
+        className="panel panel-framed"
         style={{
           position: "relative",
           width: "min(96vw, 840px)",
           maxHeight: "90vh",
           display: "flex",
           flexDirection: "column",
-          filter: "drop-shadow(0 10px 40px rgba(0,0,0,0.8))",
         }}
       >
-        {/* title in the window's amber glass band */}
-        <div
-          style={{
-            position: "absolute", top: -37, left: "16%", right: "16%", height: 28,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontFamily: "var(--font-display)", fontSize: 15, fontWeight: 800,
-            letterSpacing: "0.32em", color: "#3a2000",
-            textShadow: "0 1px 0 rgba(255,255,255,0.25)", userSelect: "none",
-          }}
-        >
-          GALAXY MAP
+        <span className="panel-rim" aria-hidden="true" />
+        <div className="hud-titleband" style={{ letterSpacing: "0.3em" }}>
+          <span style={{ flex: 1 }}>GALAXY MAP</span>
+          <button
+            className="gbtn gbtn-red"
+            style={{ padding: "1px 8px", fontSize: 10 }}
+            onClick={() => { state.showMap = false; bump(); }}
+          >
+            ✕
+          </button>
         </div>
-        <button
-          className="gbtn gbtn-red"
-          style={{ position: "absolute", top: -38, right: -16, padding: "2px 8px", fontSize: 11 }}
-          onClick={() => { state.showMap = false; bump(); }}
-        >
-          ✕
-        </button>
 
         <div style={{ overflowY: "auto", flex: 1, padding: "4px 6px" }}>
           <div style={{ position: "relative" }}>

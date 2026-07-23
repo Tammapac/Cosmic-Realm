@@ -397,7 +397,7 @@ export function WorldTargetHud() {
   const hpColor = target.kind === "enemy" ? "#ff5c6c" : isPlayer ? "#5ad1ff" : "#c69060";
   return (
     <div
-      className={isPlayer ? "console-sq" : "console-sq pointer-events-none"}
+      className={isPlayer ? "panel" : "panel pointer-events-none"}
       style={{
         position: "fixed",
         left: 14,
@@ -408,10 +408,7 @@ export function WorldTargetHud() {
         padding: "8px 10px 10px",
       }}
     >
-      <span className="console-corner tl" />
-      <span className="console-corner tr" />
-      <span className="console-corner bl" />
-      <span className="console-corner br" />
+      <span className="panel-rim" aria-hidden="true" />
       <div
         className="font-bold truncate text-center"
         style={{
