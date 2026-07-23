@@ -967,11 +967,11 @@ if (typeof window !== "undefined") {
 // Reusable vector to avoid allocation
 const tempVec3 = new THREE.Vector3();
 
-// Reusable quaternions/axes for the heading+bank composition (no per-frame alloc)
-const _qHeading = new THREE.Quaternion();
-const _qRoll = new THREE.Quaternion();
+// Reusable quaternions/axes for the wrapper tilt+bank composition (no alloc/frame)
+const _qTilt = new THREE.Quaternion();
+const _qBank = new THREE.Quaternion();
+const _axisX = new THREE.Vector3(1, 0, 0);
 const _axisY = new THREE.Vector3(0, 1, 0);
-const _axisZ = new THREE.Vector3(0, 0, 1);
 
 export function getShipHardpointPositions(
   entityId: string,
@@ -1413,24 +1413,23 @@ export function updateShip3D(
   const speed = prevSpeed + (rawSpeed - prevSpeed) * speedLerp;
   ship.smoothSpeed = speed;
 
-  // Heading of the MOVEMENT (game angle: atan2(vy, vx)). Its rate of change
-  // is the turn rate that drives the bank.
-  if (speed > 8) {
-    const moveAng = Math.atan2(mvy, mvx);
-    if (ship.prevMoveAng != null) {
-      let dA = moveAng - ship.prevMoveAng;
-      while (dA > Math.PI) dA -= Math.PI * 2;
-      while (dA < -Math.PI) dA += Math.PI * 2;
-      const turnRate = dA / dt;             // rad/s, + = turning "left" in game space
-      const MAX_BANK = 0.6;                 // ~34° max roll
-      const moveFrac = Math.min(1, speed / 60);
-      // Higher gain: real turns are gentle (the ship coasts through them), so
-      // a low gain barely banked. This reaches full bank on a brisk turn.
-      bankTarget = Math.max(-MAX_BANK, Math.min(MAX_BANK, turnRate * 0.35 * moveFrac));
-    }
-    ship.prevMoveAng = moveAng;
-  } else {
-    ship.prevMoveAng = undefined; // stopped: no reference heading, level out
+  // BANK = the SIDEWAYS component of the movement relative to where the ship
+  // is FACING (its nose). Flying straight ahead (nose along velocity) → level.
+  // Flying/strafing to one side → the ship leans that way and HOLDS the lean
+  // for as long as it keeps moving sideways — like a motorcycle held over in
+  // a sustained turn. This suits WASD (fly a direction while the cursor aims
+  // elsewhere) far better than a turn-rate impulse that decays in <1s.
+  if (speed > 12) {
+    // game facing: model heading lastYRot maps back to game angle as
+    // gameAngle = PI - lastYRot (inverse of targetYRot = -angle + PI).
+    const faceAng = Math.PI - ship.lastYRot;
+    const fx = Math.cos(faceAng), fy = Math.sin(faceAng);
+    // signed sideways velocity: cross product of facing × velocity (z of it).
+    // + = moving to the ship's LEFT, − = to its RIGHT (game y-down space).
+    const sideVel = (fx * mvy - fy * mvx);
+    const lateral = sideVel / Math.max(speed, 1); // -1..1, fraction sideways
+    const MAX_BANK = 0.8;                  // ~46° max lean — deep, motorcycle-style
+    bankTarget = Math.max(-MAX_BANK, Math.min(MAX_BANK, lateral * MAX_BANK));
   }
 
   // ease toward target — well-damped so nothing snaps or shivers.
@@ -1444,12 +1443,15 @@ export function updateShip3D(
   // Heading only on the model (drives the muzzle transform via lastYRot).
   ship.model.rotation.set(0, ship.lastYRot + (ship.yawFix ?? 0), 0);
 
-  // BANK is applied to the WRAPPER as a roll about the camera's depth axis
-  // (world Z — the screen's vertical, since the top-down camera looks down -Y
-  // with up = -Z). This tilts one SCREEN side down regardless of heading
-  // (left turn -> left side dips), never the model's nose/tail. The wrapper's
-  // fixed -0.85 camera tilt stays; the bank composes on top of it.
-  ship.wrapper.rotation.set(SHIP_WRAPPER_TILT_X, 0, ship.bank);
+  // BANK is a roll about the CAMERA VIEW AXIS (world Y — the camera looks
+  // straight down -Y). Rotating about the view axis keeps every point's
+  // depth (distance from camera) unchanged, so nose and tail NEVER lift — it
+  // is a pure in-screen-plane tilt: one screen side rotates down. Composed
+  // as: bank about world Y, THEN the fixed camera depth tilt about X.
+  //   q = qTiltX * qBankY   (tilt applied last, in world space)
+  _qTilt.setFromAxisAngle(_axisX, SHIP_WRAPPER_TILT_X);
+  _qBank.setFromAxisAngle(_axisY, ship.bank);
+  ship.wrapper.quaternion.copy(_qTilt).multiply(_qBank);
   ship.lastCamX = camX;
   ship.lastCamY = camY;
   ship.lastWorldX = worldX;
