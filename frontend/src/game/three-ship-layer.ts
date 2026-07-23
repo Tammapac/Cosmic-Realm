@@ -221,6 +221,16 @@ interface Ship3D {
   yawFix?: number;   // per-model heading offset (nose not authored on -Z)
   wrapper: THREE.Group;
   model: THREE.Group;
+  // Starblast-style flight lean: banking roll into turns + pitch on
+  // accel/decel, applied to model.rotation.x/z (heading stays on .y). Purely
+  // visual; the analytic muzzle transform uses lastYRot + wrapper tilt only,
+  // so projectile spawns are unaffected. Smoothed toward a target each frame.
+  bank: number;     // current roll (rad, +/- ~0.5)
+  pitch: number;    // current pitch (rad)
+  prevYRot?: number; // last heading, to derive turn rate
+  prevWorldX?: number;
+  prevWorldY?: number;
+  smoothSpeed?: number; // low-pass filtered forward speed (for stable accel)
   hardpoints: ShipHardpoints;
   engineGlows: THREE.Sprite[];
   mixer: THREE.AnimationMixer | null;
@@ -939,6 +949,20 @@ export function setCameraZoom(zoom: number): void {
   cameraZoom = zoom;
 }
 
+// Debug/measurement hook: current flight-lean of an entity's ship model.
+// Both three-ship-layer instances (ships + ?instance=enemy) register; the
+// combined lookup returns whichever instance actually owns that entity so
+// "player" resolves against the ship instance, enemies against theirs.
+export function getShipLean(entityId: string): { bank: number; pitch: number } | null {
+  const s = activeShips.get(entityId);
+  return s ? { bank: s.bank, pitch: s.pitch } : null;
+}
+if (typeof window !== "undefined") {
+  const w = window as any;
+  const prev = typeof w.__SHIP_LEAN === "function" ? w.__SHIP_LEAN : null;
+  w.__SHIP_LEAN = (id: string) => getShipLean(id) ?? (prev ? prev(id) : null);
+}
+
 // Reusable vector to avoid allocation
 const tempVec3 = new THREE.Vector3();
 
@@ -1309,6 +1333,7 @@ export function updateShip3D(
       wrapper, model, hardpoints, engineGlows, mixer,
       yawFix,
       lastYRot: -angle + Math.PI,
+      bank: 0, pitch: 0,
       lastCamX: camX, lastCamY: camY,
       lastWorldX: worldX, lastWorldY: worldY,
       worldUnitsPerModelUnit: 1,
@@ -1350,7 +1375,55 @@ export function updateShip3D(
     const rotLerp = 1 - Math.exp(-4.5 * frameDt);
     ship.lastYRot += rotDiff * rotLerp;
   }
-  ship.model.rotation.set(0, ship.lastYRot + (ship.yawFix ?? 0), 0);
+
+  // ── Starblast-style flight lean (visual only) ──────────────────────────
+  // BANK: roll into turns. Derived from the per-frame change in HEADING
+  // (turn rate) — a fast left turn rolls the ship left, and it levels out
+  // when flying straight. PITCH: nose lifts on acceleration, dips on braking,
+  // derived from the change in forward speed. Both are eased toward their
+  // target so the ship banks/settles smoothly instead of snapping.
+  const dt = Math.max(1 / 240, Math.min(frameDt, 1 / 20));
+  let bankTarget = 0, pitchTarget = 0;
+  if (ship.prevYRot != null && ship.prevWorldX != null && ship.prevWorldY != null) {
+    // turn rate (rad/s) from the rendered heading — same sign space as lastYRot
+    let dYaw = ship.lastYRot - ship.prevYRot;
+    while (dYaw > Math.PI) dYaw -= Math.PI * 2;
+    while (dYaw < -Math.PI) dYaw += Math.PI * 2;
+    const turnRate = dYaw / dt;
+    // world heading -Z of the model at lastYRot maps back to game angle;
+    // bank sign chosen so turning toward the inside of the curve rolls that way.
+    const MAX_BANK = 0.55;         // ~31° max roll
+    bankTarget = Math.max(-MAX_BANK, Math.min(MAX_BANK, turnRate * 0.10));
+
+    // forward speed from world movement, low-pass filtered so a single
+    // network jitter frame doesn't register as huge accel (which used to
+    // leave the pitch stuck tilted). accel = d(smoothSpeed)/dt.
+    const vx = (worldX - ship.prevWorldX) / dt;
+    const vy = (worldY - ship.prevWorldY) / dt;
+    const rawSpeed = Math.hypot(vx, vy);
+    const speedLerp = 1 - Math.exp(-12 * dt);
+    const prev = ship.smoothSpeed ?? rawSpeed;
+    const speed = prev + (rawSpeed - prev) * speedLerp;
+    const accel = (speed - prev) / dt;
+    ship.smoothSpeed = speed;
+    const MAX_PITCH = 0.24;        // ~14° nose up/down
+    // deadzone so cruising jitter reads as level; nose UP on accel, DOWN on brake
+    const pitchRaw = Math.abs(accel) < 20 ? 0 : -accel * 0.0013;
+    pitchTarget = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitchRaw));
+  }
+  // ease toward target. Pitch settles back to level faster than it tilts, so
+  // the nose "kicks" on accel/brake and quickly returns rather than lingering.
+  const bankLerp = 1 - Math.exp(-9 * dt);
+  const pitchLerp = 1 - Math.exp(-(pitchTarget === 0 ? 6 : 10) * dt);
+  ship.bank += (bankTarget - ship.bank) * bankLerp;
+  ship.pitch += (pitchTarget - ship.pitch) * pitchLerp;
+  ship.prevYRot = ship.lastYRot;
+  ship.prevWorldX = worldX;
+  ship.prevWorldY = worldY;
+
+  // Heading on Y (drives muzzles), lean on X (pitch) + Z (roll). Model-local
+  // so it composes under the wrapper's fixed camera tilt.
+  ship.model.rotation.set(ship.pitch, ship.lastYRot + (ship.yawFix ?? 0), ship.bank);
   ship.lastCamX = camX;
   ship.lastCamY = camY;
   ship.lastWorldX = worldX;
