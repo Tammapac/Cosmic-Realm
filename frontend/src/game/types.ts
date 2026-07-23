@@ -666,6 +666,9 @@ export type Projectile = {
   // enemy for the first ~0.3s of flight so remote lasers converge from the
   // shooter's muzzles onto the enemy sprite, matching local behavior.
   remoteTargetId?: string;
+  /** For renderOnly projectiles: server id of the player who fired (debug/
+   *  measurement — distinguishes remote-player shots from NPC shots). */
+  remoteFromPlayerId?: number;
 };
 
 export type Floater = {

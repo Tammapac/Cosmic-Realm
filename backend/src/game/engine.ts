@@ -801,14 +801,20 @@ export class GameEngine {
       // uses). Aiming at empty space still fires perfectly straight.
       let assistEnemy: ServerEnemy | null = null;
       if (freeAim) {
-        let bestDiff = 0.28; // ~16deg cone
+        // Distance-to-ray criterion (NOT an angular cone — a 16deg cone is
+        // ±123u wide at max range, which made clearly-missed shots still
+        // snap onto enemies). The cursor ray must pass within ~70u of the
+        // enemy's center, i.e. you have to aim AT the ship.
+        let bestPerp = 70;
         for (const e of zs.enemies.values()) {
           const d = dist({ x: p.posX, y: p.posY }, e.pos);
           if (d > 440) continue;
           let diff = angleFromTo({ x: p.posX, y: p.posY }, e.pos) - ang;
           while (diff > Math.PI) diff -= 2 * Math.PI;
           while (diff < -Math.PI) diff += 2 * Math.PI;
-          if (Math.abs(diff) < bestDiff) { bestDiff = Math.abs(diff); assistEnemy = e; }
+          if (Math.abs(diff) > Math.PI / 2) continue; // behind the ray
+          const perp = d * Math.sin(Math.abs(diff));
+          if (perp < bestPerp) { bestPerp = perp; assistEnemy = e; }
         }
       }
       // Firing solution from a muzzle toward the assist enemy's intercept
@@ -986,6 +992,10 @@ export class GameEngine {
           crit: proj.crit, weaponKind: proj.weaponKind, homing: proj.homing,
           ammoType: p.rocketAmmoType, ttl: proj.ttl,
           hardpointIndex: 0, hardpointRing: "weapon", shipClass: p.shipClass,
+          // homing target — remote clients steer their visual copy onto it
+          // (without this the remote rocket flew straight while the real
+          // one curved onto the enemy: wrong direction AND no hit effect)
+          targetId: proj.homingTargetId ?? undefined,
         });
 
         const rCd = 1.5 / (stats.fireRate * 0.5);

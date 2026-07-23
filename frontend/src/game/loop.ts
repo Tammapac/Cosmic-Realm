@@ -1781,14 +1781,17 @@ function tickWorld(dt: number): void {
   const freeAimFire = state.aimAngle != null && (state.isLaserFiring || state.isRocketFiring);
   let freeAimAssist: Enemy | null = null;
   if (freeAimFire) {
-    let bestDiff = 0.28; // keep in sync with server assist cone
+    // keep in sync with the server: ray must pass within ~70u of the enemy
+    let bestPerp = 70;
     for (const e of state.enemies) {
       const d = Math.hypot(e.pos.x - p.pos.x, e.pos.y - p.pos.y);
       if (d > 440) continue;
       let diff = Math.atan2(e.pos.y - p.pos.y, e.pos.x - p.pos.x) - state.aimAngle!;
       while (diff > Math.PI) diff -= 2 * Math.PI;
       while (diff < -Math.PI) diff += 2 * Math.PI;
-      if (Math.abs(diff) < bestDiff) { bestDiff = Math.abs(diff); freeAimAssist = e; }
+      if (Math.abs(diff) > Math.PI / 2) continue;
+      const perp = d * Math.sin(Math.abs(diff));
+      if (perp < bestPerp) { bestPerp = perp; freeAimAssist = e; }
     }
     atkTarget = freeAimAssist ?? ({
       pos: {
@@ -2206,6 +2209,25 @@ function tickWorld(dt: number): void {
       }
       if (target) {
         const desiredAng = Math.atan2(target.pos.y - pr.pos.y, target.pos.x - pr.pos.x);
+        const curAng = Math.atan2(pr.vel.y, pr.vel.x);
+        let diff = desiredAng - curAng;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        const turnRate = 4.5 * dt;
+        const newAng = curAng + Math.sign(diff) * Math.min(Math.abs(diff), turnRate);
+        const spd = Math.sqrt(pr.vel.x * pr.vel.x + pr.vel.y * pr.vel.y);
+        pr.vel.x = Math.cos(newAng) * spd;
+        pr.vel.y = Math.sin(newAng) * spd;
+      }
+    }
+    // Remote players' homing rockets: steer the visual copy onto the SAME
+    // enemy the server projectile homes onto (remoteTargetId from the spawn
+    // event) — never onto a locally-guessed target. Same turn rate as the
+    // server/local homing so the paths match.
+    if (pr.homing && pr.fromPlayer && pr.renderOnly && pr.remoteTargetId) {
+      const rt = state.enemies.find((e) => e.id === pr.remoteTargetId);
+      if (rt) {
+        const desiredAng = Math.atan2(rt.pos.y - pr.pos.y, rt.pos.x - pr.pos.x);
         const curAng = Math.atan2(pr.vel.y, pr.vel.x);
         let diff = desiredAng - curAng;
         while (diff > Math.PI) diff -= Math.PI * 2;
@@ -3391,7 +3413,10 @@ export function onProjectileSpawnFromServer(data: ProjectileSpawnEvent): void {
     homing: data.homing,
     weaponKind: data.weaponKind,
     renderOnly: true,
-    remoteTargetId: isRemotePlayer && !isRocket && !data.homing ? data.targetId : undefined,
+    // lasers use this for visual convergence, homing rockets for steering —
+    // always the id the SERVER shot at, never a locally-guessed target.
+    remoteTargetId: isRemotePlayer ? data.targetId : undefined,
+    remoteFromPlayerId: isRemotePlayer ? data.fromPlayerId : undefined,
   });
   scheduleBump();
 
