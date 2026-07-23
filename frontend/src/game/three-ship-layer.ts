@@ -133,11 +133,11 @@ const SHIP_3D_MODELS: Record<string, string> = {
   wasp: "/models/Wasp_Interceptor.glb",
   // Enemy NPC models — one GLB per enemy type (nose = -Z, up = +Y, size
   // normalization via maxDim so ENEMY_DEFS.size drives small→big scaling)
-  enemy_scout: "/models/enemies/enemy_scout.glb?v=18",
-  enemy_interceptor: "/models/enemies/enemy_interceptor.glb?v=18",
-  enemy_raider: "/models/enemies/enemy_raider.glb?v=18",
-  enemy_corvette: "/models/enemies/enemy_corvette.glb?v=18",
-  enemy_destroyer: "/models/enemies/enemy_destroyer.glb?v=18",
+  enemy_scout: "/models/enemies/enemy_scout.glb?v=19",
+  enemy_interceptor: "/models/enemies/enemy_interceptor.glb?v=19",
+  enemy_raider: "/models/enemies/enemy_raider.glb?v=19",
+  enemy_corvette: "/models/enemies/enemy_corvette.glb?v=19",
+  enemy_destroyer: "/models/enemies/enemy_destroyer.glb?v=19",
   enemy_sentinel: "/models/enemies/enemy_sentinel.glb?v=18",
   enemy_specter: "/models/enemies/enemy_specter.glb?v=18",
   enemy_phantom: "/models/enemies/enemy_phantom.glb?v=18",
@@ -146,7 +146,7 @@ const SHIP_3D_MODELS: Record<string, string> = {
   enemy_dread: "/models/enemies/enemy_dread.glb?v=18",
   enemy_titan: "/models/enemies/enemy_titan.glb?v=18",
   enemy_juggernaut: "/models/enemies/enemy_juggernaut.glb?v=18",
-  enemy_overlord: "/models/enemies/enemy_overlord.glb?v=18",
+  enemy_overlord: "/models/enemies/enemy_overlord.glb?v=19",
   enemy_leviathan: "/models/enemies/enemy_leviathan.glb?v=18",
   // Zengas — x-4 tier ship, registered and render-ready (not yet mapped to a type)
   enemy_zengas: "/models/enemies/enemy_zengas.glb?v=18",
