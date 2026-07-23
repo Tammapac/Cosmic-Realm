@@ -1424,7 +1424,11 @@ export function updateShip3D(
   // doesn't roll. Because the nose points where you steer and movement follows
   // it, this reads as a natural bank into the curve.
   void mvx; void mvy; // (movement dir not needed for the heading-turn bank)
-  if (ship.prevYRot != null) {
+  // Only PLAYER ships bank into turns (own ship "player" + other players by
+  // numeric id). Enemy/NPC ships (entityId prefixed "enemy:") never lean —
+  // they fly flat like before.
+  const isEnemyShip = entityId.startsWith("enemy:");
+  if (!isEnemyShip && ship.prevYRot != null) {
     let dYaw = ship.lastYRot - ship.prevYRot;
     while (dYaw > Math.PI) dYaw -= Math.PI * 2;
     while (dYaw < -Math.PI) dYaw += Math.PI * 2;
