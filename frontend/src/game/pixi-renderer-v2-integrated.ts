@@ -32,6 +32,7 @@ import {
   setSelectedShipIds as setEnemySelectedShipIds,
 } from "./three-ship-layer?instance=enemy";
 import { enemyModelKey as sharedEnemyModelKey, enemySizeScale as sharedEnemySizeScale, shipHullRadius } from "../../../lib/hitbox";
+import { perfBegin, perfEnd } from "./perf";
 import { state } from "./store";
 import { effectiveStats, getDebugSpawnBuffer } from "./loop";
 import {
@@ -1565,6 +1566,19 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
 
   const view = app.view as HTMLCanvasElement;
   container.appendChild(view);
+
+  // Perf: time the ACTUAL Pixi GL render (runs on Pixi's internal ticker,
+  // separate from the pixiRender() scene-graph update the App loop times).
+  {
+    const rd: any = app.renderer;
+    const origRender = rd.render.bind(rd);
+    rd.render = (...args: any[]) => {
+      perfBegin("pixi");
+      const r = origRender(...args);
+      perfEnd("pixi");
+      return r;
+    };
+  }
 
 
   // Layer hierarchy

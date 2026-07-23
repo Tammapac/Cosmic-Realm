@@ -140,7 +140,8 @@ export function perfSetEnabled(on: boolean): void {
   enabled = on;
   if (on) { ensureOverlay(); if (overlay) overlay.style.display = "block"; }
   else if (overlay) overlay.style.display = "none";
-  (window as any).__PERF = on;
+  // NOTE: do not assign window.__PERF here — that property is an accessor
+  // whose setter calls this function (infinite recursion).
 }
 
 // ── client-local render benchmark ──────────────────────────────────────────

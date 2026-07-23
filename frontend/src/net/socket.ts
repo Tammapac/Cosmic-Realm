@@ -613,3 +613,5 @@ export function adminUpdatePlayer(playerId: number, updates: any, cb: (data: any
 export function adminSpawnEnemy(type: string, count: number, cb: (data: any) => void) {
   socket?.emit("admin:spawnEnemy", { type, count }, cb);
 }
+// Console/benchmark hook — server enforces admin auth, this only exposes the emit.
+if (typeof window !== "undefined") (window as any).__ADMIN_SPAWN = adminSpawnEnemy;
