@@ -19,6 +19,7 @@
  * For full-stack benchmarks use the admin panel spawn (server-authoritative).
  */
 import { state } from "./store";
+import { ENEMY_DEFS } from "./types";
 
 let enabled = false;
 let overlay: HTMLDivElement | null = null;
@@ -157,28 +158,31 @@ export function perfSetEnabled(on: boolean): void {
  * 3D models / bars / names) but are NOT server entities. Snapshot handlers
  * must preserve ids starting with "bench-" (see loop.ts).
  */
-function bench(n: number): string {
+function bench(n: number, type?: string): string {
   // remove existing bench entities
   state.enemies = state.enemies.filter((e) => !e.id.startsWith("bench-"));
-  const types = ["scout", "raider", "interceptor", "corvette", "destroyer", "sentinel"];
+  const types = type
+    ? [type]
+    : ["scout", "raider", "interceptor", "corvette", "destroyer", "sentinel"];
   const px = state.player.pos.x, py = state.player.pos.y;
   for (let i = 0; i < n; i++) {
     const ang = (i / Math.max(1, n)) * Math.PI * 2;
     const d = 200 + (i % 10) * 120;
-    const type = types[i % types.length];
+    const t = types[i % types.length];
+    const def: any = (ENEMY_DEFS as any)[t] ?? {};
     state.enemies.push({
       id: `bench-${i}`,
-      type,
-      behavior: "chaser",
+      type: t,
+      behavior: def.behavior ?? "chaser",
       name: `Bench ${i}`,
       pos: { x: px + Math.cos(ang) * d, y: py + Math.sin(ang) * d },
       vel: { x: 0, y: 0 },
       angle: ang,
-      hull: 100, hullMax: 100,
+      hull: def.hullMax ?? 100, hullMax: def.hullMax ?? 100,
       damage: 0, speed: 0,
       exp: 0, credits: 0, honor: 0,
-      color: "#ff8866", size: 12,
-      isBoss: false,
+      color: def.color ?? "#ff8866", size: def.size ?? 12,
+      isBoss: def.isBoss ?? false,
       zone: state.player.zone,
     } as any);
   }
@@ -187,7 +191,7 @@ function bench(n: number): string {
 
 // ── bootstrap ───────────────────────────────────────────────────────────────
 export function initPerf(): void {
-  (window as any).__BENCH = (n: number) => { const r = bench(n | 0); console.log(r); return r; };
+  (window as any).__BENCH = (n: number, type?: string) => { const r = bench(n | 0, type); console.log(r); return r; };
   Object.defineProperty(window, "__PERF", {
     configurable: true,
     get: () => enabled,

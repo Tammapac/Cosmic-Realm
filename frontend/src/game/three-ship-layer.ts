@@ -151,7 +151,7 @@ const SHIP_3D_MODELS: Record<string, string> = {
   // Zengas — x-4 tier ship, registered and render-ready (not yet mapped to a type)
   enemy_zengas: "/models/enemies/enemy_zengas.glb?v=18",
   // Erix — new NPC on all x-1 maps
-  enemy_erix: "/models/enemies/enemy_erix.glb?v=18",
+  enemy_erix: "/models/enemies/enemy_erix.glb?v=19",
 };
 
 // Per-model heading offset (radians), added to the computed yaw so a GLB whose
