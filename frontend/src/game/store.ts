@@ -208,9 +208,9 @@ function emptyEquipped(shipId: ShipClassId): EquippedSlots {
 }
 
 function makeInitialPlayer(): Player {
-  const starterWeapon = newModuleItem("wp-laser-t1");
-  const starterCore   = newModuleItem("gn-t1");
-  const starterMod    = newModuleItem("md-t1");
+  const starterWeapon = newModuleItem("wp-laser-t0");
+  const starterCore   = newModuleItem("gn-shield-t0");
+  const starterMod    = newModuleItem("md0-t0");
   const equipped = emptyEquipped("skimmer");
   equipped.weapon[0]    = starterWeapon.instanceId;
   equipped.generator[0] = starterCore.instanceId;
@@ -443,9 +443,9 @@ if (!initialPlayer.equipped || typeof initialPlayer.equipped !== "object") {
 // If migrating from v3 (no inventory), seed starters
 if (initialPlayer.inventory.length === 0) {
   const starters = [
-    newModuleItem(legacy.equipment?.laserTier >= 4 ? "wp-laser-t3" : "wp-laser-t1"),
-    newModuleItem(legacy.equipment?.shieldTier >= 4 ? "gn-t2" : "gn-t1"),
-    newModuleItem(legacy.equipment?.thrusterTier >= 4 ? "md-t2" : "md-t1"),
+    newModuleItem(legacy.equipment?.laserTier >= 4 ? "wp-laser-t3" : "wp-laser-t0"),
+    newModuleItem(legacy.equipment?.shieldTier >= 4 ? "gn-shield-t2" : "gn-shield-t0"),
+    newModuleItem(legacy.equipment?.thrusterTier >= 4 ? "md0-t2" : "md0-t0"),
   ];
   initialPlayer.inventory.push(...starters);
   initialPlayer.equipped = emptyEquipped(initialPlayer.shipClass);

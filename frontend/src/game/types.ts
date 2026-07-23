@@ -102,10 +102,12 @@ export type ModuleDef = {
 // PNGs live in /assets/ui/items/<spriteKey>.png. Missing files fall back to
 // the def's Unicode glyph. Mining lasers have no sprite (keep the ⛏ glyph).
 export const ITEM_SPRITE_KEYS = new Set<string>([
-  ...Array.from({ length: 11 }, (_, t) => `laser-t${t}`),
-  ...Array.from({ length: 6 }, (_, t) => `rocket-t${t}`),
-  ...Array.from({ length: 5 }, (_, t) => `gen-t${t + 1}`),
-  ...Array.from({ length: 5 }, (_, t) => `mod-t${t + 1}`),
+  ...Array.from({ length: 11 }, (_, t) => `laser-t${t}`),   // lasers 0-10
+  ...Array.from({ length: 6 }, (_, t) => `rocket-t${t}`),   // rockets 0-5 (art pending)
+  ...Array.from({ length: 6 }, (_, t) => `genspeed-t${t}`), // speed gens 0-5
+  ...Array.from({ length: 6 }, (_, t) => `genshield-t${t}`),// shield gens 0-5
+  // modules: 9 types (0-8) x tier 0-4
+  ...Array.from({ length: 9 }, (_, ty) => Array.from({ length: 5 }, (_, t) => `mod${ty}-t${t}`)).flat(),
 ]);
 
 /** Sprite PNG URL for a def's spriteKey, else null (caller shows the glyph). */
@@ -1979,40 +1981,66 @@ function buildCatalog(): Record<string, ModuleDef> {
     };
   }
 
-  // GENERATORS - tier 1..5. Shield + regen + absorb.
-  const genNames = ["Core Generator", "Aegis Reactor", "Prism Reactor",
-    "Quantum Reactor", "Leviathan Core"];
-  for (let t = 1; t <= 5; t++) {
-    out[`gn-t${t}`] = {
-      id: `gn-t${t}`, slot: "generator", name: `${genNames[t - 1]} T${t}`,
-      description: `Tier ${t} generator. Shield capacity, regen & absorb.`,
-      rarity: rarityForTier5(t), color: GEN_TIER_COLOR[t - 1], glyph: "◈",
-      tier: t, spriteKey: `gen-t${t}`, price: Math.round(2500 * 4 ** (t - 1)),
+  // rarity for a 0-based tier over `max` steps (spread across the 5 rarities)
+  const rarity0 = (t: number, max: number): ModuleRarity =>
+    (["common", "uncommon", "rare", "epic", "legendary"] as const)[
+      Math.max(0, Math.min(4, Math.round((t / max) * 4)))];
+  const tierColor0 = (t: number, max: number): string =>
+    ["#8aa0c0", "#5cff8a", "#4ee2ff", "#ff5cf0", "#ffd24a"][
+      Math.max(0, Math.min(4, Math.round((t / max) * 4)))];
+
+  // SHIELD GENERATORS - tier 0..5. Shield capacity, regen & absorb.
+  for (let t = 0; t <= 5; t++) {
+    out[`gn-shield-t${t}`] = {
+      id: `gn-shield-t${t}`, slot: "generator", name: `Shield Reactor T${t}`,
+      description: `Tier ${t} shield generator. High shield capacity, regen & absorb.`,
+      rarity: rarity0(t, 5), color: tierColor0(t, 5), glyph: "◈",
+      tier: t, spriteKey: `genshield-t${t}`, price: t === 0 ? 0 : Math.round(2500 * 2.6 ** t),
       stats: {
-        shieldMax: round(40 + (t - 1) * 110),
-        shieldRegen: round(2 + (t - 1) * 5.5),
-        shieldAbsorb: round(0.05 + (t - 1) * 0.06, 2),
+        shieldMax: round(30 + t * 95), shieldRegen: round(2 + t * 4.6),
+        shieldAbsorb: round(0.05 + t * 0.05, 2),
       },
     };
   }
 
-  // MODULES - tier 1..5. Utility (speed/DR/crit/shield).
-  const modNames = ["Utility Module", "Combat Module", "Tactical Module",
-    "Advanced Module", "Singularity Module"];
-  for (let t = 1; t <= 5; t++) {
-    out[`md-t${t}`] = {
-      id: `md-t${t}`, slot: "module", name: `${modNames[t - 1]} T${t}`,
-      description: `Tier ${t} module. Speed, crit, armor & shield boost.`,
-      rarity: rarityForTier5(t), color: MOD_TIER_COLOR[t - 1], glyph: "⬡",
-      tier: t, spriteKey: `mod-t${t}`, price: Math.round(3000 * 4 ** (t - 1)),
+  // SPEED GENERATORS - tier 0..5. Speed-focused, lighter shield.
+  for (let t = 0; t <= 5; t++) {
+    out[`gn-speed-t${t}`] = {
+      id: `gn-speed-t${t}`, slot: "generator", name: `Sprint Drive T${t}`,
+      description: `Tier ${t} speed generator. Big velocity boost, light shield.`,
+      rarity: rarity0(t, 5), color: tierColor0(t, 5), glyph: "➤",
+      tier: t, spriteKey: `genspeed-t${t}`, price: t === 0 ? 0 : Math.round(2800 * 2.6 ** t),
       stats: {
-        speed: round(20 + (t - 1) * 20),
-        critChance: round((t - 1) * 0.03, 3),
-        damageReduction: round((t - 1) * 0.03, 3),
-        hullMax: round((t - 1) * 25),
+        speed: round(30 + t * 36), shieldMax: round(20 + t * 40),
+        shieldRegen: round(2 + t * 1.6), shieldAbsorb: round(0.04 + t * 0.02, 2),
       },
     };
   }
+
+  // MODULES - 9 types (0-8) x tier 0..4. Each type has a distinct stat role;
+  // tier scales its magnitude. (Types assigned sensible roles; tweak freely.)
+  const modRoles: { name: string; glyph: string; stat: (t: number) => ModuleStats }[] = [
+    { name: "Thruster",   glyph: "➤", stat: (t) => ({ speed: round(25 + t * 22) }) },
+    { name: "Armor",      glyph: "⛨", stat: (t) => ({ hullMax: round(30 + t * 45), damageReduction: round(0.03 + t * 0.03, 3) }) },
+    { name: "Targeter",   glyph: "✦", stat: (t) => ({ critChance: round(0.04 + t * 0.035, 3) }) },
+    { name: "Shield Cell",glyph: "◈", stat: (t) => ({ shieldMax: round(40 + t * 55), shieldRegen: round(1 + t * 2) }) },
+    { name: "Cargo Bay",  glyph: "▤", stat: (t) => ({ cargoBonus: round(0.15 + t * 0.15, 2) }) },
+    { name: "Scanner",    glyph: "$", stat: (t) => ({ lootBonus: t >= 2 ? Math.floor((t - 1) / 1.5) + 1 : 1 }) },
+    { name: "Munitions",  glyph: "⟁", stat: (t) => ({ ammoCapacity: round(8 + t * 8) }) },
+    { name: "Overclock",  glyph: "⚡", stat: (t) => ({ fireRate: round(1.05 + t * 0.06, 2), damage: round(4 + t * 4) }) },
+    { name: "Voidframe",  glyph: "✺", stat: (t) => ({ speed: round(15 + t * 12), critChance: round(0.02 + t * 0.015, 3), damageReduction: round(0.02 + t * 0.02, 3), shieldMax: round(20 + t * 30) }) },
+  ];
+  modRoles.forEach((role, ty) => {
+    for (let t = 0; t <= 4; t++) {
+      out[`md${ty}-t${t}`] = {
+        id: `md${ty}-t${t}`, slot: "module", name: `${role.name} T${t}`,
+        description: `Tier ${t} ${role.name.toLowerCase()} module.`,
+        rarity: rarity0(t, 4), color: tierColor0(t, 4), glyph: role.glyph,
+        tier: t, spriteKey: `mod${ty}-t${t}`, price: t === 0 ? 1500 : Math.round(3000 * 3 ** t),
+        stats: role.stat(t),
+      };
+    }
+  });
 
   // Mining lasers keep their own progression + mining glyph (no sprite).
   const miningNames = ["Mining Laser Mk-I", "Mining Laser Mk-II", "Deep Core Drill", "Plasma Core Extractor"];
@@ -2047,19 +2075,29 @@ export const LEGACY_ITEM_ALIAS: Record<string, string> = {
   // rockets (old tier 2-4 → new 0-5)
   "wp-rocket-1": "wp-rocket-t1", "wp-rocket-2": "wp-rocket-t2",
   "wp-torpedo": "wp-rocket-t3", "wp-hellfire": "wp-rocket-t3",
-  // generators (old → new gn-t1..t5)
-  "gn-core-1": "gn-t1", "gn-core-2": "gn-t2", "gn-sprint": "gn-t2",
-  "gn-aegis": "gn-t3", "gn-fortify": "gn-t3", "gn-hyper": "gn-t3", "gn-prism": "gn-t3",
-  "gn-quantum": "gn-t4", "gn-warp-drive": "gn-t4",
-  "gn-leviathan": "gn-t5", "gn-phase-drive": "gn-t5",
-  // modules (old → new md-t1..t5)
-  "md-thrust-1": "md-t1", "md-thrust-2": "md-t2", "md-cargo": "md-t2",
-  "md-ammo-bay": "md-t2", "md-nano-rep": "md-t2",
-  "md-afterburn": "md-t3", "md-cargo-2": "md-t3", "md-ammo-bay-2": "md-t3",
-  "md-targeter": "md-t3", "md-plating": "md-t3", "md-shield-boost": "md-t3", "md-scavenger": "md-t3",
-  "md-targeter-2": "md-t4", "md-loot-2": "md-t4", "md-heavy-armor": "md-t4",
-  "md-overcharge": "md-t4", "md-overclock": "md-t4",
-  "md-voidframe": "md-t5", "md-singularity": "md-t5",
+  // generators → shield/speed families (0-5). Shield-focused → gn-shield,
+  // speed-focused → gn-speed.
+  "gn-core-1": "gn-shield-t1", "gn-core-2": "gn-shield-t2",
+  "gn-aegis": "gn-shield-t3", "gn-fortify": "gn-shield-t3", "gn-prism": "gn-shield-t3",
+  "gn-quantum": "gn-shield-t4", "gn-leviathan": "gn-shield-t5",
+  "gn-sprint": "gn-speed-t2", "gn-hyper": "gn-speed-t3",
+  "gn-warp-drive": "gn-speed-t4", "gn-phase-drive": "gn-speed-t5",
+  // short-lived intermediate gn-t* ids (from the first overhaul pass)
+  "gn-t1": "gn-shield-t1", "gn-t2": "gn-shield-t2", "gn-t3": "gn-shield-t3",
+  "gn-t4": "gn-shield-t4", "gn-t5": "gn-shield-t5",
+  // modules → new type-based ids (mdN-tT). Map old roles to matching types:
+  // 0 thruster,1 armor,2 targeter,3 shield,4 cargo,5 scanner,6 munitions,7 overclock,8 voidframe
+  "md-thrust-1": "md0-t1", "md-thrust-2": "md0-t3", "md-afterburn": "md0-t4",
+  "md-plating": "md1-t2", "md-heavy-armor": "md1-t4",
+  "md-targeter": "md2-t2", "md-targeter-2": "md2-t4",
+  "md-shield-boost": "md3-t3",
+  "md-cargo": "md4-t1", "md-cargo-2": "md4-t3",
+  "md-scavenger": "md5-t2", "md-loot-2": "md5-t4",
+  "md-ammo-bay": "md6-t1", "md-ammo-bay-2": "md6-t3",
+  "md-overcharge": "md7-t3", "md-overclock": "md7-t4", "md-nano-rep": "md3-t1",
+  "md-voidframe": "md8-t3", "md-singularity": "md8-t4",
+  // short-lived intermediate md-t* ids
+  "md-t1": "md8-t1", "md-t2": "md8-t2", "md-t3": "md8-t3", "md-t4": "md8-t4", "md-t5": "md8-t4",
 };
 
 /** Map any (possibly legacy) def id to a valid current catalog id. */

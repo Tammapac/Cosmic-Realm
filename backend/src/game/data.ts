@@ -577,24 +577,46 @@ function buildBackendCatalog() {
       tier: t, price: t === 0 ? 0 : Math.round(18000 * 2.2 ** t), stats,
     };
   }
-  for (let t = 1; t <= 5; t++) {
-    out[`gn-t${t}`] = {
-      id: `gn-t${t}`, slot: "generator", tier: t, price: Math.round(2500 * 4 ** (t - 1)),
+  // SHIELD GENERATORS 0-5 (must match frontend gn-shield-t* formulas)
+  for (let t = 0; t <= 5; t++) {
+    out[`gn-shield-t${t}`] = {
+      id: `gn-shield-t${t}`, slot: "generator", tier: t, price: t === 0 ? 0 : Math.round(2500 * 2.6 ** t),
       stats: {
-        shieldMax: round(40 + (t - 1) * 110), shieldRegen: round(2 + (t - 1) * 5.5),
-        shieldAbsorb: round(0.05 + (t - 1) * 0.06, 2),
+        shieldMax: round(30 + t * 95), shieldRegen: round(2 + t * 4.6),
+        shieldAbsorb: round(0.05 + t * 0.05, 2),
       },
     };
   }
-  for (let t = 1; t <= 5; t++) {
-    out[`md-t${t}`] = {
-      id: `md-t${t}`, slot: "module", tier: t, price: Math.round(3000 * 4 ** (t - 1)),
+  // SPEED GENERATORS 0-5 (must match frontend gn-speed-t* formulas)
+  for (let t = 0; t <= 5; t++) {
+    out[`gn-speed-t${t}`] = {
+      id: `gn-speed-t${t}`, slot: "generator", tier: t, price: t === 0 ? 0 : Math.round(2800 * 2.6 ** t),
       stats: {
-        speed: round(20 + (t - 1) * 20), critChance: round((t - 1) * 0.03, 3),
-        damageReduction: round((t - 1) * 0.03, 3), hullMax: round((t - 1) * 25),
+        speed: round(30 + t * 36), shieldMax: round(20 + t * 40),
+        shieldRegen: round(2 + t * 1.6), shieldAbsorb: round(0.04 + t * 0.02, 2),
       },
     };
   }
+  // MODULES: 9 types x tier 0-4 (must match frontend modRoles stat formulas)
+  const modStat: ((t: number) => ModuleStats)[] = [
+    (t) => ({ speed: round(25 + t * 22) }),
+    (t) => ({ hullMax: round(30 + t * 45), damageReduction: round(0.03 + t * 0.03, 3) }),
+    (t) => ({ critChance: round(0.04 + t * 0.035, 3) }),
+    (t) => ({ shieldMax: round(40 + t * 55), shieldRegen: round(1 + t * 2) }),
+    (t) => ({ cargoBonus: round(0.15 + t * 0.15, 2) }),
+    (t) => ({ lootBonus: t >= 2 ? Math.floor((t - 1) / 1.5) + 1 : 1 }),
+    (t) => ({ ammoCapacity: round(8 + t * 8) }),
+    (t) => ({ fireRate: round(1.05 + t * 0.06, 2), damage: round(4 + t * 4) }),
+    (t) => ({ speed: round(15 + t * 12), critChance: round(0.02 + t * 0.015, 3), damageReduction: round(0.02 + t * 0.02, 3), shieldMax: round(20 + t * 30) }),
+  ];
+  modStat.forEach((fn, ty) => {
+    for (let t = 0; t <= 4; t++) {
+      out[`md${ty}-t${t}`] = {
+        id: `md${ty}-t${t}`, slot: "module", tier: t, price: t === 0 ? 1500 : Math.round(3000 * 3 ** t),
+        stats: fn(t),
+      };
+    }
+  });
   const miningPrice = [2000, 15000, 50000, 120000];
   for (let t = 1; t <= 4; t++) {
     out[`wp-mining-${t}`] = {
@@ -619,15 +641,21 @@ export const LEGACY_ITEM_ALIAS: Record<string, string> = {
   "wp-void-lance": "wp-laser-t9", "wp-singular": "wp-laser-t10",
   "wp-rocket-1": "wp-rocket-t1", "wp-rocket-2": "wp-rocket-t2",
   "wp-torpedo": "wp-rocket-t3", "wp-hellfire": "wp-rocket-t3",
-  "gn-core-1": "gn-t1", "gn-core-2": "gn-t2", "gn-sprint": "gn-t2",
-  "gn-aegis": "gn-t3", "gn-fortify": "gn-t3", "gn-hyper": "gn-t3", "gn-prism": "gn-t3",
-  "gn-quantum": "gn-t4", "gn-warp-drive": "gn-t4", "gn-leviathan": "gn-t5", "gn-phase-drive": "gn-t5",
-  "md-thrust-1": "md-t1", "md-thrust-2": "md-t2", "md-cargo": "md-t2",
-  "md-ammo-bay": "md-t2", "md-nano-rep": "md-t2", "md-afterburn": "md-t3", "md-cargo-2": "md-t3",
-  "md-ammo-bay-2": "md-t3", "md-targeter": "md-t3", "md-plating": "md-t3",
-  "md-shield-boost": "md-t3", "md-scavenger": "md-t3", "md-targeter-2": "md-t4", "md-loot-2": "md-t4",
-  "md-heavy-armor": "md-t4", "md-overcharge": "md-t4", "md-overclock": "md-t4",
-  "md-voidframe": "md-t5", "md-singularity": "md-t5",
+  "gn-core-1": "gn-shield-t1", "gn-core-2": "gn-shield-t2",
+  "gn-aegis": "gn-shield-t3", "gn-fortify": "gn-shield-t3", "gn-prism": "gn-shield-t3",
+  "gn-quantum": "gn-shield-t4", "gn-leviathan": "gn-shield-t5",
+  "gn-sprint": "gn-speed-t2", "gn-hyper": "gn-speed-t3",
+  "gn-warp-drive": "gn-speed-t4", "gn-phase-drive": "gn-speed-t5",
+  "gn-t1": "gn-shield-t1", "gn-t2": "gn-shield-t2", "gn-t3": "gn-shield-t3",
+  "gn-t4": "gn-shield-t4", "gn-t5": "gn-shield-t5",
+  "md-thrust-1": "md0-t1", "md-thrust-2": "md0-t3", "md-afterburn": "md0-t4",
+  "md-plating": "md1-t2", "md-heavy-armor": "md1-t4",
+  "md-targeter": "md2-t2", "md-targeter-2": "md2-t4", "md-shield-boost": "md3-t3",
+  "md-cargo": "md4-t1", "md-cargo-2": "md4-t3", "md-scavenger": "md5-t2", "md-loot-2": "md5-t4",
+  "md-ammo-bay": "md6-t1", "md-ammo-bay-2": "md6-t3",
+  "md-overcharge": "md7-t3", "md-overclock": "md7-t4", "md-nano-rep": "md3-t1",
+  "md-voidframe": "md8-t3", "md-singularity": "md8-t4",
+  "md-t1": "md8-t1", "md-t2": "md8-t2", "md-t3": "md8-t3", "md-t4": "md8-t4", "md-t5": "md8-t4",
 };
 export function resolveItemId(id: string): string {
   if (MODULE_DEFS[id]) return id;

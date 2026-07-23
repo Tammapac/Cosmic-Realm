@@ -150,8 +150,11 @@ export type BaseEntry = { defId: string; slot: ItemSlot; tier: number };
 export const BASE_POOL: BaseEntry[] = [
   ...Array.from({ length: 11 }, (_, t) => ({ defId: `wp-laser-t${t}`, slot: "weapon" as ItemSlot, tier: t })),
   ...Array.from({ length: 6 }, (_, t) => ({ defId: `wp-rocket-t${t}`, slot: "weapon" as ItemSlot, tier: t })),
-  ...Array.from({ length: 5 }, (_, i) => ({ defId: `gn-t${i + 1}`, slot: "generator" as ItemSlot, tier: i + 1 })),
-  ...Array.from({ length: 5 }, (_, i) => ({ defId: `md-t${i + 1}`, slot: "module" as ItemSlot, tier: i + 1 })),
+  ...Array.from({ length: 6 }, (_, t) => ({ defId: `gn-shield-t${t}`, slot: "generator" as ItemSlot, tier: t })),
+  ...Array.from({ length: 6 }, (_, t) => ({ defId: `gn-speed-t${t}`, slot: "generator" as ItemSlot, tier: t })),
+  // modules: 9 types x tier 0-4
+  ...Array.from({ length: 9 }, (_, ty) =>
+    Array.from({ length: 5 }, (_, t) => ({ defId: `md${ty}-t${t}`, slot: "module" as ItemSlot, tier: t }))).flat(),
 ];
 
 // ── Legendary effects ──────────────────────────────────────────────────────
