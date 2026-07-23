@@ -97,6 +97,7 @@ export function setupSocket(io: Server) {
       honor: dbPlayer.honor,
       targetX: null,
       targetY: null,
+      aimAngle: null,
       speed: stats.speed,
       isLaserFiring: false,
       isRocketFiring: false,
@@ -143,6 +144,13 @@ export function setupSocket(io: Server) {
       if (!p) return;
       p.targetX = clamp(data.x, -8000, 8000);
       p.targetY = clamp(data.y, -8000, 8000);
+    });
+
+    // ── INPUT: AIM (WASD scheme — cursor owns the heading) ─────────
+    socket.on("input:aim", (data: { angle: number | null }) => {
+      const p = getPlayer(user.playerId);
+      if (!p) return;
+      p.aimAngle = typeof data?.angle === "number" && Number.isFinite(data.angle) ? data.angle : null;
     });
 
     // ── INPUT: ATTACK (start/stop firing) ─────────────────────────

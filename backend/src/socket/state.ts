@@ -40,6 +40,9 @@ export type OnlinePlayer = {
   honor: number;
   targetX: number | null;
   targetY: number | null;
+  // WASD control scheme: heading (rad) the ship faces regardless of movement
+  // direction (cursor aim). null = classic (nose follows movement/target).
+  aimAngle: number | null;
   speed: number;
   isLaserFiring: boolean;
   isRocketFiring: boolean;

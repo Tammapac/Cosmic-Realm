@@ -293,36 +293,33 @@ function GameCanvas() {
   };
 
   // ── WASD control scheme ────────────────────────────────────────────────
-  // The cursor direction (ship = screen center) is "forward"; W thrusts
-  // toward the cursor, S away, A/D strafe. Movement stays server-authoritative:
-  // we only synthesize a cameraTarget ~600 world units in the thrust
-  // direction each frame (same channel click-to-move uses). Releasing all
-  // keys parks the target on the ship so it stops.
+  // Screen-relative thrust: W = up, S = down, A = left, D = right. The
+  // cursor only sets where the ship LOOKS (state.aimAngle → input:aim).
+  // Movement stays server-authoritative: we only synthesize a cameraTarget
+  // ~600 world units in the thrust direction each frame (same channel
+  // click-to-move uses). Releasing all keys parks the target on the ship.
   const steerWasd = () => {
     if (state.dockedAt) return;
+
+    // Aim: ship nose follows the cursor (ship = screen center), always —
+    // even while standing still.
+    const c = lastCursor.current;
+    if (c) {
+      const dx = c.x - c.w / 2;
+      const dy = c.y - c.h / 2;
+      if (Math.hypot(dx, dy) > 8) state.aimAngle = Math.atan2(dy, dx);
+    }
+
     const k = wasdKeys.current;
-    const mx = (k.d ? 1 : 0) - (k.a ? 1 : 0);
-    const my = (k.w ? 1 : 0) - (k.s ? 1 : 0);
-    if (mx === 0 && my === 0) {
+    const vx = (k.d ? 1 : 0) - (k.a ? 1 : 0); // screen x = world x
+    const vy = (k.s ? 1 : 0) - (k.w ? 1 : 0); // screen down = world +y
+    if (vx === 0 && vy === 0) {
       if (wasdWasThrusting.current) {
         state.cameraTarget = { x: state.player.pos.x, y: state.player.pos.y };
         wasdWasThrusting.current = false;
       }
       return;
     }
-    // forward = direction from screen center (ship) to the cursor
-    const c = lastCursor.current;
-    let fx = Math.cos(state.player.angle);
-    let fy = Math.sin(state.player.angle);
-    if (c) {
-      const dx = c.x - c.w / 2;
-      const dy = c.y - c.h / 2;
-      const L = Math.hypot(dx, dy);
-      if (L > 8) { fx = dx / L; fy = dy / L; }
-    }
-    const rx = -fy, ry = fx; // "right" of forward (screen y points down)
-    let vx = fx * my + rx * mx;
-    let vy = fy * my + ry * mx;
     const vl = Math.hypot(vx, vy) || 1;
     state.cameraTarget = {
       x: state.player.pos.x + (vx / vl) * 600,
@@ -425,7 +422,7 @@ function GameCanvas() {
     let raf = 0;
     const tick = () => {
       if (state.controlMode === "wasd") steerWasd();
-      else steerToHeld();
+      else { state.aimAngle = null; steerToHeld(); }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -1115,6 +1112,7 @@ function GameApp() {
       miningTargetId: null as string | null,
       laserAmmo: "",
       rocketAmmo: "",
+      aimAngle: null as number | null,
       sentAt: 0,
     };
     const HEARTBEAT_MS = 1000;
@@ -1131,11 +1129,15 @@ function GameApp() {
         miningTargetId: state.miningTargetId,
         laserAmmo: state.player.activeAmmoType ?? "x1",
         rocketAmmo: state.player.activeRocketAmmoType ?? "cl1",
+        aimAngle: state.aimAngle,
       };
       const now = performance.now();
       const moved =
         Math.abs(cur.targetX - last.targetX) > MOVE_EPSILON ||
         Math.abs(cur.targetY - last.targetY) > MOVE_EPSILON;
+      const aimChanged =
+        (cur.aimAngle === null) !== (last.aimAngle === null) ||
+        (cur.aimAngle !== null && last.aimAngle !== null && Math.abs(cur.aimAngle - last.aimAngle) > 0.02);
       const combatChanged =
         cur.firing !== last.firing ||
         cur.rocketFiring !== last.rocketFiring ||
@@ -1146,7 +1148,7 @@ function GameApp() {
       const miningChanged = cur.miningTargetId !== last.miningTargetId;
       const heartbeat = now - last.sentAt > HEARTBEAT_MS;
 
-      if (!moved && !combatChanged && !miningChanged && !heartbeat) return;
+      if (!moved && !combatChanged && !miningChanged && !aimChanged && !heartbeat) return;
 
       sendInput(cur);
       Object.assign(last, cur, { sentAt: now });

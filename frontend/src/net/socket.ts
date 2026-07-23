@@ -505,6 +505,9 @@ export function sendInput(data: {
   miningTargetId: string | null;
   laserAmmo: string;
   rocketAmmo: string;
+  /** WASD mode: heading (rad) the ship should face regardless of movement;
+   *  null/undefined = classic (nose follows movement/target). */
+  aimAngle?: number | null;
 }): number {
   const seq = ++_inputSeq;
   if (typeof data.targetX === "number" && Number.isFinite(data.targetX) && typeof data.targetY === "number" && Number.isFinite(data.targetY)) {
@@ -513,6 +516,7 @@ export function sendInput(data: {
       y: data.targetY,
     });
   }
+  socket?.emit("input:aim", { angle: typeof data.aimAngle === "number" && Number.isFinite(data.aimAngle) ? data.aimAngle : null });
   socket?.emit("input:attack", {
     enemyId: data.attackTargetId,
     pvpTargetId: data.pvpTargetId ?? null,

@@ -1151,6 +1151,11 @@ function tickWorld(dt: number): void {
     }
   }
 
+  // WASD control scheme: the cursor owns the heading — overrides both the
+  // movement-direction and face-target angles above (server mirrors this
+  // via input:aim, see engine.tickPlayers).
+  if (state.aimAngle != null) p.angle = state.aimAngle;
+
   // ── Engine particles + 16-bit trail + thruster sound
   const cls = SHIP_CLASSES[p.shipClass];
   const shipSpeed = Math.sqrt(p.vel.x * p.vel.x + p.vel.y * p.vel.y);

@@ -735,6 +735,11 @@ export class GameEngine {
           }
         }
       }
+
+      // WASD control scheme: cursor aim owns the heading — overrides both
+      // the movement-direction and face-target angles above. Purely visual
+      // orientation; projectile targeting is unaffected.
+      if (p.aimAngle != null) p.angle = p.aimAngle;
     }
   }
 
