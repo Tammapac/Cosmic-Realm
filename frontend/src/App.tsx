@@ -315,7 +315,16 @@ function GameCanvas() {
     const vy = (k.s ? 1 : 0) - (k.w ? 1 : 0); // screen down = world +y
     if (vx === 0 && vy === 0) {
       if (wasdWasThrusting.current) {
-        state.cameraTarget = { x: state.player.pos.x, y: state.player.pos.y };
+        // Park the stop target at the natural COASTING point, not at the
+        // current position: the ship still carries velocity and glides past
+        // a park-on-the-spot target, and the server then drags it BACKWARD
+        // to that point (visible rubber-band on every stop). Braking
+        // distance with the 0.94/tick friction at 30Hz ≈ v * 0.55.
+        const bd = 0.55;
+        state.cameraTarget = {
+          x: state.player.pos.x + state.player.vel.x * bd,
+          y: state.player.pos.y + state.player.vel.y * bd,
+        };
         wasdWasThrusting.current = false;
       }
       return;
