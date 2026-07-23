@@ -967,11 +967,11 @@ if (typeof window !== "undefined") {
 // Reusable vector to avoid allocation
 const tempVec3 = new THREE.Vector3();
 
-// Reusable quaternions/axes for the wrapper tilt+bank composition (no alloc/frame)
-const _qTilt = new THREE.Quaternion();
-const _qBank = new THREE.Quaternion();
-const _axisX = new THREE.Vector3(1, 0, 0);
+// Reusable quaternions/axes for the heading+roll composition (no alloc/frame)
+const _qHeading = new THREE.Quaternion();
+const _qRoll = new THREE.Quaternion();
 const _axisY = new THREE.Vector3(0, 1, 0);
+const _axisZfwd = new THREE.Vector3(0, 0, 1); // model fore-aft axis (roll axis)
 
 export function getShipHardpointPositions(
   entityId: string,
@@ -1413,23 +1413,21 @@ export function updateShip3D(
   const speed = prevSpeed + (rawSpeed - prevSpeed) * speedLerp;
   ship.smoothSpeed = speed;
 
-  // BANK = the SIDEWAYS component of the movement relative to where the ship
-  // is FACING (its nose). Flying straight ahead (nose along velocity) → level.
-  // Flying/strafing to one side → the ship leans that way and HOLDS the lean
-  // for as long as it keeps moving sideways — like a motorcycle held over in
-  // a sustained turn. This suits WASD (fly a direction while the cursor aims
-  // elsewhere) far better than a turn-rate impulse that decays in <1s.
-  if (speed > 12) {
-    // game facing: model heading lastYRot maps back to game angle as
-    // gameAngle = PI - lastYRot (inverse of targetYRot = -angle + PI).
-    const faceAng = Math.PI - ship.lastYRot;
-    const fx = Math.cos(faceAng), fy = Math.sin(faceAng);
-    // signed sideways velocity: cross product of facing × velocity (z of it).
-    // + = moving to the ship's LEFT, − = to its RIGHT (game y-down space).
-    const sideVel = (fx * mvy - fy * mvx);
-    const lateral = sideVel / Math.max(speed, 1); // -1..1, fraction sideways
-    const MAX_BANK = 0.8;                  // ~46° max lean — deep, motorcycle-style
-    bankTarget = Math.max(-MAX_BANK, Math.min(MAX_BANK, lateral * MAX_BANK));
+  // BANK (Starblast model): the ship banks while its HEADING is turning — roll
+  // into the turn, level out when flying straight. Derived from the turn rate
+  // of the rendered heading (lastYRot), scaled by speed so a stationary pivot
+  // doesn't roll. Because the nose points where you steer and movement follows
+  // it, this reads as a natural bank into the curve.
+  void mvx; void mvy; // (movement dir not needed for the heading-turn bank)
+  if (ship.prevYRot != null) {
+    let dYaw = ship.lastYRot - ship.prevYRot;
+    while (dYaw > Math.PI) dYaw -= Math.PI * 2;
+    while (dYaw < -Math.PI) dYaw += Math.PI * 2;
+    const turnRate = dYaw / dt;            // rad/s
+    const MAX_BANK = 0.7;                  // ~40° max lean
+    const moveFrac = Math.min(1, speed / 60);
+    // model lastYRot turns opposite to game heading, so negate for correct side
+    bankTarget = Math.max(-MAX_BANK, Math.min(MAX_BANK, -turnRate * 0.5 * moveFrac));
   }
 
   // ease toward target — well-damped so nothing snaps or shivers.
@@ -1440,18 +1438,18 @@ export function updateShip3D(
   ship.prevWorldX = worldX;
   ship.prevWorldY = worldY;
 
-  // Heading only on the model (drives the muzzle transform via lastYRot).
-  ship.model.rotation.set(0, ship.lastYRot + (ship.yawFix ?? 0), 0);
+  // Heading on the model (drives the muzzle transform via lastYRot). The bank
+  // is a roll about the model's OWN forward axis (nose, local -Z), composed
+  // AFTER the heading — a true wing-dip roll. With the ship-camera tilted
+  // slightly toward the horizon (see camera init) this reads as a real
+  // side-lean the way Starblast does, instead of nose/tail lift. The muzzle
+  // transform still uses lastYRot only, so projectile spawns are unaffected.
+  _qHeading.setFromAxisAngle(_axisY, ship.lastYRot + (ship.yawFix ?? 0));
+  _qRoll.setFromAxisAngle(_axisZfwd, ship.bank);
+  ship.model.quaternion.copy(_qHeading).multiply(_qRoll);
 
-  // BANK is a roll about the CAMERA VIEW AXIS (world Y — the camera looks
-  // straight down -Y). Rotating about the view axis keeps every point's
-  // depth (distance from camera) unchanged, so nose and tail NEVER lift — it
-  // is a pure in-screen-plane tilt: one screen side rotates down. Composed
-  // as: bank about world Y, THEN the fixed camera depth tilt about X.
-  //   q = qTiltX * qBankY   (tilt applied last, in world space)
-  _qTilt.setFromAxisAngle(_axisX, SHIP_WRAPPER_TILT_X);
-  _qBank.setFromAxisAngle(_axisY, ship.bank);
-  ship.wrapper.quaternion.copy(_qTilt).multiply(_qBank);
+  // Wrapper keeps ONLY the fixed camera-depth tilt (no bank here anymore).
+  ship.wrapper.rotation.set(SHIP_WRAPPER_TILT_X, 0, 0);
   ship.lastCamX = camX;
   ship.lastCamY = camY;
   ship.lastWorldX = worldX;
