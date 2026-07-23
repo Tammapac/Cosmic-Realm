@@ -171,6 +171,17 @@ export const MODEL_YAW_OFFSET: Record<string, number> = {
   // enemy_erix: Math.PI,  // uncomment/adjust if Erix faces the wrong way
 };
 
+// Models whose AUTHORED texture look must be preserved: no space-metal
+// override (which darkens the albedo ~45% and swaps the normal map). These
+// Tripo-generated NPC GLBs carry their whole identity in the baseColor
+// texture (red energy lines, crystal whites) and ship WITHOUT an emissive
+// channel — so we derive a glow from the albedo instead: bright/saturated
+// texel areas self-illuminate (bloom picks them up), dark hull stays dark.
+const KEEP_AUTHORED_MODELS = new Set([
+  "enemy_angin", "enemy_crobium", "enemy_draug", "enemy_knoton",
+  "enemy_maron", "enemy_nabas", "enemy_silikum", "enemy_simonit",
+]);
+
 interface ShipHardpoints {
   thrusters: THREE.Object3D[];
   muzzles: THREE.Object3D[];
@@ -741,6 +752,22 @@ function loadModel(shipClass: string): void {
           const strongEmissive = !brokenWhiteEmissive && !!m.emissive &&
             emSum > 0.35 && emHsl.s >= 0.25 &&
             (m.emissiveIntensity ?? 1) > 0.3;
+
+          if (KEEP_AUTHORED_MODELS.has(shipClass)) {
+            // Authored-look NPC: keep the GLB's own PBR maps/colors untouched
+            // and add an albedo-derived glow so the bright accent areas (red
+            // lines, crystal white) emit light like in the source model.
+            if (m.map) {
+              m.emissiveMap = m.map;
+              m.emissive = new THREE.Color(0xffffff);
+              m.emissiveIntensity = 0.38;
+            }
+            (m as any).envMapIntensity = 1.0;
+            m.needsUpdate = true;
+            hullMatCount++;
+            newList.push(m);
+            continue;
+          }
 
           if (isGlowShell) {
             dbgGlow++;
