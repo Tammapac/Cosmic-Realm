@@ -455,15 +455,15 @@ export const ZONES: Record<ZoneId, {
   },
   crimson: {
     id: "crimson", name: "Crimson Reach", label: "1-3", faction: "earth",
-        enemyTier: 3, enemyTypes: ["destroyer", "specter", "phantom"], unlockLevel: 16,
+        enemyTier: 3, enemyTypes: ["destroyer", "specter", "voidling"], unlockLevel: 16,
   },
   void: {
     id: "void", name: "The Void", label: "1-4", faction: "earth",
-        enemyTier: 4, enemyTypes: ["sentinel", "angin", "crobium"], unlockLevel: 24,
+        enemyTier: 4, enemyTypes: ["sentinel", "phantom", "wraith"], unlockLevel: 24,
   },
   forge: {
     id: "forge", name: "Iron Forge", label: "1-5", faction: "earth",
-        enemyTier: 5, enemyTypes: ["wraith", "draug", "knoton"], unlockLevel: 32,
+        enemyTier: 5, enemyTypes: ["titan", "overlord", "juggernaut"], unlockLevel: 32,
   },
   // Mars Faction (2-1 to 2-5)
   corona: {
@@ -476,15 +476,15 @@ export const ZONES: Record<ZoneId, {
   },
   abyss: {
     id: "abyss", name: "Red Reaches", label: "2-3", faction: "mars",
-        enemyTier: 3, enemyTypes: ["destroyer", "specter", "phantom"], unlockLevel: 16,
+        enemyTier: 3, enemyTypes: ["destroyer", "specter", "voidling"], unlockLevel: 16,
   },
   marsdepth: {
     id: "marsdepth", name: "Mars Deep Field", label: "2-4", faction: "mars",
-        enemyTier: 4, enemyTypes: ["sentinel", "angin", "crobium"], unlockLevel: 24,
+        enemyTier: 4, enemyTypes: ["sentinel", "phantom", "wraith"], unlockLevel: 24,
   },
   maelstrom: {
     id: "maelstrom", name: "The Maelstrom", label: "2-5", faction: "mars",
-        enemyTier: 5, enemyTypes: ["wraith", "draug", "knoton"], unlockLevel: 32,
+        enemyTier: 5, enemyTypes: ["titan", "overlord", "juggernaut"], unlockLevel: 32,
   },
   // Venus Faction (3-1 to 3-5)
   venus1: {
@@ -497,36 +497,36 @@ export const ZONES: Record<ZoneId, {
   },
   venus3: {
     id: "venus3", name: "Acidic Deep", label: "3-3", faction: "venus",
-        enemyTier: 3, enemyTypes: ["destroyer", "specter", "phantom"], unlockLevel: 16,
+        enemyTier: 3, enemyTypes: ["destroyer", "specter", "voidling"], unlockLevel: 16,
   },
   venus4: {
     id: "venus4", name: "Pressure Core", label: "3-4", faction: "venus",
-        enemyTier: 4, enemyTypes: ["sentinel", "angin", "crobium"], unlockLevel: 24,
+        enemyTier: 4, enemyTypes: ["sentinel", "phantom", "wraith"], unlockLevel: 24,
   },
   venus5: {
     id: "venus5", name: "Eye of Venus", label: "3-5", faction: "venus",
-        enemyTier: 5, enemyTypes: ["wraith", "draug", "knoton"], unlockLevel: 32,
+        enemyTier: 5, enemyTypes: ["titan", "overlord", "juggernaut"], unlockLevel: 32,
   },
   // Danger Zones (4-1 to 4-5)
   danger1: {
     id: "danger1", name: "Outer Rift", label: "4-1", faction: "earth",
-        enemyTier: 4, enemyTypes: ["titan", "maron"], unlockLevel: 20,
+        enemyTier: 4, enemyTypes: ["nabas", "dread"], unlockLevel: 20,
   },
   danger2: {
     id: "danger2", name: "Dead Zone", label: "4-2", faction: "mars",
-        enemyTier: 5, enemyTypes: ["dread", "nabas"], unlockLevel: 26,
+        enemyTier: 5, enemyTypes: ["angin", "crobium"], unlockLevel: 26,
   },
   danger3: {
     id: "danger3", name: "Pirate Haven", label: "4-3", faction: "venus",
-        enemyTier: 5, enemyTypes: ["overlord", "silikum"], unlockLevel: 30,
+        enemyTier: 5, enemyTypes: ["draug", "knoton"], unlockLevel: 30,
   },
   danger4: {
     id: "danger4", name: "Null Sector", label: "4-4", faction: "earth",
-        enemyTier: 6, enemyTypes: ["leviathan", "simonit"], unlockLevel: 36,
+        enemyTier: 6, enemyTypes: ["leviathan", "silikum"], unlockLevel: 36,
   },
   danger5: {
     id: "danger5", name: "The Abyss Gate", label: "4-5", faction: "mars",
-        enemyTier: 7, enemyTypes: ["voidling", "juggernaut"], unlockLevel: 42,
+        enemyTier: 7, enemyTypes: ["maron", "simonit"], unlockLevel: 42,
   },
   debug: {
     id: "debug", name: "Debug Arena", label: "DBG", faction: "earth",

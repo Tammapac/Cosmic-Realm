@@ -827,19 +827,19 @@ export const ZONES: Record<ZoneId, Zone> = {
   crimson: {
     id: "crimson", name: "Crimson Reach", label: "1-3", faction: "earth",
     bgHueA: "#4a0a18", bgHueB: "#1a0208", enemyTier: 3,
-    enemyTypes: ["destroyer", "specter", "phantom"],
+    enemyTypes: ["destroyer", "specter", "voidling"],
     description: "Blood-red expanse. Destroyers hunt in packs.", unlockLevel: 16,
   },
   void: {
     id: "void", name: "The Void", label: "1-4", faction: "earth",
     bgHueA: "#001a1a", bgHueB: "#000508", enemyTier: 4,
-    enemyTypes: ["sentinel", "angin", "crobium"],
+    enemyTypes: ["sentinel", "phantom", "wraith"],
     description: "An empty stretch where reality bends. Voidlings dwell here.", unlockLevel: 24,
   },
   forge: {
     id: "forge", name: "Iron Forge", label: "1-5", faction: "earth",
     bgHueA: "#3a2210", bgHueB: "#1a0c04", enemyTier: 5,
-    enemyTypes: ["wraith", "draug", "knoton"],
+    enemyTypes: ["titan", "overlord", "juggernaut"],
     description: "Industrial hellscape. Only Dreadnoughts remain here.", unlockLevel: 32,
   },
   // ── MARS FACTION (2-1 → 2-5) ─────────────────────────────────────────────
@@ -858,19 +858,19 @@ export const ZONES: Record<ZoneId, Zone> = {
   abyss: {
     id: "abyss", name: "Red Reaches", label: "2-3", faction: "mars",
     bgHueA: "#5a0a0a", bgHueB: "#220404", enemyTier: 3,
-    enemyTypes: ["destroyer", "specter", "phantom"],
+    enemyTypes: ["destroyer", "specter", "voidling"],
     description: "Combat-torn Martian space. Destroyer fleets fight for control.", unlockLevel: 16,
   },
   marsdepth: {
     id: "marsdepth", name: "Mars Deep Field", label: "2-4", faction: "mars",
     bgHueA: "#400010", bgHueB: "#180006", enemyTier: 4,
-    enemyTypes: ["sentinel", "angin", "crobium"],
+    enemyTypes: ["sentinel", "phantom", "wraith"],
     description: "The deep unknown of Martian space. Void entities breach the hull lines.", unlockLevel: 24,
   },
   maelstrom: {
     id: "maelstrom", name: "The Maelstrom", label: "2-5", faction: "mars",
     bgHueA: "#2a0020", bgHueB: "#0e0008", enemyTier: 5,
-    enemyTypes: ["wraith", "draug", "knoton"],
+    enemyTypes: ["titan", "overlord", "juggernaut"],
     description: "A perpetual storm of wreckage and dread. The ultimate Martian challenge.", unlockLevel: 32,
   },
   // ── VENUS FACTION (3-1 → 3-5) ────────────────────────────────────────────
@@ -889,50 +889,50 @@ export const ZONES: Record<ZoneId, Zone> = {
   venus3: {
     id: "venus3", name: "Acidic Deep", label: "3-3", faction: "venus",
     bgHueA: "#400a30", bgHueB: "#1a0418", enemyTier: 3,
-    enemyTypes: ["destroyer", "specter", "phantom"],
+    enemyTypes: ["destroyer", "specter", "voidling"],
     description: "The pressure increases. Heavy destroyer fleets guard Venusian secrets.", unlockLevel: 16,
   },
   venus4: {
     id: "venus4", name: "Pressure Core", label: "3-4", faction: "venus",
     bgHueA: "#2a003a", bgHueB: "#0e0018", enemyTier: 4,
-    enemyTypes: ["sentinel", "angin", "crobium"],
+    enemyTypes: ["sentinel", "phantom", "wraith"],
     description: "Near the crushing core of Venus. Reality warps under immense force.", unlockLevel: 24,
   },
   venus5: {
     id: "venus5", name: "Eye of Venus", label: "3-5", faction: "venus",
     bgHueA: "#1a0030", bgHueB: "#080010", enemyTier: 5,
-    enemyTypes: ["wraith", "draug", "knoton"],
+    enemyTypes: ["titan", "overlord", "juggernaut"],
     description: "The heart of Venusian mystery. Legendary endgame territory.", unlockLevel: 32,
   },
   // ── DANGER ZONES (4-1 → 4-5) — center, free PvP, no faction ─────────────
   danger1: {
     id: "danger1", name: "Outer Rift", label: "4-1", faction: "earth",
     bgHueA: "#1a0000", bgHueB: "#0a0000", enemyTier: 4,
-    enemyTypes: ["titan", "maron"],
+    enemyTypes: ["nabas", "dread"],
     description: "Contested space. All factions fight here. PvP enabled.", unlockLevel: 20,
   },
   danger2: {
     id: "danger2", name: "Dead Zone", label: "4-2", faction: "mars",
     bgHueA: "#200008", bgHueB: "#0c0004", enemyTier: 5,
-    enemyTypes: ["dread", "nabas"],
+    enemyTypes: ["angin", "crobium"],
     description: "Wrecked fleets drift here. Extreme danger, extreme loot.", unlockLevel: 26,
   },
   danger3: {
     id: "danger3", name: "Pirate Haven", label: "4-3", faction: "venus",
     bgHueA: "#180018", bgHueB: "#08000a", enemyTier: 5,
-    enemyTypes: ["overlord", "silikum"],
+    enemyTypes: ["draug", "knoton"],
     description: "Pirate stronghold. High-value loot crates and deadly ambushes.", unlockLevel: 30,
   },
   danger4: {
     id: "danger4", name: "Null Sector", label: "4-4", faction: "earth",
     bgHueA: "#0a0a1a", bgHueB: "#020208", enemyTier: 6,
-    enemyTypes: ["leviathan", "simonit"],
+    enemyTypes: ["leviathan", "silikum"],
     description: "Reality collapses. Only the strongest survive. Premium loot.", unlockLevel: 36,
   },
   danger5: {
     id: "danger5", name: "The Abyss Gate", label: "4-5", faction: "mars",
     bgHueA: "#100005", bgHueB: "#050002", enemyTier: 7,
-    enemyTypes: ["voidling", "juggernaut"],
+    enemyTypes: ["maron", "simonit"],
     description: "The deepest point. Legendary enemies and endgame rewards.", unlockLevel: 42,
   },
   // ── DEBUG ZONE ────────────────────────────────────────────────────────────
