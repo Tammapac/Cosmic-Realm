@@ -595,7 +595,7 @@ function SlotCell({
       {def ? (
         <>
           <WeaponIcon def={def} size={34} />
-          <span className="equip-tier" style={{ color }}>{"\u25aa".repeat(Math.min(5, def.tier))}</span>
+          <span className="equip-tier" style={{ color }}>{`T${def.tier}`}</span>
         </>
       ) : (
         <span style={{ color: fits ? "#ffd24a" : "#4a4c58", fontSize: 16, lineHeight: 1 }}>+</span>
@@ -627,9 +627,12 @@ function LoadoutTab({ stationId }: { stationId: string }) {
     return it ? MODULE_DEFS[it.defId] ?? null : null;
   })();
 
-  // Shop offer: 4 random buyable modules, capped to ones unlocked by ship tier-ish
-  const tierCap2 = Math.min(5, Math.max(1, Math.ceil(player.level / 4)));
-  const shopPool = Object.values(MODULE_DEFS).filter((d) => d.tier <= tierCap2);
+  // Shop offer: buyable modules unlocked by player level. Weapons span tier
+  // 0-10 (unlock ~1 tier per 4 levels), generators/modules stay tier 1-5.
+  const weaponTierCap = Math.min(10, Math.max(0, Math.floor(player.level / 4)));
+  const otherTierCap = Math.min(5, Math.max(1, Math.ceil(player.level / 8)));
+  const shopPool = Object.values(MODULE_DEFS).filter((d) =>
+    d.slot === "weapon" ? d.tier <= weaponTierCap : d.tier <= otherTierCap);
   // Show all available weapons + generators + modules (no arbitrary limit)
   const shopOffer = shopPool;
 
@@ -882,7 +885,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
                     }}
                   >
                     <WeaponIcon def={def} size={30} />
-                    <span className="equip-tier" style={{ color: RARITY_COLOR[def.rarity] }}>{"▪".repeat(Math.min(5, def.tier))}</span>
+                    <span className="equip-tier" style={{ color: RARITY_COLOR[def.rarity] }}>{`T${def.tier}`}</span>
                     {isBestUpgrade && (
                       <span style={{ position: "absolute", top: 0, right: 3, fontSize: 10, color: "#ffd24a", textShadow: "0 0 6px #ffd24a" }}>★</span>
                     )}
@@ -932,7 +935,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
                     }}
                   >
                     <WeaponIcon def={def} size={30} />
-                    <span className="equip-tier" style={{ color }}>{"▪".repeat(Math.min(5, def.tier))}</span>
+                    <span className="equip-tier" style={{ color }}>{`T${def.tier}`}</span>
                     {isEquipped && (
                       <span style={{ position: "absolute", top: 1, right: 4, fontSize: 8, fontWeight: 700, color: "#5cff8a", textShadow: "0 0 5px #5cff8a" }}>E</span>
                     )}
@@ -1509,7 +1512,7 @@ function MarketTab({ stationId }: { stationId: string }) {
   }, []);
   const station = STATIONS.find((s) => s.id === stationId)!;
   const cls = SHIP_CLASSES[player.shipClass];
-  const tierCap = Math.min(5, Math.max(1, Math.ceil(player.level / 4)));
+  const tierCap = Math.min(10, Math.max(0, Math.floor(player.level / 4))); // weapons 0-10
   const marketWeaponModules = Object.values(MODULE_DEFS).filter((d) => d.slot === "weapon" && d.tier <= tierCap);
 
   const buy = (rid: ResourceId, qty: number) => {

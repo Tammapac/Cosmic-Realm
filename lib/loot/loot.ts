@@ -135,43 +135,23 @@ export const AFFIXES: Record<string, AffixDef> = {
 };
 
 // ── Base item pool (references the game's MODULE_DEFS ids) ────────────────
-// Base tier → ilvl eligibility window.
+// Base tier → ilvl eligibility window. New scheme: lasers span tier 0-10,
+// rockets 0-5, gen/module 1-5. Windows spread evenly across the 1-60 ilvl
+// range so a given enemy level rolls tier-appropriate bases.
 export const BASE_TIER_ILVL: Record<number, [number, number]> = {
-  1: [1, 14], 2: [8, 24], 3: [16, 36], 4: [26, 48], 5: [36, 60],
+  0: [1, 8], 1: [1, 12], 2: [6, 20], 3: [12, 28], 4: [18, 34], 5: [24, 42],
+  6: [30, 48], 7: [36, 54], 8: [42, 58], 9: [48, 60], 10: [54, 60],
 };
 
 export type BaseEntry = { defId: string; slot: ItemSlot; tier: number };
 
+// Generated to mirror MODULE_DEFS' new tier catalog. Kept in code (not imported
+// from the frontend) so backend + client agree without a cross-package import.
 export const BASE_POOL: BaseEntry[] = [
-  // weapons
-  { defId: "wp-sniper-0", slot: "weapon", tier: 1 }, { defId: "wp-scatter-0", slot: "weapon", tier: 1 },
-  { defId: "wp-rail-0", slot: "weapon", tier: 1 },   { defId: "wp-pulse-1", slot: "weapon", tier: 1 },
-  { defId: "wp-pulse-2", slot: "weapon", tier: 2 },  { defId: "wp-ion", slot: "weapon", tier: 2 },
-  { defId: "wp-scatter", slot: "weapon", tier: 2 },  { defId: "wp-sniper-1", slot: "weapon", tier: 2 },
-  { defId: "wp-rail-1", slot: "weapon", tier: 2 },   { defId: "wp-rocket-1", slot: "weapon", tier: 2 },
-  { defId: "wp-pulse-3", slot: "weapon", tier: 3 },  { defId: "wp-plasma", slot: "weapon", tier: 3 },
-  { defId: "wp-phase", slot: "weapon", tier: 3 },    { defId: "wp-arc", slot: "weapon", tier: 3 },
-  { defId: "wp-sniper-2", slot: "weapon", tier: 3 }, { defId: "wp-scatter-2", slot: "weapon", tier: 3 },
-  { defId: "wp-rail-2", slot: "weapon", tier: 3 },   { defId: "wp-rocket-2", slot: "weapon", tier: 3 },
-  { defId: "wp-sniper", slot: "weapon", tier: 4 },   { defId: "wp-solar", slot: "weapon", tier: 4 },
-  { defId: "wp-scatter-3", slot: "weapon", tier: 4 },{ defId: "wp-rail-3", slot: "weapon", tier: 4 },
-  { defId: "wp-torpedo", slot: "weapon", tier: 4 },  { defId: "wp-hellfire", slot: "weapon", tier: 4 },
-  { defId: "wp-void-lance", slot: "weapon", tier: 5 },{ defId: "wp-singular", slot: "weapon", tier: 5 },
-  // generators
-  { defId: "gn-core-1", slot: "generator", tier: 1 }, { defId: "gn-core-2", slot: "generator", tier: 2 },
-  { defId: "gn-sprint", slot: "generator", tier: 2 }, { defId: "gn-aegis", slot: "generator", tier: 3 },
-  { defId: "gn-fortify", slot: "generator", tier: 3 },{ defId: "gn-hyper", slot: "generator", tier: 3 },
-  { defId: "gn-prism", slot: "generator", tier: 3 },  { defId: "gn-quantum", slot: "generator", tier: 4 },
-  { defId: "gn-warp-drive", slot: "generator", tier: 4 }, { defId: "gn-leviathan", slot: "generator", tier: 5 },
-  // modules
-  { defId: "md-thrust-1", slot: "module", tier: 1 }, { defId: "md-thrust-2", slot: "module", tier: 2 },
-  { defId: "md-cargo", slot: "module", tier: 2 },    { defId: "md-ammo-bay", slot: "module", tier: 2 },
-  { defId: "md-nano-rep", slot: "module", tier: 2 }, { defId: "md-afterburn", slot: "module", tier: 3 },
-  { defId: "md-cargo-2", slot: "module", tier: 3 },  { defId: "md-ammo-bay-2", slot: "module", tier: 3 },
-  { defId: "md-targeter", slot: "module", tier: 3 }, { defId: "md-plating", slot: "module", tier: 3 },
-  { defId: "md-scavenger", slot: "module", tier: 3 },{ defId: "md-targeter-2", slot: "module", tier: 4 },
-  { defId: "md-loot-2", slot: "module", tier: 4 },   { defId: "md-overcharge", slot: "module", tier: 4 },
-  { defId: "md-overclock", slot: "module", tier: 4 },{ defId: "md-voidframe", slot: "module", tier: 5 },
+  ...Array.from({ length: 11 }, (_, t) => ({ defId: `wp-laser-t${t}`, slot: "weapon" as ItemSlot, tier: t })),
+  ...Array.from({ length: 6 }, (_, t) => ({ defId: `wp-rocket-t${t}`, slot: "weapon" as ItemSlot, tier: t })),
+  ...Array.from({ length: 5 }, (_, i) => ({ defId: `gn-t${i + 1}`, slot: "generator" as ItemSlot, tier: i + 1 })),
+  ...Array.from({ length: 5 }, (_, i) => ({ defId: `md-t${i + 1}`, slot: "module" as ItemSlot, tier: i + 1 })),
 ];
 
 // ── Legendary effects ──────────────────────────────────────────────────────
@@ -211,14 +191,17 @@ export type LootProfile = {
   slotWeights?: Partial<Record<ItemSlot, number>>;
 };
 
+// Drop volume DRASTICALLY reduced from the old values (trash 0.04→0.010,
+// standard 0.055→0.015, boss 1.0→0.35, etc.). Equipment is now a rare event
+// for normal mobs; even bosses don't guarantee a drop.
 export const LOOT_PROFILES: Record<string, LootProfile> = {
-  trash:    { equipChance: 0.040, rarityBonus: 1.0 },
-  standard: { equipChance: 0.055, rarityBonus: 1.15 },
-  veteran:  { equipChance: 0.070, rarityBonus: 1.35 },
-  heavy:    { equipChance: 0.110, rarityBonus: 1.6 },
-  pirate:   { equipChance: 0.085, rarityBonus: 1.4 },
-  boss:     { equipChance: 1.0,   rarityBonus: 2.2, guaranteedMinRarity: "rare" },
-  worldElite: { equipChance: 0.16, rarityBonus: 1.9 },
+  trash:    { equipChance: 0.010, rarityBonus: 1.0 },
+  standard: { equipChance: 0.015, rarityBonus: 1.15 },
+  veteran:  { equipChance: 0.022, rarityBonus: 1.35 },
+  heavy:    { equipChance: 0.035, rarityBonus: 1.6 },
+  pirate:   { equipChance: 0.028, rarityBonus: 1.4 },
+  boss:     { equipChance: 0.35,  rarityBonus: 2.2, guaranteedMinRarity: "rare" },
+  worldElite: { equipChance: 0.05, rarityBonus: 1.9 },
 };
 
 export function profileForEnemy(type: string, isBoss: boolean, isPirate: boolean, zoneTier: number): LootProfile {

@@ -1120,7 +1120,8 @@ export class GameEngine {
               if (dropResource) dropResource.qty = Math.ceil(dropResource.qty * (1 + (zoneDef.enemyTier - 1) * 0.5));
               const bonusDrops: ResourceId[] = ["fuel-cell", "synth", "nanite", "food", "spice", "titanium", "medpack", "iron", "silk", "ore"];
               let bonusResource: { resourceId: ResourceId; qty: number } | undefined;
-              const bonusChance = 0.40 + zoneDef.enemyTier * 0.05;
+              // Reduced from 0.40+tier*0.05 (45-70%) to cut resource-drop spam.
+              const bonusChance = 0.12 + zoneDef.enemyTier * 0.02;
               if (Math.random() < bonusChance && !e.isBoss) {
                 const bonusRes = bonusDrops[Math.floor(Math.random() * bonusDrops.length)];
                 bonusResource = { resourceId: bonusRes, qty: Math.ceil((1 + Math.floor(Math.random() * 2)) * (1 + (zoneDef.enemyTier - 1) * 0.3)) };
@@ -1556,7 +1557,7 @@ export class GameEngine {
       const tierMult = this.getZoneTierMult(zone);
       let dropResource2 = e.loot ? { ...e.loot } : undefined;
       const bonusDrops2: ResourceId[] = ["fuel-cell", "synth", "nanite", "food", "spice", "titanium"];
-      if (Math.random() < 0.25 && !e.isBoss) {
+      if (Math.random() < 0.08 && !e.isBoss) { // reduced from 0.25 to cut spam
         const bonusRes2 = bonusDrops2[Math.floor(Math.random() * bonusDrops2.length)];
         dropResource2 = { resourceId: bonusRes2, qty: 1 + Math.floor(Math.random() * 2) };
       }

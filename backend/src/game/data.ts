@@ -543,75 +543,96 @@ export const MODULE_DEFS: Record<string, {
   price: number;
   tier: number;
   weaponKind?: WeaponKind;
-  firingPattern?: "standard" | "sniper" | "scatter" | "rail";
-}> = {
-  // ── LASER WEAPONS ──────────────────────────────────────────────────────────
-  "wp-pulse-1":    { id: "wp-pulse-1",    slot: "weapon", weaponKind: "laser",  tier: 1, price: 5000,    stats: { damage: 6,  fireRate: 1.0 } },
-  "wp-pulse-2":    { id: "wp-pulse-2",    slot: "weapon", weaponKind: "laser",  tier: 2, price: 22000,   stats: { damage: 12, fireRate: 1.15 } },
-  "wp-pulse-3":    { id: "wp-pulse-3",    slot: "weapon", weaponKind: "laser",  tier: 3, price: 85000,   stats: { damage: 20, fireRate: 1.3, critChance: 0.03 } },
-  "wp-ion":        { id: "wp-ion",        slot: "weapon", weaponKind: "laser",  firingPattern: "sniper", tier: 2, price: 34000,   stats: { damage: 16, fireRate: 0.95 } },
-  "wp-scatter":    { id: "wp-scatter",    slot: "weapon", weaponKind: "laser",  firingPattern: "scatter", tier: 2, price: 38000,   stats: { damage: 18, fireRate: 1.4, aoeRadius: 8 } },
-  "wp-plasma":     { id: "wp-plasma",     slot: "weapon", weaponKind: "laser",  tier: 3, price: 78000,   stats: { damage: 22, fireRate: 0.85, critChance: 0.04 } },
-  "wp-phase":      { id: "wp-phase",      slot: "weapon", weaponKind: "laser",  firingPattern: "rail", tier: 3, price: 90000,   stats: { damage: 14, fireRate: 1.5, critChance: 0.08 } },
-  "wp-arc":        { id: "wp-arc",        slot: "weapon", weaponKind: "laser",  firingPattern: "rail", tier: 3, price: 110000,  stats: { damage: 18, fireRate: 1.1, aoeRadius: 14, critChance: 0.05 } },
-  "wp-sniper":     { id: "wp-sniper",     slot: "weapon", weaponKind: "laser",  firingPattern: "sniper", tier: 4, price: 180000,  stats: { damage: 48, fireRate: 0.45, critChance: 0.18 } },
-  "wp-solar":      { id: "wp-solar",      slot: "weapon", weaponKind: "laser",  tier: 4, price: 240000,  stats: { damage: 34, fireRate: 1.0, aoeRadius: 18, critChance: 0.06 } },
-  "wp-void-lance": { id: "wp-void-lance", slot: "weapon", weaponKind: "laser",  tier: 5, price: 550000,  stats: { damage: 44, fireRate: 1.3, aoeRadius: 22, critChance: 0.10 } },
-  "wp-singular":   { id: "wp-singular",   slot: "weapon", weaponKind: "laser",  tier: 5, price: 800000,  stats: { damage: 52, fireRate: 1.1, aoeRadius: 28, critChance: 0.12 } },
+  firingPattern?: "standard" | "sniper" | "scatter" | "rail" | "mining";
+}> = buildBackendCatalog();
 
+// Server-authoritative catalog. MUST match the stat formulas in
+// frontend/src/game/types.ts buildCatalog() exactly (client predicts, server
+// resolves — divergent stats desync damage). Stats-only shape.
+function buildBackendCatalog() {
+  const out: Record<string, {
+    id: string; slot: ModuleSlot; stats: ModuleStats; price: number; tier: number;
+    weaponKind?: WeaponKind; firingPattern?: "standard" | "sniper" | "scatter" | "rail" | "mining";
+  }> = {};
+  const round = (n: number, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
+  const laserPatterns: ("standard" | "rail" | "scatter" | "sniper")[] = ["standard", "rail", "scatter", "sniper"];
 
-  // ── NEW TIERED WEAPONS ──
-  "wp-sniper-0":   { id: "wp-sniper-0",   slot: "weapon", weaponKind: "laser",  firingPattern: "sniper",  tier: 1, price: 4000,    stats: { damage: 8,  fireRate: 0.6 } },
-  "wp-scatter-0":  { id: "wp-scatter-0",  slot: "weapon", weaponKind: "laser",  firingPattern: "scatter", tier: 1, price: 4500,    stats: { damage: 10, fireRate: 1.1, aoeRadius: 6 } },
-  "wp-rail-0":     { id: "wp-rail-0",     slot: "weapon", weaponKind: "laser",  firingPattern: "rail",    tier: 1, price: 4200,    stats: { damage: 9,  fireRate: 0.95 } },
-  "wp-sniper-1":   { id: "wp-sniper-1",   slot: "weapon", weaponKind: "laser",  firingPattern: "sniper",  tier: 2, price: 32000,   stats: { damage: 18, fireRate: 0.55, critChance: 0.08 } },
-  "wp-sniper-2":   { id: "wp-sniper-2",   slot: "weapon", weaponKind: "laser",  firingPattern: "sniper",  tier: 3, price: 95000,   stats: { damage: 32, fireRate: 0.5, critChance: 0.12 } },
-  "wp-scatter-2":  { id: "wp-scatter-2",  slot: "weapon", weaponKind: "laser",  firingPattern: "scatter", tier: 3, price: 82000,   stats: { damage: 28, fireRate: 1.2, aoeRadius: 10 } },
-  "wp-scatter-3":  { id: "wp-scatter-3",  slot: "weapon", weaponKind: "laser",  firingPattern: "scatter", tier: 4, price: 200000,  stats: { damage: 40, fireRate: 1.1, aoeRadius: 14, critChance: 0.06 } },
-  "wp-rail-1":     { id: "wp-rail-1",     slot: "weapon", weaponKind: "laser",  firingPattern: "rail",    tier: 2, price: 35000,   stats: { damage: 17, fireRate: 0.9 } },
-  "wp-rail-2":     { id: "wp-rail-2",     slot: "weapon", weaponKind: "laser",  firingPattern: "rail",    tier: 3, price: 88000,   stats: { damage: 25, fireRate: 0.85, critChance: 0.04 } },
-  "wp-rail-3":     { id: "wp-rail-3",     slot: "weapon", weaponKind: "laser",  firingPattern: "rail",    tier: 4, price: 220000,  stats: { damage: 42, fireRate: 0.8, critChance: 0.08 } },
+  for (let t = 0; t <= 10; t++) {
+    const stats: ModuleStats = { damage: round(5 + t * 4.7), fireRate: round(0.9 + t * 0.045, 2) };
+    if (t >= 3) stats.critChance = round((t - 2) * 0.015, 3);
+    if (t >= 4) stats.aoeRadius = round(6 + (t - 4) * 3);
+    out[`wp-laser-t${t}`] = {
+      id: `wp-laser-t${t}`, slot: "weapon", weaponKind: "laser",
+      firingPattern: laserPatterns[t % laserPatterns.length],
+      tier: t, price: t === 0 ? 0 : Math.round(3000 * 1.9 ** t), stats,
+    };
+  }
+  for (let t = 0; t <= 5; t++) {
+    const stats: ModuleStats = {
+      damage: round(22 + t * 14), fireRate: round(0.55 - t * 0.04, 2), aoeRadius: round(18 + t * 6),
+    };
+    if (t >= 2) stats.critChance = round((t - 1) * 0.02, 3);
+    out[`wp-rocket-t${t}`] = {
+      id: `wp-rocket-t${t}`, slot: "weapon", weaponKind: "rocket",
+      tier: t, price: t === 0 ? 0 : Math.round(18000 * 2.2 ** t), stats,
+    };
+  }
+  for (let t = 1; t <= 5; t++) {
+    out[`gn-t${t}`] = {
+      id: `gn-t${t}`, slot: "generator", tier: t, price: Math.round(2500 * 4 ** (t - 1)),
+      stats: {
+        shieldMax: round(40 + (t - 1) * 110), shieldRegen: round(2 + (t - 1) * 5.5),
+        shieldAbsorb: round(0.05 + (t - 1) * 0.06, 2),
+      },
+    };
+  }
+  for (let t = 1; t <= 5; t++) {
+    out[`md-t${t}`] = {
+      id: `md-t${t}`, slot: "module", tier: t, price: Math.round(3000 * 4 ** (t - 1)),
+      stats: {
+        speed: round(20 + (t - 1) * 20), critChance: round((t - 1) * 0.03, 3),
+        damageReduction: round((t - 1) * 0.03, 3), hullMax: round((t - 1) * 25),
+      },
+    };
+  }
+  const miningPrice = [2000, 15000, 50000, 120000];
+  for (let t = 1; t <= 4; t++) {
+    out[`wp-mining-${t}`] = {
+      id: `wp-mining-${t}`, slot: "weapon", weaponKind: "laser", firingPattern: "mining",
+      tier: t, price: miningPrice[t - 1],
+      stats: { damage: 3 + t, fireRate: 1.0, miningBonus: t * 1.2 },
+    };
+  }
+  return out;
+}
 
-  // ── ROCKET WEAPONS ─────────────────────────────────────────────────────────
-  "wp-rocket-1":   { id: "wp-rocket-1",   slot: "weapon", weaponKind: "rocket", tier: 2, price: 55000,   stats: { damage: 30, fireRate: 0.5,  aoeRadius: 20 } },
-  "wp-rocket-2":   { id: "wp-rocket-2",   slot: "weapon", weaponKind: "rocket", tier: 3, price: 140000,  stats: { damage: 55, fireRate: 0.4,  aoeRadius: 30, critChance: 0.04 } },
-  "wp-torpedo":    { id: "wp-torpedo",    slot: "weapon", weaponKind: "rocket", tier: 4, price: 380000,  stats: { damage: 90, fireRate: 0.3,  aoeRadius: 45, critChance: 0.08 } },
-  "wp-hellfire":   { id: "wp-hellfire",   slot: "weapon", weaponKind: "rocket", tier: 4, price: 420000,  stats: { damage: 35, fireRate: 0.85, aoeRadius: 18, critChance: 0.06 } },
-
-  // ── GENERATORS ─────────────────────────────────────────────────────────────
-  "gn-core-1":     { id: "gn-core-1",     slot: "generator", tier: 1, price: 2500,    stats: { shieldMax: 30,  shieldRegen: 2, shieldAbsorb: 0.05 } },
-  "gn-core-2":     { id: "gn-core-2",     slot: "generator", tier: 2, price: 12000,   stats: { shieldMax: 80,  shieldRegen: 5, shieldAbsorb: 0.10 } },
-  "gn-sprint":     { id: "gn-sprint",     slot: "generator", tier: 2, price: 16000,   stats: { speed: 45, shieldMax: 30, shieldRegen: 2, shieldAbsorb: 0.05 } },
-  "gn-aegis":      { id: "gn-aegis",      slot: "generator", tier: 3, price: 45000,   stats: { shieldMax: 140, shieldRegen: 7, shieldAbsorb: 0.15 } },
-  "gn-fortify":    { id: "gn-fortify",    slot: "generator", tier: 3, price: 45000,   stats: { shieldMax: 160, shieldRegen: 6, shieldAbsorb: 0.20 } },
-  "gn-hyper":      { id: "gn-hyper",      slot: "generator", tier: 3, price: 60000,   stats: { speed: 90, shieldMax: 50, shieldRegen: 3, shieldAbsorb: 0.08 } },
-  "gn-prism":      { id: "gn-prism",      slot: "generator", tier: 3, price: 55000,   stats: { speed: 60, shieldMax: 100, shieldRegen: 5, shieldAbsorb: 0.10 } },
-  "gn-quantum":    { id: "gn-quantum",    slot: "generator", tier: 4, price: 130000,  stats: { shieldMax: 280, shieldRegen: 14, shieldAbsorb: 0.25 } },
-  "gn-warp-drive": { id: "gn-warp-drive", slot: "generator", tier: 4, price: 150000,  stats: { speed: 130, shieldMax: 100, shieldRegen: 6, shieldAbsorb: 0.12 } },
-  "gn-leviathan":  { id: "gn-leviathan",  slot: "generator", tier: 5, price: 475000,  stats: { shieldMax: 500, shieldRegen: 25, shieldAbsorb: 0.30 } },
-  "gn-phase-drive":{ id: "gn-phase-drive",slot: "generator", tier: 5, price: 450000,  stats: { speed: 200, shieldMax: 180, shieldRegen: 10, shieldAbsorb: 0.15 } },
-
-  // ── UTILITY MODULES ────────────────────────────────────────────────────────
-  "md-thrust-1":   { id: "md-thrust-1",   slot: "module", tier: 1, price: 3000,    stats: { speed: 30 } },
-  "md-thrust-2":   { id: "md-thrust-2",   slot: "module", tier: 2, price: 14000,   stats: { speed: 70 } },
-  "md-afterburn":  { id: "md-afterburn",  slot: "module", tier: 3, price: 47500,   stats: { speed: 110 } },
-  "md-cargo":      { id: "md-cargo",      slot: "module", tier: 2, price: 16000,   stats: { cargoBonus: 0.25 } },
-  "md-cargo-2":    { id: "md-cargo-2",    slot: "module", tier: 3, price: 40000,   stats: { cargoBonus: 0.50 } },
-  "md-ammo-bay":   { id: "md-ammo-bay",   slot: "module", tier: 2, price: 17500,   stats: { ammoCapacity: 10 } },
-  "md-ammo-bay-2": { id: "md-ammo-bay-2", slot: "module", tier: 3, price: 47500,   stats: { ammoCapacity: 25 } },
-  "md-targeter":   { id: "md-targeter",   slot: "module", tier: 3, price: 40000,   stats: { critChance: 0.10 } },
-  "md-targeter-2": { id: "md-targeter-2", slot: "module", tier: 4, price: 110000,  stats: { critChance: 0.18 } },
-  "md-plating":    { id: "md-plating",    slot: "module", tier: 3, price: 47500,   stats: { damageReduction: 0.08, hullMax: 40 } },
-  "md-heavy-armor":{ id: "md-heavy-armor",slot: "module", tier: 4, price: 130000,  stats: { damageReduction: 0.15, hullMax: 80 } },
-  "md-shield-boost":{ id: "md-shield-boost", slot: "module", tier: 3, price: 42500, stats: { shieldMax: 120, shieldRegen: 3 } },
-  "md-scavenger":  { id: "md-scavenger",  slot: "module", tier: 3, price: 37500,   stats: { lootBonus: 1 } },
-  "md-loot-2":     { id: "md-loot-2",     slot: "module", tier: 4, price: 100000,  stats: { lootBonus: 2 } },
-  "md-overcharge": { id: "md-overcharge", slot: "module", tier: 4, price: 140000,  stats: { damage: 14, fireRate: 1.1 } },
-  "md-overclock":  { id: "md-overclock",  slot: "module", tier: 4, price: 150000,  stats: { fireRate: 1.25, damage: 8, hullMax: -30 } },
-  "md-nano-rep":   { id: "md-nano-rep",   slot: "module", tier: 2, price: 22500,   stats: { shieldRegen: 5, hullMax: 30 } },
-  "md-voidframe":  { id: "md-voidframe",  slot: "module", tier: 5, price: 450000,  stats: { speed: 60, damageReduction: 0.12, shieldMax: 120, critChance: 0.05 } },
-  "md-singularity":{ id: "md-singularity",slot: "module", tier: 5, price: 600000,  stats: { damage: 20, speed: 50, shieldMax: 150, shieldRegen: 8, critChance: 0.08, damageReduction: 0.10 } },
+// Legacy id -> new tier id (mirrors frontend LEGACY_ITEM_ALIAS). Old saved
+// inventories / equipped slots resolve through this so nothing desyncs.
+export const LEGACY_ITEM_ALIAS: Record<string, string> = {
+  "wp-sniper-0": "wp-laser-t0", "wp-scatter-0": "wp-laser-t0", "wp-rail-0": "wp-laser-t1",
+  "wp-pulse-1": "wp-laser-t1", "wp-pulse-2": "wp-laser-t3", "wp-pulse-3": "wp-laser-t5",
+  "wp-ion": "wp-laser-t3", "wp-scatter": "wp-laser-t3", "wp-sniper-1": "wp-laser-t3",
+  "wp-rail-1": "wp-laser-t3", "wp-plasma": "wp-laser-t5", "wp-phase": "wp-laser-t5",
+  "wp-arc": "wp-laser-t5", "wp-sniper-2": "wp-laser-t5", "wp-scatter-2": "wp-laser-t5",
+  "wp-rail-2": "wp-laser-t5", "wp-sniper": "wp-laser-t7", "wp-solar": "wp-laser-t7",
+  "wp-scatter-3": "wp-laser-t7", "wp-rail-3": "wp-laser-t7",
+  "wp-void-lance": "wp-laser-t9", "wp-singular": "wp-laser-t10",
+  "wp-rocket-1": "wp-rocket-t1", "wp-rocket-2": "wp-rocket-t2",
+  "wp-torpedo": "wp-rocket-t3", "wp-hellfire": "wp-rocket-t3",
+  "gn-core-1": "gn-t1", "gn-core-2": "gn-t2", "gn-sprint": "gn-t2",
+  "gn-aegis": "gn-t3", "gn-fortify": "gn-t3", "gn-hyper": "gn-t3", "gn-prism": "gn-t3",
+  "gn-quantum": "gn-t4", "gn-warp-drive": "gn-t4", "gn-leviathan": "gn-t5", "gn-phase-drive": "gn-t5",
+  "md-thrust-1": "md-t1", "md-thrust-2": "md-t2", "md-cargo": "md-t2",
+  "md-ammo-bay": "md-t2", "md-nano-rep": "md-t2", "md-afterburn": "md-t3", "md-cargo-2": "md-t3",
+  "md-ammo-bay-2": "md-t3", "md-targeter": "md-t3", "md-plating": "md-t3",
+  "md-shield-boost": "md-t3", "md-scavenger": "md-t3", "md-targeter-2": "md-t4", "md-loot-2": "md-t4",
+  "md-heavy-armor": "md-t4", "md-overcharge": "md-t4", "md-overclock": "md-t4",
+  "md-voidframe": "md-t5", "md-singularity": "md-t5",
 };
+export function resolveItemId(id: string): string {
+  if (MODULE_DEFS[id]) return id;
+  return LEGACY_ITEM_ALIAS[id] ?? id;
+}
 
 // ── ROCKET AMMO TYPE DEFINITIONS ─────────────────────────────────────────────
 
@@ -1311,12 +1332,7 @@ export const DUNGEONS: Record<DungeonId, {
     enemyTypes: ["dread"], enemyHpMul: 3.5, enemyDmgMul: 2.9,
     waves: 7, enemiesPerWave: 8,
     rewardCredits: 290000, rewardExp: 82000,
-    rewardModules: ["wp-singular", "wp-void-lance", "wp-hellfire", "gn-leviathan", "gn-phase-drive", "md-singularity", "md-voidframe"],
-  // Mining Lasers
-  "wp-mining-1": { id: "wp-mining-1", slot: "weapon", weaponKind: "laser", firingPattern: "mining", name: "Mining Laser Mk-I",    description: "Basic mining beam.", rarity: "common",   color: "#e8a050", glyph: "M", tier: 1, price: 2000,   stats: { damage: 3,  fireRate: 1.0, miningBonus: 1.0 } },
-  "wp-mining-2": { id: "wp-mining-2", slot: "weapon", weaponKind: "laser", firingPattern: "mining", name: "Mining Laser Mk-II",   description: "Improved mining beam.", rarity: "uncommon", color: "#ffcc44", glyph: "M", tier: 2, price: 15000,  stats: { damage: 5,  fireRate: 1.0, miningBonus: 2.0 } },
-  "wp-mining-3": { id: "wp-mining-3", slot: "weapon", weaponKind: "laser", firingPattern: "mining", name: "Deep Core Drill",      description: "Industrial mining beam.", rarity: "rare",    color: "#44ddff", glyph: "M", tier: 3, price: 50000,  stats: { damage: 8,  fireRate: 1.0, miningBonus: 3.5 } },
-  "wp-mining-4": { id: "wp-mining-4", slot: "weapon", weaponKind: "laser", firingPattern: "mining", name: "Plasma Core Extractor", description: "Top-tier mining beam.", rarity: "epic",     color: "#ff8844", glyph: "M", tier: 4, price: 120000, stats: { damage: 12, fireRate: 1.0, miningBonus: 5.0 } },
+    rewardModules: ["wp-laser-t10", "wp-laser-t9", "wp-rocket-t5", "gn-t5", "md-t5"],
     rewardMaterials: [{ resourceId: "void", qty: 20 }, { resourceId: "dread", qty: 14 }, { resourceId: "quantum", qty: 18 }],
     color: "#7722cc", unlockLevel: 30,
   },

@@ -75,9 +75,9 @@ router.post("/register", async (req, res) => {
         name: pilotName,
         credits: 10000,
         inventory: [
-          { instanceId: wpId, defId: "wp-pulse-1" },
-          { instanceId: gnId, defId: "gn-core-1" },
-          { instanceId: mdId, defId: "md-thrust-1" },
+          { instanceId: wpId, defId: "wp-laser-t1" },
+          { instanceId: gnId, defId: "gn-t1" },
+          { instanceId: mdId, defId: "md-t1" },
         ],
         equipped: {
           weapon: [wpId, null, null],

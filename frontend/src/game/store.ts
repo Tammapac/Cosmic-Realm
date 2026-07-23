@@ -50,6 +50,7 @@ import {
   ZONES, pickAsteroidYield, ASTEROID_BELTS, RefineJob, REFINE_RECIPES, FACTORY_SPEED_BONUS, FACTORY_UPGRADE_COSTS,
   ZoneId,
   MISSION_BOARD_POOL, MissionCategory,
+  resolveItemId,
 } from "./types";
 import { sfx } from "./sound";
 import { lootSellPrice } from "./loot-ui";
@@ -207,9 +208,9 @@ function emptyEquipped(shipId: ShipClassId): EquippedSlots {
 }
 
 function makeInitialPlayer(): Player {
-  const starterWeapon = newModuleItem("wp-pulse-1");
-  const starterCore   = newModuleItem("gn-core-1");
-  const starterMod    = newModuleItem("md-thrust-1");
+  const starterWeapon = newModuleItem("wp-laser-t1");
+  const starterCore   = newModuleItem("gn-t1");
+  const starterMod    = newModuleItem("md-t1");
   const equipped = emptyEquipped("skimmer");
   equipped.weapon[0]    = starterWeapon.instanceId;
   equipped.generator[0] = starterCore.instanceId;
@@ -428,10 +429,13 @@ function reconcileEquippedToShip(p: Player): void {
 }
 
 if (!Array.isArray(initialPlayer.inventory)) initialPlayer.inventory = [];
-// strip orphan defIds
-initialPlayer.inventory = initialPlayer.inventory.filter(
-  (m) => m && typeof m.defId === "string" && MODULE_DEFS[m.defId] && typeof m.instanceId === "string"
-);
+// Migrate legacy item ids to the current tier catalog, then strip true orphans.
+// (Rewrites the stored defId in place so old players keep their gear under the
+// new scheme instead of having it silently deleted.)
+initialPlayer.inventory = initialPlayer.inventory
+  .filter((m) => m && typeof m.defId === "string" && typeof m.instanceId === "string")
+  .map((m) => { const r = resolveItemId(m.defId); if (r !== m.defId) m.defId = r; return m; })
+  .filter((m) => !!MODULE_DEFS[m.defId]);
 const legacy = initialPlayer as any;
 if (!initialPlayer.equipped || typeof initialPlayer.equipped !== "object") {
   initialPlayer.equipped = emptyEquipped(initialPlayer.shipClass);
@@ -439,9 +443,9 @@ if (!initialPlayer.equipped || typeof initialPlayer.equipped !== "object") {
 // If migrating from v3 (no inventory), seed starters
 if (initialPlayer.inventory.length === 0) {
   const starters = [
-    newModuleItem(legacy.equipment?.laserTier >= 4 ? "wp-pulse-2" : "wp-pulse-1"),
-    newModuleItem(legacy.equipment?.shieldTier >= 4 ? "gn-core-2" : "gn-core-1"),
-    newModuleItem(legacy.equipment?.thrusterTier >= 4 ? "md-thrust-2" : "md-thrust-1"),
+    newModuleItem(legacy.equipment?.laserTier >= 4 ? "wp-laser-t3" : "wp-laser-t1"),
+    newModuleItem(legacy.equipment?.shieldTier >= 4 ? "gn-t2" : "gn-t1"),
+    newModuleItem(legacy.equipment?.thrusterTier >= 4 ? "md-t2" : "md-t1"),
   ];
   initialPlayer.inventory.push(...starters);
   initialPlayer.equipped = emptyEquipped(initialPlayer.shipClass);
@@ -778,7 +782,14 @@ export function loadServerPlayer(data: any): void {
   if (data.skillPoints != null) p.skillPoints = data.skillPoints;
   if (data.skills) p.skills = data.skills;
   if (data.ownedShips) p.ownedShips = data.ownedShips;
-  if (data.inventory) p.inventory = data.inventory;
+  if (data.inventory) {
+    // Migrate legacy item ids (from before the tier catalog overhaul) to the
+    // current ids so server-saved gear keeps working instead of showing blank.
+    p.inventory = (data.inventory as any[])
+      .filter((m) => m && typeof m.defId === "string" && typeof m.instanceId === "string")
+      .map((m) => { const r = resolveItemId(m.defId); if (r !== m.defId) m.defId = r; return m; })
+      .filter((m) => !!MODULE_DEFS[m.defId]);
+  }
   if (data.equipped) p.equipped = data.equipped;
   if (data.cargo) p.cargo = data.cargo;
   if (data.drones) p.drones = data.drones;
@@ -1469,8 +1480,9 @@ export function dismissIdleReward(): void {
 
 // ── MODULES / LOADOUT ─────────────────────────────────────────────────────
 export function addInventoryItem(defId: string): ModuleItem | null {
-  if (!MODULE_DEFS[defId]) return null;
-  const item = newModuleItem(defId);
+  const id = resolveItemId(defId); // accept legacy ids (dungeon reward pools etc.)
+  if (!MODULE_DEFS[id]) return null;
+  const item = newModuleItem(id);
   state.player.inventory.push(item);
   return item;
 }
