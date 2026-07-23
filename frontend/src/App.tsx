@@ -241,6 +241,9 @@ function GameCanvas() {
       }
     }
 
+    // WASD mode: free-space clicks shoot (handled in mousedown), never move.
+    if (state.controlMode === "wasd") { bump(); return; }
+
     // Clicked on free space — move ship there, keep target lock
     state.cameraTarget = { x: wx, y: wy };
     state.miningTargetId = null;
@@ -289,6 +292,45 @@ function GameCanvas() {
     };
   };
 
+  // ── WASD control scheme ────────────────────────────────────────────────
+  // The cursor direction (ship = screen center) is "forward"; W thrusts
+  // toward the cursor, S away, A/D strafe. Movement stays server-authoritative:
+  // we only synthesize a cameraTarget ~600 world units in the thrust
+  // direction each frame (same channel click-to-move uses). Releasing all
+  // keys parks the target on the ship so it stops.
+  const steerWasd = () => {
+    if (state.dockedAt) return;
+    const k = wasdKeys.current;
+    const mx = (k.d ? 1 : 0) - (k.a ? 1 : 0);
+    const my = (k.w ? 1 : 0) - (k.s ? 1 : 0);
+    if (mx === 0 && my === 0) {
+      if (wasdWasThrusting.current) {
+        state.cameraTarget = { x: state.player.pos.x, y: state.player.pos.y };
+        wasdWasThrusting.current = false;
+      }
+      return;
+    }
+    // forward = direction from screen center (ship) to the cursor
+    const c = lastCursor.current;
+    let fx = Math.cos(state.player.angle);
+    let fy = Math.sin(state.player.angle);
+    if (c) {
+      const dx = c.x - c.w / 2;
+      const dy = c.y - c.h / 2;
+      const L = Math.hypot(dx, dy);
+      if (L > 8) { fx = dx / L; fy = dy / L; }
+    }
+    const rx = -fy, ry = fx; // "right" of forward (screen y points down)
+    let vx = fx * my + rx * mx;
+    let vy = fy * my + ry * mx;
+    const vl = Math.hypot(vx, vy) || 1;
+    state.cameraTarget = {
+      x: state.player.pos.x + (vx / vl) * 600,
+      y: state.player.pos.y + (vy / vl) * 600,
+    };
+    wasdWasThrusting.current = true;
+  };
+
   const rememberMouse = (e: React.MouseEvent<HTMLElement>) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     heldMouse.current = {
@@ -299,8 +341,48 @@ function GameCanvas() {
     };
   };
 
+  // Always-on cursor tracking (WASD mode aims with the free cursor, no
+  // button required — unlike heldMouse, which only exists while held).
+  const rememberCursor = (e: React.MouseEvent<HTMLElement>) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    lastCursor.current = {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+      w: rect.width,
+      h: rect.height,
+    };
+  };
+
   const handleMouseDown = (e: React.MouseEvent<HTMLElement>) => {
     if (e.button !== 0 || state.dockedAt) return;
+
+    if (state.controlMode === "wasd") {
+      // WASD mode: left button = shoot. Pick a fresh target under the cursor
+      // (falls back to the current attack target) and fire while held.
+      rememberCursor(e);
+      const { x: wx, y: wy } = screenToWorld(e as unknown as React.MouseEvent<HTMLDivElement>);
+      const enemy = pickEnemyAt(wx, wy);
+      if (enemy) {
+        state.selectedWorldTarget = {
+          kind: "enemy",
+          id: enemy.id,
+          name: enemy.name ?? enemy.type.toUpperCase(),
+          detail: `${enemy.type.toUpperCase()} · ${Math.max(0, Math.round(enemy.hull))}/${Math.round(enemy.hullMax)} HP`,
+        };
+        state.attackTargetId = enemy.id;
+        state.miningTargetId = null;
+        state.selectedPlayerId = null;
+      }
+      if (state.attackTargetId) {
+        state.isLaserFiring = true;
+        state.isRocketFiring = hasRocketWeapon();
+        state.isAttacking = true;
+        lmbFiring.current = true;
+        bump();
+      }
+      return;
+    }
+
     rememberMouse(e);
     // If the press landed on a pickable target (enemy/player/asteroid/cargo/
     // rift), don't fly — let the click handler select it. Only start steering
@@ -315,24 +397,69 @@ function GameCanvas() {
     steerToHeld();
   };
 
-  const handleMouseUp = () => { heldMouse.current = null; };
+  const stopLmbFire = () => {
+    if (!lmbFiring.current) return;
+    lmbFiring.current = false;
+    state.isAttacking = false;
+    state.isLaserFiring = false;
+    state.isRocketFiring = false;
+    bump();
+  };
+
+  const handleMouseUp = () => {
+    heldMouse.current = null;
+    stopLmbFire();
+  };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement | HTMLDivElement>) => {
+    rememberCursor(e);
+    if (state.controlMode === "wasd") return; // aim only — no click-steering
     if (e.buttons !== 1 || state.dockedAt) { heldMouse.current = null; return; }
     rememberMouse(e);
     steerToHeld();
   };
 
-  // Hold-to-fly tick: while the button is held, re-aim every frame so a still
-  // cursor doesn't leave the ship parked at the last point.
+  // Steering tick: classic mode re-aims toward the held cursor every frame;
+  // WASD mode synthesizes the thrust target from keys + cursor direction.
   useEffect(() => {
     let raf = 0;
-    const tick = () => { steerToHeld(); raf = requestAnimationFrame(tick); };
+    const tick = () => {
+      if (state.controlMode === "wasd") steerWasd();
+      else steerToHeld();
+      raf = requestAnimationFrame(tick);
+    };
     raf = requestAnimationFrame(tick);
-    const onUp = () => { heldMouse.current = null; };
+    const onUp = () => { heldMouse.current = null; stopLmbFire(); };
     window.addEventListener("mouseup", onUp);
     window.addEventListener("blur", onUp);
-    return () => { cancelAnimationFrame(raf); window.removeEventListener("mouseup", onUp); window.removeEventListener("blur", onUp); };
+
+    // WASD key tracking — layout-independent via e.code, ignores chat inputs.
+    const isTyping = (t: EventTarget | null) => {
+      const el = t as HTMLElement | null;
+      return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+    };
+    const KEYMAP: Record<string, "w" | "a" | "s" | "d"> = { KeyW: "w", KeyA: "a", KeyS: "s", KeyD: "d" };
+    const onKeyDown = (e: KeyboardEvent) => {
+      const k = KEYMAP[e.code];
+      if (!k || isTyping(e.target)) return;
+      wasdKeys.current[k] = true;
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      const k = KEYMAP[e.code];
+      if (k) wasdKeys.current[k] = false;
+    };
+    const onBlurKeys = () => { wasdKeys.current = { w: false, a: false, s: false, d: false }; };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlurKeys);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("blur", onUp);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlurKeys);
+    };
   }, []);
 
   // ── Pinch-to-zoom for mobile ──
@@ -344,6 +471,11 @@ function GameCanvas() {
   // ship dead). We remember the last cursor screen position + rect and re-aim
   // cameraTarget on a tick until the button is released.
   const heldMouse = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  // WASD control scheme state
+  const lastCursor = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  const wasdKeys = useRef({ w: false, a: false, s: false, d: false });
+  const wasdWasThrusting = useRef(false);
+  const lmbFiring = useRef(false);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length === 2) {

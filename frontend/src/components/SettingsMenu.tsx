@@ -3,6 +3,23 @@ import { useDraggable } from "./useDraggable";
 import { getVolume, getMuted, setVolume, setMuted } from "../game/sound";
 import { state, bump, pushNotification } from "../game/store";
 
+const KEYBINDINGS_WASD = [
+  { action: "Thrust (toward cursor)", key: "W" },
+  { action: "Reverse", key: "S" },
+  { action: "Strafe Left / Right", key: "A / D" },
+  { action: "Aim / Flight Direction", key: "Cursor" },
+  { action: "Shoot (hold)", key: "Left Click" },
+  { action: "Toggle Laser", key: "1" },
+  { action: "Toggle Rockets", key: "2" },
+  { action: "Consumables", key: "3 - 9" },
+  { action: "Dock / Afterburner", key: "Space" },
+  { action: "Galaxy Map", key: "M" },
+  { action: "Clan Panel", key: "C" },
+  { action: "Social Panel", key: "H" },
+  { action: "Minimap Zoom +/-", key: "+ / -" },
+  { action: "Settings", key: "ESC" },
+];
+
 const KEYBINDINGS = [
   { action: "Move Ship", key: "Left Click" },
   { action: "Attack / Lock Target", key: "Double Click" },
@@ -33,6 +50,7 @@ export default function SettingsMenu({ onClose }: { onClose: () => void }) {
     return localStorage.getItem("sf-particles") || "high";
   });
   const [tab, setTab] = useState<"sound" | "graphics" | "controls">("sound");
+  const [controlMode, setControlMode] = useState<"mouse" | "wasd">(() => state.controlMode);
   const drag = useDraggable("settings");
 
   useEffect(() => {
@@ -57,6 +75,12 @@ export default function SettingsMenu({ onClose }: { onClose: () => void }) {
     (window as any).__particleDensity = level === "low" ? 0.3 : level === "medium" ? 0.6 : 1;
   };
   const onSave = () => { pushNotification("Settings saved", "good"); onClose(); };
+  const onControlMode = (m: "mouse" | "wasd") => {
+    setControlMode(m);
+    state.controlMode = m;
+    localStorage.setItem("cr-control-mode", m);
+    bump();
+  };
 
   const tabBtn = (t: typeof tab, label: string) => (
     <button
@@ -159,7 +183,36 @@ export default function SettingsMenu({ onClose }: { onClose: () => void }) {
 
           {tab === "controls" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 3, paddingRight: 6 }}>
-              {KEYBINDINGS.map(({ action, key }) => (
+              {/* Control scheme picker */}
+              <div
+                style={{
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                  padding: "6px 10px", marginBottom: 6,
+                  background: "rgba(78,226,255,0.08)",
+                  boxShadow: "inset 0 0 0 1px rgba(78,226,255,0.2)",
+                }}
+              >
+                <span style={{ fontSize: 11, letterSpacing: "0.08em", color: "#b8d8f0" }}>CONTROL SCHEME</span>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {([["mouse", "MOUSE"], ["wasd", "WASD"]] as const).map(([m, label]) => (
+                    <button
+                      key={m}
+                      onClick={() => onControlMode(m)}
+                      style={{
+                        padding: "4px 12px", cursor: "pointer",
+                        fontFamily: "var(--font-display)", fontSize: 10, letterSpacing: "0.12em",
+                        background: controlMode === m ? "rgba(78,226,255,0.18)" : "transparent",
+                        border: "none",
+                        boxShadow: controlMode === m ? `inset 0 0 0 1px ${ACCENT}` : "inset 0 0 0 1px rgba(78,226,255,0.25)",
+                        color: controlMode === m ? ACCENT : ACCENT_DIM,
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {(controlMode === "wasd" ? KEYBINDINGS_WASD : KEYBINDINGS).map(({ action, key }) => (
                 <div
                   key={action}
                   style={{

@@ -147,6 +147,9 @@ export type GameState = {
   showAdmin: boolean;
   uiScale: number;
   cameraZoom: number;
+  /** Steuerungsschema: "mouse" = klassisch (Klick/Halten fliegt), "wasd" =
+   *  WASD-Schub relativ zur Mausrichtung, Linksklick feuert. */
+  controlMode: "mouse" | "wasd";
 };
 
 const STORAGE_KEY = "stellar-frontier-save-v5";
@@ -550,6 +553,7 @@ export const state: GameState = {
   showAdmin: false,
   uiScale: parseFloat(localStorage.getItem("sf-ui-scale") || "1"),
   cameraZoom: Math.min(window.innerWidth, 1200) / 1200,
+  controlMode: (localStorage.getItem("cr-control-mode") === "wasd" ? "wasd" : "mouse") as "mouse" | "wasd",
 };
 
 const listeners = new Set<() => void>();
