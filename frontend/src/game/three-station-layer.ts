@@ -1,10 +1,11 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { PIXELATE_3D, PIXELATE_3D_SCALE } from "./renderer-config";
 import { STATIONS } from "./types";
-import { applySpaceMaterial } from "./space-material";
+import { applySpaceMaterial, setMaterialAnisotropyMax } from "./space-material";
 import { perfRegisterThree } from "./perf";
+import { getRendererSettings } from "./RendererSettings";
+import { loadEnvironment } from "./three-environment";
 
 // Effective downscale factor for the fake pixel-art render mode (1 = off).
 // The Pixi stationSprite stretches this canvas back to screen size with
@@ -274,9 +275,12 @@ export function initStation3DLayer(width?: number, height?: number): HTMLCanvasE
   }
   renderer.setClearColor(0x000000, 0); // Transparent — Pixi composites this over its bgLayer
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  const rs = getRendererSettings();
+  (renderer as any).useLegacyLights = false;
+  setMaterialAnisotropyMax(renderer.capabilities.getMaxAnisotropy());
   perfRegisterThree("3d-station", renderer.info);
   // Real inter-module shadows (modules occlude each other under the key light).
-  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.enabled = rs.shadowsEnabled;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   const dbSize = renderer.getDrawingBufferSize(new THREE.Vector2());
@@ -301,10 +305,11 @@ export function initStation3DLayer(width?: number, height?: number): HTMLCanvasE
   // Filmic tone mapping + soft environment reflections — matches the ship
   // layer so stations shine subtly and sit in the same light as the world.
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.88; // stations stay moody, embedded in the dark
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  (scene as any).environmentIntensity = 0.55; // metallic hull needs more reflection
+  // Stations stay a touch moodier than ships: nudge the tier exposure down.
+  renderer.toneMappingExposure = rs.toneMappingExposure * 0.98;
+  const pmrem = loadEnvironment(renderer, scene);
+  // Metallic station hulls want a bit more reflection than the tier default.
+  (scene as any).environmentIntensity = rs.environmentIntensity * 1.15;
 
   // Deeper directional contrast so the station reads as a heavy 3D structure
   // (bright lit side, dark shadow side, deep module gaps) instead of a flat,
@@ -316,12 +321,12 @@ export function initStation3DLayer(width?: number, height?: number): HTMLCanvasE
   // each other (real inter-module shadows).
   const sun = new THREE.DirectionalLight(0xe6ecff, 1.9);
   sun.position.set(120, 320, -90);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.castShadow = rs.shadowsEnabled;
+  sun.shadow.mapSize.set(rs.shadowMapSize, rs.shadowMapSize);
   sun.shadow.camera.left = -1400; sun.shadow.camera.right = 1400;
   sun.shadow.camera.top = 1400; sun.shadow.camera.bottom = -1400;
   sun.shadow.camera.near = 1; sun.shadow.camera.far = 6000;
-  sun.shadow.bias = -0.0004; sun.shadow.normalBias = 1.0;
+  sun.shadow.bias = rs.shadowBias; sun.shadow.normalBias = 1.0;
   scene.add(sun);
 
   const fill = new THREE.DirectionalLight(0x5c86d6, 0.32);

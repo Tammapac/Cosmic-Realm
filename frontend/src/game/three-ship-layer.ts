@@ -1,9 +1,10 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { ThreeNebulaBackground } from "./three-nebula-background";
-import { applySpaceMaterial, makeEnemyCore, makeEnemyFlowShell, ENEMY_ACCENTS, type SpaceRole } from "./space-material";
+import { applySpaceMaterial, makeEnemyCore, makeEnemyFlowShell, ENEMY_ACCENTS, setMaterialAnisotropyMax, type SpaceRole } from "./space-material";
 import { perfRegisterThree } from "./perf";
+import { getRendererSettings } from "./RendererSettings";
+import { loadEnvironment } from "./three-environment";
 
 // Stable string hash → seed for reproducible per-class surface aging.
 function shipSeedHash(s: string): number {
@@ -469,14 +470,21 @@ export function init3DLayer(canvas: HTMLCanvasElement): void {
   }
   renderer.setClearColor(0x000000, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  // Quality settings (per-GPU tier) — one source of truth in RendererSettings.
+  const rs = getRendererSettings();
+  // Physically-correct light falloff (r155+ default; set explicitly for clarity).
+  (renderer as any).useLegacyLights = false;
+  // Feed the material system the GPU-clamped anisotropy cap for this tier.
+  setMaterialAnisotropyMax(renderer.capabilities.getMaxAnisotropy());
   // Perf overlay: register this renderer's draw-call info. This module is
   // loaded twice (ship layer + `?instance=enemy` duplicate); the enemy
   // instance tags its offscreen canvas with data-perf-name (query strings on
   // import.meta.url don't survive the production bundle).
   perfRegisterThree(canvas.dataset?.perfName ?? "3d-ships", renderer.info);
 
-  // Self-shadowing: plates/limbs cast onto the hull for a lived-in look
-  renderer.shadowMap.enabled = true;
+  // Self-shadowing: plates/limbs cast onto the hull for a lived-in look. Soft
+  // PCF filtering; stable bias per tier to avoid acne/peter-panning + flicker.
+  renderer.shadowMap.enabled = rs.shadowsEnabled;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   const dbSize = renderer.getDrawingBufferSize(new THREE.Vector2());
@@ -510,13 +518,12 @@ export function init3DLayer(canvas: HTMLCanvasElement): void {
   // sky/sun reflections and specular highlights roll off naturally, so the
   // ships read as objects lit BY the scene instead of cut-in renders.
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  // 0.86: was 0.92 with an extra CSS brightness(0.94) grade on the canvas
-  // (0.92×0.94≈0.865). The CSS filter is removed (forbidden), so the dimming
-  // now lives entirely here in tone mapping.
-  renderer.toneMappingExposure = 0.86;
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  (scene as any).environmentIntensity = 0.42;
+  // Exposure per tier (was a hard 0.86). The CSS brightness grade is gone
+  // (forbidden canvas filter) so the filmic exposure carries the grade.
+  renderer.toneMappingExposure = rs.toneMappingExposure;
+  // IBL: HDR via PMREM when the tier allows (RoomEnvironment fallback), so
+  // hulls pick up soft cinematic sky/sun reflections instead of reading flat.
+  const pmrem = loadEnvironment(renderer, scene);
   // Grade the DOM-presented canvas to match the Pixi scene lighting (the
   // player layer sits ABOVE the Pixi vignette/ambient and would otherwise
   // read brighter than everything else — the "cut-in" look).
@@ -535,16 +542,16 @@ export function init3DLayer(canvas: HTMLCanvasElement): void {
   // Main sun: strong warm key from the upper-right → clear lit side.
   const sun = new THREE.DirectionalLight(0xfff2e0, 2.2);
   sun.position.set(120, 320, -90);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(4096, 4096);
+  sun.castShadow = rs.shadowsEnabled;
+  sun.shadow.mapSize.set(rs.shadowMapSize, rs.shadowMapSize);
   sun.shadow.camera.left = -900;
   sun.shadow.camera.right = 900;
   sun.shadow.camera.top = 900;
   sun.shadow.camera.bottom = -900;
   sun.shadow.camera.near = 1;
   sun.shadow.camera.far = 1500;
-  sun.shadow.bias = -0.0004;
-  sun.shadow.normalBias = 0.6;
+  sun.shadow.bias = rs.shadowBias;
+  sun.shadow.normalBias = rs.shadowNormalBias;
   scene.add(sun);
 
   // Cool fill: weak, opposite side — defines the dark side's edge without

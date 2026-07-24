@@ -21,6 +21,26 @@
  * existing ship + station scenes without a new renderer.
  */
 import * as THREE from "three";
+import { getRendererSettings } from "./RendererSettings";
+
+// Anisotropy cap resolved once from the active quality tier and the GPU max.
+// Applied to every hull texture so plates/normals stay sharp at grazing angles
+// (the top-down camera views many surfaces near-edge-on). Set once the first
+// renderer exists via setMaterialAnisotropyMax(); until then we use the tier
+// value and let the renderer clamp.
+let _anisoMax = 1;
+export function setMaterialAnisotropyMax(gpuMax: number): void {
+  _anisoMax = Math.max(1, Math.min(getRendererSettings().anisotropy, gpuMax));
+}
+function applyAnisotropy(mat: THREE.MeshStandardMaterial): void {
+  const a = _anisoMax || Math.max(1, getRendererSettings().anisotropy);
+  for (const t of [mat.map, mat.normalMap, mat.roughnessMap, mat.metalnessMap, mat.aoMap, mat.emissiveMap]) {
+    if (t && (t as THREE.Texture).isTexture) {
+      (t as THREE.Texture).anisotropy = a;
+      (t as THREE.Texture).needsUpdate = true;
+    }
+  }
+}
 
 // ── Palette ────────────────────────────────────────────────────────────────
 // Dark, slightly blue metal. Kept out of pure black so panels still catch
@@ -655,6 +675,7 @@ export function applySpaceMaterial(
   }
 
   if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace;
+  applyAnisotropy(mat);
   mat.needsUpdate = true;
 }
 
