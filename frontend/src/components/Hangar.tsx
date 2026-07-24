@@ -9,6 +9,7 @@ import type { HangarTab } from "../game/store";
 import { useDraggable } from "./useDraggable";
 import { WeaponIcon } from "./hud-ui";
 import { effectiveStats } from "../game/loop";
+import { fmtStat } from "../game/fmt";
 import { isRolledItem, lootItemColor, lootItemName, lootSellPrice, lootTipText } from "../game/loot-ui";
 import { affixLine, resolveAffixStats } from "../../../lib/loot/loot";
 import { buySkillRank, resetSkills } from "../game/store";
@@ -429,7 +430,7 @@ function computeStatDiff(equipped: ModuleStats, shop: ModuleStats): StatDiffEntr
   const num = (a?: number, b?: number) => (b ?? 0) - (a ?? 0);
 
   const dmg = num(equipped.damage, shop.damage);
-  if (dmg !== 0) diffs.push({ label: "DMG", delta: dmg, formatted: `${dmg > 0 ? "+" : ""}${dmg}` });
+  if (dmg !== 0) diffs.push({ label: "DMG", delta: dmg, formatted: `${dmg > 0 ? "+" : ""}${fmtStat(dmg)}` });
 
   if ((equipped.fireRate ?? 1) !== 1 || (shop.fireRate ?? 1) !== 1) {
     const rDelta = (shop.fireRate ?? 1) - (equipped.fireRate ?? 1);
@@ -440,28 +441,28 @@ function computeStatDiff(equipped: ModuleStats, shop: ModuleStats): StatDiffEntr
   if (Math.abs(crit) > 0.0001) diffs.push({ label: "CRIT", delta: crit, formatted: `${crit > 0 ? "+" : ""}${Math.round(crit * 100)}%` });
 
   const shd = num(equipped.shieldMax, shop.shieldMax);
-  if (shd !== 0) diffs.push({ label: "SHD", delta: shd, formatted: `${shd > 0 ? "+" : ""}${shd}` });
+  if (shd !== 0) diffs.push({ label: "SHD", delta: shd, formatted: `${shd > 0 ? "+" : ""}${fmtStat(shd)}` });
 
   const reg = num(equipped.shieldRegen, shop.shieldRegen);
-  if (reg !== 0) diffs.push({ label: "REG", delta: reg, formatted: `${reg > 0 ? "+" : ""}${reg.toFixed(1)}` });
+  if (reg !== 0) diffs.push({ label: "REG", delta: reg, formatted: `${reg > 0 ? "+" : ""}${fmtStat(reg)}` });
 
   const hul = num(equipped.hullMax, shop.hullMax);
-  if (hul !== 0) diffs.push({ label: "HUL", delta: hul, formatted: `${hul > 0 ? "+" : ""}${hul}` });
+  if (hul !== 0) diffs.push({ label: "HUL", delta: hul, formatted: `${hul > 0 ? "+" : ""}${fmtStat(hul)}` });
 
   const spd = num(equipped.speed, shop.speed);
-  if (spd !== 0) diffs.push({ label: "SPD", delta: spd, formatted: `${spd > 0 ? "+" : ""}${spd}` });
+  if (spd !== 0) diffs.push({ label: "SPD", delta: spd, formatted: `${spd > 0 ? "+" : ""}${fmtStat(spd)}` });
 
   const dr = num(equipped.damageReduction, shop.damageReduction);
   if (Math.abs(dr) > 0.0001) diffs.push({ label: "DR", delta: dr, formatted: `${dr > 0 ? "+" : ""}${Math.round(dr * 100)}%` });
 
   const aoe = num(equipped.aoeRadius, shop.aoeRadius);
-  if (aoe !== 0) diffs.push({ label: "AOE", delta: aoe, formatted: `${aoe > 0 ? "+" : ""}${aoe}` });
+  if (aoe !== 0) diffs.push({ label: "AOE", delta: aoe, formatted: `${aoe > 0 ? "+" : ""}${fmtStat(aoe)}` });
 
   const ammo = num(equipped.ammoCapacity, shop.ammoCapacity);
-  if (ammo !== 0) diffs.push({ label: "AMMO", delta: ammo, formatted: `${ammo > 0 ? "+" : ""}${ammo}` });
+  if (ammo !== 0) diffs.push({ label: "AMMO", delta: ammo, formatted: `${ammo > 0 ? "+" : ""}${fmtStat(ammo)}` });
 
   const loot = num(equipped.lootBonus, shop.lootBonus);
-  if (loot !== 0) diffs.push({ label: "LOOT", delta: loot, formatted: `${loot > 0 ? "+" : ""}${loot}` });
+  if (loot !== 0) diffs.push({ label: "LOOT", delta: loot, formatted: `${loot > 0 ? "+" : ""}${fmtStat(loot)}` });
 
   return diffs;
 }
@@ -487,18 +488,18 @@ function normalizedUpgradeScore(equipped: ModuleStats, shop: ModuleStats): numbe
 
 function modStatPills(stats: typeof MODULE_DEFS[string]["stats"]) {
   const pills: { k: string; v: string; c: string }[] = [];
-  if (stats.damage)          pills.push({ k: "DMG", v: `+${stats.damage}`, c: "#ff5c6c" });
+  if (stats.damage)          pills.push({ k: "DMG", v: `+${fmtStat(stats.damage)}`, c: "#ff5c6c" });
   if (stats.fireRate && stats.fireRate !== 1) pills.push({ k: "RATE", v: `×${stats.fireRate.toFixed(2)}`, c: "#ffd24a" });
   if (stats.critChance)      pills.push({ k: "CRIT", v: `+${Math.round(stats.critChance * 100)}%`, c: "#ff5cf0" });
-  if (stats.aoeRadius)       pills.push({ k: "AOE", v: `${stats.aoeRadius}`, c: "#e8b94d" });
-  if (stats.shieldMax)       pills.push({ k: "SHD", v: `+${stats.shieldMax}`, c: "#4ee2ff" });
-  if (stats.shieldRegen)     pills.push({ k: "REG", v: `+${stats.shieldRegen}`, c: "#4ee2ff" });
-  if (stats.hullMax)         pills.push({ k: "HUL", v: `+${stats.hullMax}`, c: "#5cff8a" });
-  if (stats.speed)           pills.push({ k: "SPD", v: `+${stats.speed}`, c: "#aaff5c" });
+  if (stats.aoeRadius)       pills.push({ k: "AOE", v: `${fmtStat(stats.aoeRadius)}`, c: "#e8b94d" });
+  if (stats.shieldMax)       pills.push({ k: "SHD", v: `+${fmtStat(stats.shieldMax)}`, c: "#4ee2ff" });
+  if (stats.shieldRegen)     pills.push({ k: "REG", v: `+${fmtStat(stats.shieldRegen)}`, c: "#4ee2ff" });
+  if (stats.hullMax)         pills.push({ k: "HUL", v: `+${fmtStat(stats.hullMax)}`, c: "#5cff8a" });
+  if (stats.speed)           pills.push({ k: "SPD", v: `+${fmtStat(stats.speed)}`, c: "#aaff5c" });
   if (stats.damageReduction) pills.push({ k: "DR",  v: `${Math.round(stats.damageReduction * 100)}%`, c: "#e8b94d" });
   if (stats.cargoBonus)      pills.push({ k: "CRG", v: `+${Math.round(stats.cargoBonus * 100)}%`, c: "#c69060" });
-  if (stats.lootBonus)       pills.push({ k: "LOOT", v: `+${stats.lootBonus}`, c: "#ffd24a" });
-  if (stats.ammoCapacity)    pills.push({ k: "AMMO", v: `+${stats.ammoCapacity}`, c: "#e8b94d" });
+  if (stats.lootBonus)       pills.push({ k: "LOOT", v: `+${fmtStat(stats.lootBonus)}`, c: "#ffd24a" });
+  if (stats.ammoCapacity)    pills.push({ k: "AMMO", v: `+${fmtStat(stats.ammoCapacity)}`, c: "#e8b94d" });
   return (
     <div className="flex flex-wrap gap-1 mt-1">
       {pills.map((p, i) => statChip(p.k, p.v, p.c))}
@@ -540,20 +541,20 @@ function RocketAmmoBadge() {
 function moduleTipText(def: ModuleDef, opts?: { action?: string }): string {
   const st = def.stats;
   const parts: string[] = [];
-  if (st.damage != null) parts.push(`DMG +${st.damage}`);
-  if (st.fireRate != null && st.fireRate !== 1) parts.push(`ROF ×${st.fireRate}`);
+  if (st.damage != null) parts.push(`DMG +${fmtStat(st.damage)}`);
+  if (st.fireRate != null && st.fireRate !== 1) parts.push(`ROF ×${fmtStat(st.fireRate)}`);
   if (st.critChance) parts.push(`CRIT +${Math.round(st.critChance * 100)}%`);
-  if (st.aoeRadius) parts.push(`AOE ${st.aoeRadius}`);
-  if (st.shieldMax) parts.push(`SHD +${st.shieldMax}`);
-  if (st.shieldRegen) parts.push(`REG +${st.shieldRegen}/s`);
+  if (st.aoeRadius) parts.push(`AOE ${fmtStat(st.aoeRadius)}`);
+  if (st.shieldMax) parts.push(`SHD +${fmtStat(st.shieldMax)}`);
+  if (st.shieldRegen) parts.push(`REG +${fmtStat(st.shieldRegen)}/s`);
   if (st.shieldAbsorb) parts.push(`ABS +${Math.round(st.shieldAbsorb * 100)}%`);
-  if (st.hullMax) parts.push(`HUL +${st.hullMax}`);
-  if (st.speed) parts.push(`SPD +${st.speed}`);
+  if (st.hullMax) parts.push(`HUL +${fmtStat(st.hullMax)}`);
+  if (st.speed) parts.push(`SPD +${fmtStat(st.speed)}`);
   if (st.damageReduction) parts.push(`DR ${Math.round(st.damageReduction * 100)}%`);
-  if (st.ammoCapacity) parts.push(`AMMO +${st.ammoCapacity}`);
-  if (st.cargoBonus) parts.push(`CARGO +${st.cargoBonus}`);
-  if (st.lootBonus) parts.push(`LOOT +${st.lootBonus}`);
-  if (st.miningBonus) parts.push(`MINING +${st.miningBonus}`);
+  if (st.ammoCapacity) parts.push(`AMMO +${fmtStat(st.ammoCapacity)}`);
+  if (st.cargoBonus) parts.push(`CARGO +${Math.round(st.cargoBonus * 100)}%`);
+  if (st.lootBonus) parts.push(`LOOT +${fmtStat(st.lootBonus)}`);
+  if (st.miningBonus) parts.push(`MINING +${fmtStat(st.miningBonus)}`);
   const lines = [
     `${def.name} · T${def.tier} ${def.rarity.toUpperCase()}`,
     def.description,

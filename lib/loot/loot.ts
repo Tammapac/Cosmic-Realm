@@ -357,7 +357,11 @@ export function rarityColor(r: Rarity | undefined, fallback: string): string {
 export function affixLine(roll: RolledAffix): string {
   const a = AFFIXES[roll.id];
   if (!a) return "";
-  const v = a.percent ? Math.round(roll.value * 1000) / 10 : roll.value;
+  // percent affixes: whole-percent; additive: capped to 2 decimals. Both
+  // guarded so no float artifact (e.g. 0.30000000004) ever reaches the UI.
+  const v = a.percent
+    ? Math.round(roll.value * 100)
+    : Math.round(roll.value * 100) / 100;
   return a.label.replace("{v}", String(v)) + `  [T${roll.tier}]`;
 }
 

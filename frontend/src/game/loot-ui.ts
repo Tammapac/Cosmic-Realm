@@ -4,6 +4,7 @@ import { MODULE_DEFS, type ModuleDef, type ModuleItem } from "./types";
 import {
   LEGENDARIES, RARITIES, affixLine, itemDisplayName, rarityColor, sellValue,
 } from "../../../lib/loot/loot";
+import { fmtStat } from "./fmt";
 
 /** True if this item carries server-rolled loot data (vs a plain shop item). */
 export function isRolledItem(it: ModuleItem | null | undefined): boolean {
@@ -32,20 +33,20 @@ export function lootSellPrice(it: ModuleItem, def?: ModuleDef): number {
 function baseStatLine(def: ModuleDef): string {
   const st = def.stats;
   const parts: string[] = [];
-  if (st.damage != null) parts.push(`DMG +${st.damage}`);
-  if (st.fireRate != null && st.fireRate !== 1) parts.push(`ROF ×${st.fireRate}`);
+  if (st.damage != null) parts.push(`DMG +${fmtStat(st.damage)}`);
+  if (st.fireRate != null && st.fireRate !== 1) parts.push(`ROF ×${fmtStat(st.fireRate)}`);
   if (st.critChance) parts.push(`CRIT +${Math.round(st.critChance * 100)}%`);
-  if (st.aoeRadius) parts.push(`AOE ${st.aoeRadius}`);
-  if (st.shieldMax) parts.push(`SHD +${st.shieldMax}`);
-  if (st.shieldRegen) parts.push(`REG +${st.shieldRegen}/s`);
+  if (st.aoeRadius) parts.push(`AOE ${fmtStat(st.aoeRadius)}`);
+  if (st.shieldMax) parts.push(`SHD +${fmtStat(st.shieldMax)}`);
+  if (st.shieldRegen) parts.push(`REG +${fmtStat(st.shieldRegen)}/s`);
   if (st.shieldAbsorb) parts.push(`ABS +${Math.round(st.shieldAbsorb * 100)}%`);
-  if (st.hullMax) parts.push(`HUL +${st.hullMax}`);
-  if (st.speed) parts.push(`SPD +${st.speed}`);
+  if (st.hullMax) parts.push(`HUL +${fmtStat(st.hullMax)}`);
+  if (st.speed) parts.push(`SPD +${fmtStat(st.speed)}`);
   if (st.damageReduction) parts.push(`DR ${Math.round(st.damageReduction * 100)}%`);
-  if (st.ammoCapacity) parts.push(`AMMO +${st.ammoCapacity}`);
-  if (st.cargoBonus) parts.push(`CARGO +${st.cargoBonus}`);
-  if (st.lootBonus) parts.push(`LOOT +${st.lootBonus}`);
-  if (st.miningBonus) parts.push(`MINING +${st.miningBonus}`);
+  if (st.ammoCapacity) parts.push(`AMMO +${fmtStat(st.ammoCapacity)}`);
+  if (st.cargoBonus) parts.push(`CARGO +${Math.round(st.cargoBonus * 100)}%`);
+  if (st.lootBonus) parts.push(`LOOT +${fmtStat(st.lootBonus)}`);
+  if (st.miningBonus) parts.push(`MINING +${fmtStat(st.miningBonus)}`);
   return parts.join(" · ");
 }
 
@@ -67,7 +68,13 @@ export function lootTipText(it: ModuleItem, opts?: { action?: string }): string 
     if (it.legendaryId && LEGENDARIES[it.legendaryId]) {
       const leg = LEGENDARIES[it.legendaryId];
       const legStats = Object.entries(leg.stats)
-        .map(([k, v]) => (k === "fireRate" ? `ROF ×${v}` : `${k.replace(/([A-Z])/g, " $1").toUpperCase()} +${v}`))
+        .map(([k, v]) => {
+          // fractional stats (crit/absorb/DR) show as %, the rest as capped numbers
+          if (k === "fireRate") return `ROF ×${fmtStat(v as number)}`;
+          if (k === "critChance" || k === "shieldAbsorb" || k === "damageReduction")
+            return `${k.replace(/([A-Z])/g, " $1").toUpperCase()} +${Math.round((v as number) * 100)}%`;
+          return `${k.replace(/([A-Z])/g, " $1").toUpperCase()} +${fmtStat(v as number)}`;
+        })
         .join(" · ");
       lines.push(`✦ ${leg.blurb}`);
       if (legStats) lines.push(`✦ ${legStats}`);
