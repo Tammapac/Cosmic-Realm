@@ -76,11 +76,9 @@
   /* TRANSPARENT frosted-glass body (unchanged) — the SOLID opaque titanium
      frame is drawn as an inset-covering ring on ::before, so the fill stays
      see-through in the middle but you can't see through the metal border. */
-  background:
-    /* brighter brushed-titanium sheen off the top of the glass */
-    linear-gradient(180deg, rgba(210, 228, 250, 0.16) 0%, rgba(200, 225, 255, 0.04) 24%, transparent 50%),
-    repeating-linear-gradient(90deg, rgba(150, 185, 220, 0.06) 0px, rgba(150, 185, 220, 0.06) 1px, transparent 1px, transparent 3px),
-    linear-gradient(180deg, rgba(30, 44, 68, 0.5) 0%, rgba(14, 22, 38, 0.56) 100%) !important;
+  /* One shared glass fill for EVERY window (Chat, Quests, Inventory, HUD
+     modules, …) so they all read the same cool blue. */
+  background: var(--glass-fill-main) !important;
   -webkit-backdrop-filter: blur(7px) saturate(1.05) !important;
   backdrop-filter: blur(7px) saturate(1.05) !important;
   clip-path: polygon(
