@@ -37,6 +37,64 @@ const SHIP_PREVIEW_MODELS: Record<string, string> = {
   wasp: "/models/Wasp_Interceptor.glb",
 };
 
+// ── Shared ShipPreview renderer pool ──────────────────────────────────────
+// The hangar can show many ship previews at once (loadout hero + a shipyard
+// list of 15 hulls). Giving each its own WebGLRenderer blows past the browser
+// WebGL-context cap (~16) — contexts get "lost", previews go blank, and it can
+// even kill the main game's ship/enemy/station renderers. So all previews share
+// ONE offscreen renderer: each frame it renders a preview's scene into the
+// shared GL canvas, then blits the pixels into that preview's own 2D canvas.
+// GLB models are cache-loaded once and cloned per preview.
+let _sharedGL: THREE.WebGLRenderer | null = null;
+let _sharedGLCanvas: HTMLCanvasElement | null = null;
+function getSharedGL(): { renderer: THREE.WebGLRenderer; canvas: HTMLCanvasElement } {
+  if (!_sharedGL || !_sharedGLCanvas) {
+    _sharedGLCanvas = document.createElement("canvas");
+    _sharedGL = new THREE.WebGLRenderer({ canvas: _sharedGLCanvas, alpha: true, antialias: true });
+    _sharedGL.setPixelRatio(1);
+  }
+  return { renderer: _sharedGL, canvas: _sharedGLCanvas };
+}
+
+const _gltfCache = new Map<string, Promise<THREE.Group>>();
+function loadShipModel(path: string): Promise<THREE.Group> {
+  let p = _gltfCache.get(path);
+  if (!p) {
+    p = new Promise<THREE.Group>((resolve, reject) => {
+      new GLTFLoader().load(path, (gltf) => resolve(gltf.scene), undefined, reject);
+    });
+    _gltfCache.set(path, p);
+  }
+  return p;
+}
+
+// Every mounted preview registers here; a single rAF loop renders them all
+// through the one shared GL context, in sequence.
+type PreviewEntry = {
+  scene: THREE.Scene; camera: THREE.PerspectiveCamera; model: THREE.Group | null;
+  ctx: CanvasRenderingContext2D; size: number;
+};
+const _previews = new Set<PreviewEntry>();
+let _previewRAF = 0;
+function ensurePreviewLoop() {
+  if (_previewRAF) return;
+  const tick = () => {
+    if (_previews.size === 0) { _previewRAF = 0; return; }
+    const { renderer, canvas } = getSharedGL();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    for (const p of _previews) {
+      if (p.model) p.model.rotation.y += 0.004;
+      const px = Math.round(p.size * dpr);
+      if (canvas.width !== px || canvas.height !== px) renderer.setSize(px, px, false);
+      renderer.render(p.scene, p.camera);
+      p.ctx.clearRect(0, 0, p.size, p.size);
+      p.ctx.drawImage(canvas, 0, 0, p.size, p.size);
+    }
+    _previewRAF = requestAnimationFrame(tick);
+  };
+  _previewRAF = requestAnimationFrame(tick);
+}
+
 function ShipPreview({ shipId, color, size = 96 }: { shipId: string; color: string; size?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -45,57 +103,46 @@ function ShipPreview({ shipId, color, size = 96 }: { shipId: string; color: stri
     if (!canvas) return;
     const modelPath = SHIP_PREVIEW_MODELS[shipId];
     if (!modelPath) return;
-
-    const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
-    renderer.setSize(size, size);
-    renderer.setPixelRatio(window.devicePixelRatio);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
     const scene = new THREE.Scene();
-
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
     camera.position.set(0, 3.5, 4.5);
     camera.lookAt(0, 0, 0);
-
-    const ambient = new THREE.AmbientLight(0xffffff, 1.2);
-    scene.add(ambient);
+    scene.add(new THREE.AmbientLight(0xffffff, 1.2));
     const dir = new THREE.DirectionalLight(0xffffff, 2.0);
-    dir.position.set(2, 4, 2);
-    scene.add(dir);
+    dir.position.set(2, 4, 2); scene.add(dir);
     const fill = new THREE.DirectionalLight(0x8888ff, 0.6);
-    fill.position.set(-2, 1, -2);
-    scene.add(fill);
+    fill.position.set(-2, 1, -2); scene.add(fill);
 
-    let animId: number;
-    let modelGroup: THREE.Group | null = null;
+    const entry: PreviewEntry = { scene, camera, model: null, ctx, size };
+    let disposed = false;
 
-    const loader = new GLTFLoader();
-    loader.load(modelPath, (gltf) => {
-      modelGroup = gltf.scene;
-      // Center and scale the model to fit the view
-      const box = new THREE.Box3().setFromObject(modelGroup);
+    loadShipModel(modelPath).then((template) => {
+      if (disposed) return;
+      const model = template.clone(true);
+      const box = new THREE.Box3().setFromObject(model);
       const center = box.getCenter(new THREE.Vector3());
       const sizeVec = box.getSize(new THREE.Vector3());
       const maxDim = Math.max(sizeVec.x, sizeVec.y, sizeVec.z);
       const scale = 3.5 / maxDim;
-      modelGroup.scale.setScalar(scale);
-      modelGroup.position.sub(center.multiplyScalar(scale));
-      scene.add(modelGroup);
-    });
+      model.scale.setScalar(scale);
+      model.position.sub(center.multiplyScalar(scale));
+      scene.add(model);
+      entry.model = model;
+    }).catch(() => { /* leave blank on load failure */ });
 
-    const animate = () => {
-      animId = requestAnimationFrame(animate);
-      if (modelGroup) modelGroup.rotation.y += 0.004;
-      renderer.render(scene, camera);
-    };
-    animate();
+    _previews.add(entry);
+    ensurePreviewLoop();
 
     return () => {
-      cancelAnimationFrame(animId);
-      renderer.dispose();
+      disposed = true;
+      _previews.delete(entry);
     };
   }, [shipId, size]);
 
-  return <canvas ref={canvasRef} width={size} height={size} style={{ display: "block" }} />;
+  return <canvas ref={canvasRef} width={size} height={size} style={{ display: "block", width: size, height: size }} />;
 }
 
 let _pendingRiftConfirm: string | null = null;
