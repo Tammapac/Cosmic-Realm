@@ -106,6 +106,8 @@ function inView(px: number, py: number, ex: number, ey: number): boolean {
 
 // ── SERVER PROJECTILE ───────────────────────────────────────────────────
 
+export type WeaponKind = "laser" | "rocket" | "energy" | "plasma" | "orb" | "spinner" | "flash";
+
 export type ServerProjectile = {
   id: string;
   zone: string;
@@ -119,7 +121,7 @@ export type ServerProjectile = {
   color: string;
   size: number;
   crit: boolean;
-  weaponKind: "laser" | "rocket" | "energy" | "plasma" | "orb" | "spinner" | "flash";
+  weaponKind: WeaponKind;
   homing: boolean;
   homingTargetId: string | null;
   aoeRadius: number;
@@ -217,7 +219,7 @@ export type GameEvent =
   | { type: "npc:spawn"; zone: string; npc: ClientNpc }
   | { type: "npc:die"; zone: string; npcId: string }
   | { type: "player:hit"; playerId: number; damage: number; zone: string }
-  | { type: "projectile:spawn"; zone: string; fromPlayerId: number; x: number; y: number; vx: number; vy: number; damage: number; color: string; size: number; crit: boolean; weaponKind: "laser" | "rocket" | "energy" | "plasma"; homing: boolean; ammoType?: string; ttl: number; hardpointIndex?: number; hardpointRing?: "muzzle" | "weapon"; shipClass?: string; targetId?: string };
+  | { type: "projectile:spawn"; zone: string; fromPlayerId: number; x: number; y: number; vx: number; vy: number; damage: number; color: string; size: number; crit: boolean; weaponKind: WeaponKind; homing: boolean; ammoType?: string; ttl: number; hardpointIndex?: number; hardpointRing?: "muzzle" | "weapon"; shipClass?: string; targetId?: string };
 
 export type ClientEnemy = {
   id: string;
@@ -235,6 +237,7 @@ export type ClientEnemy = {
   size: number;
   isBoss: boolean;
   bossPhase: number;
+  aggro: boolean;
 };
 
 export type ClientAsteroid = {
@@ -268,7 +271,7 @@ export type ClientProjectile = {
   size: number;
   fromPlayer: boolean;
   crit: boolean;
-  weaponKind: "laser" | "rocket" | "energy" | "plasma";
+  weaponKind: WeaponKind;
   homing: boolean;
 };
 
@@ -287,6 +290,7 @@ export type EffectiveStats = {
   aoeRadius: number;
   lootBonus: number;
   cargoMax: number;
+  miningBonus?: number;
 };
 
 export function computeStats(playerData: any): EffectiveStats {
@@ -443,6 +447,7 @@ type ZoneState = {
   bossTimer: number;
   bossActive: boolean;
   npcSpawnTimer: number;
+  pirateTimer?: number;
 };
 
 // ── GAME ENGINE ──────────────────────────────────────────────────────────
@@ -539,6 +544,7 @@ export class GameEngine {
   zones = new Map<string, ZoneState>();
   playerDataCache = new Map<number, any>();
   playerStatsCache = new Map<number, EffectiveStats>();
+  tickCount = 0;
 
   constructor() {
     for (const zone of Object.values(ZONES)) {
@@ -583,6 +589,7 @@ export class GameEngine {
   // Main tick — call at 20Hz
   tick(dt: number, getPlayersInZone: (zone: string) => OnlinePlayer[]): GameEvent[] {
     const events: GameEvent[] = [];
+    this.tickCount++;
 
     for (const [zoneId, zs] of this.zones) {
       const players = getPlayersInZone(zoneId);
@@ -2451,6 +2458,7 @@ function enemyToClient(e: ServerEnemy): ClientEnemy {
     damage: e.damage, speed: e.speed,
     color: e.color, size: e.size,
     isBoss: e.isBoss, bossPhase: e.bossPhase,
+    aggro: e.aggroTarget !== null,
   };
 }
 

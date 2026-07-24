@@ -166,13 +166,6 @@ export const SHIP_CLASSES: Record<ShipClassId, {
     slots: { weapon: 3, generator: 3, module: 2 },
   },
   obsidian: {
-  // refined materials
-  "refined-alloy":  { id: "refined-alloy",  name: "Refined Alloy",    basePrice: 120,  glyph: "H", color: "#dd8844", description: "High-grade alloy." },
-  "crystal-matrix": { id: "crystal-matrix", name: "Crystal Matrix",   basePrice: 340,  glyph: "*", color: "#dd88ff", description: "Crystalline lattice." },
-  "fusion-core":    { id: "fusion-core",    name: "Fusion Core",      basePrice: 480,  glyph: "O", color: "#88ffaa", description: "Miniaturized fusion reactor." },
-  "void-steel":     { id: "void-steel",     name: "Void Steel",       basePrice: 850,  glyph: "D", color: "#8866cc", description: "Ultra-hard void-forged steel." },
-  "nano-compound":  { id: "nano-compound",  name: "Nano-Compound",    basePrice: 220,  glyph: "o", color: "#66ddcc", description: "Self-assembling nano-material." },
-  "plasma-cell":    { id: "plasma-cell",     name: "Plasma Cell",      basePrice: 180,  glyph: "#", color: "#ff8866", description: "Concentrated plasma fuel cell." },
     id: "obsidian",
     hullMax: 220, shieldMax: 180, baseSpeed: 200, baseDamage: 22,
     cargoMax: 30, droneSlots: 3, price: 65000,
@@ -487,9 +480,13 @@ export const MODULE_DEFS: Record<string, {
   price: number;
   tier: number;
   weaponKind?: WeaponKind;
-  firingPattern?: "standard" | "sniper" | "scatter" | "rail";
+  firingPattern?: "standard" | "sniper" | "scatter" | "rail" | "mining";
 }> = {
   // ── LASER WEAPONS ──────────────────────────────────────────────────────────
+  "wp-mining-1":   { id: "wp-mining-1",   slot: "weapon", weaponKind: "laser",  firingPattern: "mining", tier: 1, price: 2000,   stats: { damage: 3,  fireRate: 1.0, miningBonus: 1.0 } },
+  "wp-mining-2":   { id: "wp-mining-2",   slot: "weapon", weaponKind: "laser",  firingPattern: "mining", tier: 2, price: 15000,  stats: { damage: 5,  fireRate: 1.0, miningBonus: 2.0 } },
+  "wp-mining-3":   { id: "wp-mining-3",   slot: "weapon", weaponKind: "laser",  firingPattern: "mining", tier: 3, price: 50000,  stats: { damage: 8,  fireRate: 1.0, miningBonus: 3.5 } },
+  "wp-mining-4":   { id: "wp-mining-4",   slot: "weapon", weaponKind: "laser",  firingPattern: "mining", tier: 4, price: 120000, stats: { damage: 12, fireRate: 1.0, miningBonus: 5.0 } },
   "wp-pulse-1":    { id: "wp-pulse-1",    slot: "weapon", weaponKind: "laser",  tier: 1, price: 5000,    stats: { damage: 6,  fireRate: 1.0 } },
   "wp-pulse-2":    { id: "wp-pulse-2",    slot: "weapon", weaponKind: "laser",  tier: 2, price: 22000,   stats: { damage: 12, fireRate: 1.15 } },
   "wp-pulse-3":    { id: "wp-pulse-3",    slot: "weapon", weaponKind: "laser",  tier: 3, price: 85000,   stats: { damage: 20, fireRate: 1.3, critChance: 0.03 } },
@@ -703,7 +700,6 @@ export const STATIONS: {
   prices: Partial<Record<ResourceId, number>>;
   controlledBy: FactionId;
 }[] = [
-] = [
   // alpha
   { id: "helix", name: "Helix Station", pos: { x: 0, y: 0 }, zone: "alpha", kind: "hub",
     controlledBy: "earth",
@@ -997,6 +993,13 @@ export const RESOURCES: Record<ResourceId, {
   iridium:         { id: "iridium",         name: "Iridium Ore",      basePrice: 380 },
   sulfur:          { id: "sulfur",          name: "Sulfur Deposit",   basePrice: 30 },
   obsidian:        { id: "obsidian",        name: "Void Obsidian",    basePrice: 165 },
+  // refined materials (factory output)
+  "refined-alloy":  { id: "refined-alloy",  name: "Refined Alloy",    basePrice: 120 },
+  "crystal-matrix": { id: "crystal-matrix", name: "Crystal Matrix",   basePrice: 340 },
+  "fusion-core":    { id: "fusion-core",    name: "Fusion Core",      basePrice: 480 },
+  "void-steel":     { id: "void-steel",     name: "Void Steel",       basePrice: 850 },
+  "nano-compound":  { id: "nano-compound",  name: "Nano-Compound",    basePrice: 220 },
+  "plasma-cell":    { id: "plasma-cell",     name: "Plasma Cell",      basePrice: 180 },
 };
 
 
@@ -1256,11 +1259,6 @@ export const DUNGEONS: Record<DungeonId, {
     waves: 7, enemiesPerWave: 8,
     rewardCredits: 290000, rewardExp: 82000,
     rewardModules: ["wp-singular", "wp-void-lance", "wp-hellfire", "gn-leviathan", "gn-phase-drive", "md-singularity", "md-voidframe"],
-  // Mining Lasers
-  "wp-mining-1": { id: "wp-mining-1", slot: "weapon", weaponKind: "laser", firingPattern: "mining", name: "Mining Laser Mk-I",    description: "Basic mining beam.", rarity: "common",   color: "#e8a050", glyph: "M", tier: 1, price: 2000,   stats: { damage: 3,  fireRate: 1.0, miningBonus: 1.0 } },
-  "wp-mining-2": { id: "wp-mining-2", slot: "weapon", weaponKind: "laser", firingPattern: "mining", name: "Mining Laser Mk-II",   description: "Improved mining beam.", rarity: "uncommon", color: "#ffcc44", glyph: "M", tier: 2, price: 15000,  stats: { damage: 5,  fireRate: 1.0, miningBonus: 2.0 } },
-  "wp-mining-3": { id: "wp-mining-3", slot: "weapon", weaponKind: "laser", firingPattern: "mining", name: "Deep Core Drill",      description: "Industrial mining beam.", rarity: "rare",    color: "#44ddff", glyph: "M", tier: 3, price: 50000,  stats: { damage: 8,  fireRate: 1.0, miningBonus: 3.5 } },
-  "wp-mining-4": { id: "wp-mining-4", slot: "weapon", weaponKind: "laser", firingPattern: "mining", name: "Plasma Core Extractor", description: "Top-tier mining beam.", rarity: "epic",     color: "#ff8844", glyph: "M", tier: 4, price: 120000, stats: { damage: 12, fireRate: 1.0, miningBonus: 5.0 } },
     rewardMaterials: [{ resourceId: "void", qty: 20 }, { resourceId: "dread", qty: 14 }, { resourceId: "quantum", qty: 18 }],
     color: "#7722cc", unlockLevel: 30,
   },
