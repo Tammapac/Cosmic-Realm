@@ -484,6 +484,7 @@
   flex: 1 1 auto;
   align-self: stretch;
   min-width: 720px;
+  min-height: 118px;   /* was provided by .mainBody, now the .panel fills it */
   margin-left: -1px;
 }
 

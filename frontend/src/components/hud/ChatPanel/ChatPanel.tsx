@@ -69,15 +69,9 @@ export function ChatPanel({ messages, onSend }: ChatPanelProps) {
 
   return (
     <div className={`${styles.consoleWrap} hud-interactive`}>
-      <div className={styles.glowRim} />
-      <div className={styles.crispEdge} />
-      <div className={styles.innerFrame} />
-
-      <div className={`${styles.console} hud-mat-brushed`}>
-        <div className={styles.innerBevel} />
-        <div className={styles.consoleVeins} />
-        <div className={styles.consoleNoise} />
-        <div className={styles.consoleSheen} />
+      <div className={`${styles.console} panel`}>
+        <span className="panel-rim" />
+        <div className="hud-titleband">COMMS</div>
 
         <div className={styles.tabs}>
           {CHANNELS.map((c) => (

@@ -47,29 +47,14 @@
   pointer-events: none;
 }
 
+/* Frame + fill now come from the shared global .panel / .panel-rim. This class
+   only carries layout. */
 .console {
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 16px 36px 22px;
-  background:
-    radial-gradient(120% 90% at 50% -10%, rgba(120, 175, 220, 0.12) 0%, transparent 55%),
-    linear-gradient(180deg, rgba(40, 56, 88, 0.5) 0%, rgba(26, 39, 64, 0.52) 40%, rgba(13, 22, 38, 0.56) 100%);
-  -webkit-backdrop-filter: blur(7px) saturate(1.05);
-  backdrop-filter: blur(7px) saturate(1.05);
-  box-shadow:
-    inset 0 2px 5px rgba(180, 220, 255, 0.14),
-    inset 0 -14px 22px rgba(0, 0, 0, 0.55),
-    0 10px 22px rgba(0, 0, 0, 0.6),
-    0 0 12px rgba(78, 226, 255, 0.08);
-  clip-path: polygon(
-    22px 0, 25% 0, 38% 14px, 62% 14px, 75% 0, calc(100% - 14px) 0,
-    100% 7px, 100% calc(100% - 20px),
-    calc(100% - 26px) 100%, 30px 100%,
-    0 calc(100% - 16px), 0 5px
-  );
-  overflow: hidden;
+  padding: 16px 30px 20px;
 }
 
 /* Soft top-to-bottom lightening fade, layered above the base gradient so

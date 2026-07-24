@@ -36,14 +36,8 @@ export type HotbarProps = {
 export function Hotbar({ slots, hull, hullMax, shield, shieldMax, onSlotClick, onSlotContextMenu }: HotbarProps) {
   return (
     <div className={`${styles.consoleWrap} hud-interactive`}>
-      <div className={styles.glowRim} />
-      <div className={styles.crispEdge} />
-
-      <div className={`${styles.console} hud-mat-brushed`}>
-        <div className={styles.innerBevel} />
-        <div className={styles.consoleVeins} />
-        <div className={styles.consoleNoise} />
-        <div className={styles.consoleSheen} />
+      <div className={`${styles.console} panel`}>
+        <span className="panel-rim" />
 
         <div className={styles.statusRow}>
           <div className={styles.statusWing}>

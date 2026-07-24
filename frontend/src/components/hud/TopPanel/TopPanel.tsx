@@ -136,12 +136,8 @@ export function TopPanel({
         </div>
       </div>
 
-      <div className={styles.mainStrip}>
-        <div className={styles.mainGlowRim} />
-        <div className={styles.mainCrispEdge} />
-        <div className={`${styles.mainBody} hud-mat-brushed`} />
-        <div className={styles.mainVeins} />
-        <div className={styles.seamAccent} />
+      <div className={`${styles.mainStrip} panel`}>
+        <span className="panel-rim" />
 
         <div className={styles.mainContent}>
           <div className={styles.identityPanel}>
