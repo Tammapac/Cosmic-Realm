@@ -19,7 +19,8 @@
   display: flex;
   align-items: flex-start;
   width: fit-content;
-  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.6));
+  /* no `filter` — it would break the frosted glass (backdrop-filter) on the
+     panel bodies below. Drop shadow lives on .mainBody's box-shadow. */
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -531,15 +532,19 @@
   width: 100%;
   height: 100%;
   min-height: 118px;
+  /* Frosted glass — translucent navy body + backdrop blur (matches .panel). */
   background:
-    linear-gradient(180deg, rgba(150, 195, 235, 0.30) 0%, transparent 38%),
-    linear-gradient(180deg, #3f5170 0%, #2a3a54 30%, #1a2740 60%, #0d1626 100%);
+    linear-gradient(180deg, rgba(150, 195, 235, 0.18) 0%, transparent 38%),
+    linear-gradient(180deg, rgba(40, 56, 88, 0.5) 0%, rgba(26, 39, 64, 0.52) 40%, rgba(13, 22, 38, 0.56) 100%);
+  -webkit-backdrop-filter: blur(7px) saturate(1.05);
+  backdrop-filter: blur(7px) saturate(1.05);
   /* Phase 5/14 — directional bevel + deeper AO (was the flattest strip). */
   box-shadow:
     inset 0 2px 5px rgba(180, 220, 255, 0.16),      /* top highlight */
     inset 3px 0 6px rgba(150, 195, 235, 0.10),      /* left lift     */
     inset -3px 0 7px rgba(0, 0, 0, 0.38),           /* right shade   */
-    inset 0 -14px 22px rgba(0, 0, 0, 0.60);         /* bottom AO     */
+    inset 0 -14px 22px rgba(0, 0, 0, 0.60),         /* bottom AO     */
+    0 8px 18px rgba(0, 0, 0, 0.6);                  /* outer drop    */
   clip-path: polygon(
     30px 0, 34% 0, 42% 6px, 58% 6px, 66% 0,
     calc(100% - 26px) 0, 100% 14px,
