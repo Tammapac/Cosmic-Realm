@@ -1348,18 +1348,19 @@ select.ginput {
   text-shadow: 0 0 8px rgba(78, 226, 255, 0.4);
 }
 
-/* ── 11. Scrollbars ─────────────────────────────────────────────────────── */
-::-webkit-scrollbar-track {
-  background: rgba(6, 10, 20, 0.9);
-  border-left: 1px solid rgba(60, 90, 130, 0.25);
+/* ── 11. Scrollbars — HIDDEN (content still scrolls, no visible bar) ──────── */
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  background: transparent;
 }
-::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #24476b 0%, #16304a 100%);
-  border: 1px solid rgba(78, 226, 255, 0.3);
-}
-::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #2f5f8f 0%, #1e4062 100%);
-  border-color: rgba(78, 226, 255, 0.55);
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-corner {
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
 
 /* ── 12. Top-right command buttons (map/journal/quests/social/clan/
