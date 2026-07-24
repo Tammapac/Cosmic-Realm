@@ -289,12 +289,9 @@
   font-family: var(--font-display) !important;
   border: none !important;
   border-radius: 0 !important;
-  /* Frosted glass like the panels — semi-transparent (a touch denser than
-     the window body so nested cards still read as distinct) + own backdrop
-     blur so the map/panel behind shows through. */
-  background:
-    linear-gradient(180deg, rgba(200, 225, 255, 0.06) 0%, transparent 42%),
-    linear-gradient(180deg, rgba(18, 30, 52, 0.55) 0%, rgba(10, 17, 32, 0.60) 60%, rgba(7, 12, 22, 0.62) 100%) !important;
+  /* Same navy as the .panel/QUESTS window, with a gentler sheen so nested
+     cards stay distinct but read as the same glass family. */
+  background: var(--glass-fill-inset) !important;
   -webkit-backdrop-filter: blur(6px) saturate(1.05) !important;
   backdrop-filter: blur(6px) saturate(1.05) !important;
   clip-path: polygon(
@@ -376,9 +373,9 @@
 /* ── 5. Left-nav column items (station/hangar menus) ────────────────────── */
 .sw-nav-item {
   color: #9fb4d4;
-  background: linear-gradient(180deg, rgba(16, 26, 46, 0.5) 0%, rgba(9, 15, 28, 0.55) 100%);
-  -webkit-backdrop-filter: blur(5px);
-  backdrop-filter: blur(5px);
+  background: var(--glass-fill-inset);
+  -webkit-backdrop-filter: blur(6px) saturate(1.05);
+  backdrop-filter: blur(6px) saturate(1.05);
   border: 1px solid rgba(60, 90, 130, 0.35);
   border-left: 3px solid transparent;
 }
@@ -626,9 +623,9 @@ select.ginput {
   box-shadow: 0 0 10px rgba(78, 226, 255, 0.12);
 }
 .sw-rail {
-  background: linear-gradient(180deg, rgba(14, 24, 42, 0.5) 0%, rgba(7, 12, 22, 0.55) 100%);
-  -webkit-backdrop-filter: blur(6px) saturate(1.05);
-  backdrop-filter: blur(6px) saturate(1.05);
+  background: var(--glass-fill-main);
+  -webkit-backdrop-filter: blur(7px) saturate(1.05);
+  backdrop-filter: blur(7px) saturate(1.05);
   border-left: 1px solid rgba(90, 130, 180, 0.3);
 }
 
@@ -650,9 +647,9 @@ select.ginput {
   padding: 10px 0;
   overflow-y: auto;
   border-right: 1px solid rgba(90, 130, 180, 0.3);
-  background: rgba(8, 14, 26, 0.42);
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
+  background: var(--glass-fill-main);
+  -webkit-backdrop-filter: blur(7px) saturate(1.05);
+  backdrop-filter: blur(7px) saturate(1.05);
 }
 .hangar-bay {
   position: relative;
@@ -785,9 +782,9 @@ select.ginput {
   gap: 10px;
   padding: 8px 16px;
   border-top: 1px solid rgba(90, 130, 180, 0.3);
-  background: rgba(8, 14, 26, 0.42);
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
+  background: var(--glass-fill-main);
+  -webkit-backdrop-filter: blur(7px) saturate(1.05);
+  backdrop-filter: blur(7px) saturate(1.05);
 }
 .hangar-dock-note {
   margin-left: auto;
@@ -815,9 +812,9 @@ select.ginput {
   flex-direction: column;
   min-height: 0;
   border: 1px solid var(--hud-border-dim);
-  background: rgba(8, 14, 26, 0.38);
-  -webkit-backdrop-filter: blur(5px);
-  backdrop-filter: blur(5px);
+  background: var(--glass-fill-main);
+  -webkit-backdrop-filter: blur(7px) saturate(1.05);
+  backdrop-filter: blur(7px) saturate(1.05);
 }
 .trade-list__head,
 .trade-row {
@@ -904,9 +901,9 @@ select.ginput {
   display: flex;
   flex-direction: column;
   border: 1px solid var(--hud-border);
-  background: linear-gradient(180deg, rgba(14, 24, 42, 0.5), rgba(9, 16, 30, 0.52));
-  -webkit-backdrop-filter: blur(5px);
-  backdrop-filter: blur(5px);
+  background: var(--glass-fill-main);
+  -webkit-backdrop-filter: blur(7px) saturate(1.05);
+  backdrop-filter: blur(7px) saturate(1.05);
   box-shadow: var(--mat-ao);
   min-height: 0;
 }
@@ -1038,9 +1035,9 @@ select.ginput {
   gap: 4px 10px;
   padding: 9px 11px;
   border: 1px solid var(--hud-border-dim);
-  background: linear-gradient(180deg, rgba(14, 24, 42, 0.5), rgba(9, 16, 30, 0.52));
-  -webkit-backdrop-filter: blur(5px);
-  backdrop-filter: blur(5px);
+  background: var(--glass-fill-inset);
+  -webkit-backdrop-filter: blur(6px) saturate(1.05);
+  backdrop-filter: blur(6px) saturate(1.05);
   box-shadow: var(--mat-ao);
 }
 .drone-slot__top { grid-area: top; display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -1085,9 +1082,9 @@ select.ginput {
   display: flex;
   flex-direction: column;
   border: 1px solid var(--hud-border-dim);
-  background: linear-gradient(180deg, rgba(14, 24, 42, 0.5), rgba(9, 16, 30, 0.52));
-  -webkit-backdrop-filter: blur(5px);
-  backdrop-filter: blur(5px);
+  background: var(--glass-fill-inset);
+  -webkit-backdrop-filter: blur(6px) saturate(1.05);
+  backdrop-filter: blur(6px) saturate(1.05);
   box-shadow: var(--mat-ao);
   transition: border-color var(--hud-t-fast), box-shadow var(--hud-t-fast);
 }
@@ -1281,12 +1278,11 @@ select.ginput {
   text-shadow: 0 0 8px rgba(78, 226, 255, 0.35);
 }
 .console-sq {
-  /* frosted glass — translucent navy body + backdrop blur (matches .panel-inset) */
-  background:
-    linear-gradient(180deg, rgba(200, 225, 255, 0.06) 0%, transparent 34%),
-    linear-gradient(180deg, rgba(18, 30, 52, 0.5) 0%, rgba(7, 12, 22, 0.56) 100%);
-  -webkit-backdrop-filter: blur(6px) saturate(1.05);
-  backdrop-filter: blur(6px) saturate(1.05);
+  /* EXACT same frosted glass as the .panel / QUESTS window (bright titanium
+     sheen + brushed streaks + same navy + blur 7px). */
+  background: var(--glass-fill-main);
+  -webkit-backdrop-filter: blur(7px) saturate(1.05);
+  backdrop-filter: blur(7px) saturate(1.05);
   border: 1px solid var(--hud-border);
 }
 .console-corner.tl { border-color: var(--hud-cyan); }
