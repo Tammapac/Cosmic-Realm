@@ -7,6 +7,8 @@ import {
   PET_DRONE_UPGRADE_COST, PET_DRONE_SLOT_ORDER, PetDroneSlot, petDroneSlotCount,
 } from "../game/types";
 import type { HangarTab } from "../game/store";
+import { ENABLE_NEW_DOCKING_FLOW } from "../game/renderer-config";
+import { requestUndock } from "../game/scene/DockingController";
 import { useDraggable } from "./useDraggable";
 import { WeaponIcon } from "./hud-ui";
 import { effectiveStats } from "../game/loop";
@@ -217,6 +219,7 @@ export function Hangar({ stationId }: { stationId: string }) {
             style={{ padding: "6px 16px", fontSize: 11 }}
             onClick={() => {
               state.dockedAt = null; sendDockLeave();
+              if (ENABLE_NEW_DOCKING_FLOW) requestUndock();
               state.player.pos.y += 200;
               state.cameraTarget = { ...state.player.pos };
               save();
@@ -1416,7 +1419,7 @@ function DungeonsTab() {
               {confirmId === d.id ? (
                 <div className="mt-2" style={{ display: "flex", gap: 6 }}>
                   <button className="gbtn w-full" style={{ padding: "4px 8px", fontSize: 12 }} onClick={() => setConfirmId(null)}>Cancel</button>
-                  <button className="gbtn gbtn-gold w-full" style={{ padding: "4px 8px", fontSize: 12 }} onClick={() => { setConfirmId(null); state.dockedAt = null; sendDockLeave(); enterDungeon(d.id as DungeonId); }}>Confirm Entry</button>
+                  <button className="gbtn gbtn-gold w-full" style={{ padding: "4px 8px", fontSize: 12 }} onClick={() => { setConfirmId(null); state.dockedAt = null; sendDockLeave(); if (ENABLE_NEW_DOCKING_FLOW) requestUndock(); enterDungeon(d.id as DungeonId); }}>Confirm Entry</button>
                 </div>
               ) : (
                 <button

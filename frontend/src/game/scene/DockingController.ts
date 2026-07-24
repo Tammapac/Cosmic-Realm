@@ -79,3 +79,19 @@ export function cancelDock(reason = "cancelled"): void {
     bump();
   }
 }
+
+/**
+ * Sync the scene machine back to SPACE when the player undocks. The legacy
+ * undock path only clears state.dockedAt; this keeps the scene machine from
+ * getting stuck in HANGAR (which would block all future docking). Idempotent
+ * and forgiving of whatever state we're in.
+ */
+export function requestUndock(): void {
+  if (pendingTimer) { clearTimeout(pendingTimer); pendingTimer = null; }
+  if (sceneManager.state === GameState.SPACE) return; // already there
+  // M2: undocking is instant (no reverse cinematic yet). Force straight back to
+  // SPACE so the machine can never wedge and docking is immediately available
+  // again. The animated UNDOCKING sequence is added in M7.
+  sceneManager.forceState(GameState.SPACE);
+  console.log("[docking] undock → SPACE");
+}
