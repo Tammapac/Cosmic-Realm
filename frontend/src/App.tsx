@@ -6,7 +6,7 @@ import { render } from "./game/render";
 import { initPixiRenderer, destroyPixiRenderer, pixiRender } from "./game/pixi-renderer-v2-integrated";
 import { init3DLayer, destroy3DLayer, getLoadingProgress, initStationLayer, renderStationLayer, destroyStationLayer } from "./game/three-ship-layer";
 import { destroyStation3DLayer } from "./game/three-station-layer";
-import { activeRenderer } from "./game/renderer-config";
+import { activeRenderer, ENABLE_NEW_DOCKING_FLOW } from "./game/renderer-config";
 import { WorldTargetHud, LogoutFlow } from "./components/TopBar";
 import { GameHud } from "./components/hud/GameHud";
 import "./styles/hud/hud-tokens.css";
@@ -990,6 +990,39 @@ function LoadingScreen({ onReady }: { onReady: () => void }) {
 }
 
 function GameApp() {
+  // ── Isolated docking flow (Milestone 1) — flag-gated, no-op when disabled ──
+  // Registers the scene manager states and a window.__docking debug handle so
+  // SPACE ⇄ HANGAR can be switched from the console for testing. Touches nothing
+  // else. When ENABLE_NEW_DOCKING_FLOW is false this effect returns immediately.
+  useEffect(() => {
+    if (!ENABLE_NEW_DOCKING_FLOW) return;
+    let cancelled = false;
+    (async () => {
+      const { sceneManager, GameState } = await import("./game/scene/GameSceneManager");
+      if (cancelled) return;
+      // Register minimal handlers that only log for now (no visual changes yet).
+      for (const s of Object.values(GameState)) {
+        sceneManager.register(s as any, {
+          enter: (ctx, prev) => console.log(`[docking] enter ${s} (from ${prev})`, ctx),
+          exit: (next) => console.log(`[docking] exit ${s} → ${next}`),
+        });
+      }
+      sceneManager.forceState(GameState.SPACE);
+      (window as any).__docking = {
+        state: () => sceneManager.state,
+        toSpace: () => sceneManager.transitionTo(GameState.SPACE, { reason: "debug" }),
+        dock: (id = "helix") => sceneManager.transitionTo(GameState.DOCKING, { stationId: id, reason: "debug" }),
+        toHangarLoading: (id = "helix") => sceneManager.transitionTo(GameState.HANGAR_LOADING, { stationId: id }),
+        toHangar: (id = "helix") => sceneManager.transitionTo(GameState.HANGAR, { stationId: id }),
+        undock: () => sceneManager.transitionTo(GameState.UNDOCKING, { reason: "debug" }),
+        manager: sceneManager,
+        GameState,
+      };
+      console.log("[docking] Milestone 1 ready. Use window.__docking.dock() / .toHangar() / .undock() / .state()");
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // Wire socket listeners to game state
   useEffect(() => {
     setSocketListeners({

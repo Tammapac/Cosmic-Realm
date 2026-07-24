@@ -17,6 +17,12 @@ export const DEBUG_OVERLAY = false;
 export const PIXELATE_3D = false;
 export const PIXELATE_3D_SCALE = 2.5;
 
+// ── Isolated docking-flow feature (WIP) ─────────────────────────────────────
+// When false, the game behaves EXACTLY as before — no scene manager, no docking
+// cinematic, no new HangarScene. Everything behind this flag lives in
+// src/game/scene/ and is deletable without touching core systems.
+export const ENABLE_NEW_DOCKING_FLOW = false;
+
 // Three.js Nebula Background Configuration
 export const ENABLE_THREE_NEBULA_SHADER = false;
 export const THREE_NEBULA_RENDER_SCALE = 0.5;    // Internal resolution (0.5 = half-res for performance)
