@@ -141,6 +141,12 @@
    layer (offset inward by --rw) in the panel fill. The visible border is the
    difference; because both share the chamfer geometry, the rim width is
    IDENTICAL on straight and diagonal edges. --rw = rim thickness. */
+/* GLOBAL TEST: the thick milled-titanium rim is hidden everywhere so EVERY
+   window (inventory, social, target HUD, all HudWindow popups, …) reads like
+   the QUESTS tracker / Chat — plain .panel glass with the thin cyan edge +
+   corner brackets, no heavy metal ring. Remove this one line to bring it back. */
+.panel-rim { display: none !important; }
+
 .panel-rim {
   /* Metallic rim as a RING (evenodd: outer silhouette minus inner one inset
      by --rw). The CENTRE is punched out so the panel's own frosted glass +

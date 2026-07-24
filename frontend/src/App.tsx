@@ -841,7 +841,7 @@ function CargoOverlay() {
       className="fixed z-50"
       style={{ top: 92, right: 20, width: 360, pointerEvents: "auto" }}
     >
-      <div className="panel-framed" style={{ position: "relative", maxHeight: "calc(100vh - 180px)", display: "flex", flexDirection: "column", filter: "drop-shadow(0 8px 30px rgba(0,0,0,0.75))" }}>
+      <div className="panel panel-framed" style={{ position: "relative", maxHeight: "calc(100vh - 180px)", display: "flex", flexDirection: "column", boxShadow: "0 8px 30px rgba(0,0,0,0.75)" }}>
         {/* title in the window's amber glass band */}
         <div
           style={{

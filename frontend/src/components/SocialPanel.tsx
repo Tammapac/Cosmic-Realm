@@ -636,7 +636,9 @@ export function GalaxyMap() {
                     right: 0,
                     bottom: 0,
                     borderColor: n.color + "55",
-                    background: "rgba(4,6,20,0.97)",
+                    background: "var(--glass-fill-inset)",
+                    backdropFilter: "blur(6px) saturate(1.05)",
+                    WebkitBackdropFilter: "blur(6px) saturate(1.05)",
                     zIndex: 10,
                   }}
                 >
