@@ -787,6 +787,103 @@ select.ginput {
   letter-spacing: 0.1em;
   color: var(--hud-text-mute);
 }
+
+/* ── Market commodity cards (redesign phase 2) ─────────────────────────────
+   Replaces the dense commodity table. Each good is a card: a thumb strip
+   carrying the resource glyph + price-direction/%-vs-base stamp + owned pill,
+   then a body with name, best-sell hint, and buy/sell controls. Tokens only. */
+.market-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  gap: 10px;
+}
+.market-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, rgba(14, 24, 42, 0.72) 0%, rgba(9, 16, 30, 0.72) 100%);
+  border: 1px solid var(--hud-border-dim);
+  box-shadow: var(--mat-ao);
+  transition: border-color var(--hud-t-fast), box-shadow var(--hud-t-fast);
+}
+.market-card:hover {
+  border-color: rgba(78, 226, 255, 0.45);
+  box-shadow: var(--mat-ao), 0 0 10px rgba(78, 226, 255, 0.12);
+}
+.market-card__thumb {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--hud-border-dim);
+}
+.market-card__icon {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  font-size: 19px;
+}
+.market-card__name {
+  font-family: var(--font-display, var(--hud-font));
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: var(--hud-text-bright);
+  line-height: 1.15;
+}
+.market-card__sub {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--hud-text-mute);
+  margin-top: 2px;
+}
+.market-card__owned {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--hud-cyan);
+  font-variant-numeric: tabular-nums;
+}
+.market-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 9px 12px 11px;
+}
+.market-card__price {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.market-card__price .p {
+  font-family: var(--font-display, var(--hud-font));
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+.market-card__price .d {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.market-card__best {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+  min-height: 13px;
+}
+.market-card__row {
+  display: flex;
+  gap: 5px;
+}
+.market-card__row .gbtn {
+  flex: 1;
+  padding: 5px 0;
+  font-size: 11px;
+}
 .stat-box {
   background: rgba(8, 14, 26, 0.7);
   border: 1px solid rgba(90, 130, 180, 0.28);

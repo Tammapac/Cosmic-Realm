@@ -1669,8 +1669,6 @@ save(); bump();
     }
   };
 
-  const MARKET_COLS = "minmax(150px, 2fr) 88px 55px 105px 104px 148px";
-
   return (
     <div className="p-4">
       {isTrade && (
@@ -1686,21 +1684,12 @@ save(); bump();
               </span>
             </span>
           </div>
-          <div className="text-mute text-[12px] mb-2">
+          <div className="text-mute text-[12px] mb-3">
             Buy low here, sell high elsewhere — stations specialize in different resources. ▼ green price = cheap, ▲ red = expensive.
           </div>
 
-          <div className="grid gap-2 px-2 py-1.5 text-[11px] tracking-widest text-mute" style={{ background: "var(--hud-bg-panel)", border: "1px solid var(--hud-border-dim)", gridTemplateColumns: MARKET_COLS }}>
-            <div>RESOURCE</div>
-            <div className="text-right">PRICE HERE</div>
-            <div className="text-right">OWNED</div>
-            <div className="text-center">BEST SELL AT</div>
-            <div className="text-center">BUY</div>
-            <div className="text-center">SELL</div>
-          </div>
-
-          <div className="mt-1">
-            {allRes.map((r, rowIdx) => {
+          <div className="market-grid">
+            {allRes.map((r) => {
               const price = stationPrice(stationId, r.id);
               const diff = ((price - r.basePrice) / r.basePrice) * 100;
               const have = player.cargo.find((c) => c.resourceId === r.id)?.qty ?? 0;
@@ -1715,54 +1704,53 @@ save(); bump();
               const dirIcon = dir === "up" ? "▲" : dir === "down" ? "▼" : "●";
               const dirColor = dir === "up" ? "#ff5c6c" : dir === "down" ? "#5cff8a" : "#666";
               const profitVsHere = bestStation ? bestStation.price - price : 0;
+              const priceColor = diff < 0 ? "#5cff8a" : diff > 0 ? "#ff5c6c" : "var(--hud-text-dim)";
               return (
-                <div
-                  key={r.id}
-                  className="grid gap-2 items-center px-2 py-2 hover:bg-white/5 border-b"
-                  style={{ borderColor: "var(--border-soft)", gridTemplateColumns: MARKET_COLS, background: rowIdx % 2 === 0 ? "rgba(255,255,255,0.02)" : "transparent" }}
-                >
-                  <div className="flex items-center gap-2 min-w-0">
+                <div key={r.id} className="market-card">
+                  <div className="market-card__thumb">
                     <div
-                      className="flex items-center justify-center shrink-0"
-                      style={{ width: 26, height: 26, background: `${r.color}22`, border: `1px solid ${r.color}`, color: r.color, fontSize: 13 }}
+                      className="market-card__icon"
+                      style={{ background: `${r.color}22`, border: `1px solid ${r.color}`, color: r.color }}
                     >
                       {r.glyph}
                     </div>
                     <div className="min-w-0">
-                      <div className="text-bright text-[13px] truncate">{r.name}</div>
-                      <div className="text-mute text-[11px] truncate">base {r.basePrice}cr</div>
+                      <div className="market-card__name truncate">{r.name}</div>
+                      <div className="market-card__sub">BASE {r.basePrice} CR</div>
                     </div>
+                    {have > 0 && <span className="market-card__owned">×{have}</span>}
                   </div>
-                  <div className="text-right">
-                    <div className="font-bold tabular-nums text-[14px] flex items-center justify-end gap-1" style={{ color: diff < 0 ? "#5cff8a" : diff > 0 ? "#ff5c6c" : "var(--text-dim)" }}>
-                      <span style={{ color: dirColor, fontSize: 9 }}>{dirIcon}</span>
-                      {price}
+                  <div className="market-card__body">
+                    <div className="market-card__price">
+                      <span className="p flex items-center gap-1" style={{ color: priceColor }}>
+                        <span style={{ color: dirColor, fontSize: 10 }}>{dirIcon}</span>
+                        {price}<span style={{ fontSize: 10, color: "var(--hud-text-mute)" }}>CR</span>
+                      </span>
+                      <span className="d" style={{ color: diff < 0 ? "#5cff8a" : diff > 0 ? "#ff5c6c" : "var(--hud-text-mute)" }}>
+                        {diff > 0 ? "+" : ""}{diff.toFixed(0)}% vs base
+                      </span>
                     </div>
-                    <div className="text-[10px] tabular-nums" style={{ color: diff < 0 ? "#5cff8a" : "#ff5c6c" }}>
-                      {diff > 0 ? "+" : ""}{diff.toFixed(0)}% vs base
+                    <div
+                      className="market-card__best"
+                      title={bestStation ? `${bestStation.name} (${(ZONES as any)[bestStation.zone]?.label ?? bestStation.zone}) pays ${bestStation.price}cr` : ""}
+                    >
+                      {bestStation && profitVsHere > 0 ? (
+                        <span style={{ color: "#5cff8a" }}>
+                          ↗ +{profitVsHere}cr/u @ <span style={{ color: "var(--hud-text-dim)" }}>{bestStation.name} [{(ZONES as any)[bestStation.zone]?.label ?? "?"}]</span>
+                        </span>
+                      ) : (
+                        <span style={{ color: "#ffd24a" }}>◈ BEST PRICE HERE</span>
+                      )}
                     </div>
-                  </div>
-                  <div className="text-right text-cyan text-[14px] font-bold tabular-nums">{have}</div>
-                  <div className="text-center text-[11px]" title={bestStation ? `${bestStation.name} (${(ZONES as any)[bestStation.zone]?.label ?? bestStation.zone}) pays ${bestStation.price}cr` : ""}>
-                    {bestStation && profitVsHere > 0 ? (
-                      <div>
-                        <div style={{ color: "#5cff8a", fontWeight: "bold" }}>+{profitVsHere}cr/u</div>
-                        <div className="text-mute truncate" style={{ maxWidth: 100, fontSize: 10, margin: "0 auto" }}>
-                          {bestStation.name} [{(ZONES as any)[bestStation.zone]?.label ?? "?"}]
-                        </div>
-                      </div>
-                    ) : (
-                      <span style={{ color: "#ffd24a", fontWeight: "bold" }}>BEST HERE</span>
-                    )}
-                  </div>
-                  <div className="flex gap-1 justify-center">
-                    <button className="gbtn gbtn-gold" style={{ padding: "5px 0", fontSize: 11, flex: 1 }} disabled={player.credits < price} onClick={() => buy(r.id, 1)}>+1</button>
-                    <button className="gbtn gbtn-gold" style={{ padding: "5px 0", fontSize: 11, flex: 1 }} disabled={player.credits < price * 10} onClick={() => buy(r.id, 10)}>+10</button>
-                  </div>
-                  <div className="flex gap-1 justify-center">
-                    <button className="gbtn" style={{ padding: "5px 0", fontSize: 11, flex: 1 }} disabled={have <= 0} onClick={() => sell(r.id, 1)}>−1</button>
-                    <button className="gbtn" style={{ padding: "5px 0", fontSize: 11, flex: 1 }} disabled={have < 10} onClick={() => sell(r.id, 10)}>−10</button>
-                    <button className="gbtn" style={{ padding: "5px 0", fontSize: 11, flex: 1 }} disabled={have <= 0} onClick={() => sell(r.id, have)}>ALL</button>
+                    <div className="market-card__row">
+                      <button className="gbtn gbtn-gold" disabled={player.credits < price} onClick={() => buy(r.id, 1)}>+1</button>
+                      <button className="gbtn gbtn-gold" disabled={player.credits < price * 10} onClick={() => buy(r.id, 10)}>+10</button>
+                    </div>
+                    <div className="market-card__row">
+                      <button className="gbtn" disabled={have <= 0} onClick={() => sell(r.id, 1)}>−1</button>
+                      <button className="gbtn" disabled={have < 10} onClick={() => sell(r.id, 10)}>−10</button>
+                      <button className="gbtn" disabled={have <= 0} onClick={() => sell(r.id, have)}>ALL</button>
+                    </div>
                   </div>
                 </div>
               );
