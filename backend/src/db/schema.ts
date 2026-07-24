@@ -56,7 +56,12 @@ export const players = pgTable(
       module: [null, null, null],
     }),
     cargo: jsonb("cargo").notNull().default([]),
-    drones: jsonb("drones").notNull().default([]),
+    drones: jsonb("drones").notNull().default([]), // legacy — superseded by petDrone
+    petDrone: jsonb("pet_drone").notNull().default({
+      level: 0, mode: "orbit", hp: 400, hpMax: 400, orbitPhase: 0, fireCd: 0,
+      equipped: { weapon: null, module: null, extra: null },
+    }),
+    bebcell: integer("bebcell").notNull().default(0),
     consumables: jsonb("consumables").notNull().default({}),
     hotbar: jsonb("hotbar").notNull().default([null, null, null, null, null, null, null, null]),
     ammo: jsonb("ammo").notNull().default({}),

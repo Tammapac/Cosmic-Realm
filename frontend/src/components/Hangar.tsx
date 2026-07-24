@@ -1,9 +1,10 @@
 import { sendDockRepair, sendDockLeave } from "../net/socket";
-import { state, bump, useGame, pushNotification, pushFloater, save, stationPrice, priceDirection, priceHistory, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, rerollMissionBoard, bumpMission, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, rocketAmmoMax, getAmmoWeaponIds, ensureAmmoInitialized, setAutoRestock, setAutoRepairHull, setAutoShieldRecharge, getActiveAmmoType, switchAmmoType, purchaseAmmoAmount, getAmmoCount, ROCKET_AMMO_COST_PER, rocketMissileMax, getActiveRocketAmmoType, switchRocketAmmoType, purchaseRocketAmmo, getRocketAmmoCount, startRefineJob, collectRefineJob, upgradeFactory } from "../game/store";
+import { state, bump, useGame, pushNotification, pushFloater, save, stationPrice, priceDirection, priceHistory, addCargo, removeCargo, cargoUsed, cargoCapacity, claimMission, rerollDaily, rerollMissionBoard, bumpMission, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, rocketAmmoMax, getAmmoWeaponIds, ensureAmmoInitialized, setAutoRestock, setAutoRepairHull, setAutoShieldRecharge, getActiveAmmoType, switchAmmoType, purchaseAmmoAmount, getAmmoCount, ROCKET_AMMO_COST_PER, rocketMissileMax, getActiveRocketAmmoType, switchRocketAmmoType, purchaseRocketAmmo, getRocketAmmoCount, startRefineJob, collectRefineJob, upgradeFactory, petDroneSlots, upgradePetDrone, equipPetSlot, unequipPetSlot, petBoundIds } from "../game/store";
 import {
   ActiveQuest, CONSUMABLE_DEFS, ConsumableId, DAILY_DUNGEON_BONUS, DRONE_DEFS, DroneKind, DroneMode, DUNGEONS, DungeonId, FACTIONS, MODULE_DEFS, ModuleDef, ModuleSlot, ModuleStats, RARITY_COLOR,
   Quest, QUEST_POOL, MISSION_BOARD_POOL, MissionCategory, RESOURCES, ResourceId, ROCKET_AMMO_TYPE_DEFS, RocketAmmoType, ROCKET_MISSILE_TYPE_DEFS, RocketMissileType, ROCKET_MISSILE_TYPE_ORDER, SHIP_CLASSES, SKILL_NODES, SkillNode, STATIONS, ShipClassId, SkillBranch,
   SkillId, ZONES, getDailyFeaturedDungeon, REFINE_RECIPES, FACTORY_SPEED_BONUS, FACTORY_UPGRADE_COSTS,
+  PET_DRONE_UPGRADE_COST, PET_DRONE_SLOT_ORDER, PetDroneSlot, petDroneSlotCount,
 } from "../game/types";
 import type { HangarTab } from "../game/store";
 import { useDraggable } from "./useDraggable";
@@ -1540,153 +1541,215 @@ function Stat({ label, v }: { label: string; v: number | string }) {
   );
 }
 
-// ── DRONES ────────────────────────────────────────────────────────────────
+// ── PET DRONE ─────────────────────────────────────────────────────────────
+const PET_SLOT_META: Record<PetDroneSlot, { label: string; glyph: string; accepts: string; color: string }> = {
+  weapon: { label: "Weapon", glyph: "🔫", accepts: "weapon", color: "#ff5c6c" },
+  module: { label: "Module", glyph: "◈", accepts: "module/generator", color: "#4ee2ff" },
+  extra:  { label: "Aux",    glyph: "✦", accepts: "any", color: "#b866ff" },
+};
+
 function DronesTab() {
   const player = useGame((s) => s.player);
-  const cls = SHIP_CLASSES[player.shipClass];
-  const totalSlots = maxDroneSlots();
-  const slotsLeft = totalSlots - player.drones.length;
+  const pet = player.petDrone;
+  const slots = petDroneSlots();
+  const nextCost = pet.level < 3 ? PET_DRONE_UPGRADE_COST[(pet.level + 1) as 1 | 2 | 3] : null;
+  const canUpgrade = nextCost != null && player.bebcell >= nextCost;
+  const bound = petBoundIds();
+  // slot currently open for item selection
+  const [picking, setPicking] = useState<PetDroneSlot | null>(null);
 
-  const dronePrice = (kind: DroneKind) => {
-    const def = DRONE_DEFS[kind];
-    const owned = player.drones.filter((d) => d.kind === kind).length;
-    return def.price * Math.pow(2, owned);
-  };
-
-  const buy = (kind: DroneKind) => {
-    const def = DRONE_DEFS[kind];
-    const price = dronePrice(kind);
-    if (player.credits < price) { pushNotification("Not enough credits", "bad"); return; }
-    if (slotsLeft <= 0) { pushNotification("No drone slots free", "bad"); return; }
-    player.credits -= price;
-    player.drones.push({
-      id: `dr-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
-      kind,
-      mode: "orbit",
-      hp: 300 + def.shieldBonus * 2 + def.hullBonus * 2,
-      hpMax: 300 + def.shieldBonus * 2 + def.hullBonus * 2,
-      orbitPhase: Math.random() * Math.PI * 2,
-      fireCd: 0,
+  // items eligible for a given slot: matching type, not on ship, not already on drone elsewhere
+  const eligibleFor = (slot: PetDroneSlot) =>
+    player.inventory.filter((it) => {
+      const def = MODULE_DEFS[it.defId];
+      if (!def) return false;
+      if (slot === "weapon" && def.slot !== "weapon") return false;
+      if (slot === "module" && def.slot === "weapon") return false;
+      const onShip =
+        player.equipped.weapon.includes(it.instanceId) ||
+        player.equipped.generator.includes(it.instanceId) ||
+        player.equipped.module.includes(it.instanceId);
+      if (onShip) return false;
+      if (bound.has(it.instanceId) && pet.equipped[slot] !== it.instanceId) return false;
+      return true;
     });
-    pushNotification(`Deployed ${def.name}`, "good");
-    save(); bump();
-  };
 
-  const setMode = (id: string, mode: DroneMode) => {
-    const d = player.drones.find((x) => x.id === id);
-    if (!d) return;
-    d.mode = mode;
-    pushNotification(`Drone set to ${mode.toUpperCase()}`, "info");
-    save(); bump();
+  const equippedDef = (slot: PetDroneSlot): ModuleDef | null => {
+    const id = pet.equipped[slot];
+    if (!id) return null;
+    const it = player.inventory.find((m) => m.instanceId === id);
+    return it ? MODULE_DEFS[it.defId] ?? null : null;
   };
-
-  const scrap = (id: string) => {
-    const d = player.drones.find((x) => x.id === id);
-    if (!d) return;
-    const def = DRONE_DEFS[d.kind];
-    const refund = Math.floor(def.price * 0.5);
-    player.credits += refund;
-    player.drones = player.drones.filter((x) => x.id !== id);
-    pushNotification(`Scrapped drone +${refund}cr`, "good");
-    save(); bump();
-  };
-
-  const emptySlots = Math.max(0, totalSlots - player.drones.length);
 
   return (
-    <div className="p-4 grid grid-cols-2 gap-3" style={{ height: "100%", minHeight: 0 }}>
-      {/* LEFT — deployed drone bay as visual slots */}
-      <div className="flex flex-col min-h-0">
-        <div className="dob-hdr shrink-0" style={{ marginBottom: 8 }}>
-          <span>✦ DRONE BAY</span>
-          <span style={{ color: player.drones.length >= totalSlots ? "#ff5c6c" : "var(--hud-cyan)" }}>{player.drones.length}/{totalSlots} SLOTS</span>
-        </div>
-        <div className="drone-slots overflow-y-auto min-h-0 flex-1 pr-1">
-          {player.drones.map((d) => {
-            const def = DRONE_DEFS[d.kind];
+    <div className="p-4 flex flex-col" style={{ height: "100%", minHeight: 0 }}>
+      <div className="dob-hdr shrink-0 mb-3">
+        <span>✦ COMPANION DRONE</span>
+        <span className="tabular-nums" style={{ color: "var(--hud-magenta)" }}>◈ {player.bebcell.toLocaleString()} BEBCELL</span>
+      </div>
+
+      <div className="pet-grid flex-1 min-h-0">
+        {/* CENTER STAGE — the drone + its slots */}
+        <div className="pet-stage">
+          <div className="pet-stage__ring" />
+          <div className="pet-stage__drone" style={{ opacity: pet.level > 0 ? 1 : 0.4 }}>
+            <div className="pet-stage__glyph">✦</div>
+            <div className="pet-stage__lvl">LV {pet.level}</div>
+          </div>
+
+          {/* slot ring: 3 slots positioned around the drone */}
+          {PET_DRONE_SLOT_ORDER.map((slot, i) => {
+            const unlocked = i < slots;
+            const meta = PET_SLOT_META[slot];
+            const def = equippedDef(slot);
+            const posClass = `pet-slot pet-slot--${i}`;
             return (
-              <div key={d.id} className="drone-slot" style={{ borderColor: `${def.color}66` }}>
-                <div className="drone-slot__top">
-                  <div className="drone-slot__ico" style={{ background: `${def.color}22`, border: `1px solid ${def.color}`, color: def.color }}>✦</div>
-                  <div className="min-w-0">
-                    <div className="drone-slot__nm truncate" style={{ color: def.color }}>{def.name.toUpperCase()}</div>
-                    <div className="drone-slot__stats">
-                      {def.damageBonus > 0 && <span style={{ color: "#ff5c6c" }}>+{def.damageBonus} DMG</span>}
-                      {def.shieldBonus > 0 && <span style={{ color: "#4ee2ff" }}>+{def.shieldBonus} SHD</span>}
-                      {def.hullBonus > 0 && <span style={{ color: "#5cff8a" }}>+{def.hullBonus} HUL</span>}
-                    </div>
-                  </div>
-                </div>
-                <div className="drone-slot__modes">
-                  {(["orbit", "forward", "defensive"] as DroneMode[]).map((m) => (
-                    <button
-                      key={m}
-                      className={`gbtn ${d.mode === m ? "gbtn-gold" : ""}`}
-                      style={{ opacity: d.mode === m ? 1 : 0.7 }}
-                      title={m === "orbit" ? "Orbit: circle the ship" : m === "forward" ? "Forward: advance toward the target" : "Defensive: hold close, short range"}
-                      onClick={() => setMode(d.id, m)}
-                    >
-                      {m === "orbit" ? "ORB" : m === "forward" ? "FWD" : "DEF"}
-                    </button>
-                  ))}
-                </div>
-                <button className="gbtn gbtn-red drone-slot__scrap" onClick={() => scrap(d.id)}>
-                  ✕ SCRAP +{Math.floor(def.price * 0.5).toLocaleString()}cr
-                </button>
-              </div>
+              <button
+                key={slot}
+                className={`${posClass} ${!unlocked ? "pet-slot--locked" : def ? "pet-slot--filled" : "pet-slot--empty"}`}
+                style={unlocked ? { ["--slot-color" as any]: meta.color } : undefined}
+                disabled={!unlocked}
+                title={
+                  !unlocked ? `Locked — upgrade drone to Lv ${i + 1}`
+                  : def ? `${def.name} · click to change / right-click to remove`
+                  : `Empty ${meta.label} slot — click to equip (${meta.accepts})`
+                }
+                onClick={() => { if (unlocked) setPicking(slot); }}
+                onContextMenu={(e) => { e.preventDefault(); if (unlocked && def) unequipPetSlot(slot); }}
+              >
+                {!unlocked ? (
+                  <span className="pet-slot__lock">🔒</span>
+                ) : def ? (
+                  <>
+                    <WeaponIcon def={def} size={30} />
+                    <span className="pet-slot__tier" style={{ color: RARITY_COLOR[def.rarity] }}>T{def.tier}</span>
+                  </>
+                ) : (
+                  <span className="pet-slot__plus" style={{ color: meta.color }}>+</span>
+                )}
+                <span className="pet-slot__label">{meta.label}</span>
+              </button>
             );
           })}
-          {Array.from({ length: emptySlots }).map((_, i) => (
-            <div key={`empty-${i}`} className="drone-slot drone-slot--empty">
-              <span className="plus">+</span>
-              <span>EMPTY BAY</span>
-            </div>
-          ))}
         </div>
-        <div className="text-mute text-[11px] mt-2 italic shrink-0">
-          ORB circles the ship · FWD advances to mid-target · DEF holds close at short range.
+
+        {/* RIGHT — upgrade + info panel */}
+        <div className="pet-panel">
+          <div className="console-sq" style={{ padding: 12 }}>
+            <div className="console-corner tl" /><div className="console-corner tr" />
+            <div className="console-corner bl" /><div className="console-corner br" />
+            <div className="dob-hdr" style={{ margin: "-12px -12px 12px" }}><span>▼ DRONE STATUS</span></div>
+            <div className="flex flex-col gap-2">
+              <Stat label="LEVEL" v={`${pet.level} / 3`} />
+              <Stat label="SLOTS" v={`${slots} / 3`} />
+              <Stat label="HULL" v={Math.round(pet.hpMax)} />
+            </div>
+          </div>
+
+          <div className="console-sq mt-3" style={{ padding: 12 }}>
+            <div className="console-corner tl" /><div className="console-corner tr" />
+            <div className="console-corner bl" /><div className="console-corner br" />
+            <div className="dob-hdr" style={{ margin: "-12px -12px 12px" }}><span>▼ UPGRADE</span></div>
+            {nextCost == null ? (
+              <div className="text-center py-2" style={{ color: "var(--hud-gold)", fontSize: 12, letterSpacing: "0.1em" }}>
+                ◈ MAX LEVEL REACHED
+              </div>
+            ) : (
+              <>
+                <div className="text-[12px] mb-2" style={{ color: "var(--hud-text-dim)", lineHeight: 1.5 }}>
+                  Upgrade to <b style={{ color: "var(--hud-cyan)" }}>Lv {pet.level + 1}</b> to unlock the{" "}
+                  <b style={{ color: PET_SLOT_META[PET_DRONE_SLOT_ORDER[pet.level]].color }}>
+                    {PET_SLOT_META[PET_DRONE_SLOT_ORDER[pet.level]].label}
+                  </b>{" "}slot.
+                </div>
+                <div className="pet-cost">
+                  <span className="k">COST</span>
+                  <span className="v" style={{ color: canUpgrade ? "var(--hud-magenta)" : "#ff5c6c" }}>
+                    ◈ {nextCost.toLocaleString()} BEBCELL
+                  </span>
+                </div>
+                <div className="pet-cost">
+                  <span className="k">YOU HAVE</span>
+                  <span className="v tabular-nums">{player.bebcell.toLocaleString()}</span>
+                </div>
+                {/* progress toward the cost */}
+                <div className="bar mt-2 mb-3">
+                  <div className="bar-fill" style={{
+                    width: `${Math.min(100, (player.bebcell / nextCost) * 100)}%`,
+                    background: "linear-gradient(90deg, #7a3fbf, #b866ff)",
+                    boxShadow: "0 0 6px rgba(184,102,255,0.5)",
+                  }} />
+                </div>
+                <button
+                  className="gbtn gbtn-gold w-full"
+                  style={{ padding: "8px 0", fontSize: 12, letterSpacing: "0.1em" }}
+                  disabled={!canUpgrade}
+                  onClick={() => upgradePetDrone()}
+                >
+                  {canUpgrade ? `▲ UPGRADE TO LV ${pet.level + 1}` : `NEED ${(nextCost - player.bebcell).toLocaleString()} MORE`}
+                </button>
+              </>
+            )}
+          </div>
+
+          <div className="text-mute text-[11px] mt-3 italic" style={{ lineHeight: 1.5 }}>
+            <b style={{ color: "var(--hud-magenta)" }}>Bebcell</b> drops only from bosses. The drone fights
+            beside you with its equipped weapon; module/aux slots buff your ship. Right-click a slot to unequip.
+          </div>
         </div>
       </div>
 
-      {/* RIGHT — drone catalog as cards */}
-      <div className="flex flex-col min-h-0">
-        <div className="dob-hdr shrink-0" style={{ marginBottom: 8 }}>
-          <span>✦ DRONE CATALOG</span>
-          <span style={{ color: "var(--accent-amber)" }} className="tabular-nums">{player.credits.toLocaleString()} CR</span>
-        </div>
-        <div className="drone-cat overflow-y-auto min-h-0 flex-1 pr-1">
-          {Object.values(DRONE_DEFS).map((def) => {
-            const price = dronePrice(def.id);
-            const owned = player.drones.filter((d) => d.kind === def.id).length;
-            const affordable = player.credits >= price;
-            return (
-              <div key={def.id} className="drone-card">
-                <div className="drone-card__thumb" style={{ color: def.color }}>
-                  ✦
-                  {owned > 0 && <span className="drone-card__owned">×{owned} OWNED</span>}
-                </div>
-                <div className="drone-card__body">
-                  <div className="drone-card__nm truncate" style={{ color: def.color }}>{def.name.toUpperCase()}</div>
-                  <div className="drone-card__desc">{def.description}</div>
-                  <div className="drone-card__stats">
-                    {def.damageBonus > 0 && <span className="drone-pill" style={{ color: "#ff5c6c" }}>+{def.damageBonus} DMG</span>}
-                    {def.shieldBonus > 0 && <span className="drone-pill" style={{ color: "#4ee2ff" }}>+{def.shieldBonus} SHD</span>}
-                    {def.hullBonus > 0 && <span className="drone-pill" style={{ color: "#5cff8a" }}>+{def.hullBonus} HUL</span>}
-                    {def.fireRate > 0 && <span className="drone-pill" style={{ color: "#e8b94d" }}>{def.fireRate.toFixed(1)}/s</span>}
-                  </div>
-                  <button
-                    className="gbtn gbtn-gold drone-card__buy"
-                    disabled={!affordable || slotsLeft <= 0}
-                    onClick={() => buy(def.id)}
-                  >
-                    {slotsLeft <= 0 ? "NO SLOTS FREE" : `DEPLOY · ${price.toLocaleString()}cr`}
-                  </button>
-                </div>
+      {/* item picker popup */}
+      {picking && (() => {
+        const list = eligibleFor(picking);
+        const meta = PET_SLOT_META[picking];
+        return (
+          <div
+            style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.7)" }}
+            onClick={(e) => { if (e.target === e.currentTarget) setPicking(null); }}
+          >
+            <div className="panel" style={{ maxWidth: 520, width: "90vw", maxHeight: "78vh", overflowY: "auto", padding: 0 }}>
+              <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b" style={{ borderColor: "var(--border-soft)" }}>
+                <div className="text-cyan tracking-widest text-sm font-bold">EQUIP · {meta.label.toUpperCase()} SLOT</div>
+                <button className="gbtn gbtn-red" style={{ padding: "2px 8px", fontSize: 13 }} onClick={() => setPicking(null)}>✕ Close</button>
               </div>
-            );
-          })}
-        </div>
-      </div>
+              <div className="p-3">
+                {pet.equipped[picking] && (
+                  <button className="gbtn gbtn-red w-full mb-2" style={{ padding: "5px 0", fontSize: 11 }}
+                    onClick={() => { unequipPetSlot(picking); setPicking(null); }}>
+                    ✕ UNEQUIP CURRENT
+                  </button>
+                )}
+                {list.length === 0 ? (
+                  <div className="text-mute text-[12px] italic p-3 text-center">
+                    No eligible {meta.accepts} items in your inventory. They must not be equipped on your ship.
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, 52px)", gap: 6, justifyContent: "center" }}>
+                    {list.map((it) => {
+                      const def = MODULE_DEFS[it.defId];
+                      if (!def) return null;
+                      const color = isRolledItem(it) ? lootItemColor(it, def) : RARITY_COLOR[def.rarity];
+                      return (
+                        <div
+                          key={it.instanceId}
+                          className="sw-slot equip-cell"
+                          title={lootTipText(it, { action: "CLICK TO EQUIP ON DRONE" })}
+                          style={{ width: 52, height: 52, boxShadow: `inset 0 0 0 1px ${color}88`, cursor: "pointer" }}
+                          onClick={() => { equipPetSlot(picking, it.instanceId); setPicking(null); }}
+                        >
+                          <WeaponIcon def={def} size={32} />
+                          <span className="equip-tier" style={{ color }}>T{def.tier}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -2176,20 +2239,16 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
     pushNotification(`Hull repaired · -${repairCost}cr`, "good");
     save(); bump();
   };
+  const pet = player.petDrone;
+  const droneRepairCost = pet && pet.level > 0 ? Math.ceil((pet.hpMax - pet.hp) * 1.5) : 0;
   const repairDrones = () => {
-    let total = 0;
-    for (const d of player.drones) {
-      const cost = Math.ceil((d.hpMax - d.hp) * 1.5);
-      total += cost;
-    }
-    if (player.credits < total) { pushNotification("Not enough credits", "bad"); return; }
-    player.credits -= total;
-    for (const d of player.drones) d.hp = d.hpMax;
-    pushNotification(`Drones repaired · -${total}cr`, "good");
+    if (droneRepairCost <= 0) return;
+    if (player.credits < droneRepairCost) { pushNotification("Not enough credits", "bad"); return; }
+    player.credits -= droneRepairCost;
+    pet.hp = pet.hpMax;
+    pushNotification(`Drone repaired · -${droneRepairCost}cr`, "good");
     save(); bump();
   };
-
-  const droneRepairCost = player.drones.reduce((a, d) => a + Math.ceil((d.hpMax - d.hp) * 1.5), 0);
 
   return (
     <div className="p-5 space-y-4 max-w-2xl">
@@ -2222,7 +2281,7 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
         <div className="flex-1">
           <div className="text-amber font-bold tracking-widest">DRONE OVERHAUL</div>
           <div className="text-dim text-[13px]">
-            Restore all {player.drones.length} drone(s) to full HP.
+            {pet && pet.level > 0 ? "Restore your companion drone to full HP." : "No companion drone active."}
           </div>
         </div>
         <button className="gbtn" disabled={droneRepairCost <= 0 || player.credits < droneRepairCost} onClick={repairDrones}>

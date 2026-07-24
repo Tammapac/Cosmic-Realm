@@ -211,6 +211,8 @@ export type LootDrop = {
   honor: number;
   bonusResource?: { resourceId: ResourceId; qty: number };
   resource?: { resourceId: ResourceId; qty: number };
+  /** Boss-only pet-drone upgrade material. */
+  bebcell?: number;
   /** Server-rolled equipment drop (ARPG loot). Only ever minted server-side. */
   item?: ItemInstance;
 };
@@ -313,7 +315,7 @@ export function computeStats(playerData: any): EffectiveStats {
     };
   }
 
-  const mod = sumEquippedStats(playerData.inventory, playerData.equipped);
+  const mod = sumEquippedStats(playerData.inventory, playerData.equipped, playerData.petDrone);
   const sk = (id: SkillId) => (playerData.skills?.[id] ?? 0) as number;
 
   // Debug: log when skills are non-empty
@@ -410,14 +412,22 @@ export function computeStats(playerData: any): EffectiveStats {
   };
 }
 
-function sumEquippedStats(inventory: any[], equipped: any): Record<string, number> {
+function sumEquippedStats(inventory: any[], equipped: any, petDrone?: any): Record<string, number> {
   const result: Record<string, number> = {};
   if (!inventory || !equipped) return result;
+
+  // The pet drone's module + aux (extra) slots buff the ship — its weapon slot
+  // instead drives the drone's own fire and is NOT summed here. Must match the
+  // client's effectiveStats() so authoritative combat and prediction agree.
+  const petIds: string[] = petDrone?.equipped
+    ? [petDrone.equipped.module, petDrone.equipped.extra].filter(Boolean)
+    : [];
 
   const allSlotIds: string[] = [
     ...(equipped.weapon ?? []),
     ...(equipped.generator ?? []),
     ...(equipped.module ?? []),
+    ...petIds,
   ].filter(Boolean);
 
   for (const instanceId of allSlotIds) {
@@ -1134,6 +1144,11 @@ export class GameEngine {
                 resource: dropResource,
                 bonusResource,
               };
+              // Bebcell — boss-only pet-drone upgrade material. Small per-kill
+              // amount (scales with zone tier) so upgrades take many boss kills.
+              if (e.isBoss) {
+                loot.bebcell = Math.max(1, Math.round((2 + Math.floor(Math.random() * 3)) * (1 + (zoneDef.enemyTier - 1) * 0.5)));
+              }
               const rolledItem = rollEnemyEquipDrop(e, zoneId, proj.fromPlayerId, killerLootBonus);
               if (rolledItem) loot.item = rolledItem;
               events.push({ type: "enemy:die", zone: zoneId, enemyId: e.id, killerId: proj.fromPlayerId, loot, pos: { ...e.pos } });
@@ -1567,6 +1582,10 @@ export class GameEngine {
         honor: e.honor,
         resource: dropResource2,
       };
+      // Bebcell — boss-only pet-drone upgrade material (scales with zone tier).
+      if (e.isBoss) {
+        loot.bebcell = Math.max(1, Math.round((2 + Math.floor(Math.random() * 3)) * tierMult));
+      }
       const rolledItem = rollEnemyEquipDrop(e, zone, playerId, stats.lootBonus);
       if (rolledItem) loot.item = rolledItem;
       events.push({

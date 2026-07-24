@@ -2156,8 +2156,10 @@ const droneSprites = new Map<number, PIXI.Graphics>();
 
 function syncDrones(): void {
   const activeIds = new Set<number>();
-  for (let i = 0; i < state.player.drones.length; i++) {
-    const d = state.player.drones[i];
+  // Legacy renderer (not wired in App.tsx). Pet-drone model has no drone array.
+  const _legacyDrones: any[] = [];
+  for (let i = 0; i < _legacyDrones.length; i++) {
+    const d = _legacyDrones[i];
     activeIds.add(i);
 
     let g = droneSprites.get(i);

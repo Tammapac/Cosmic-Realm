@@ -255,6 +255,38 @@ export type Drone = {
   fireCd: number;
 };
 
+// ── PET DRONE ───────────────────────────────────────────────────────────────
+// Every pilot has ONE companion drone. It levels 0→3 by spending Bebcell (a
+// boss-only upgrade material); each level unlocks one equipment slot. Slots hold
+// the SAME laser/module items as the ship (bound to the drone while equipped).
+//   Lvl 0: no slots        Lvl 1: 1 slot (weapon)
+//   Lvl 2: 2 slots (+ module)   Lvl 3: 3 slots (+ free)
+export type PetDroneSlot = "weapon" | "module" | "extra";
+
+export type PetDrone = {
+  level: 0 | 1 | 2 | 3;
+  mode: DroneMode;
+  hp: number;
+  hpMax: number;
+  orbitPhase: number;
+  fireCd: number;
+  // instanceId of the equipped inventory item per slot, or null when empty.
+  equipped: { weapon: string | null; module: string | null; extra: string | null };
+};
+
+/** Bebcell cost to reach each level (index = target level). Deliberately steep. */
+export const PET_DRONE_UPGRADE_COST: Record<1 | 2 | 3, number> = { 1: 50, 2: 150, 3: 400 };
+/** How many equipment slots are active at a given pet-drone level. */
+export function petDroneSlotCount(level: number): number {
+  return Math.max(0, Math.min(3, level));
+}
+/** Which slot each level unlocks, in order. */
+export const PET_DRONE_SLOT_ORDER: PetDroneSlot[] = ["weapon", "module", "extra"];
+export function newPetDrone(): PetDrone {
+  return { level: 0, mode: "orbit", hp: 400, hpMax: 400, orbitPhase: 0, fireCd: 0,
+    equipped: { weapon: null, module: null, extra: null } };
+}
+
 export type HonorRank = {
   index: number;
   name: string;
@@ -314,7 +346,8 @@ export type Player = {
   completedQuests: string[];
   clan: string | null;
   party: string[];
-  drones: Drone[];
+  petDrone: PetDrone;   // single upgradable companion drone (replaces the old drone array)
+  bebcell: number;      // boss-only material for upgrading the pet drone
   // Phase 2 additions
   faction: FactionId | null;
   skills: Partial<Record<SkillId, number>>;  // skillId → ranks

@@ -9,6 +9,12 @@ import {
   ConsumableId,
   DAILY_MISSION_POOL,
   Drone,
+  PetDrone,
+  PetDroneSlot,
+  newPetDrone,
+  petDroneSlotCount,
+  PET_DRONE_UPGRADE_COST,
+  PET_DRONE_SLOT_ORDER,
   DAILY_DUNGEON_BONUS,
   DUNGEONS,
   DungeonId,
@@ -118,7 +124,8 @@ export type GameState = {
   attackCooldownDuration: number; // total duration of last attack cooldown (for progress bar)
   hotbarCooldowns: number[];     // 8 slots, remaining cooldown seconds
   pendingRocketSalvo: number;    // rockets left to fire this tick
-  pendingDronePod: boolean;      // spawn a temp combat drone
+  pendingDronePod: boolean;      // trigger pet-drone overcharge
+  dronePodBoostUntil?: number;   // performance.now() until which the pet drone fires 2×
   // Player death explosions to play, pushed by onPlayerDieFromServer and
   // drained by the Pixi renderer each frame (the death event carries the
   // exact death point; the victim respawns server-side so a hull diff can't
@@ -236,7 +243,8 @@ function makeInitialPlayer(): Player {
     completedQuests: [],
     clan: null,
     party: [],
-    drones: [],
+    petDrone: newPetDrone(),
+    bebcell: 0,
     faction: null,
     skills: {},
     skillPoints: 0,
@@ -370,8 +378,24 @@ if (Array.isArray(initialPlayer.cargo)) {
     (c) => c && typeof (c as CargoItem).resourceId === "string" && RESOURCES[(c as CargoItem).resourceId]
   );
 }
-if (!Array.isArray(initialPlayer.drones)) initialPlayer.drones = [];
-for (const d of initialPlayer.drones) if (!d.mode) d.mode = "orbit";
+// Pet-drone migration: old multi-drone arrays are dropped; everyone starts with
+// a level-0 pet drone (no slots) and 0 Bebcell. Repair any partial pet object.
+delete (initialPlayer as any).drones;
+if (!initialPlayer.petDrone || typeof initialPlayer.petDrone !== "object") {
+  initialPlayer.petDrone = newPetDrone();
+} else {
+  const pd = initialPlayer.petDrone as any;
+  if (typeof pd.level !== "number") pd.level = 0;
+  pd.level = Math.max(0, Math.min(3, pd.level | 0)) as 0 | 1 | 2 | 3;
+  if (!pd.mode) pd.mode = "orbit";
+  if (typeof pd.hpMax !== "number") pd.hpMax = 400;
+  if (typeof pd.hp !== "number") pd.hp = pd.hpMax;
+  if (typeof pd.orbitPhase !== "number") pd.orbitPhase = 0;
+  if (typeof pd.fireCd !== "number") pd.fireCd = 0;
+  if (!pd.equipped || typeof pd.equipped !== "object") pd.equipped = { weapon: null, module: null, extra: null };
+  for (const k of ["weapon", "module", "extra"]) if (!(k in pd.equipped)) pd.equipped[k] = null;
+}
+if (typeof initialPlayer.bebcell !== "number") initialPlayer.bebcell = 0;
 if (!initialPlayer.ammo || typeof initialPlayer.ammo !== "object" || Array.isArray(initialPlayer.ammo)) {
   initialPlayer.ammo = { x1: 0, x2: 0, x3: 0, x4: 0 };
 } else {
@@ -659,7 +683,8 @@ function _buildSavePayload(): Partial<Player> {
     activeQuests: p.activeQuests,
     completedQuests: p.completedQuests,
     clan: p.clan,
-    drones: p.drones,
+    petDrone: p.petDrone,
+    bebcell: p.bebcell,
     faction: p.faction,
     skills: p.skills,
     skillPoints: p.skillPoints,
@@ -726,7 +751,8 @@ export function save(): void {
       inventory: p.inventory,
       equipped: p.equipped,
       skills: p.skills,
-      drones: p.drones,
+      petDrone: p.petDrone,
+      bebcell: p.bebcell,
       faction: p.faction ?? undefined,
     });
     // The heavy JSON.stringify + localStorage.setItem + fetch happens during
@@ -792,7 +818,8 @@ export function loadServerPlayer(data: any): void {
   }
   if (data.equipped) p.equipped = data.equipped;
   if (data.cargo) p.cargo = data.cargo;
-  if (data.drones) p.drones = data.drones;
+  if (data.petDrone) p.petDrone = data.petDrone;
+  if (typeof data.bebcell === "number") p.bebcell = data.bebcell;
   if (data.consumables) p.consumables = data.consumables;
   if (data.hotbar) p.hotbar = data.hotbar;
   if (data.ammo && typeof data.ammo === "object" && typeof data.ammo.x1 === "number") p.ammo = data.ammo;
@@ -1083,18 +1110,75 @@ export function collectCargoBox(boxId: string): void {
   save(); bump();
 }
 
-// ── DRONES ────────────────────────────────────────────────────────────────
-export function addDrone(d: Drone): void {
-  state.player.drones.push(d);
+// ── PET DRONE ───────────────────────────────────────────────────────────────
+/** Number of active equipment slots on the pet drone (0-3, by level). */
+export function petDroneSlots(): number {
+  return petDroneSlotCount(state.player.petDrone.level);
 }
 
-export function removeDrone(droneId: string): void {
-  state.player.drones = state.player.drones.filter((d) => d.id !== droneId);
+/** Bebcell needed to reach the next level, or null when already maxed. */
+export function petDroneNextCost(): number | null {
+  const lvl = state.player.petDrone.level;
+  if (lvl >= 3) return null;
+  return PET_DRONE_UPGRADE_COST[(lvl + 1) as 1 | 2 | 3];
 }
 
-export function maxDroneSlots(): number {
-  const cls = SHIP_CLASSES[state.player.shipClass];
-  return cls.droneSlots + (state.player.skills["ut-droneops"] ?? 0);
+/** Spend Bebcell to raise the pet drone one level (unlocking one slot). */
+export function upgradePetDrone(): void {
+  const pet = state.player.petDrone;
+  if (pet.level >= 3) { pushNotification("Drone already at max level", "bad"); return; }
+  const cost = PET_DRONE_UPGRADE_COST[(pet.level + 1) as 1 | 2 | 3];
+  if (state.player.bebcell < cost) {
+    pushNotification(`Need ${cost} Bebcell (have ${state.player.bebcell})`, "bad");
+    return;
+  }
+  state.player.bebcell -= cost;
+  pet.level = (pet.level + 1) as 0 | 1 | 2 | 3;
+  pet.hpMax = 400 + pet.level * 200;
+  pet.hp = pet.hpMax;
+  pushNotification(`Drone upgraded to Lv ${pet.level} · +1 slot`, "good");
+  save(); bump();
+}
+
+/** True if `slot` is unlocked at the pet's current level. */
+export function petSlotUnlocked(slot: PetDroneSlot): boolean {
+  const idx = PET_DRONE_SLOT_ORDER.indexOf(slot);
+  return idx >= 0 && idx < petDroneSlots();
+}
+
+/** Equip an inventory item (by instanceId) into a pet slot. Bound while equipped. */
+export function equipPetSlot(slot: PetDroneSlot, instanceId: string): void {
+  if (!petSlotUnlocked(slot)) { pushNotification("Slot locked — upgrade the drone", "bad"); return; }
+  const item = state.player.inventory.find((m) => m.instanceId === instanceId);
+  const def = item ? MODULE_DEFS[item.defId] : null;
+  if (!item || !def) return;
+  // slot type gate: weapon slot takes weapons; module slot takes generators/modules;
+  // extra slot takes anything.
+  if (slot === "weapon" && def.slot !== "weapon") { pushNotification("That slot only takes weapons", "bad"); return; }
+  if (slot === "module" && def.slot === "weapon") { pushNotification("That slot only takes gear/modules", "bad"); return; }
+  // an item bound to the ship can't also go on the drone
+  const onShip =
+    state.player.equipped.weapon.includes(instanceId) ||
+    state.player.equipped.generator.includes(instanceId) ||
+    state.player.equipped.module.includes(instanceId);
+  if (onShip) { pushNotification("Unequip it from the ship first", "bad"); return; }
+  // free it from any other pet slot, then bind here
+  const eq = state.player.petDrone.equipped;
+  for (const k of PET_DRONE_SLOT_ORDER) if (eq[k] === instanceId) eq[k] = null;
+  eq[slot] = instanceId;
+  pushNotification(`${def.name} → drone ${slot}`, "good");
+  save(); bump();
+}
+
+export function unequipPetSlot(slot: PetDroneSlot): void {
+  state.player.petDrone.equipped[slot] = null;
+  save(); bump();
+}
+
+/** All instanceIds currently bound to the pet drone (for "in use" checks). */
+export function petBoundIds(): Set<string> {
+  const eq = state.player.petDrone.equipped;
+  return new Set([eq.weapon, eq.module, eq.extra].filter(Boolean) as string[]);
 }
 
 // ── AMMO ──────────────────────────────────────────────────────────────────

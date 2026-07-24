@@ -70,6 +70,8 @@ export function setupSocket(io: Server) {
       equipped: dbPlayer.equipped,
       skills: dbPlayer.skills,
       drones: dbPlayer.drones,
+      petDrone: dbPlayer.petDrone,
+      bebcell: dbPlayer.bebcell,
       faction: dbPlayer.faction,
       level: dbPlayer.level,
     };
@@ -342,7 +344,7 @@ export function setupSocket(io: Server) {
       hull: number; shield: number; level: number;
       shipClass: string; honor: number;
       inventory?: any[]; equipped?: any; skills?: any;
-      drones?: any[]; faction?: string;
+      drones?: any[]; faction?: string; petDrone?: any; bebcell?: number;
     }) => {
       const p = getPlayer(user.playerId);
       if (!p) return;
@@ -367,6 +369,8 @@ export function setupSocket(io: Server) {
         if (data.equipped) cached.equipped = data.equipped;
         if (data.skills) cached.skills = data.skills;
         if (data.drones) cached.drones = data.drones;
+        if (data.petDrone) { cached.petDrone = data.petDrone; engine.refreshPlayerStats(user.playerId); }
+        if (typeof data.bebcell === "number") cached.bebcell = data.bebcell;
         if (data.faction) cached.faction = data.faction;
         if (data.level) cached.level = data.level;
       }
@@ -448,6 +452,8 @@ export function setupSocket(io: Server) {
         if (u.equipped !== undefined) setObj.equipped = u.equipped;
         if (u.skills !== undefined) setObj.skills = u.skills;
         if (u.drones !== undefined) setObj.drones = u.drones;
+        if (u.petDrone !== undefined) setObj.petDrone = u.petDrone;
+        if (u.bebcell !== undefined) setObj.bebcell = u.bebcell;
         if (u.consumables !== undefined) setObj.consumables = u.consumables;
         if (Object.keys(setObj).length === 0) { cb?.({ error: 'No fields' }); return; }
         await db.update(schema.players).set(setObj)

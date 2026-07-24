@@ -3026,8 +3026,20 @@ export function render(ctx: CanvasRenderingContext2D, w: number, h: number): voi
     }
   }
 
-  // Player drones
-  for (const d of state.player.drones) drawDrone(ctx, d);
+  // Player pet drone (single companion)
+  {
+    const pet = state.player.petDrone as any;
+    if (pet && pet.level > 0 && pet.anchorX != null) {
+      ctx.save();
+      ctx.translate(pet.anchorX, pet.anchorY);
+      ctx.shadowColor = "#4ee2ff";
+      ctx.shadowBlur = 8;
+      px(ctx, -1, -4, 2, 2, "#4ee2ff");
+      px(ctx, -3, -2, 6, 2, "#4ee2ff");
+      px(ctx, -4, 0, 8, 2, "#9ad8ff");
+      ctx.restore();
+    }
+  }
 
   // Mining laser beam (player → target asteroid) — animated energy beam
   if (state.miningTargetId) {

@@ -1108,6 +1108,93 @@ select.ginput {
   white-space: nowrap;
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   COMPANION (PET) DRONE — hangar-style stage with slots around the drone
+   and an upgrade panel. Same tokens as the rest of the hangar.
+   ══════════════════════════════════════════════════════════════════════ */
+.pet-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 14px;
+  min-height: 0;
+}
+.pet-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--hud-border-dim);
+  background:
+    radial-gradient(360px 300px at 50% 46%, rgba(30, 64, 116, 0.3), transparent 64%),
+    radial-gradient(220px 180px at 50% 108%, rgba(184, 102, 255, 0.1), transparent 60%),
+    var(--hud-bg-void);
+  overflow: hidden;
+}
+.pet-stage::before {
+  content: "";
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    repeating-linear-gradient(90deg, rgba(78, 226, 255, 0.035) 0 1px, transparent 1px 54px),
+    repeating-linear-gradient(0deg, rgba(78, 226, 255, 0.03) 0 1px, transparent 1px 54px);
+  -webkit-mask-image: radial-gradient(closest-side, #000 42%, transparent 90%);
+          mask-image: radial-gradient(closest-side, #000 42%, transparent 90%);
+}
+.pet-stage__ring {
+  position: absolute; width: 250px; height: 250px; border-radius: 50%;
+  border: 1px dashed rgba(78, 226, 255, 0.22);
+  box-shadow: inset 0 0 30px rgba(78, 226, 255, 0.08);
+}
+.pet-stage__drone {
+  position: relative; z-index: 2; display: grid; place-items: center;
+  width: 120px; height: 120px;
+}
+.pet-stage__glyph {
+  font-size: 72px; line-height: 1; color: var(--hud-cyan);
+  text-shadow: 0 0 28px rgba(78, 226, 255, 0.5);
+  animation: petbob 3.2s ease-in-out infinite;
+}
+@keyframes petbob { 0%,100% { transform: translateY(-4px); } 50% { transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) { .pet-stage__glyph { animation: none; } }
+.pet-stage__lvl {
+  position: absolute; bottom: -2px; font-size: 10px; letter-spacing: 0.16em;
+  color: var(--hud-text-dim); text-transform: uppercase;
+}
+/* slot buttons positioned around the drone */
+.pet-slot {
+  position: absolute; z-index: 3;
+  width: 64px; height: 64px;
+  display: grid; place-items: center; gap: 0;
+  background: var(--mat-fill);
+  border: 1px solid var(--hud-border);
+  box-shadow: var(--mat-bevel);
+  cursor: pointer; color: var(--hud-text-dim);
+  transition: border-color var(--hud-t-fast), box-shadow var(--hud-t-fast), transform var(--hud-t-fast);
+}
+.pet-slot:hover:not(.pet-slot--locked) { transform: translateY(-1px); }
+.pet-slot--0 { top: 14%; left: 50%; transform: translateX(-50%); }       /* weapon — top */
+.pet-slot--0:hover:not(.pet-slot--locked) { transform: translateX(-50%) translateY(-1px); }
+.pet-slot--1 { bottom: 20%; left: 26%; }                                  /* module — lower-left */
+.pet-slot--2 { bottom: 20%; right: 26%; }                                 /* aux — lower-right */
+.pet-slot--filled { border-color: var(--slot-color, var(--hud-border-bright)); box-shadow: var(--mat-bevel), 0 0 10px color-mix(in srgb, var(--slot-color, #4ee2ff) 40%, transparent); color: var(--hud-text-bright); }
+.pet-slot--empty { border-color: var(--slot-color, var(--hud-border)); border-style: dashed; }
+.pet-slot--empty:hover { box-shadow: var(--mat-bevel), 0 0 8px color-mix(in srgb, var(--slot-color, #4ee2ff) 30%, transparent); }
+.pet-slot--locked { border-style: dashed; border-color: var(--hud-border-dim); background: rgba(6,10,20,0.5); box-shadow: var(--mat-ao); cursor: not-allowed; opacity: 0.7; }
+.pet-slot__plus { font-size: 26px; line-height: 1; }
+.pet-slot__lock { font-size: 20px; opacity: 0.6; }
+.pet-slot__tier { position: absolute; bottom: 2px; right: 4px; font-size: 9px; font-weight: 700; }
+.pet-slot__label {
+  position: absolute; top: calc(100% + 3px); left: 50%; transform: translateX(-50%);
+  font-size: 8px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--hud-text-mute);
+  white-space: nowrap;
+}
+/* right panel */
+.pet-panel { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
+.pet-cost {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12px; padding: 3px 0;
+}
+.pet-cost .k { color: var(--hud-text-dim); text-transform: uppercase; font-size: 10px; letter-spacing: 0.12em; }
+.pet-cost .v { font-variant-numeric: tabular-nums; }
+
 .stat-box {
   background: rgba(8, 14, 26, 0.7);
   border: 1px solid rgba(90, 130, 180, 0.28);

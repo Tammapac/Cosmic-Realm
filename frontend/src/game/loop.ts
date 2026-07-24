@@ -82,7 +82,12 @@ function sumEquippedStats(): ModuleStats {
   acc.critChance += weaponCrit;
   acc.aoeRadius = Math.max(acc.aoeRadius, weaponAoe);
 
-  for (const id of [...p.equipped.generator, ...p.equipped.module]) {
+  // Pet drone module + aux (extra) slots buff the ship (its weapon slot instead
+  // drives the drone's own fire). Mirrors the server's sumEquippedStats.
+  const petEq = p.petDrone?.equipped;
+  const petStatIds = petEq ? [petEq.module, petEq.extra].filter(Boolean) as string[] : [];
+
+  for (const id of [...p.equipped.generator, ...p.equipped.module, ...petStatIds]) {
     if (!id) continue;
     const item = p.inventory.find((m) => m.instanceId === id);
     const def = item ? MODULE_DEFS[item.defId] : null;
@@ -105,7 +110,7 @@ function sumEquippedStats(): ModuleStats {
   // Rolled affix + legendary bonuses — same resolver and fold rules as the
   // server (fireRate multiplicative, everything else additive) so combat
   // numbers stay in sync.
-  for (const id of [...p.equipped.weapon, ...p.equipped.generator, ...p.equipped.module]) {
+  for (const id of [...p.equipped.weapon, ...p.equipped.generator, ...p.equipped.module, ...petStatIds]) {
     if (!id) continue;
     const item = p.inventory.find((m) => m.instanceId === id);
     if (!item) continue;
@@ -327,13 +332,8 @@ export function effectiveStats(): {
   // Shield regen skill
   shieldRegen += sk("def-regen") * 2;
 
-  // Drone bonuses
-  for (const d of p.drones) {
-    const def = DRONE_DEFS[d.kind];
-    damage += def.damageBonus;
-    hullMax += def.hullBonus;
-    shieldMax += def.shieldBonus;
-  }
+  // (Pet-drone module/aux bonuses are summed in sumModuleStats above, matching
+  // the server's sumEquippedStats — not re-added here.)
 
   // Faction bonuses
   const faction = p.faction ? FACTIONS[p.faction as keyof typeof FACTIONS] : undefined;
@@ -726,6 +726,53 @@ export function hasRocketWeapon(): boolean {
   return false;
 }
 
+// ── PET DRONE ─────────────────────────────────────────────────────────────
+// A single companion drone flies just behind the ship. If its weapon slot holds
+// a laser, it fires that weapon at the nearest enemy while the player is firing.
+// Anchor is stored on the pet object so the renderer can draw it.
+function updatePetDrone(p: import("./types").Player, dt: number): void {
+  const pet = p.petDrone;
+  if (!pet || pet.level <= 0) return;
+  const anyPet = pet as any;
+  anyPet.orbitPhase = (pet.orbitPhase ?? 0) + dt * 1.5;
+
+  // formation anchor: one ship-length behind, gentle bob
+  const behind = p.angle + Math.PI;
+  const bob = Math.sin(anyPet.orbitPhase) * 8;
+  const perp = behind + Math.PI / 2;
+  const targetX = p.pos.x + Math.cos(behind) * 62 + Math.cos(perp) * bob;
+  const targetY = p.pos.y + Math.sin(behind) * 62 + Math.sin(perp) * bob;
+  const lerp = Math.min(1, dt * 5);
+  anyPet.anchorX = anyPet.anchorX != null ? anyPet.anchorX + (targetX - anyPet.anchorX) * lerp : targetX;
+  anyPet.anchorY = anyPet.anchorY != null ? anyPet.anchorY + (targetY - anyPet.anchorY) * lerp : targetY;
+
+  // firing: needs a weapon equipped in the pet's weapon slot
+  const wid = pet.equipped.weapon;
+  if (!wid) return;
+  const wItem = p.inventory.find((m) => m.instanceId === wid);
+  const wdef = wItem ? MODULE_DEFS[wItem.defId] : null;
+  if (!wdef || wdef.slot !== "weapon") return;
+
+  // nearest enemy within range
+  let nearest: Enemy | null = null;
+  let nearestD = pet.mode === "defensive" ? 240 : 420;
+  for (const e of state.enemies) {
+    const d = distance(anyPet.anchorX, anyPet.anchorY, e.pos.x, e.pos.y);
+    const adj = d * (e.isBoss ? 0.7 : 1);
+    if (adj < nearestD) { nearest = e; nearestD = adj; }
+  }
+
+  pet.fireCd -= dt;
+  const overcharged = (state.dronePodBoostUntil ?? 0) > performance.now();
+  const rof = (wdef.stats.fireRate ?? 1) * (overcharged ? 2 : 1);
+  if (pet.fireCd <= 0 && nearest && (state.isLaserFiring || state.isRocketFiring)) {
+    const dang = Math.atan2(nearest.pos.y - anyPet.anchorY, nearest.pos.x - anyPet.anchorX);
+    const dmg = Math.round((wdef.stats.damage ?? 8) * 0.6); // drone fires at 60% of the weapon's ship damage
+    fireProjectile("drone", anyPet.anchorX, anyPet.anchorY, dang, dmg, wdef.color ?? "#4ee2ff", 2, { targetId: nearest.id, weaponKind: wdef.weaponKind });
+    pet.fireCd = 1 / Math.max(0.3, rof);
+  }
+}
+
 // ── XP / LEVEL ────────────────────────────────────────────────────────────
 function tryLevelUp(): void {
   const p = state.player;
@@ -811,8 +858,7 @@ export function applyKill(e: Enemy, killerCrit: boolean): void {
   // Loot box only contains resources (no exp/credits/honor)
   // Skip loot drops in dungeon - rewards come from completeDungeon
   if (state.dungeon) { save(); bump(); return; }
-  const hasSalvage = state.player.drones.some((d) => d.kind === "salvage");
-  const lootQty = e.loot ? e.loot.qty + (hasSalvage ? 1 : 0) + stats.lootBonus : 0;
+  const lootQty = e.loot ? e.loot.qty + stats.lootBonus : 0;
 
   if (lootQty > 0) {
     const box: CargoBox = {
@@ -1027,8 +1073,8 @@ function tickWorld(dt: number): void {
       p2.shield = stats2.shieldMax;
       const lostCr = Math.floor(p2.credits * 0.1);
       p2.credits = Math.max(0, p2.credits - lostCr);
-      for (const dr of p2.drones) { dr.hp = Math.max(1, Math.round(dr.hp * 0.99)); }
-      p2.drones = p2.drones.slice(0, SHIP_CLASSES[p2.shipClass].droneSlots);
+      // pet drone survives death; just refill its hp
+      if (p2.petDrone) p2.petDrone.hp = p2.petDrone.hpMax;
       // Respawn at main station in current zone
       const homeStation = STATIONS.find((st) => st.zone === p2.zone && st.kind === "hub")
         || STATIONS.find((st) => st.zone === p2.zone)
@@ -1083,23 +1129,11 @@ function tickWorld(dt: number): void {
     state.pendingRocketSalvo--;
   }
 
-  // ── Consumable: Drone Pod — spawn temp drone
+  // ── Consumable: Drone Pod — overcharge the pet drone for 30s (2× fire).
   if (state.pendingDronePod) {
     state.pendingDronePod = false;
-    const tempDrone: import("./types").Drone = {
-      id: `temp-drone-${Date.now()}`,
-      kind: "combat-i",
-      mode: "forward",
-      hp: 200, hpMax: 200,
-      orbitPhase: Math.random() * Math.PI * 2,
-      fireCd: 0,
-    };
-    p.drones.push(tempDrone);
-    // Mark for removal after 30s using a simple check via TTL on id
-    setTimeout(() => {
-      const idx = p.drones.findIndex(d => d.id === tempDrone.id);
-      if (idx !== -1) { p.drones.splice(idx, 1); bump(); }
-    }, 30000);
+    state.dronePodBoostUntil = performance.now() + 30000;
+    pushFloater({ text: "DRONE OVERCHARGE", color: "#4ee2ff", x: p.pos.x, y: p.pos.y - 40, scale: 1.2, bold: true, ttl: 2.0, trackPlayer: true });
   }
 
   // ── Player movement
@@ -2062,52 +2096,8 @@ function tickWorld(dt: number): void {
     }
   }
 
-  // ── Update drones (formation behind player)
-  const droneCount = p.drones.length;
-  let nearest: Enemy | null = null;
-  let nearestD = 400;
-  for (const e of state.enemies) {
-    const d = distance(p.pos.x, p.pos.y, e.pos.x, e.pos.y);
-    const adj = d * (e.isBoss ? 0.6 : 1);
-    if (adj < nearestD) { nearest = e; nearestD = adj; }
-  }
-  for (let i = 0; i < droneCount; i++) {
-    const d = p.drones[i];
-    const def = DRONE_DEFS[d.kind];
-    d.orbitPhase += dt * 1.5;
-
-    // Formation: line up behind the player ship
-    const behindAngle = p.angle + Math.PI;
-    const cols = Math.min(4, droneCount);
-    const row = Math.floor(i / cols);
-    const col = i % cols;
-    const spacing = 55;
-    const rowOffset = (row + 1) * spacing;
-    const colOffset = (col - (Math.min(cols, droneCount - row * cols) - 1) / 2) * spacing;
-    const perpAngle = behindAngle + Math.PI / 2;
-    const targetX = p.pos.x + Math.cos(behindAngle) * rowOffset + Math.cos(perpAngle) * colOffset;
-    const targetY = p.pos.y + Math.sin(behindAngle) * rowOffset + Math.sin(perpAngle) * colOffset;
-    const prev = (d as Drone & { anchor?: { x: number; y: number } }).anchor;
-    const lerpFactor = Math.min(1, dt * 5);
-    const anchorX = prev ? prev.x + (targetX - prev.x) * lerpFactor : targetX;
-    const anchorY = prev ? prev.y + (targetY - prev.y) * lerpFactor : targetY;
-    (d as Drone & { anchor?: { x: number; y: number } }).anchor = {
-      x: anchorX,
-      y: anchorY,
-    };
-    if (def.fireRate > 0) {
-      d.fireCd -= dt;
-      if (d.fireCd <= 0 && nearest && (state.isLaserFiring || state.isRocketFiring)) {
-        const dpos = (d as Drone & { anchor: { x: number; y: number } }).anchor;
-        const fireRange = d.mode === "defensive" ? 200 : 380;
-        if (distance(dpos.x, dpos.y, nearest.pos.x, nearest.pos.y) < fireRange) {
-          const dang = Math.atan2(nearest.pos.y - dpos.y, nearest.pos.x - dpos.x);
-          fireProjectile("drone", dpos.x, dpos.y, dang, def.damageBonus, def.color, 2, { targetId: nearest.id });
-          d.fireCd = 1 / def.fireRate;
-        }
-      }
-    }
-  }
+  // ── Update the pet drone (single companion, flies just behind the ship)
+  updatePetDrone(p, dt);
 
   // ── Update remote-player drones (same formation math as local drones)
   updateRemoteDroneFormations(dt);
@@ -2561,18 +2551,12 @@ function tickWorld(dt: number): void {
           return false;
         }
       }
-      for (const dr of p.drones) {
-        const anchor = (dr as Drone & { anchor?: { x: number; y: number } }).anchor;
-        if (!anchor) continue;
-        if (distance(pr.pos.x, pr.pos.y, anchor.x, anchor.y) < 10) {
-          const dead = damageDrone(dr, pr.damage);
-          emitSpark(pr.pos.x, pr.pos.y, DRONE_DEFS[dr.kind].color, 5, 80, 2);
-          if (dead) {
-            p.drones = p.drones.filter((x) => x.id !== dr.id);
-            pushNotification(`Drone destroyed: ${DRONE_DEFS[dr.kind].name}`, "bad");
-            emitDeath(anchor.x, anchor.y, DRONE_DEFS[dr.kind].color);
-            sfx.explosion();
-          }
+      // pet drone: absorbs a hit visually (it doesn't die from damage)
+      {
+        const pet = p.petDrone as any;
+        if (pet && pet.level > 0 && pet.anchorX != null &&
+            distance(pr.pos.x, pr.pos.y, pet.anchorX, pet.anchorY) < 12) {
+          emitSpark(pr.pos.x, pr.pos.y, "#4ee2ff", 5, 80, 2);
           return false;
         }
       }
@@ -2937,6 +2921,11 @@ export function onEnemyDie(data: EnemyDieEvent): void {
   pushFloater({ text: `+${loot.exp} XP`, color: "#ff5cf0", x: pos.x - 15, y: pos.y - 30, scale: 0.9 });
   pushFloater({ text: `+${loot.credits} CR`, color: "#ffd24a", x: pos.x + 15, y: pos.y - 16, scale: 0.9 });
   if (loot.honor > 0) pushFloater({ text: `+${loot.honor} H`, color: "#c8a0ff", x: pos.x, y: pos.y - 2, scale: 0.8 });
+  // Bebcell — boss-only pet-drone upgrade material, granted instantly like a currency.
+  if ((loot as any).bebcell && (loot as any).bebcell > 0) {
+    p.bebcell = (p.bebcell ?? 0) + (loot as any).bebcell;
+    pushFloater({ text: `+${(loot as any).bebcell} BEBCELL`, color: "#b866ff", x: pos.x, y: pos.y - 46, scale: 1.1, bold: true, ttl: 2.6 });
+  }
 
   // Drop loot boxes (multiple colored boxes per kill)
   const bossBox = wasBoss;

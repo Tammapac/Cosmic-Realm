@@ -4150,13 +4150,11 @@ function syncDebugMuzzleMarkers(): void {
 function syncDrones(): void {
   const activeIds = new Set<string>();
 
-  // Local player drones — key: "player:<index>"
-  if (state.player.drones) {
-    for (let i = 0; i < state.player.drones.length; i++) {
-      const d = state.player.drones[i];
-      const anchor = (d as any).anchor as { x: number; y: number } | undefined;
-      if (!anchor) continue;
-      const key = `player:${i}`;
+  // Local player pet drone — single companion, key: "player:pet"
+  {
+    const pet = state.player.petDrone as any;
+    if (pet && pet.level > 0 && pet.anchorX != null) {
+      const key = "player:pet";
       activeIds.add(key);
       let g = droneSprites.get(key);
       if (!g) {
@@ -4165,8 +4163,8 @@ function syncDrones(): void {
         droneSprites.set(key, g);
       }
       g.visible = true;
-      g.position.set(anchor.x, anchor.y);
-      drawDroneSprite(g, (d as any).kind, i);
+      g.position.set(pet.anchorX, pet.anchorY);
+      drawDroneSprite(g, "pet", 0);
     }
   }
 

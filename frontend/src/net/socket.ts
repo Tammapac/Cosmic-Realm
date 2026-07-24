@@ -163,6 +163,7 @@ export type EnemyDieEvent = {
     credits: number; exp: number; honor: number;
     resource?: { resourceId: string; qty: number };
     bonusResource?: { resourceId: string; qty: number };
+    bebcell?: number;  // boss-only pet-drone upgrade material
     item?: import("../game/types").ModuleItem;
   };
   pos: { x: number; y: number };
@@ -546,6 +547,7 @@ export function sendChat(channel: string, text: string) {
 export function sendStatsUpdate(data: {
   hull?: number; shield?: number; level?: number; shipClass?: string; honor?: number;
   inventory?: any[]; equipped?: any; skills?: any; drones?: any[]; faction?: string;
+  petDrone?: any; bebcell?: number;
 }) {
   socket?.emit("stats:update", data);
 }
