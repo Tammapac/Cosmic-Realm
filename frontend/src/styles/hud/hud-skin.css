@@ -1005,6 +1005,109 @@ select.ginput {
   font-size: 12px;
   line-height: 1.6;
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   DRONE BAY (redesign phase 2) — deployed drones as bay slots, catalog as
+   cards. Same visual family as the loadout hardpoints + market cards.
+   ══════════════════════════════════════════════════════════════════════ */
+/* deployed-drone bay: one slot per row — full-width so names/stats read */
+.drone-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-content: start;
+}
+.drone-slot {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "top modes" "top scrap";
+  align-items: center;
+  gap: 4px 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--hud-border-dim);
+  background: linear-gradient(180deg, rgba(14, 24, 42, 0.7), rgba(9, 16, 30, 0.7));
+  box-shadow: var(--mat-ao);
+}
+.drone-slot__top { grid-area: top; display: flex; align-items: center; gap: 10px; min-width: 0; }
+.drone-slot__modes { grid-area: modes; width: 132px; }
+.drone-slot__scrap { grid-area: scrap; }
+.drone-slot__ico {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  font-size: 17px;
+}
+.drone-slot__nm { font-size: 12px; letter-spacing: 0.04em; line-height: 1.15; min-width: 0; }
+.drone-slot__stats { display: flex; gap: 6px; flex-wrap: wrap; font-size: 10px; margin-top: 2px; }
+.drone-slot__modes { display: flex; gap: 3px; }
+.drone-slot__modes .gbtn { flex: 1; padding: 3px 0; font-size: 9px; letter-spacing: 0.04em; }
+.drone-slot__scrap { width: 132px; padding: 3px 0 !important; font-size: 9px !important; letter-spacing: 0.04em; }
+.drone-slot--empty {
+  align-items: center;
+  justify-content: center;
+  min-height: 108px;
+  border-style: dashed;
+  border-color: var(--hud-border-dim);
+  background: rgba(6, 10, 20, 0.35);
+  color: var(--hud-text-mute);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  box-shadow: none;
+}
+.drone-slot--empty .plus { font-size: 22px; line-height: 1; opacity: 0.5; }
+
+/* catalog cards */
+.drone-cat {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+  align-content: start;
+}
+.drone-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--hud-border-dim);
+  background: linear-gradient(180deg, rgba(14, 24, 42, 0.72), rgba(9, 16, 30, 0.72));
+  box-shadow: var(--mat-ao);
+  transition: border-color var(--hud-t-fast), box-shadow var(--hud-t-fast);
+}
+.drone-card:hover {
+  border-color: rgba(78, 226, 255, 0.45);
+  box-shadow: var(--mat-ao), 0 0 10px rgba(78, 226, 255, 0.12);
+}
+.drone-card__thumb {
+  position: relative;
+  height: 74px;
+  display: grid;
+  place-items: center;
+  font-size: 32px;
+  border-bottom: 1px solid var(--hud-border-dim);
+  background: radial-gradient(120px 70px at 50% 44%, rgba(30, 64, 116, 0.35), transparent 66%), var(--hud-bg-void);
+}
+.drone-card__owned {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--hud-cyan);
+}
+.drone-card__body { display: flex; flex-direction: column; gap: 7px; padding: 9px 11px 11px; }
+.drone-card__nm { font-family: var(--font-display, var(--hud-font)); font-size: 12px; letter-spacing: 0.05em; }
+.drone-card__desc { font-size: 10px; line-height: 1.4; color: var(--hud-text-dim); min-height: 26px; }
+.drone-card__stats { display: flex; gap: 6px; flex-wrap: wrap; font-size: 10px; }
+.drone-card__buy { padding: 6px 0 !important; font-size: 11px !important; letter-spacing: 0.08em; }
+.drone-pill {
+  font-size: 10px;
+  padding: 1px 5px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
 .stat-box {
   background: rgba(8, 14, 26, 0.7);
   border: 1px solid rgba(90, 130, 180, 0.28);

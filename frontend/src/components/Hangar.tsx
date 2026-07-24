@@ -1591,95 +1591,97 @@ function DronesTab() {
     save(); bump();
   };
 
+  const emptySlots = Math.max(0, totalSlots - player.drones.length);
+
   return (
     <div className="p-4 grid grid-cols-2 gap-3" style={{ height: "100%", minHeight: 0 }}>
+      {/* LEFT — deployed drone bay as visual slots */}
       <div className="flex flex-col min-h-0">
         <div className="dob-hdr shrink-0" style={{ marginBottom: 8 }}>
           <span>✦ DRONE BAY</span>
-          <span style={{ color: "#8f96a6" }}>{player.drones.length}/{totalSlots} SLOTS</span>
+          <span style={{ color: player.drones.length >= totalSlots ? "#ff5c6c" : "var(--hud-cyan)" }}>{player.drones.length}/{totalSlots} SLOTS</span>
         </div>
-        <div className="space-y-2 overflow-y-auto min-h-0 flex-1 pr-1">
-          {player.drones.length === 0 && (
-            <div className="text-mute italic text-sm">No drones deployed.</div>
-          )}
+        <div className="drone-slots overflow-y-auto min-h-0 flex-1 pr-1">
           {player.drones.map((d) => {
             const def = DRONE_DEFS[d.kind];
             return (
-              <div key={d.id} className="panel-inset p-3 flex items-center gap-3">
-                <div
-                  className="flex items-center justify-center text-xl shrink-0"
-                  style={{ width: 44, height: 44, background: `${def.color}22`, border: `1px solid ${def.color}`, color: def.color }}
-                >
-                  ✦
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-bold tracking-widest truncate" style={{ color: def.color, fontSize: 13 }}>{def.name}</div>
-                  <div className="text-dim text-[12px] flex gap-2.5 flex-wrap">
-                    {def.damageBonus > 0 && <span style={{ color: "#ff5c6c" }}>+{def.damageBonus} dmg</span>}
-                    {def.shieldBonus > 0 && <span style={{ color: "#4ee2ff" }}>+{def.shieldBonus} shd</span>}
-                    {def.hullBonus > 0 && <span style={{ color: "#5cff8a" }}>+{def.hullBonus} hp</span>}
+              <div key={d.id} className="drone-slot" style={{ borderColor: `${def.color}66` }}>
+                <div className="drone-slot__top">
+                  <div className="drone-slot__ico" style={{ background: `${def.color}22`, border: `1px solid ${def.color}`, color: def.color }}>✦</div>
+                  <div className="min-w-0">
+                    <div className="drone-slot__nm truncate" style={{ color: def.color }}>{def.name.toUpperCase()}</div>
+                    <div className="drone-slot__stats">
+                      {def.damageBonus > 0 && <span style={{ color: "#ff5c6c" }}>+{def.damageBonus} DMG</span>}
+                      {def.shieldBonus > 0 && <span style={{ color: "#4ee2ff" }}>+{def.shieldBonus} SHD</span>}
+                      {def.hullBonus > 0 && <span style={{ color: "#5cff8a" }}>+{def.hullBonus} HUL</span>}
+                    </div>
                   </div>
                 </div>
-                <div className="flex flex-col gap-1.5 items-stretch shrink-0" style={{ width: 138 }}>
-                  <div className="flex gap-1">
-                    {(["orbit", "forward", "defensive"] as DroneMode[]).map((m) => (
-                      <button
-                        key={m}
-                        className={`gbtn ${d.mode === m ? "gbtn-gold" : ""}`}
-                        style={{ fontSize: 10, padding: "3px 0", flex: 1, opacity: d.mode === m ? 1 : 0.7 }}
-                        title={m === "orbit" ? "Orbit: circle the ship" : m === "forward" ? "Forward: advance toward the target" : "Defensive: hold close, short range"}
-                        onClick={() => setMode(d.id, m)}
-                      >
-                        {m === "orbit" ? "ORB" : m === "forward" ? "FWD" : "DEF"}
-                      </button>
-                    ))}
-                  </div>
-                  <button className="gbtn gbtn-red" style={{ fontSize: 10, padding: "3px 0" }} onClick={() => scrap(d.id)}>
-                    ✕ SCRAP · +{Math.floor(DRONE_DEFS[d.kind].price * 0.5).toLocaleString()}cr
-                  </button>
+                <div className="drone-slot__modes">
+                  {(["orbit", "forward", "defensive"] as DroneMode[]).map((m) => (
+                    <button
+                      key={m}
+                      className={`gbtn ${d.mode === m ? "gbtn-gold" : ""}`}
+                      style={{ opacity: d.mode === m ? 1 : 0.7 }}
+                      title={m === "orbit" ? "Orbit: circle the ship" : m === "forward" ? "Forward: advance toward the target" : "Defensive: hold close, short range"}
+                      onClick={() => setMode(d.id, m)}
+                    >
+                      {m === "orbit" ? "ORB" : m === "forward" ? "FWD" : "DEF"}
+                    </button>
+                  ))}
                 </div>
+                <button className="gbtn gbtn-red drone-slot__scrap" onClick={() => scrap(d.id)}>
+                  ✕ SCRAP +{Math.floor(def.price * 0.5).toLocaleString()}cr
+                </button>
               </div>
             );
           })}
+          {Array.from({ length: emptySlots }).map((_, i) => (
+            <div key={`empty-${i}`} className="drone-slot drone-slot--empty">
+              <span className="plus">+</span>
+              <span>EMPTY BAY</span>
+            </div>
+          ))}
         </div>
         <div className="text-mute text-[11px] mt-2 italic shrink-0">
           ORB circles the ship · FWD advances to mid-target · DEF holds close at short range.
         </div>
       </div>
 
+      {/* RIGHT — drone catalog as cards */}
       <div className="flex flex-col min-h-0">
         <div className="dob-hdr shrink-0" style={{ marginBottom: 8 }}>
           <span>✦ DRONE CATALOG</span>
           <span style={{ color: "var(--accent-amber)" }} className="tabular-nums">{player.credits.toLocaleString()} CR</span>
         </div>
-        <div className="space-y-2 overflow-y-auto min-h-0 flex-1 pr-1">
+        <div className="drone-cat overflow-y-auto min-h-0 flex-1 pr-1">
           {Object.values(DRONE_DEFS).map((def) => {
             const price = dronePrice(def.id);
             const owned = player.drones.filter((d) => d.kind === def.id).length;
+            const affordable = player.credits >= price;
             return (
-              <div key={def.id} className="panel-inset p-3">
-                <div className="flex items-center justify-between gap-2 mb-1 min-w-0">
-                  <div className="font-bold text-[13px] tracking-wide truncate" style={{ color: def.color }}>
-                    {def.name}
-                    {owned > 0 && <span className="text-mute font-normal text-[11px]"> · ×{owned} owned</span>}
+              <div key={def.id} className="drone-card">
+                <div className="drone-card__thumb" style={{ color: def.color }}>
+                  ✦
+                  {owned > 0 && <span className="drone-card__owned">×{owned} OWNED</span>}
+                </div>
+                <div className="drone-card__body">
+                  <div className="drone-card__nm truncate" style={{ color: def.color }}>{def.name.toUpperCase()}</div>
+                  <div className="drone-card__desc">{def.description}</div>
+                  <div className="drone-card__stats">
+                    {def.damageBonus > 0 && <span className="drone-pill" style={{ color: "#ff5c6c" }}>+{def.damageBonus} DMG</span>}
+                    {def.shieldBonus > 0 && <span className="drone-pill" style={{ color: "#4ee2ff" }}>+{def.shieldBonus} SHD</span>}
+                    {def.hullBonus > 0 && <span className="drone-pill" style={{ color: "#5cff8a" }}>+{def.hullBonus} HUL</span>}
+                    {def.fireRate > 0 && <span className="drone-pill" style={{ color: "#e8b94d" }}>{def.fireRate.toFixed(1)}/s</span>}
                   </div>
-                  <div className="text-amber text-[13px] font-bold tabular-nums shrink-0">{price.toLocaleString()}cr</div>
+                  <button
+                    className="gbtn gbtn-gold drone-card__buy"
+                    disabled={!affordable || slotsLeft <= 0}
+                    onClick={() => buy(def.id)}
+                  >
+                    {slotsLeft <= 0 ? "NO SLOTS FREE" : `DEPLOY · ${price.toLocaleString()}cr`}
+                  </button>
                 </div>
-                <div className="text-dim text-[12px] mb-1.5">{def.description}</div>
-                <div className="flex gap-3 text-[12px] mb-2 flex-wrap">
-                  {def.damageBonus > 0 && <span style={{ color: "#ff5c6c" }}>+{def.damageBonus} dmg</span>}
-                  {def.shieldBonus > 0 && <span style={{ color: "#4ee2ff" }}>+{def.shieldBonus} shield</span>}
-                  {def.hullBonus > 0 && <span style={{ color: "#5cff8a" }}>+{def.hullBonus} hull</span>}
-                  {def.fireRate > 0 && <span className="text-amber">{def.fireRate.toFixed(1)} shots/s</span>}
-                </div>
-                <button
-                  className="gbtn gbtn-gold w-full"
-                  style={{ padding: "5px 0", fontSize: 11 }}
-                  disabled={player.credits < price || slotsLeft <= 0}
-                  onClick={() => buy(def.id)}
-                >
-                  {slotsLeft <= 0 ? "NO SLOTS FREE" : `DEPLOY · ${price.toLocaleString()}cr`}
-                </button>
               </div>
             );
           })}
