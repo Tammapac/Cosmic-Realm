@@ -83,7 +83,7 @@ export function GameHud() {
   const topPanel = (
     <TopPanel
       playerName={player.name}
-      clanName={player.clan ?? faction?.name ?? ""}
+      clanName={player.clan ?? ""}
       rank={rank.index}
       rankName={rank.name}
       rankColor={rank.color}
@@ -92,6 +92,8 @@ export function GameHud() {
       expToNext={EXP_FOR_LEVEL(player.level)}
       credits={player.credits}
       honor={player.honor}
+      mcoins={player.mcoins}
+      factionTag={faction?.tag}
       cargo={cargoUsed}
       cargoMax={cargoCapacity()}
       onOpenPilotDossier={() => {

@@ -39,6 +39,7 @@ export const players = pgTable(
     exp: bigint("exp", { mode: "number" }).notNull().default(0),
     credits: bigint("credits", { mode: "number" }).notNull().default(10000),
     honor: integer("honor").notNull().default(0),
+    mcoins: bigint("mcoins", { mode: "number" }).notNull().default(0),
     hull: real("hull").notNull().default(100),
     shield: real("shield").notNull().default(70),
     zone: varchar("zone", { length: 32 }).notNull().default("alpha"),

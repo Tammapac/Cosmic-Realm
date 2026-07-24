@@ -236,6 +236,7 @@ function makeInitialPlayer(): Player {
     exp: 0,
     credits: 10000,
     honor: 0,
+    mcoins: 0,
     cargo: [],
     zone: "alpha",
     ownedShips: ["skimmer"],
@@ -396,6 +397,7 @@ if (!initialPlayer.petDrone || typeof initialPlayer.petDrone !== "object") {
   for (const k of ["weapon", "module", "extra"]) if (!(k in pd.equipped)) pd.equipped[k] = null;
 }
 if (typeof initialPlayer.bebcell !== "number") initialPlayer.bebcell = 0;
+if (typeof initialPlayer.mcoins !== "number") initialPlayer.mcoins = 0;
 if (!initialPlayer.ammo || typeof initialPlayer.ammo !== "object" || Array.isArray(initialPlayer.ammo)) {
   initialPlayer.ammo = { x1: 0, x2: 0, x3: 0, x4: 0 };
 } else {
@@ -677,6 +679,7 @@ function _buildSavePayload(): Partial<Player> {
     exp: p.exp,
     credits: p.credits,
     honor: p.honor,
+    mcoins: p.mcoins,
     cargo: p.cargo,
     zone: p.zone,
     ownedShips: p.ownedShips,
@@ -748,6 +751,7 @@ export function save(): void {
       level: p.level,
       shipClass: p.shipClass,
       honor: p.honor,
+      mcoins: p.mcoins,
       inventory: p.inventory,
       equipped: p.equipped,
       skills: p.skills,
@@ -795,6 +799,7 @@ export function loadServerPlayer(data: any): void {
   if (data.exp != null) p.exp = data.exp;
   if (data.credits != null && !isNaN(data.credits)) p.credits = data.credits;
   if (data.honor != null) p.honor = data.honor;
+  if (typeof data.mcoins === "number") p.mcoins = data.mcoins;
   if (data.hull != null) p.hull = data.hull;
   if (data.shield != null) p.shield = data.shield;
   if (data.zone) p.zone = data.zone;

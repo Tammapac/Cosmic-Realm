@@ -547,7 +547,7 @@ export function sendChat(channel: string, text: string) {
 export function sendStatsUpdate(data: {
   hull?: number; shield?: number; level?: number; shipClass?: string; honor?: number;
   inventory?: any[]; equipped?: any; skills?: any; drones?: any[]; faction?: string;
-  petDrone?: any; bebcell?: number;
+  petDrone?: any; bebcell?: number; mcoins?: number;
 }) {
   socket?.emit("stats:update", data);
 }

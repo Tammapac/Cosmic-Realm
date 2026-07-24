@@ -296,6 +296,20 @@ export type HonorRank = {
   pips: number;          // number of icon pips
 };
 
+// ── REPUTATION ──────────────────────────────────────────────────────────────
+// Standing derived purely from a player's honor. Shown as a colored pill in
+// the top panel. Thresholds (5 tiers): Adversary ≤ -100k, Rival < 0,
+// Neutral 0–100k, Honorable 100k–500k, Exalted ≥ 500k.
+export type Reputation = { name: string; color: string; glyph: string };
+
+export function reputationForHonor(honor: number): Reputation {
+  if (honor <= -100000) return { name: "Adversary", color: "#ff4d5e", glyph: "◆" };
+  if (honor < 0)        return { name: "Rival",     color: "#ff8a4e", glyph: "◆" };
+  if (honor < 100000)   return { name: "Neutral",   color: "#b9cbe6", glyph: "◆" };
+  if (honor < 500000)   return { name: "Honorable", color: "#5cff8a", glyph: "◆" };
+  return { name: "Exalted", color: "#e8d9b0", glyph: "★" };
+}
+
 // ── CONSUMABLES ────────────────────────────────────────────────────────────
 export type ConsumableId =
   | "rocket-ammo"
@@ -339,6 +353,7 @@ export type Player = {
   exp: number;
   credits: number;
   honor: number;
+  mcoins: number;        // premium (real-money) currency; display-only for now
   cargo: CargoItem[];
   zone: ZoneId;
   ownedShips: ShipClassId[];

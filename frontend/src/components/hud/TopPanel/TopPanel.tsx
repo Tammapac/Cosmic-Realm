@@ -1,8 +1,11 @@
 import styles from "./TopPanel.module.css";
+import { reputationForHonor } from "../../../game/types";
 
 export type TopPanelProps = {
   playerName: string;
   clanName: string;
+  /** Short faction tag (EIC / MMO / VRU) shown beside the name. */
+  factionTag?: string;
   rank: number;
   rankName?: string;
   rankColor?: string;
@@ -11,6 +14,7 @@ export type TopPanelProps = {
   expToNext: number;
   credits: number;
   honor: number;
+  mcoins: number;
   cargo: number;
   cargoMax: number;
   /** Opens the pilot dossier (attributes, career paths, rankings) --
@@ -66,6 +70,7 @@ function RankBadgeOutline({ color }: { color: string }) {
 export function TopPanel({
   playerName,
   clanName,
+  factionTag,
   rank,
   rankName,
   rankColor = "var(--hud-cyan)",
@@ -74,11 +79,15 @@ export function TopPanel({
   expToNext,
   credits,
   honor,
+  mcoins,
   cargo,
   cargoMax,
   onOpenPilotDossier,
 }: TopPanelProps) {
   const expPct = Math.max(0, Math.min(100, (exp / Math.max(1, expToNext)) * 100));
+  const rep = reputationForHonor(honor);
+  // Prefer the clan name if the pilot is in one, else the faction tag (EIC…).
+  const tag = clanName || factionTag || "";
   return (
     <div className={`${styles.wrap} hud-interactive`}>
       <div
@@ -140,32 +149,51 @@ export function TopPanel({
         <span className="panel-rim" />
 
         <div className={styles.mainContent}>
-          <div className={styles.identityPanel}>
-            <div className={styles.nameHeader}>
-              <span className={styles.playerName}>{playerName}</span>
-              <span className={styles.clanName}>{clanName}</span>
-            </div>
-
-            <div className={styles.levelRow}>
-              <span className={styles.levelLabel}>LVL {level}</span>
-              <div className={styles.expTrack}>
-                <div className={styles.expFill} style={{ width: `${expPct}%` }} />
-              </div>
-              <span className={styles.cargoLabel} style={{ color: "var(--hud-green)" }}>
-                CARGO {cargo.toLocaleString()}/{cargoMax.toLocaleString()}
+          {/* Row 1 — name · faction tag · level/xp · cargo, all bundled left.
+              The right side stays clear for future icons. */}
+          <div className={styles.topRow}>
+            <span className={styles.playerName}>{playerName}</span>
+            {tag && <span className={styles.factionTag}>{tag}</span>}
+            <span className={styles.lvlGroup}>
+              <span className={styles.lvlLabel}>LVL <b>{level}</b></span>
+              <span className={styles.expTrack}>
+                <span className={styles.expFill} style={{ width: `${expPct}%` }} />
               </span>
-            </div>
+            </span>
+            <span className={styles.cargoLabel}>◱ CARGO {cargo.toLocaleString()} / {cargoMax.toLocaleString()}</span>
+          </div>
 
-            <div className={styles.statRow}>
-              <span className={styles.statIcon} style={{ color: "var(--hud-gold)" }}>◎</span>
-              <span className={styles.statLabel}>CREDITS</span>
-              <span className={styles.statValue} style={{ color: "var(--hud-gold)" }}>{credits.toLocaleString()}</span>
-            </div>
-            <div className={styles.statRow}>
-              <span className={styles.statIcon} style={{ color: "var(--hud-magenta)" }}>✦</span>
-              <span className={styles.statLabel}>HONOR</span>
-              <span className={styles.statValue} style={{ color: "var(--hud-magenta)" }}>{honor.toLocaleString()}</span>
-            </div>
+          {/* Row 2 — credits + honor stacked, reputation, mcoins, thin dividers. */}
+          <div className={styles.statsRow}>
+            <span className={styles.moneyCell}>
+              <span className={styles.moneyLine}>
+                <span className={styles.statIcon} style={{ color: "var(--hud-gold)" }}>◎</span>
+                <span className={styles.statLabel}>Credits</span>
+                <span className={styles.statValue} style={{ color: "var(--hud-gold)" }}>{credits.toLocaleString()}</span>
+              </span>
+              <span className={styles.moneyLine}>
+                <span className={styles.statIcon} style={{ color: "var(--hud-magenta)" }}>✦</span>
+                <span className={styles.statLabel}>Honor</span>
+                <span className={styles.statValue} style={{ color: "var(--hud-magenta)" }}>{honor.toLocaleString()}</span>
+              </span>
+            </span>
+
+            <span className={styles.divider} />
+
+            <span className={styles.statCell}>
+              <span className={styles.statLabel}>Reputation</span>
+              <span className={styles.repPill} style={{ color: rep.color }}>{rep.glyph} {rep.name}</span>
+            </span>
+
+            <span className={styles.divider} />
+
+            <span className={styles.statCell}>
+              <span className={styles.statLabel}>MCoins</span>
+              <span className={styles.mcoinLine}>
+                <span className={styles.statIcon} style={{ color: "#8fd8ff" }}>◈</span>
+                <span className={styles.statValue} style={{ color: "#8fd8ff" }}>{mcoins.toLocaleString()}</span>
+              </span>
+            </span>
           </div>
         </div>
       </div>

@@ -89,6 +89,8 @@ export default function HudShowcase() {
           expToNext={58000}
           credits={1245780}
           honor={1809}
+          mcoins={0}
+          factionTag="EIC"
           cargo={340}
           cargoMax={500}
         />
