@@ -179,24 +179,28 @@ export function Hangar({ stationId }: { stationId: string }) {
           </button>
         </div>
 
-        {/* Station body: left nav · content · info rail */}
+        {/* Station body: bay rail · content · info rail */}
         <div className="flex flex-1 min-h-0">
-          {/* left navigation */}
-          <div className="sw-nav">
-            <div className="dob-hdr" style={{ margin: "0 0 8px" }}>
-              <span>STATION SERVICES</span>
-            </div>
-            {(station.kind === "factory" ? FACTORY_TABS : TABS).map((t) => (
-              <button
-                key={t.id}
-                className={`sw-nav-item ${tab === t.id ? "sw-nav-item--selected" : ""}`}
-                onClick={() => { state.hangarTab = t.id; bump(); }}
-              >
-                <span style={{ width: 16, textAlign: "center", opacity: 0.8, flexShrink: 0 }}>{t.glyph}</span>
-                <span className="truncate">{t.label}</span>
-              </button>
-            ))}
-          </div>
+          {/* icon bay rail — grouped into service clusters, hover labels */}
+          <nav className="hangar-rail">
+            {(station.kind === "factory" ? FACTORY_TABS : TABS).map((t, i, arr) => {
+              // insert dividers between the wireframe's service clusters
+              const dividerBefore = station.kind !== "factory" && (t.id === "missions" || t.id === "ships");
+              return (
+                <div key={t.id} className="contents">
+                  {dividerBefore && <div className="hangar-rail-div" />}
+                  <button
+                    className={`hangar-bay ${tab === t.id ? "hangar-bay--on" : ""}`}
+                    onClick={() => { state.hangarTab = t.id; bump(); }}
+                    title={t.label}
+                  >
+                    <span>{t.glyph}</span>
+                    <span className="hangar-bay-lbl">{t.label}</span>
+                  </button>
+                </div>
+              );
+            })}
+          </nav>
 
           {/* content */}
           <div className="overflow-y-auto flex-1 min-h-0">
@@ -217,8 +221,56 @@ export function Hangar({ stationId }: { stationId: string }) {
           {/* info rail: pilot + resources summary */}
           <StationInfoRail station={station} />
         </div>
+
+        {/* bottom dock strip — persistent quick actions + context line */}
+        <HangarDockStrip station={station} />
       </div>
 
+    </div>
+  );
+}
+
+// Persistent bottom strip: repair/refuel + sell junk shortcuts, station status.
+function HangarDockStrip({ station }: { station: (typeof STATIONS)[number] }) {
+  const player = useGame((s) => s.player);
+  const stats = effectiveStats();
+  const hullPct = Math.round((player.hull / stats.hullMax) * 100);
+  const needsRepair = player.hull < stats.hullMax - 0.5;
+  const bounties = player.activeQuests?.filter((q: any) => !q.completed).length ?? 0;
+
+  const repair = () => {
+    if (!needsRepair) return;
+    const cost = Math.ceil((stats.hullMax - player.hull) * 2);
+    if (player.credits < cost) { pushNotification("Not enough credits to repair", "bad"); return; }
+    player.credits -= cost;
+    player.hull = stats.hullMax;
+    sendDockRepair(stats.hullMax, player.shield);
+    pushNotification(`Hull repaired · -${cost.toLocaleString()} CR`, "good");
+    save(); bump();
+  };
+
+  return (
+    <div className="hangar-dock">
+      <button
+        className="gbtn"
+        style={{ padding: "6px 16px", fontSize: 11, letterSpacing: "0.12em", opacity: needsRepair ? 1 : 0.5 }}
+        disabled={!needsRepair}
+        title={needsRepair ? "Repair hull to full" : "Hull already at full"}
+        onClick={repair}
+      >
+        ✚ REPAIR HULL {needsRepair ? `· ${hullPct}%` : "· FULL"}
+      </button>
+      <button
+        className="gbtn"
+        style={{ padding: "6px 16px", fontSize: 11, letterSpacing: "0.12em" }}
+        title="Open the loadout bay to sell unused gear"
+        onClick={() => { state.hangarTab = "loadout"; bump(); }}
+      >
+        ⚙ MANAGE LOADOUT
+      </button>
+      <span className="hangar-dock-note">
+        DOCKED · {station.name.toUpperCase()} · {bounties > 0 ? `${bounties} ACTIVE ${bounties === 1 ? "CONTRACT" : "CONTRACTS"}` : "SYSTEMS NOMINAL"}
+      </span>
     </div>
   );
 }
