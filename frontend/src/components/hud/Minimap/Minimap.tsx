@@ -150,9 +150,7 @@ function BlipCanvas({ blips }: { blips: MinimapBlipData[] }) {
 export function Minimap({ zoneName, coords, blips = [] }: MinimapProps) {
   return (
     <div className={`${styles.consoleWrap} hud-interactive`}>
-      <div className={`${styles.console} panel`}>
-        <span className="panel-rim" />
-
+      <div className={`${styles.console} panel panel-frameless`}>
         <div className={styles.zoneDisplayCollar}>
           <div className={styles.zoneDisplay}>
             <span className={styles.zoneDisplayText}>{zoneName}</span>

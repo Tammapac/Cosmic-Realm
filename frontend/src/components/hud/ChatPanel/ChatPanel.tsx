@@ -69,8 +69,7 @@ export function ChatPanel({ messages, onSend }: ChatPanelProps) {
 
   return (
     <div className={`${styles.consoleWrap} hud-interactive`}>
-      <div className={`${styles.console} panel`}>
-        <span className="panel-rim" />
+      <div className={`${styles.console} panel panel-frameless`}>
         <div className="hud-titleband">COMMS</div>
 
         <div className={styles.tabs}>
