@@ -283,18 +283,6 @@
       sits inside a `.panel` window as if machined into it, not floating as
       its own framed box. Use it for every sub-element that is NOT a
       top-level window. */
-/* ── Frameless window modifier (test) ─────────────────────────────────────
-   Strips ALL edge treatment from a .panel: no corner brackets (::after), no
-   PCB veins (::before), and only the outer seating drop survives on the
-   box-shadow — no rim highlight, no bevel, no cyan edge. Leaves just the
-   frosted-glass fill in the chamfer silhouette. Paired with NOT rendering the
-   .panel-rim element in the JSX. Used on the ambient HUD modules. */
-.panel-frameless::after,
-.panel-frameless::before { content: none !important; background: none !important; }
-.panel-frameless {
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5) !important;
-}
-
 .panel-inset {
   --panel-cut: 6px;
   position: relative;

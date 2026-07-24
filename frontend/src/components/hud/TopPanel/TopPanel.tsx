@@ -145,7 +145,7 @@ export function TopPanel({
         </div>
       </div>
 
-      <div className={`${styles.mainStrip} panel panel-frameless`}>
+      <div className={`${styles.mainStrip} panel`}>
         <div className={styles.mainContent}>
           {/* Row 1 — name · faction tag · level/xp · cargo, all bundled left.
               The right side stays clear for future icons. */}
