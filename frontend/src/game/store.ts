@@ -954,6 +954,29 @@ export function priceDirection(stationId: string, resourceId: ResourceId): "up" 
   return "stable";
 }
 
+// Sample the same deterministic price curve at N points across the recent past
+// (spanMs back → now), for a trend sparkline. Reads the identical wave as
+// stationPrice — no new pricing behaviour, just the curve read at earlier t.
+export function priceHistory(
+  stationId: string, resourceId: ResourceId, points = 16, spanMs = 240000,
+): number[] {
+  const station = STATIONS.find((s) => s.id === stationId);
+  const base = RESOURCES[resourceId].basePrice;
+  const mod = station?.prices[resourceId] ?? 1.0;
+  const seed = hashCode(stationId + resourceId);
+  const period = 480000 + (seed % 5) * 60000;
+  const phase = (seed % 1000) / 1000 * Math.PI * 2;
+  const amplitude = 0.15;
+  const now = Date.now();
+  const out: number[] = [];
+  for (let i = 0; i < points; i++) {
+    const t = now - spanMs + (spanMs * i) / (points - 1);
+    const wave = Math.sin(t / period * Math.PI * 2 + phase);
+    out.push(Math.max(1, Math.round(base * mod * (1 + wave * amplitude))));
+  }
+  return out;
+}
+
 export function cargoUsed(): number {
   return state.player.cargo.reduce((a, c) => a + c.qty, 0);
 }

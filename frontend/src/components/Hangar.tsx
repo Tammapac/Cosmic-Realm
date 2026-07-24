@@ -1,5 +1,5 @@
 import { sendDockRepair, sendDockLeave } from "../net/socket";
-import { state, bump, useGame, pushNotification, pushFloater, save, stationPrice, priceDirection, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, rerollMissionBoard, bumpMission, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, rocketAmmoMax, getAmmoWeaponIds, ensureAmmoInitialized, setAutoRestock, setAutoRepairHull, setAutoShieldRecharge, getActiveAmmoType, switchAmmoType, purchaseAmmoAmount, getAmmoCount, ROCKET_AMMO_COST_PER, rocketMissileMax, getActiveRocketAmmoType, switchRocketAmmoType, purchaseRocketAmmo, getRocketAmmoCount, startRefineJob, collectRefineJob, upgradeFactory } from "../game/store";
+import { state, bump, useGame, pushNotification, pushFloater, save, stationPrice, priceDirection, priceHistory, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, rerollMissionBoard, bumpMission, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, rocketAmmoMax, getAmmoWeaponIds, ensureAmmoInitialized, setAutoRestock, setAutoRepairHull, setAutoShieldRecharge, getActiveAmmoType, switchAmmoType, purchaseAmmoAmount, getAmmoCount, ROCKET_AMMO_COST_PER, rocketMissileMax, getActiveRocketAmmoType, switchRocketAmmoType, purchaseRocketAmmo, getRocketAmmoCount, startRefineJob, collectRefineJob, upgradeFactory } from "../game/store";
 import {
   ActiveQuest, CONSUMABLE_DEFS, ConsumableId, DAILY_DUNGEON_BONUS, DRONE_DEFS, DroneKind, DroneMode, DUNGEONS, DungeonId, FACTIONS, MODULE_DEFS, ModuleDef, ModuleSlot, ModuleStats, RARITY_COLOR,
   Quest, QUEST_POOL, MISSION_BOARD_POOL, MissionCategory, RESOURCES, ResourceId, ROCKET_AMMO_TYPE_DEFS, RocketAmmoType, ROCKET_MISSILE_TYPE_DEFS, RocketMissileType, ROCKET_MISSILE_TYPE_ORDER, SHIP_CLASSES, SKILL_NODES, SkillNode, STATIONS, ShipClassId, SkillBranch,
@@ -1603,6 +1603,22 @@ function DronesTab() {
 }
 
 // ── MARKET ────────────────────────────────────────────────────────────────
+type TradeSort = "name" | "have" | "price" | "profit";
+
+function Sparkline({ data, w = 44, h = 18, color }: { data: number[]; w?: number; h?: number; color: string }) {
+  const min = Math.min(...data), max = Math.max(...data);
+  const range = max - min || 1;
+  const n = data.length;
+  const bw = Math.max(1, w / n - 1);
+  return (
+    <div className="trade-row__spark" style={{ width: w, height: h }}>
+      {data.map((v, i) => (
+        <i key={i} style={{ width: bw, height: `${Math.max(8, ((v - min) / range) * 100)}%`, background: color, opacity: i === n - 1 ? 1 : 0.55 }} />
+      ))}
+    </div>
+  );
+}
+
 function MarketTab({ stationId }: { stationId: string }) {
   const player = useGame((s) => s.player);
   const [, setTick] = useState(0);
@@ -1611,57 +1627,48 @@ function MarketTab({ stationId }: { stationId: string }) {
     return () => clearInterval(iv);
   }, []);
   const station = STATIONS.find((s) => s.id === stationId)!;
-  const cls = SHIP_CLASSES[player.shipClass];
-  const tierCap = Math.min(10, Math.max(0, Math.floor(player.level / 4))); // weapons 0-10
-  const marketWeaponModules = Object.values(MODULE_DEFS).filter((d) => d.slot === "weapon" && d.tier <= tierCap);
+  const [selId, setSelId] = useState<ResourceId | null>(null);
+  const [qty, setQty] = useState(1);
+  const [sort, setSort] = useState<TradeSort>("profit");
 
-  const buy = (rid: ResourceId, qty: number) => {
+  const buy = (rid: ResourceId, n: number) => {
     const price = stationPrice(stationId, rid);
-    const cost = price * qty;
+    const cost = price * n;
     if (player.credits < cost) { pushNotification("Not enough credits", "bad"); return; }
-    if (cargoUsed() + qty > cargoCapacity()) { pushNotification("Cargo bay full", "bad"); return; }
+    if (cargoUsed() + n > cargoCapacity()) { pushNotification("Cargo bay full", "bad"); return; }
     player.credits -= cost;
-    addCargo(rid, qty);
-    pushNotification(`Bought ${qty}× ${RESOURCES[rid].name} · -${cost.toLocaleString()}cr`, "good");
+    addCargo(rid, n);
+    pushNotification(`Bought ${n}× ${RESOURCES[rid].name} · -${cost.toLocaleString()}cr`, "good");
     save(); bump();
   };
 
-  const sell = (rid: ResourceId, qty: number) => {
+  const sell = (rid: ResourceId, n: number) => {
     const have = player.cargo.find((c) => c.resourceId === rid);
     if (!have) return;
-    const take = Math.min(have.qty, qty);
+    const take = Math.min(have.qty, n);
     if (take <= 0) return;
     const price = stationPrice(stationId, rid);
     const earn = price * take;
     removeCargo(rid, take);
     player.credits += earn;
     pushNotification(`Sold ${take}× ${RESOURCES[rid].name} · +${earn.toLocaleString()}cr`, "good");
-        bumpMission("transport", take, undefined, { resourceId: rid });
+    bumpMission("transport", take, undefined, { resourceId: rid });
     bumpMission("deliver", take, undefined, { resourceId: rid, stationId });
     bumpMission("earn-credits", earn);
-save(); bump();
+    save(); bump();
   };
-
-  // Show resources this station trades + any the player is carrying
-  const stationResIds = new Set(Object.keys(station.prices));
-  const cargoResIds = new Set(player.cargo.map(c => c.resourceId));
-  const allRes = Object.values(RESOURCES).filter(
-    r => stationResIds.has(r.id) || cargoResIds.has(r.id)
-  );
-  const isTrade = true;
 
   const sellAll = () => {
     let totalEarn = 0;
     for (const c of [...player.cargo]) {
       const price = stationPrice(stationId, c.resourceId);
-      const earn = price * c.qty;
-      totalEarn += earn;
+      totalEarn += price * c.qty;
       removeCargo(c.resourceId, c.qty);
     }
     if (totalEarn > 0) {
       player.credits += totalEarn;
       pushNotification(`Sold all cargo · +${totalEarn.toLocaleString()}cr`, "good");
-            bumpMission("transport", 1, undefined, {});
+      bumpMission("transport", 1, undefined, {});
       bumpMission("earn-credits", totalEarn);
       save(); bump();
     } else {
@@ -1669,105 +1676,189 @@ save(); bump();
     }
   };
 
-  return (
-    <div className="p-4">
-      {isTrade && (
-        <>
-          <div className="dob-hdr mb-2">
-            <span>◆ COMMODITY EXCHANGE</span>
-            <span className="flex items-center gap-2">
-              <button className="gbtn gbtn-gold" style={{ padding: "3px 12px", fontSize: 10 }} onClick={sellAll}>
-                SELL ALL CARGO
-              </button>
-              <span className="tabular-nums font-bold" style={{ color: "var(--accent-amber)" }}>
-                {player.credits.toLocaleString()} CR
-              </span>
-            </span>
-          </div>
-          <div className="text-mute text-[12px] mb-3">
-            Buy low here, sell high elsewhere — stations specialize in different resources. ▼ green price = cheap, ▲ red = expensive.
-          </div>
+  const bestSellFor = (rid: ResourceId) =>
+    STATIONS.reduce<{ name: string; price: number; zone: string } | null>((best, s) => {
+      if (s.id === stationId) return best;
+      const sp = stationPrice(s.id, rid);
+      if (!best || sp > best.price) return { name: s.name, price: sp, zone: s.zone };
+      return best;
+    }, null);
 
-          <div className="market-grid">
-            {allRes.map((r) => {
-              const price = stationPrice(stationId, r.id);
+  // Rows: resources this station trades + any the player is carrying.
+  const stationResIds = new Set(Object.keys(station.prices));
+  const cargoResIds = new Set(player.cargo.map((c) => c.resourceId));
+  const rows = Object.values(RESOURCES)
+    .filter((r) => stationResIds.has(r.id) || cargoResIds.has(r.id))
+    .map((r) => {
+      const price = stationPrice(stationId, r.id);
+      const have = player.cargo.find((c) => c.resourceId === r.id)?.qty ?? 0;
+      const best = bestSellFor(r.id);
+      const profit = best ? best.price - price : 0;
+      return { r, price, have, best, profit };
+    });
+  rows.sort((a, b) => {
+    if (sort === "name") return a.r.name.localeCompare(b.r.name);
+    if (sort === "have") return b.have - a.have || a.r.name.localeCompare(b.r.name);
+    if (sort === "price") return b.price - a.price;
+    return b.profit - a.profit; // profit
+  });
+
+  const totalCargoValue = player.cargo.reduce((s, c) => s + stationPrice(stationId, c.resourceId) * c.qty, 0);
+  const cargoNow = cargoUsed();
+  const cargoMax = cargoCapacity();
+
+  const sel = selId ? rows.find((row) => row.r.id === selId) ?? null : null;
+
+  return (
+    <div className="p-4 flex flex-col">
+      {/* terminal header — station, credits, cargo, sell-all */}
+      <div className="dob-hdr mb-2 shrink-0">
+        <span>◆ TRADE TERMINAL · {station.name.toUpperCase()}</span>
+        <span className="flex items-center gap-3">
+          <span className="tabular-nums" style={{ color: "var(--hud-text-dim)", fontSize: 11 }}>
+            CARGO <span style={{ color: cargoNow >= cargoMax ? "#ff5c6c" : "var(--hud-cyan)" }}>{cargoNow}/{cargoMax}</span>
+            {totalCargoValue > 0 && <span style={{ color: "var(--hud-text-mute)" }}> · worth {totalCargoValue.toLocaleString()}cr here</span>}
+          </span>
+          <button className="gbtn gbtn-gold" style={{ padding: "3px 12px", fontSize: 10 }} disabled={player.cargo.length === 0} onClick={sellAll}>
+            SELL ALL CARGO
+          </button>
+          <span className="tabular-nums font-bold" style={{ color: "var(--accent-amber)" }}>
+            {player.credits.toLocaleString()} CR
+          </span>
+        </span>
+      </div>
+
+      {/* split: commodity list | detail panel */}
+      <div className="trade-term shrink-0" style={{ height: 440 }}>
+        {/* LEFT — sortable commodity list */}
+        <div className="trade-list">
+          <div className="trade-list__head">
+            <button className={sort === "name" ? "th-sorted" : ""} onClick={() => setSort("name")}>Commodity{sort === "name" ? " ▾" : ""}</button>
+            <button className={sort === "have" ? "th-sorted" : ""} style={{ textAlign: "right" }} onClick={() => setSort("have")}>Have{sort === "have" ? " ▾" : ""}</button>
+            <button className={sort === "price" ? "th-sorted" : ""} style={{ textAlign: "right" }} onClick={() => setSort("price")}>Price{sort === "price" ? " ▾" : ""}</button>
+            <span style={{ textAlign: "center" }}>Trend</span>
+            <button className={sort === "profit" ? "th-sorted" : ""} style={{ textAlign: "right" }} onClick={() => setSort("profit")}>Profit{sort === "profit" ? " ▾" : ""}</button>
+          </div>
+          <div className="trade-list__scroll">
+            {rows.map(({ r, price, have, profit }) => {
               const diff = ((price - r.basePrice) / r.basePrice) * 100;
-              const have = player.cargo.find((c) => c.resourceId === r.id)?.qty ?? 0;
-              // Find best station to sell this resource
-              const bestStation = STATIONS.reduce<{ name: string; price: number; zone: string } | null>((best, s) => {
-                if (s.id === stationId) return best;
-                const sp = stationPrice(s.id, r.id);
-                if (!best || sp > best.price) return { name: s.name, price: sp, zone: s.zone };
-                return best;
-              }, null);
               const dir = priceDirection(stationId, r.id);
-              const dirIcon = dir === "up" ? "▲" : dir === "down" ? "▼" : "●";
-              const dirColor = dir === "up" ? "#ff5c6c" : dir === "down" ? "#5cff8a" : "#666";
-              const profitVsHere = bestStation ? bestStation.price - price : 0;
-              const priceColor = diff < 0 ? "#5cff8a" : diff > 0 ? "#ff5c6c" : "var(--hud-text-dim)";
+              const dirIcon = dir === "up" ? "▲" : dir === "down" ? "▼" : "·";
+              const dirColor = dir === "up" ? "#ff5c6c" : dir === "down" ? "#5cff8a" : "#5a6a80";
+              const priceColor = diff < 0 ? "#5cff8a" : diff > 0 ? "#ff5c6c" : "var(--hud-text-bright)";
               return (
-                <div key={r.id} className="market-card">
-                  <div className="market-card__thumb">
-                    <div
-                      className="market-card__icon"
-                      style={{ background: `${r.color}22`, border: `1px solid ${r.color}`, color: r.color }}
-                    >
-                      {r.glyph}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="market-card__name truncate">{r.name}</div>
-                      <div className="market-card__sub">BASE {r.basePrice} CR</div>
-                    </div>
-                    {have > 0 && <span className="market-card__owned">×{have}</span>}
+                <div
+                  key={r.id}
+                  className={`trade-row ${selId === r.id ? "trade-row--sel" : ""}`}
+                  onClick={() => { setSelId(r.id); setQty(1); }}
+                >
+                  <div className="trade-row__name">
+                    <span className="trade-row__ico" style={{ background: `${r.color}22`, border: `1px solid ${r.color}`, color: r.color }}>{r.glyph}</span>
+                    <span className="trade-row__nm">{r.name}</span>
                   </div>
-                  <div className="market-card__body">
-                    <div className="market-card__price">
-                      <span className="p flex items-center gap-1" style={{ color: priceColor }}>
-                        <span style={{ color: dirColor, fontSize: 10 }}>{dirIcon}</span>
-                        {price}<span style={{ fontSize: 10, color: "var(--hud-text-mute)" }}>CR</span>
-                      </span>
-                      <span className="d" style={{ color: diff < 0 ? "#5cff8a" : diff > 0 ? "#ff5c6c" : "var(--hud-text-mute)" }}>
-                        {diff > 0 ? "+" : ""}{diff.toFixed(0)}% vs base
-                      </span>
-                    </div>
-                    <div
-                      className="market-card__best"
-                      title={bestStation ? `${bestStation.name} (${(ZONES as any)[bestStation.zone]?.label ?? bestStation.zone}) pays ${bestStation.price}cr` : ""}
-                    >
-                      {bestStation && profitVsHere > 0 ? (
-                        <span style={{ color: "#5cff8a" }}>
-                          ↗ +{profitVsHere}cr/u @ <span style={{ color: "var(--hud-text-dim)" }}>{bestStation.name} [{(ZONES as any)[bestStation.zone]?.label ?? "?"}]</span>
-                        </span>
-                      ) : (
-                        <span style={{ color: "#ffd24a" }}>◈ BEST PRICE HERE</span>
-                      )}
-                    </div>
-                    <div className="market-card__row">
-                      <button className="gbtn gbtn-gold" disabled={player.credits < price} onClick={() => buy(r.id, 1)}>+1</button>
-                      <button className="gbtn gbtn-gold" disabled={player.credits < price * 10} onClick={() => buy(r.id, 10)}>+10</button>
-                    </div>
-                    <div className="market-card__row">
-                      <button className="gbtn" disabled={have <= 0} onClick={() => sell(r.id, 1)}>−1</button>
-                      <button className="gbtn" disabled={have < 10} onClick={() => sell(r.id, 10)}>−10</button>
-                      <button className="gbtn" disabled={have <= 0} onClick={() => sell(r.id, have)}>ALL</button>
-                    </div>
-                  </div>
+                  <span className="trade-row__have" style={{ color: have > 0 ? "var(--hud-cyan)" : "var(--hud-text-mute)" }}>{have > 0 ? have : "—"}</span>
+                  <span className="trade-row__price" style={{ color: priceColor }}>
+                    <span style={{ color: dirColor, fontSize: 9 }}>{dirIcon}</span>{price}
+                  </span>
+                  <Sparkline data={priceHistory(stationId, r.id, 12)} color={r.color} />
+                  <span className="trade-row__profit" style={{ color: profit > 0 ? "#5cff8a" : "var(--hud-text-mute)" }}>
+                    {profit > 0 ? `+${profit}` : "—"}
+                  </span>
                 </div>
               );
             })}
           </div>
-        </>
-      )}
-
-      {!isTrade && (
-        <div className="mb-4 p-3 text-center" style={{ background: "rgba(247, 168, 50, 0.05)", border: "1px solid var(--border-soft)" }}>
-          <div className="text-mute text-[13px]">This station does not have a commodity exchange.</div>
-          <div className="text-dim text-[12px] mt-1">Visit a Trade station to buy and sell resources.</div>
         </div>
-      )}
+
+        {/* RIGHT — detail / trade panel */}
+        <div className="trade-detail">
+          {!sel ? (
+            <div className="trade-detail__empty">
+              Select a commodity on the left<br />to inspect its price, trend,<br />and best trade route.
+            </div>
+          ) : (() => {
+            const { r, price, have, best, profit } = sel;
+            const diff = ((price - r.basePrice) / r.basePrice) * 100;
+            const hist = priceHistory(stationId, r.id, 24);
+            const buyCost = price * qty;
+            const sellQty = Math.min(qty, have);
+            const canBuy = player.credits >= buyCost && cargoNow + qty <= cargoMax;
+            return (
+              <>
+                <div className="trade-detail__head">
+                  <div className="trade-detail__ico" style={{ background: `${r.color}22`, border: `1px solid ${r.color}`, color: r.color }}>{r.glyph}</div>
+                  <div className="min-w-0">
+                    <div className="trade-detail__title truncate">{r.name}</div>
+                    <div className="trade-detail__sub">BASE {r.basePrice} CR · YOU HAVE {have}</div>
+                  </div>
+                </div>
+                <div className="trade-detail__body">
+                  <div>
+                    <div className="trade-detail__price">
+                      <span className="big" style={{ color: diff < 0 ? "#5cff8a" : diff > 0 ? "#ff5c6c" : "var(--hud-text-bright)" }}>{price}</span>
+                      <span className="unit">CR / UNIT</span>
+                      <span className="pct" style={{ color: diff < 0 ? "#5cff8a" : diff > 0 ? "#ff5c6c" : "var(--hud-text-mute)" }}>{diff > 0 ? "+" : ""}{diff.toFixed(0)}% vs base</span>
+                    </div>
+                    <div className="trade-spark mt-2">
+                      {hist.map((v, i) => {
+                        const min = Math.min(...hist), max = Math.max(...hist), range = max - min || 1;
+                        return <i key={i} style={{ height: `${Math.max(4, ((v - min) / range) * 100)}%`, opacity: i === hist.length - 1 ? 1 : 0.7 }} />;
+                      })}
+                    </div>
+                    <div className="text-[10px] mt-1" style={{ color: "var(--hud-text-mute)", letterSpacing: "0.1em" }}>PRICE · LAST 4 MIN</div>
+                  </div>
+
+                  {/* best sell route */}
+                  <div className="trade-route">
+                    <span className="trade-route__hd">Best sell route</span>
+                    {best && profit > 0 ? (
+                      <>
+                        <span className="trade-route__to">→ {best.name} <span style={{ color: "var(--hud-text-mute)" }}>[{(ZONES as any)[best.zone]?.label ?? "?"}]</span></span>
+                        <span className="trade-route__profit" style={{ color: "#5cff8a" }}>+{profit} cr/u · {best.price} CR there</span>
+                      </>
+                    ) : (
+                      <span className="trade-route__to" style={{ color: "#ffd24a" }}>◈ This station pays the most — sell here.</span>
+                    )}
+                  </div>
+
+                  {/* quantity stepper */}
+                  <div className="flex flex-col gap-2">
+                    <div className="trade-qty">
+                      <button className="gbtn step" onClick={() => setQty((q) => Math.max(1, q - 1))}>−</button>
+                      <div className="trade-qty__field">
+                        <span className="n">{qty}</span>
+                        <span className="l">UNITS</span>
+                      </div>
+                      <button className="gbtn step" onClick={() => setQty((q) => q + 1)}>+</button>
+                    </div>
+                    <div className="trade-qty__presets">
+                      {[10, 50, 100].map((n) => (
+                        <button key={n} className="gbtn" onClick={() => setQty(n)}>{n}</button>
+                      ))}
+                      <button className="gbtn" onClick={() => setQty(Math.max(1, cargoMax - cargoNow))} title="Fill remaining cargo space">MAX</button>
+                      {have > 0 && <button className="gbtn" onClick={() => setQty(have)} title="Match what you're carrying">HAVE</button>}
+                    </div>
+                  </div>
+
+                  {/* buy / sell */}
+                  <div className="trade-actions">
+                    <button className="gbtn gbtn-gold" disabled={!canBuy} title={canBuy ? "" : (player.credits < buyCost ? "Not enough credits" : "Cargo bay full")} onClick={() => buy(r.id, qty)}>
+                      BUY {qty} · {buyCost.toLocaleString()} CR
+                    </button>
+                    <button className="gbtn" disabled={sellQty <= 0} onClick={() => sell(r.id, sellQty)}>
+                      SELL {sellQty > 0 ? sellQty : ""} · {(price * sellQty).toLocaleString()} CR
+                    </button>
+                  </div>
+                  <div className="text-[10px]" style={{ color: "var(--hud-text-mute)", lineHeight: 1.5 }}>{r.description}</div>
+                </div>
+              </>
+            );
+          })()}
+        </div>
+      </div>
 
       {/* Consumables Shop */}
-      <div className="mt-4">
+      <div className="mt-5 pt-1 shrink-0">
         <div className="dob-hdr mb-2"><span>◆ CONSUMABLES SHOP</span></div>
         <div className="grid grid-cols-1 gap-1">
           {(Object.keys(CONSUMABLE_DEFS) as ConsumableId[]).map((cid) => {

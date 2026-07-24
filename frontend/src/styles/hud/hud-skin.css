@@ -788,101 +788,222 @@ select.ginput {
   color: var(--hud-text-mute);
 }
 
-/* ── Market commodity cards (redesign phase 2) ─────────────────────────────
-   Replaces the dense commodity table. Each good is a card: a thumb strip
-   carrying the resource glyph + price-direction/%-vs-base stamp + owned pill,
-   then a body with name, best-sell hint, and buy/sell controls. Tokens only. */
-.market-grid {
+/* ══════════════════════════════════════════════════════════════════════
+   TRADE TERMINAL (redesign phase 2) — Star-Citizen-style commodity console.
+   Left: dense sortable commodity list (glyph · name · have · price · trend).
+   Right: detail panel for the selected good — big price, trend sparkline,
+   quantity stepper, buy/sell, and the best sell route. Tokens only.
+   ══════════════════════════════════════════════════════════════════════ */
+.trade-term {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 12px;
+  min-height: 0;
 }
-.market-card {
-  position: relative;
+
+/* ── left: commodity list ── */
+.trade-list {
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, rgba(14, 24, 42, 0.72) 0%, rgba(9, 16, 30, 0.72) 100%);
+  min-height: 0;
   border: 1px solid var(--hud-border-dim);
+  background: rgba(6, 10, 20, 0.5);
+}
+.trade-list__head,
+.trade-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 46px 74px 58px 92px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+}
+.trade-list__head {
+  height: 30px;
+  flex-shrink: 0;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--hud-text-mute);
+  border-bottom: 1px solid var(--hud-border-dim);
+  background: linear-gradient(180deg, rgba(18, 32, 56, 0.7), rgba(10, 18, 34, 0.5));
+}
+.trade-list__head button {
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+  padding: 0;
+  text-align: inherit;
+}
+.trade-list__head button:hover { color: var(--hud-cyan); }
+.trade-list__head .th-sorted { color: var(--hud-cyan); }
+.trade-list__scroll { overflow-y: auto; min-height: 0; flex: 1; }
+.trade-row {
+  height: 40px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(60, 90, 130, 0.14);
+  border-left: 2px solid transparent;
+  transition: background var(--hud-t-fast), border-color var(--hud-t-fast);
+}
+.trade-row:hover { background: rgba(78, 226, 255, 0.06); }
+.trade-row--sel {
+  background: rgba(78, 226, 255, 0.1);
+  border-left-color: var(--hud-cyan);
+  box-shadow: inset 0 0 12px rgba(78, 226, 255, 0.06);
+}
+.trade-row__name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.trade-row__ico {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+}
+.trade-row__nm {
+  font-size: 12px;
+  color: var(--hud-text-bright);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.trade-row__have { font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
+.trade-row__price {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+}
+.trade-row__spark { display: flex; align-items: flex-end; justify-content: center; gap: 1px; height: 18px; }
+.trade-row__spark i { width: 2px; background: var(--hud-cyan-dim); opacity: 0.8; }
+.trade-row__profit { font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; }
+
+/* ── right: detail panel ── */
+.trade-detail {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--hud-border);
+  background: linear-gradient(180deg, rgba(14, 24, 42, 0.7), rgba(9, 16, 30, 0.7));
   box-shadow: var(--mat-ao);
-  transition: border-color var(--hud-t-fast), box-shadow var(--hud-t-fast);
+  min-height: 0;
 }
-.market-card:hover {
-  border-color: rgba(78, 226, 255, 0.45);
-  box-shadow: var(--mat-ao), 0 0 10px rgba(78, 226, 255, 0.12);
-}
-.market-card__thumb {
-  position: relative;
+.trade-detail__head {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px 8px;
+  padding: 12px 14px;
   border-bottom: 1px solid var(--hud-border-dim);
 }
-.market-card__icon {
+.trade-detail__ico {
   flex-shrink: 0;
-  width: 38px;
-  height: 38px;
+  width: 44px;
+  height: 44px;
   display: grid;
   place-items: center;
-  font-size: 19px;
+  font-size: 22px;
 }
-.market-card__name {
-  font-family: var(--font-display, var(--hud-font));
-  font-size: 13px;
-  letter-spacing: 0.04em;
-  color: var(--hud-text-bright);
-  line-height: 1.15;
-}
-.market-card__sub {
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  color: var(--hud-text-mute);
-  margin-top: 2px;
-}
-.market-card__owned {
-  position: absolute;
-  top: 8px;
-  right: 10px;
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  color: var(--hud-cyan);
-  font-variant-numeric: tabular-nums;
-}
-.market-card__body {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  padding: 9px 12px 11px;
-}
-.market-card__price {
+.trade-detail__title { font-family: var(--font-display, var(--hud-font)); font-size: 16px; letter-spacing: 0.05em; color: var(--hud-text-bright); }
+.trade-detail__sub { font-size: 10px; letter-spacing: 0.1em; color: var(--hud-text-mute); margin-top: 3px; }
+.trade-detail__body { padding: 14px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; min-height: 0; }
+
+.trade-detail__price {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
   gap: 8px;
 }
-.market-card__price .p {
+.trade-detail__price .big {
   font-family: var(--font-display, var(--hud-font));
-  font-size: 17px;
+  font-size: 30px;
   font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
-.market-card__price .d {
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-}
-.market-card__best {
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  line-height: 1.3;
-  min-height: 13px;
-}
-.market-card__row {
+.trade-detail__price .unit { font-size: 11px; color: var(--hud-text-mute); letter-spacing: 0.1em; }
+.trade-detail__price .pct { margin-left: auto; font-size: 12px; font-variant-numeric: tabular-nums; }
+
+/* sparkline canvas-free bar chart */
+.trade-spark {
   display: flex;
-  gap: 5px;
+  align-items: flex-end;
+  gap: 2px;
+  height: 44px;
+  padding: 6px 8px;
+  border: 1px solid var(--hud-border-dim);
+  background: rgba(6, 10, 20, 0.5);
 }
-.market-card__row .gbtn {
+.trade-spark i { flex: 1; background: linear-gradient(180deg, var(--hud-cyan), var(--hud-cyan-dim)); opacity: 0.85; min-height: 1px; }
+
+.trade-stat {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+.trade-stat .k { color: var(--hud-text-dim); text-transform: uppercase; font-size: 10px; letter-spacing: 0.12em; }
+.trade-stat .v { font-variant-numeric: tabular-nums; color: var(--hud-text-bright); }
+
+.trade-route {
+  border: 1px solid var(--hud-border-dim);
+  background: rgba(6, 10, 20, 0.4);
+  padding: 9px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.trade-route__hd { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--hud-text-mute); }
+.trade-route__to { font-size: 12px; color: var(--hud-text-bright); }
+.trade-route__profit { font-size: 15px; font-variant-numeric: tabular-nums; }
+
+/* quantity stepper */
+.trade-qty {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+.trade-qty .step {
+  width: 34px;
+  flex-shrink: 0;
+  font-size: 16px;
+  padding: 0;
+}
+.trade-qty__field {
   flex: 1;
-  padding: 5px 0;
-  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--hud-border-dim);
+  background: rgba(6, 10, 20, 0.6);
+  box-shadow: var(--mat-ao);
+}
+.trade-qty__field .n { font-family: var(--font-display, var(--hud-font)); font-size: 20px; font-variant-numeric: tabular-nums; color: var(--hud-cyan); line-height: 1; }
+.trade-qty__field .l { font-size: 9px; letter-spacing: 0.12em; color: var(--hud-text-mute); margin-top: 2px; }
+.trade-qty__presets { display: flex; gap: 4px; }
+.trade-qty__presets .gbtn { flex: 1; padding: 3px 0; font-size: 10px; }
+
+.trade-actions { display: flex; gap: 8px; }
+.trade-actions .gbtn { flex: 1; padding: 9px 0; font-size: 12px; letter-spacing: 0.1em; }
+
+.trade-detail__empty {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 24px;
+  text-align: center;
+  color: var(--hud-text-mute);
+  font-size: 12px;
+  line-height: 1.6;
 }
 .stat-box {
   background: rgba(8, 14, 26, 0.7);
