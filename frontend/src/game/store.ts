@@ -925,33 +925,39 @@ function hashCode(s: string): number {
   return Math.abs(h);
 }
 
+// ── Market price wave ───────────────────────────────────────────────────────
+// A single sine with a fixed 10-minute period, so every commodity rises
+// steadily for 5 minutes, then falls steadily for the next 5 — long, calm
+// trends you can actually trade against (no fast up/down chop). Per-resource
+// `phase` just offsets where each good sits in its own 5-up/5-down cycle.
+const PRICE_PERIOD_MS = 600000; // 10 min full cycle = 5 min up + 5 min down
+const PRICE_AMPLITUDE = 0.15;   // ±15%
+function priceWaveAt(seed: number, t: number): number {
+  const phase = (seed % 1000) / 1000 * Math.PI * 2;
+  return Math.sin(t / PRICE_PERIOD_MS * Math.PI * 2 + phase);
+}
+
 export function stationPrice(stationId: string, resourceId: ResourceId): number {
   const station = STATIONS.find((s) => s.id === stationId);
   if (!station) return RESOURCES[resourceId].basePrice;
   const mod = station.prices[resourceId];
   let price = RESOURCES[resourceId].basePrice * (mod ?? 1.0);
 
-  // Dynamic price fluctuation (±15%, 8-minute cycles, unique per station+resource)
   const seed = hashCode(stationId + resourceId);
-  const period = 480000 + (seed % 5) * 60000; // 8-13 min cycles
-  const phase = (seed % 1000) / 1000 * Math.PI * 2;
-  const now = Date.now();
-  const wave = Math.sin(now / period * Math.PI * 2 + phase);
-  const amplitude = 0.15;
-  price *= (1 + wave * amplitude);
+  const wave = priceWaveAt(seed, Date.now());
+  price *= (1 + wave * PRICE_AMPLITUDE);
 
   return Math.max(1, Math.round(price));
 }
 
 export function priceDirection(stationId: string, resourceId: ResourceId): "up" | "down" | "stable" {
   const seed = hashCode(stationId + resourceId);
-  const period = 480000 + (seed % 5) * 60000;
+  // The derivative of the price sine is a cosine — positive slope = rising.
   const phase = (seed % 1000) / 1000 * Math.PI * 2;
-  const now = Date.now();
-  const wave = Math.cos(now / period * Math.PI * 2 + phase);
-  if (wave > 0.3) return "up";
-  if (wave < -0.3) return "down";
-  return "stable";
+  const slope = Math.cos(Date.now() / PRICE_PERIOD_MS * Math.PI * 2 + phase);
+  if (slope > 0.02) return "up";
+  if (slope < -0.02) return "down";
+  return "stable"; // only right at the 5-min turning points
 }
 
 // Sample the same deterministic price curve at N points across the recent past
@@ -964,15 +970,12 @@ export function priceHistory(
   const base = RESOURCES[resourceId].basePrice;
   const mod = station?.prices[resourceId] ?? 1.0;
   const seed = hashCode(stationId + resourceId);
-  const period = 480000 + (seed % 5) * 60000;
-  const phase = (seed % 1000) / 1000 * Math.PI * 2;
-  const amplitude = 0.15;
   const now = Date.now();
   const out: number[] = [];
   for (let i = 0; i < points; i++) {
     const t = now - spanMs + (spanMs * i) / (points - 1);
-    const wave = Math.sin(t / period * Math.PI * 2 + phase);
-    out.push(Math.max(1, Math.round(base * mod * (1 + wave * amplitude))));
+    const wave = priceWaveAt(seed, t);
+    out.push(Math.max(1, Math.round(base * mod * (1 + wave * PRICE_AMPLITUDE))));
   }
   return out;
 }

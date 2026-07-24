@@ -712,6 +712,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
   const [filter, setFilter] = useState<ModuleSlot | "all">("all");
   const [showShop, setShowShop] = useState(false);
   const [showAmmoPopup, setShowAmmoPopup] = useState(false);
+  const [showConsumablesPopup, setShowConsumablesPopup] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [sellMode, setSellMode] = useState(false);
   const [sellAllArmed, setSellAllArmed] = useState(false);
@@ -1074,13 +1075,23 @@ function LoadoutTab({ stationId }: { stationId: string }) {
             >
               {showShop ? "INVENTORY" : "SHOP"}
             </button>
-            <button
-              className="gbtn"
-              style={{ padding: "4px 0", fontSize: 11, width: "100%", letterSpacing: "0.14em" }}
-              onClick={() => setShowAmmoPopup((v) => !v)}
-            >
-              ⟁ AMMO
-            </button>
+            <div className="flex gap-1.5">
+              <button
+                className="gbtn"
+                style={{ padding: "4px 0", fontSize: 11, flex: 1, letterSpacing: "0.14em" }}
+                onClick={() => setShowAmmoPopup((v) => !v)}
+              >
+                ⟁ AMMO
+              </button>
+              <button
+                className="gbtn"
+                style={{ padding: "4px 0", fontSize: 11, flex: 1, letterSpacing: "0.14em" }}
+                title="Buy combat consumables"
+                onClick={() => setShowConsumablesPopup((v) => !v)}
+              >
+                ✚ ITEMS
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1223,6 +1234,82 @@ function LoadoutTab({ stationId }: { stationId: string }) {
           </div>
         </div>
       )}
+      {showConsumablesPopup && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 60, display: "flex",
+            alignItems: "center", justifyContent: "center",
+            background: "rgba(0,0,0,0.7)", pointerEvents: "auto",
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowConsumablesPopup(false); }}
+        >
+          <div className="panel" style={{ maxWidth: 560, width: "90vw", maxHeight: "80vh", overflowY: "auto", padding: 0 }}>
+            <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b" style={{ borderColor: "var(--border-soft)" }}>
+              <div className="text-cyan tracking-widest text-sm font-bold">CONSUMABLES SHOP</div>
+              <button className="gbtn gbtn-red" style={{ padding: "2px 8px", fontSize: 13 }} onClick={() => setShowConsumablesPopup(false)}>✕ Close</button>
+            </div>
+            <ConsumablesShop />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Combat consumables shop — one buyable per row (×1 / ×5). Shown as a popup in
+// the Loadout bay (moved out of the Market's trade terminal).
+function ConsumablesShop() {
+  const player = useGame((s) => s.player);
+  return (
+    <div className="p-3">
+      <div className="grid grid-cols-1 gap-1">
+        {(Object.keys(CONSUMABLE_DEFS) as ConsumableId[]).map((cid) => {
+          const def = CONSUMABLE_DEFS[cid];
+          const have = player.consumables[cid] ?? 0;
+          return (
+            <div
+              key={cid}
+              className="flex items-center gap-3 px-3 py-2 border-b"
+              style={{ borderColor: "var(--border-soft)" }}
+            >
+              <div
+                style={{
+                  width: 30, height: 30, fontSize: 18,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: `${def.color}22`, border: `1px solid ${def.color}`,
+                  color: def.color, flexShrink: 0,
+                }}
+              >
+                {def.icon}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-bright text-[13px] font-bold">{def.name}</div>
+                <div className="text-mute text-[12px]">{def.description}</div>
+              </div>
+              <div className="text-cyan text-[13px] tabular-nums whitespace-nowrap">×{have}</div>
+              <div className="text-amber text-[13px] tabular-nums whitespace-nowrap">{def.price}cr</div>
+              <div className="flex gap-1">
+                <button
+                  className="gbtn gbtn-gold"
+                  style={{ padding: "2px 8px", fontSize: 13 }}
+                  disabled={player.credits < def.price}
+                  onClick={() => buyConsumable(cid, 1)}
+                >
+                  ×1
+                </button>
+                <button
+                  className="gbtn gbtn-gold"
+                  style={{ padding: "2px 8px", fontSize: 13 }}
+                  disabled={player.credits < def.price * 5}
+                  onClick={() => buyConsumable(cid, 5)}
+                >
+                  ×5
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1857,60 +1944,7 @@ function MarketTab({ stationId }: { stationId: string }) {
         </div>
       </div>
 
-      {/* Consumables Shop */}
-      <div className="mt-5 pt-1 shrink-0">
-        <div className="dob-hdr mb-2"><span>◆ CONSUMABLES SHOP</span></div>
-        <div className="grid grid-cols-1 gap-1">
-          {(Object.keys(CONSUMABLE_DEFS) as ConsumableId[]).map((cid) => {
-            const def = CONSUMABLE_DEFS[cid];
-            const have = player.consumables[cid] ?? 0;
-            return (
-              <div
-                key={cid}
-                className="flex items-center gap-3 px-3 py-2 border-b"
-                style={{ borderColor: "var(--border-soft)" }}
-              >
-                <div
-                  style={{
-                    width: 30, height: 30, fontSize: 18,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    background: `${def.color}22`, border: `1px solid ${def.color}`,
-                    color: def.color, flexShrink: 0,
-                  }}
-                >
-                  {def.icon}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-bright text-[13px] font-bold">{def.name}</div>
-                  <div className="text-mute text-[12px]">{def.description}</div>
-                </div>
-                <div className="text-cyan text-[13px] tabular-nums whitespace-nowrap">×{have}</div>
-                <div className="text-amber text-[13px] tabular-nums whitespace-nowrap">{def.price}cr</div>
-                <div className="flex gap-1">
-                  <button
-                    className="gbtn gbtn-gold"
-                    style={{ padding: "2px 8px", fontSize: 13 }}
-                    disabled={player.credits < def.price}
-                    onClick={() => buyConsumable(cid, 1)}
-                  >
-                    ×1
-                  </button>
-                  <button
-                    className="gbtn gbtn-gold"
-                    style={{ padding: "2px 8px", fontSize: 13 }}
-                    disabled={player.credits < def.price * 5}
-                    onClick={() => buyConsumable(cid, 5)}
-                  >
-                    ×5
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-          </div>
+    </div>
   );
 }
 
