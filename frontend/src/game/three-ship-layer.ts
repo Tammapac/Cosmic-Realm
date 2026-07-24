@@ -1433,10 +1433,11 @@ export function updateShip3D(
     while (dYaw > Math.PI) dYaw -= Math.PI * 2;
     while (dYaw < -Math.PI) dYaw += Math.PI * 2;
     const turnRate = dYaw / dt;            // rad/s
-    const MAX_BANK = 0.7;                  // ~40° max lean
+    const MAX_BANK = 0.35;                 // ~20° max lean (halved from 0.7)
     const moveFrac = Math.min(1, speed / 60);
     // sign: roll INTO the turn (left turn -> left side dips). Verified live.
-    bankTarget = Math.max(-MAX_BANK, Math.min(MAX_BANK, turnRate * 0.5 * moveFrac));
+    // gain halved too so the whole lean is half as strong at every turn rate.
+    bankTarget = Math.max(-MAX_BANK, Math.min(MAX_BANK, turnRate * 0.25 * moveFrac));
   }
 
   // ease toward target — well-damped so nothing snaps or shivers.
