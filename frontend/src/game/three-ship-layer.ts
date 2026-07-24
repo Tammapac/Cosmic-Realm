@@ -5,6 +5,7 @@ import { applySpaceMaterial, makeEnemyCore, makeEnemyFlowShell, ENEMY_ACCENTS, s
 import { perfRegisterThree } from "./perf";
 import { getRendererSettings } from "./RendererSettings";
 import { loadEnvironment } from "./three-environment";
+import { createPostFX, type PostFX } from "./three-postfx";
 
 // Stable string hash → seed for reproducible per-class surface aging.
 function shipSeedHash(s: string): number {
@@ -252,6 +253,22 @@ let scene: THREE.Scene | null = null;
 let camera: THREE.OrthographicCamera | null = null;
 let initialized = false;
 
+// Optional EffectComposer post-processing (GTAO + UnrealBloom + FXAA + vignette),
+// enabled per quality tier. When active it renders the scene into outlineRT so
+// the existing selection-outline + FX passes still composite on top. When null,
+// the cheap inline bloom pipeline below runs instead.
+let postFX: PostFX | null = null;
+// Plain copy material to blit the composer's result (outlineRT) to screen,
+// preserving transparency. Used only when postFX is active.
+let copyMat: THREE.ShaderMaterial | null = null;
+const COPY_FRAG = `
+uniform sampler2D tDiffuse;
+varying vec2 vUv;
+void main() {
+  gl_FragColor = texture2D(tDiffuse, vUv);
+  #include <colorspace_fragment>
+}`;
+
 // Silhouette outline pass: ships render into an offscreen target, then a
 // fullscreen blit paints 1 buffer-pixel of black wherever a transparent pixel
 // touches an opaque one. In the pixelated low-res buffer this reads as a
@@ -383,6 +400,14 @@ function setupOutlinePass(bufW: number, bufH: number): void {
   fsQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), outlineMat);
   fsQuad.frustumCulled = false;
   outlineScene.add(fsQuad);
+
+  // Copy material for the post-processing path (blit composer result to screen).
+  copyMat = new THREE.ShaderMaterial({
+    uniforms: { tDiffuse: { value: outlineRT.texture } },
+    vertexShader: QUAD_VERT,
+    fragmentShader: COPY_FRAG,
+    blending: THREE.NoBlending, depthTest: false, depthWrite: false, transparent: true,
+  });
 
   // Selection mask target + red-edge material.
   selectRT = new THREE.WebGLRenderTarget(bufW, bufH, { depthBuffer: true, format: THREE.RGBAFormat });
@@ -566,8 +591,16 @@ export function init3DLayer(canvas: HTMLCanvasElement): void {
   rim.position.set(-30, -70, 210);
   scene.add(rim);
 
+  // Post-processing composer (GTAO + UnrealBloom + FXAA + vignette), rendering
+  // INTO outlineRT so the selection/FX passes still composite over it. null on
+  // low tier → the inline pipeline runs instead.
+  if (outlineRT) {
+    const dbS = renderer.getDrawingBufferSize(new THREE.Vector2());
+    postFX = createPostFX(renderer, scene, camera, dbS.x, dbS.y, outlineRT);
+  }
+
   window.addEventListener("resize", onResize);
-  console.log("[Three.js] INIT OK canvas:", w, "x", h);
+  console.log("[Three.js] INIT OK canvas:", w, "x", h, "postFX:", !!postFX);
 }
 
 function onResize(): void {
@@ -582,6 +615,7 @@ function onResize(): void {
   }
   const dbSize = renderer.getDrawingBufferSize(new THREE.Vector2());
   resizeOutlinePass(dbSize.x, dbSize.y);
+  if (postFX) postFX.setSize(dbSize.x, dbSize.y);
   camera.left = -w / 2;
   camera.right = w / 2;
   camera.top = h / 2;
@@ -1592,33 +1626,46 @@ export function render3DLayer(): void {
     }
   }
   if (outlineRT && outlineScene && outlineCamera && fsQuad && brightMat && blurMat && outlineMat && bloomRTA && bloomRTB) {
-    // Pass 1: solid hulls only (default layer) → offscreen target
     camera.layers.set(0);
-    renderer.setRenderTarget(outlineRT);
-    renderer.clear();
-    renderer.render(scene, camera);
 
-    // Pass 2: bloom — extract bright emissives, blur H+V twice at half res
-    fsQuad.material = brightMat;
-    renderer.setRenderTarget(bloomRTA);
-    renderer.render(outlineScene, outlineCamera);
-    fsQuad.material = blurMat;
-    const bw = bloomRTA.width, bh = bloomRTA.height;
-    for (let i = 0; i < 2; i++) {
-      blurMat.uniforms.tDiffuse.value = bloomRTA.texture;
-      (blurMat.uniforms.dir.value as THREE.Vector2).set(1 / bw, 0);
-      renderer.setRenderTarget(bloomRTB);
+    if (postFX && copyMat) {
+      // Post-processing path: the composer renders the scene + GTAO + UnrealBloom
+      // + FXAA + vignette INTO outlineRT, then we blit that to screen. The
+      // selection/FX passes below still composite on top, unchanged.
+      postFX.render(frameDt);                 // → outlineRT (composer target)
+      fsQuad.material = copyMat;
+      copyMat.uniforms.tDiffuse.value = outlineRT.texture;
+      renderer.setRenderTarget(null);
       renderer.render(outlineScene, outlineCamera);
-      blurMat.uniforms.tDiffuse.value = bloomRTB.texture;
-      (blurMat.uniforms.dir.value as THREE.Vector2).set(0, 1 / bh);
+    } else {
+      // Legacy inline path (low tier): scene → outlineRT, custom bloom, composite.
+      // Pass 1: solid hulls only (default layer) → offscreen target
+      renderer.setRenderTarget(outlineRT);
+      renderer.clear();
+      renderer.render(scene, camera);
+
+      // Pass 2: bloom — extract bright emissives, blur H+V twice at half res
+      fsQuad.material = brightMat;
       renderer.setRenderTarget(bloomRTA);
       renderer.render(outlineScene, outlineCamera);
-    }
+      fsQuad.material = blurMat;
+      const bw = bloomRTA.width, bh = bloomRTA.height;
+      for (let i = 0; i < 2; i++) {
+        blurMat.uniforms.tDiffuse.value = bloomRTA.texture;
+        (blurMat.uniforms.dir.value as THREE.Vector2).set(1 / bw, 0);
+        renderer.setRenderTarget(bloomRTB);
+        renderer.render(outlineScene, outlineCamera);
+        blurMat.uniforms.tDiffuse.value = bloomRTB.texture;
+        (blurMat.uniforms.dir.value as THREE.Vector2).set(0, 1 / bh);
+        renderer.setRenderTarget(bloomRTA);
+        renderer.render(outlineScene, outlineCamera);
+      }
 
-    // Pass 3: blit with additive bloom (black outline removed)
-    fsQuad.material = outlineMat;
-    renderer.setRenderTarget(null);
-    renderer.render(outlineScene, outlineCamera);
+      // Pass 3: blit with additive bloom (black outline removed)
+      fsQuad.material = outlineMat;
+      renderer.setRenderTarget(null);
+      renderer.render(outlineScene, outlineCamera);
+    }
 
     // Pass 3b: RED SELECTION OUTLINE. Render only the selected ship(s) (on
     // SELECT_LAYER) into a flat-white mask, then draw a thin red rim on the
@@ -1656,6 +1703,11 @@ export function render3DLayer(): void {
 }
 
 export function destroy3DLayer(): void {
+  if (postFX) {
+    postFX.dispose();
+    postFX = null;
+  }
+  if (copyMat) { copyMat.dispose(); copyMat = null; }
   if (nebulaBackground) {
     nebulaBackground.destroy();
     nebulaBackground = null;
