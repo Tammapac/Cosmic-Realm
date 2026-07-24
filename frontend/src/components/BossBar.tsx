@@ -43,18 +43,20 @@ export function BossBar() {
       >
         ◆ {(boss.name || "DREADNOUGHT").toUpperCase()} ◆
       </div>
-      <div
-        style={{
-          position: "relative",
-          width: "100%",
-          aspectRatio: "620 / 95",
-          backgroundImage: "url(/assets/ui/boss-bar.png)",
-          backgroundSize: "100% 100%",
-          filter: "drop-shadow(0 3px 12px rgba(0,0,0,0.7))",
-        }}
-      >
-        {/* fill matches the art's true black channel (rows 45-57 of 95) */}
-        <div style={{ position: "absolute", left: "3.3%", right: "3.0%", top: "47.4%", bottom: "40%", overflow: "hidden" }}>
+      {/* Frosted-glass boss bar (same .panel look as Chat/Quests) instead of
+          the gold boss-bar.png frame. A recessed HP track sits inside it. */}
+      <div className="panel" style={{ position: "relative", padding: "7px 12px 9px" }}>
+        <div
+          style={{
+            position: "relative",
+            height: 16,
+            background: "rgba(5, 9, 18, 0.85)",
+            border: "1px solid rgba(90, 130, 180, 0.35)",
+            boxShadow: "inset 0 2px 5px rgba(0,0,0,0.6)",
+            clipPath: "polygon(4px 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%, 0 4px)",
+            overflow: "hidden",
+          }}
+        >
           <div
             style={{
               width: `${pct}%`, height: "100%",
@@ -63,17 +65,16 @@ export function BossBar() {
               transition: "width 0.2s ease-out",
             }}
           />
-        </div>
-        {/* HP numbers under the channel, on the frame's lower band */}
-        <div
-          className="absolute flex items-center justify-center tabular-nums font-bold"
-          style={{
-            left: 0, right: 0, top: "63%", height: "30%",
-            fontSize: 11, color: "#ffd0cc", textShadow: "0 1px 2px #000, 0 0 6px #000",
-            letterSpacing: "0.06em",
-          }}
-        >
-          {Math.round(boss.hull)} / {Math.round(boss.hullMax)}
+          {/* HP numbers centered on the track */}
+          <div
+            className="absolute inset-0 flex items-center justify-center tabular-nums font-bold"
+            style={{
+              fontSize: 11, color: "#fff", textShadow: "0 1px 2px #000, 0 0 6px #000",
+              letterSpacing: "0.06em",
+            }}
+          >
+            {Math.round(boss.hull)} / {Math.round(boss.hullMax)}
+          </div>
         </div>
       </div>
     </div>
