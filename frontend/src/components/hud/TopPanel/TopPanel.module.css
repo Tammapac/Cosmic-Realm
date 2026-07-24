@@ -697,10 +697,13 @@
   flex-shrink: 0;
   background: linear-gradient(180deg, transparent, rgba(120, 170, 210, 0.4) 18%, rgba(120, 170, 210, 0.4) 82%, transparent);
 }
+/* Reputation + MCoins cells: label ON TOP, value below (like the mockup). */
 .statCell {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
   padding: 0 13px;
 }
 .moneyCell {
