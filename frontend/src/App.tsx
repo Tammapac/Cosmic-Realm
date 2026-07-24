@@ -7,6 +7,8 @@ import { initPixiRenderer, destroyPixiRenderer, pixiRender } from "./game/pixi-r
 import { init3DLayer, destroy3DLayer, getLoadingProgress, initStationLayer, renderStationLayer, destroyStationLayer } from "./game/three-ship-layer";
 import { destroyStation3DLayer } from "./game/three-station-layer";
 import { activeRenderer, ENABLE_NEW_DOCKING_FLOW } from "./game/renderer-config";
+import { isControlLocked } from "./game/scene/docking-gate";
+import { requestDock } from "./game/scene/DockingController";
 import { WorldTargetHud, LogoutFlow } from "./components/TopBar";
 import { GameHud } from "./components/hud/GameHud";
 import "./styles/hud/hud-tokens.css";
@@ -166,7 +168,7 @@ function GameCanvas() {
   };
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement | HTMLDivElement>) => {
-    if (state.dockedAt) return;
+    if (isControlLocked()) return;
     const { x: wx, y: wy } = screenToWorld(e);
 
     // Check if clicking on enemy — lock target (stays locked), do NOT auto-attack
@@ -262,7 +264,7 @@ function GameCanvas() {
   };
 
   const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement | HTMLDivElement>) => {
-    if (state.dockedAt) return;
+    if (isControlLocked()) return;
     const { x: wx, y: wy } = screenToWorld(e);
     const enemy = pickEnemyAt(wx, wy);
     if (enemy) {
@@ -285,7 +287,7 @@ function GameCanvas() {
   // Steer cameraTarget toward a remembered screen-space cursor position.
   const steerToHeld = () => {
     const h = heldMouse.current;
-    if (!h || state.dockedAt) return;
+    if (!h || isControlLocked()) return;
     state.cameraTarget = {
       x: state.player.pos.x + (h.x - h.w / 2) / state.cameraZoom,
       y: state.player.pos.y + (h.y - h.h / 2) / state.cameraZoom,
@@ -299,7 +301,7 @@ function GameCanvas() {
   // ~600 world units in the thrust direction each frame (same channel
   // click-to-move uses). Releasing all keys parks the target on the ship.
   const steerWasd = () => {
-    if (state.dockedAt) return;
+    if (isControlLocked()) return;
 
     // Aim: ship nose follows the cursor (ship = screen center), always —
     // even while standing still.
@@ -360,7 +362,7 @@ function GameCanvas() {
   };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLElement>) => {
-    if (state.dockedAt) return;
+    if (isControlLocked()) return;
 
     if (state.controlMode === "wasd") {
       // WASD mode: free-aim combat. LMB = lasers, RMB = rockets — both fire
@@ -446,7 +448,7 @@ function GameCanvas() {
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement | HTMLDivElement>) => {
     rememberCursor(e);
     if (state.controlMode === "wasd") return; // aim only — no click-steering
-    if (e.buttons !== 1 || state.dockedAt) { heldMouse.current = null; return; }
+    if (e.buttons !== 1 || isControlLocked()) { heldMouse.current = null; return; }
     rememberMouse(e);
     steerToHeld();
   };
@@ -716,6 +718,10 @@ function DockPrompt() {
           className="gbtn gbtn-gold text-base px-8 py-3"
           style={{ animation: "pulse-glow 2s ease-in-out infinite", whiteSpace: "nowrap", minWidth: "fit-content" }}
           onClick={() => {
+            if (ENABLE_NEW_DOCKING_FLOW) {
+              requestDock(station.id);
+              return;
+            }
             state.dockedAt = station.id; sendDockEnter();
             state.hangarTab = station.kind === "factory" ? "refinery" : "bounties";
             state.player.vel = { x: 0, y: 0 };
@@ -1252,13 +1258,21 @@ function GameApp() {
         if (state.dockedAt) return;
         const sid = checkStationDock();
         if (sid) {
-          state.dockedAt = sid; sendDockEnter();
-          { const _st = STATIONS.find(s => s.id === sid); if (_st?.kind === "factory") state.hangarTab = "refinery"; else state.hangarTab = "bounties"; }
-          state.player.vel = { x: 0, y: 0 };
-          pushNotification("Docking...", "good");
-          save(); bump();
-          const stats = effectiveStats();
-          runDockingServices(stats.hullMax, stats.shieldMax);
+          // New docking flow (M2): begin a DOCKING transition first, which locks
+          // player controls via isControlLocked(). The actual dock (dockedAt +
+          // hangar) is committed by requestDock() once the (future) cinematic
+          // completes. When the flag is off, keep the original instant dock.
+          if (ENABLE_NEW_DOCKING_FLOW) {
+            requestDock(sid);
+          } else {
+            state.dockedAt = sid; sendDockEnter();
+            { const _st = STATIONS.find(s => s.id === sid); if (_st?.kind === "factory") state.hangarTab = "refinery"; else state.hangarTab = "bounties"; }
+            state.player.vel = { x: 0, y: 0 };
+            pushNotification("Docking...", "good");
+            save(); bump();
+            const stats = effectiveStats();
+            runDockingServices(stats.hullMax, stats.shieldMax);
+          }
         }
       } else if (e.key === "m" || e.key === "M") {
         state.showFullZoneMap = !state.showFullZoneMap; bump();
