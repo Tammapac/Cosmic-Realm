@@ -231,6 +231,25 @@ export class HangarScene {
   static envKind: EnvKind = "studio";
   static envIntensity = 1.0;
 
+  // ── Tone-mapping A/B config (Phase D) ─────────────────────────────────────
+  // Blender 4.x's Material Preview uses the AgX view transform, so AgX is the
+  // strongest candidate for matching it; ACESFilmic (the old default) and
+  // Khronos Neutral are the alternatives. Static so the harness can compare.
+  static toneMapping: THREE.ToneMapping = THREE.AgXToneMapping;
+  // AgX renders midtones darker than ACES by design, so it needs a hair more
+  // exposure to sit at Blender Material Preview's default brightness. 1.35 was
+  // dialled in against the reference viewport (Phase D A/B).
+  static toneExposure = 1.35;
+  /** Live setter used by the harness to switch tone mapping without a rebuild. */
+  setToneMapping(mode: THREE.ToneMapping, exposure: number): void {
+    this.renderer.toneMapping = mode;
+    this.renderer.toneMappingExposure = exposure;
+    this.scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material;
+      if (m) (Array.isArray(m) ? m : [m]).forEach((mm) => (mm.needsUpdate = true));
+    });
+  }
+
   private constructor(canvas: HTMLCanvasElement, hangarRoot: THREE.Group) {
     this.canvas = canvas;
     this.hangarRoot = hangarRoot;
@@ -239,8 +258,8 @@ export class HangarScene {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setClearColor(0x05070d, 1); // opaque near-black behind the room
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMapping = HangarScene.toneMapping;
+    this.renderer.toneMappingExposure = HangarScene.toneExposure;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 

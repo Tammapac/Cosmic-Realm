@@ -10,9 +10,19 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useRef, useState } from "react";
+import * as THREE from "three";
 import { HangarScene } from "../game/scene/HangarScene";
 
 const SHIP_CLASSES = ["skimmer", "apex", "leviathan", "vanguard"];
+
+// Tone-mapping A/B (Phase D). Blender 4.x Material Preview uses AgX; ACESFilmic
+// is the old default; Neutral (Khronos) is the third candidate. Each carries a
+// starting exposure — AgX renders darker so it wants a hair more.
+const TONE_MODES: { label: string; mode: THREE.ToneMapping; exposure: number }[] = [
+  { label: "AgX", mode: THREE.AgXToneMapping, exposure: 1.35 },
+  { label: "ACES", mode: THREE.ACESFilmicToneMapping, exposure: 1.0 },
+  { label: "Neutral", mode: THREE.NeutralToneMapping, exposure: 1.0 },
+];
 
 export default function HangarTest() {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -20,6 +30,8 @@ export default function HangarTest() {
   const [status, setStatus] = useState("booting…");
   const [shipClass, setShipClass] = useState("skimmer");
   const [envKind, setEnvKind] = useState<"studio" | "hdr">("studio");
+  const [tone, setTone] = useState("AgX");
+  const [exposure, setExposure] = useState(1.35);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -51,6 +63,14 @@ export default function HangarTest() {
     };
   }, [shipClass, envKind]);
 
+  // Live tone-mapping A/B — apply on change without rebuilding the scene.
+  useEffect(() => {
+    const hs = sceneRef.current;
+    if (!hs) return;
+    const t = TONE_MODES.find((m) => m.label === tone) ?? TONE_MODES[0];
+    hs.setToneMapping(t.mode, exposure);
+  }, [tone, exposure, status]);
+
   const run = (label: string, fn: () => Promise<void> | void) => {
     if (busy) return;
     setBusy(true);
@@ -81,6 +101,27 @@ export default function HangarTest() {
           <option value="studio">studio (procedural)</option>
           <option value="hdr">space HDRI</option>
         </select>
+        <label style={{ marginLeft: 12 }}>tone:</label>
+        <select
+          value={tone}
+          onChange={(e) => {
+            const t = TONE_MODES.find((m) => m.label === e.target.value)!;
+            setTone(t.label);
+            setExposure(t.exposure); // reset to that mode's calibrated default
+          }}
+        >
+          {TONE_MODES.map((m) => <option key={m.label} value={m.label}>{m.label}</option>)}
+        </select>
+        <label style={{ marginLeft: 8 }}>exp {exposure.toFixed(2)}</label>
+        <input
+          type="range"
+          min={0.5}
+          max={2.0}
+          step={0.05}
+          value={exposure}
+          onChange={(e) => setExposure(parseFloat(e.target.value))}
+          style={{ width: 120 }}
+        />
       </div>
     </div>
   );
