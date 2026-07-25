@@ -116,6 +116,7 @@ interface MatStat {
   metal: number; rough: number;
   maps: string[]; missing: string[];
   emissiveFixed: boolean;
+  pbrFixed: boolean;
 }
 
 /** True for the broken "albedo dumped into emissive" export: bright, unsaturated,
@@ -158,11 +159,29 @@ function validateMaterial(m: THREE.MeshStandardMaterial): MatStat {
     m.emissiveMap = null;
     emissiveFixed = true;
   }
+
+  // Fix the glTF metallic-default export artifact. When a mesh carries a base
+  // map but NO metalnessMap and NO roughnessMap, and metalness/roughness are BOTH
+  // exactly 1, those are three.js's MeshStandardMaterial defaults stamped because
+  // the (procedural) metal/rough channels never exported — NOT an authored value.
+  // A real full-metal surface would carry a rough map or a sub-1 roughness. Left
+  // as-is these painted props (crates, barrels, walls) render as dull grey metal.
+  // Reset them to a sane dielectric so they read as painted surfaces, the way
+  // Blender's Principled BSDF showed them (metallic 0, mid roughness).
+  let pbrFixed = false;
+  const isExportMetalDefault =
+    m.metalness === 1 && m.roughness === 1 && !m.metalnessMap && !m.roughnessMap;
+  if (isExportMetalDefault) {
+    m.metalness = 0.0; // painted dielectric, not metal
+    m.roughness = 0.7; // matte-ish, not a mirror
+    pbrFixed = true;
+  }
+
   m.needsUpdate = true;
   return {
     name: m.name || "(unnamed)", type: m.type,
     metal: +(m.metalness ?? 0).toFixed(2), rough: +(m.roughness ?? 0).toFixed(2),
-    maps, missing, emissiveFixed,
+    maps, missing, emissiveFixed, pbrFixed,
   };
 }
 
@@ -188,10 +207,11 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
     }
   });
   const fixed = stats.filter((s) => s.emissiveFixed).length;
+  const pbrFixed = stats.filter((s) => s.pbrFixed).length;
   const noBase = stats.filter((s) => s.missing.includes("base")).length;
   console.log(
     `[HangarScene] validate "${label}": ${stats.length} MeshStandard mats · ` +
-    `${fixed} broken-emissive fixed · ${noBase} without base map`,
+    `${fixed} broken-emissive fixed · ${pbrFixed} export-metal-default fixed · ${noBase} without base map`,
   );
   if ((window as unknown as { __PBR_DEBUG?: boolean }).__PBR_DEBUG) {
     console.table(stats.map((s) => ({ ...s, maps: s.maps.join("+"), missing: s.missing.join("+") })));
