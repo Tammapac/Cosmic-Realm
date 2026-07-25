@@ -540,6 +540,7 @@ export class HangarScene {
     scene.resolveNodes();
     scene.buildStripLights(); // local lights on the emissive deck strips
     scene.buildBounceLights(); // coloured bounce from crates/barrels (fake GI)
+    scene.buildStairShadow(); // fake contact shadow under the stairs
     scene.parkShip(shipGLB.scene);
     return scene;
   }
@@ -813,10 +814,13 @@ export class HangarScene {
     this.parkAt(this.padWorld);
     this.scene.add(ship);
 
-    // Fake contact shadow under the ship: the ship is parked at runtime so it
-    // can't be baked into the floor AO. A soft radial dark blob on a flat plane
-    // just above the deck grounds it (what real contact shading would do).
-    const shadowSize = Math.max(size.x, size.z) * scale * 1.6;
+    // Fake contact shadow under the ship (parked at runtime, can't be in the AO).
+    this.addContactShadow(this.padWorld, Math.max(size.x, size.z) * scale * 1.6, 0.7, 0.9);
+  }
+
+  /** A soft radial dark blob on a flat plane just above the deck — grounds an
+   *  object that isn't in the baked floor AO (the ship, the stairs). */
+  private addContactShadow(pos: THREE.Vector3, size: number, aspect: number, opacity: number): void {
     const cv = document.createElement("canvas");
     cv.width = cv.height = 128;
     const cx = cv.getContext("2d")!;
@@ -826,18 +830,37 @@ export class HangarScene {
     g.addColorStop(1, "rgba(0,0,0,0)");
     cx.fillStyle = g;
     cx.fillRect(0, 0, 128, 128);
-    const shadowTex = new THREE.CanvasTexture(cv);
-    shadowTex.colorSpace = THREE.SRGBColorSpace;
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.SRGBColorSpace;
     const blob = new THREE.Mesh(
-      new THREE.PlaneGeometry(shadowSize, shadowSize * 0.7),
-      new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, opacity: 0.9 }),
+      new THREE.PlaneGeometry(size, size * aspect),
+      new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, opacity }),
     );
-    blob.rotation.x = -Math.PI / 2; // flat on the deck
-    blob.position.copy(this.padWorld);
+    blob.rotation.x = -Math.PI / 2;
+    blob.position.copy(pos);
     blob.position.y += 0.03; // just above the deck to avoid z-fight
     blob.renderOrder = 1;
-    blob.name = "shipContactShadow";
+    blob.name = "contactShadow";
     this.scene.add(blob);
+  }
+
+  /** Contact shadow under the stairs (static, but its footprint isn't in the floor
+   *  AO cleanly). Resolves the stair-group footprint from the model and drops a
+   *  soft blob at its base. */
+  private buildStairShadow(): void {
+    this.hangarRoot.updateWorldMatrix(true, true);
+    const bb = new THREE.Box3();
+    let found = false;
+    this.hangarRoot.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (mesh.isMesh && /Stair|Step|StairRise/i.test(mesh.name)) { bb.expandByObject(mesh); found = true; }
+    });
+    if (!found) return;
+    const c = bb.getCenter(new THREE.Vector3());
+    const s = bb.getSize(new THREE.Vector3());
+    // place the blob on the deck under the stair footprint
+    const at = new THREE.Vector3(c.x, this.padWorld.y, c.z);
+    this.addContactShadow(at, Math.max(s.x, s.z) * 2.4, s.z / Math.max(s.x, 0.1) || 0.7, 0.8);
   }
 
   /** Place the parked ship at a world point (keeping its recentre + lift). */
