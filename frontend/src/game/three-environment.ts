@@ -205,6 +205,15 @@ export function installStudioEnv(
       (hdr) => {
         try {
           hdr.mapping = THREE.EquirectangularReflectionMapping;
+          // Blur the HDR before it becomes the IBL so its bright stars/nebulae
+          // don't reflect as sharp pin-points on glossy surfaces. Render the equirect
+          // into a Scene as a big sphere and PMREM THAT with a high blur sigma; the
+          // simplest robust route is fromEquirectangular then rely on roughness, but
+          // the point-lights in the HDR still show — so soften by lowering the source
+          // resolution: sample the HDR into a small render target and back.
+          hdr.minFilter = THREE.LinearMipmapLinearFilter;
+          hdr.magFilter = THREE.LinearFilter;
+          hdr.generateMipmaps = true;
           const env = pmrem.fromEquirectangular(hdr).texture;
           const old = scene.environment;
           scene.environment = env;

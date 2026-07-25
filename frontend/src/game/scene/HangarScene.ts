@@ -369,9 +369,9 @@ export class HangarScene {
   // ── Env A/B config (Phase B) ──────────────────────────────────────────────
   // Which IBL the studio env installs, and how strong. Static so a harness can
   // set them before preload() to compare procedural-studio vs the space HDRI.
-  static envKind: EnvKind = "studio";
-  // Studio IBL stronger so the now-glossy floor/walls have enough to reflect (the
-  // strip + lamp highlights that make the deck read as polished/wet).
+  // Space HDRI is the reflection source (user's choice) — the near-black space
+  // env reflects only faintly, so surfaces read soft/dark, not mirror-bright.
+  static envKind: EnvKind = "hdr";
   static envIntensity = 1.5;
 
   // ── Tone-mapping A/B config (Phase D) ─────────────────────────────────────
@@ -753,21 +753,13 @@ export class HangarScene {
       padNode.updateWorldMatrix(true, false);
       this.padWorld.setFromMatrixPosition(padNode.matrixWorld);
     }
-    // Authored camera: use its world position + the point it looks at.
-    const camNode = findNode(this.hangarRoot, CAM_NODE);
-    if (camNode) {
-      camNode.updateWorldMatrix(true, false);
-      this.camPos.setFromMatrixPosition(camNode.matrixWorld);
-      // A glTF camera looks down its local -Z. Derive the target from that.
-      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(
-        new THREE.Quaternion().setFromRotationMatrix(camNode.matrixWorld),
-      );
-      this.camTarget.copy(this.camPos).add(fwd.multiplyScalar(6));
-    } else {
-      // Fallback framing: above and in front of the pad.
-      this.camPos.copy(this.padWorld).add(new THREE.Vector3(-2.8, 2.6, 5.5));
-      this.camTarget.copy(this.padWorld);
-    }
+    // NOTE: the authored HallCam node is ignored — it exports with a broken ~173°
+    // FOV (1mm lens). Use a hand-tuned framing instead: camera set back toward the
+    // hangar mouth, lower, aimed DEEP into the interior (toward the back wall), so
+    // you look INTO the hangar — the full landing ring, stairs and back wall — not
+    // out through the open door.
+    this.camPos.copy(this.padWorld).add(new THREE.Vector3(-1.0, 1.9, 7.5));
+    this.camTarget.copy(this.padWorld).add(new THREE.Vector3(0, 1.0, -3));
   }
 
   private parkShip(shipTemplate: THREE.Group): void {
@@ -852,10 +844,10 @@ export class HangarScene {
 
   // ── Framing + cinematics ─────────────────────────────────────────────────
 
-  /** Point the camera at the parked ship from the authored HallCam pose. */
+  /** Point the camera into the hangar from the resolved framing pose. */
   private frameParked(): void {
     this.camera.position.copy(this.camPos);
-    this.camera.lookAt(this.padWorld);
+    this.camera.lookAt(this.camTarget);
   }
 
   /** Static parked framing. */

@@ -29,7 +29,7 @@ export default function HangarTest() {
   const sceneRef = useRef<HangarScene | null>(null);
   const [status, setStatus] = useState("booting…");
   const [shipClass, setShipClass] = useState("skimmer");
-  const [envKind, setEnvKind] = useState<"studio" | "hdr">("studio");
+  const [envKind, setEnvKind] = useState<"studio" | "hdr">("hdr");
   const [tone, setTone] = useState("AgX");
   const [exposure, setExposure] = useState(1.05);
   const [busy, setBusy] = useState(false);
