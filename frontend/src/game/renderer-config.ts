@@ -36,9 +36,23 @@ export const PIXELATE_3D_SCALE = 2.5;
 // its model pool from this at module scope, so a value that could change later
 // would leave the layer loading one station model and the docking code assuming
 // another.
+// ?hangar is the umbrella flag for the full 3D docking experience: it turns on
+// the docking cinematic (this flag), the shared 3D scene (below), AND the new
+// HangarScene (ENABLE_HANGAR_3D_SCENE, further down). One switch instead of
+// three, because the pieces are useless apart — the cinematic needs the shared
+// depth buffer, and the hangar scene needs the cinematic's state machine. So
+// every reader below ORs it in.
+function readHangarFlag(): boolean {
+  if (typeof window === "undefined") return false;
+  const p = new URLSearchParams(window.location.search);
+  // ?hangar-test is the isolated harness for the hangar scene; it must force the
+  // whole stack on the same way ?depth-test forces the shared scene.
+  return p.has("hangar") || p.has("hangar-test");
+}
+
 function readDockingFlowFlag(): boolean {
   if (typeof window === "undefined") return false;
-  return new URLSearchParams(window.location.search).has("docking-flow");
+  return new URLSearchParams(window.location.search).has("docking-flow") || readHangarFlag();
 }
 
 export const ENABLE_NEW_DOCKING_FLOW = readDockingFlowFlag();
@@ -85,8 +99,8 @@ function readSharedSceneFlag(): boolean {
   const p = new URLSearchParams(window.location.search);
   // ?depth-test IS the harness for this feature, so it always forces it on —
   // otherwise the harness would boot the old three-renderer stack and prove
-  // nothing about the merge it exists to verify.
-  return p.has("shared-scene") || p.has("depth-test");
+  // nothing about the merge it exists to verify. ?hangar implies it too.
+  return p.has("shared-scene") || p.has("depth-test") || readHangarFlag();
 }
 
 export const ENABLE_SHARED_3D_SCENE = readSharedSceneFlag();
@@ -104,6 +118,19 @@ export const ENABLE_SHARED_3D_SCENE = readSharedSceneFlag();
 // lift back down to 0 (see setShipLiftFactor) so the ship descends INTO the
 // station geometry exactly when it is supposed to be swallowed by it.
 export const SHARED_3D_SHIP_LIFT = 1500;
+
+// ── 3D hangar scene (the docking payoff) ────────────────────────────────────
+// Gates ONLY the new HangarScene module (src/game/scene/HangarScene.ts) and its
+// wiring into the docking state machine: a separate 3D scene with its OWN
+// perspective camera that flies the ship through the hangar door, parks it on
+// the landing pad, and shows the station interior behind the 2D menu. It rides
+// on top of ENABLE_NEW_DOCKING_FLOW (the state machine) and ENABLE_SHARED_3D_SCENE
+// (the depth-shared world it débuts from), both of which ?hangar already turns on.
+//
+// Separate from those two on purpose: with this off but ?docking-flow/?shared-scene
+// on, docking still runs and still ends in the old blackout — this flag is the one
+// thing that swaps that blackout for the real hangar. Deletable in isolation.
+export const ENABLE_HANGAR_3D_SCENE = readHangarFlag();
 
 // Three.js Nebula Background Configuration
 export const ENABLE_THREE_NEBULA_SHADER = false;

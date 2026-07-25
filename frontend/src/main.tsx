@@ -43,6 +43,11 @@ if (params.has("hud-showcase")) {
   import("./demo/DepthTest").then(({ default: DepthTest }) => {
     root.render(<DepthTest />);
   });
+} else if (params.has("hangar-test")) {
+  // Isolated 3D hangar scene + docking cinematic harness: open with ?hangar-test.
+  import("./demo/HangarTest").then(({ default: HangarTest }) => {
+    root.render(<HangarTest />);
+  });
 } else {
   root.render(<App />);
 }
