@@ -666,7 +666,23 @@ export class HangarScene {
       if (!/Hall_Cyan|Hall_Amber/.test(nm)) return;
       tmp.setFromObject(mesh);
       const c = tmp.getCenter(new THREE.Vector3());
-      (/Cyan/.test(nm) ? cyan : amber).push(c);
+      const size = tmp.getSize(new THREE.Vector3());
+      const bucket = /Cyan/.test(nm) ? cyan : amber;
+      // A big flat RING mesh (e.g. PlatformRing, ~8×8) has its bbox centre in the
+      // MIDDLE of the platform, not on the ring — one light there lights nothing
+      // outward. Detect it (wide + flat) and distribute lights AROUND its perimeter
+      // so the ring actually throws light outward onto crates/barrels.
+      const wide = Math.max(size.x, size.z) > 4 && size.y < 1;
+      if (wide) {
+        const rx = size.x * 0.42, rz = size.z * 0.42;
+        const N = 12;
+        for (let i = 0; i < N; i++) {
+          const a = (i / N) * Math.PI * 2;
+          bucket.push(new THREE.Vector3(c.x + Math.cos(a) * rx, c.y, c.z + Math.sin(a) * rz));
+        }
+      } else {
+        bucket.push(c);
+      }
     });
 
     // EVERY emissive fixture becomes a real light — the user found lamps that
@@ -693,10 +709,12 @@ export class HangarScene {
         this.scene.add(l);
       }
     };
-    // cyan: deck strips, platform ring, rails + the wall Screen_* / ceiling Lamp panels
-    addLights(cyan, 0x2ec8ff, /*floor*/ 1.6, 2.6, /*high*/ 2.4, 5.5);
+    // cyan: deck strips, platform ring, rails + the wall Screen_* / ceiling Lamp
+    // panels. Longer range so the perimeter ring lights actually reach the crates +
+    // barrels at the platform edge (the user found they caught little light).
+    addLights(cyan, 0x2ec8ff, /*floor*/ 1.8, 4.5, /*high*/ 2.4, 6.0);
     // amber: pad lights, wall stripes, tank valves
-    addLights(amber, 0xffb040, /*floor*/ 1.4, 2.6, /*high*/ 2.0, 5.0);
+    addLights(amber, 0xffb040, /*floor*/ 1.6, 4.5, /*high*/ 2.0, 5.5);
   }
 
   /**
@@ -788,6 +806,9 @@ export class HangarScene {
     });
     this.shipRecenter.copy(center).multiplyScalar(-scale);
     this.shipLift = (size.y * scale) / 2 + 0.05;
+    // Face the ship into the hangar (-90° / to the right); default export had its
+    // nose toward the stairs, which read wrong.
+    ship.rotation.y = -Math.PI / 2;
     this.ship = ship;
     this.parkAt(this.padWorld);
     this.scene.add(ship);
