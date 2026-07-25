@@ -139,6 +139,10 @@ export default function HangarTest() {
           <div>dir <b>{dbg.lights.directional}</b> · point <b>{dbg.lights.point}</b> · spot <b>{dbg.lights.spot}</b> · hemi <b>{dbg.lights.hemisphere}</b> · amb <b>{dbg.lights.ambient}</b></div>
           <div>combat lights lit: <b style={{ color: dbg.combatLightsActive ? "#ff9060" : "#8ab" }}>{dbg.combatLightsActive}</b></div>
 
+          <div style={{ fontWeight: "bold", color: "#7fd0ff", margin: "8px 0 4px" }}>POST-FX</div>
+          <div>composer: <b style={{ color: dbg.postFx.enabled ? "#7fff9f" : "#ff7f7f" }}>{dbg.postFx.enabled ? "on" : "off"}</b> · fxaa: <b>{dbg.postFx.fxaa ? "yes" : "no"}</b></div>
+          <div>bloom: strength <b>{dbg.postFx.bloomStrength}</b> · thresh <b>{dbg.postFx.bloomThreshold}</b> · radius <b>{dbg.postFx.bloomRadius}</b></div>
+
           <div style={{ fontWeight: "bold", color: "#7fd0ff", margin: "8px 0 4px" }}>MATERIALS ({dbg.materials.length})</div>
           {dbg.materials.map((m, i) => (
             <div key={i} style={{ borderTop: "1px solid #1a2838", paddingTop: 3, marginTop: 3 }}>

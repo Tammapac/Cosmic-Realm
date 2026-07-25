@@ -26,11 +26,34 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { installStudioEnv, type EnvKind } from "../three-environment";
 import { CombatLights, type CombatLightKind } from "./CombatLights";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
+import { FXAAShader } from "three/examples/jsm/shaders/FXAAShader.js";
 
 /** Clamped smoothstep — zero slope at both ends, matching DockingCameraController. */
 function smoothstep(x: number): number {
   const t = Math.max(0, Math.min(1, x));
   return t * t * (3 - 2 * t);
+}
+
+/** Layer that the selective-bloom pass renders. Emissive meshes are enabled on
+ *  it (in addition to layer 0) so only they contribute glow. */
+const BLOOM_LAYER = 1;
+
+/** Max emissiveIntensity — above this the hue clips to white in the tonemap. */
+const EMISSIVE_CAP = 2.0;
+
+/** True if a material glows enough to belong on the bloom layer: a non-trivial
+ *  emissive colour with real intensity, or an emissive map. */
+function isEmissive(m: THREE.MeshStandardMaterial): boolean {
+  if (!m.isMeshStandardMaterial) return false;
+  if (m.emissiveMap) return true;
+  const e = m.emissive;
+  if (!e) return false;
+  return (e.r + e.g + e.b) * (m.emissiveIntensity ?? 1) > 0.6;
 }
 
 // The hangar interior — a modeled room, its own GLB (from Blender HangarHall).
@@ -178,6 +201,15 @@ function validateMaterial(m: THREE.MeshStandardMaterial): MatStat {
     pbrFixed = true;
   }
 
+  // Cap runaway emissive intensity. The deck strips exported at Blender's
+  // emission STRENGTH (Hall_Cyan @8, Hall_Amber @6), which as a raw linear
+  // multiplier clips straight to white in the tonemap — the colour is lost. Cap
+  // to a level where the hue survives (reads as cyan/amber, not white) and the
+  // selective-bloom pass has a sane value to work with instead of a blowout.
+  if (isEmissive(m) && (m.emissiveIntensity ?? 1) > EMISSIVE_CAP) {
+    m.emissiveIntensity = EMISSIVE_CAP;
+  }
+
   m.needsUpdate = true;
   return {
     name: m.name || "(unnamed)", type: m.type,
@@ -200,12 +232,17 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    let meshGlows = false;
     for (const mm of mats) {
       const m = mm as THREE.Material;
       if ((m as THREE.MeshStandardMaterial).isMeshStandardMaterial) {
         stats.push(validateMaterial(m as THREE.MeshStandardMaterial));
+        if (isEmissive(m as THREE.MeshStandardMaterial)) meshGlows = true;
       }
     }
+    // Emissive meshes also live on the bloom layer so the selective-bloom pass
+    // sees them; everything else stays on layer 0 only and never blooms.
+    if (meshGlows) mesh.layers.enable(BLOOM_LAYER);
   });
   const fixed = stats.filter((s) => s.emissiveFixed).length;
   const pbrFixed = stats.filter((s) => s.pbrFixed).length;
@@ -226,6 +263,7 @@ export interface HangarDebugInfo {
   tone: { mode: string; exposure: number; outputColorSpace: string };
   lights: { directional: number; point: number; spot: number; hemisphere: number; ambient: number };
   combatLightsActive: number;
+  postFx: { enabled: boolean; bloomStrength: number; bloomThreshold: number; bloomRadius: number; fxaa: boolean };
   materials: { name: string; type: string; metalness: number; roughness: number; envMapIntensity: number; maps: string[] }[];
 }
 
@@ -245,6 +283,21 @@ export class HangarScene {
   private combat: CombatLights | null = null;
   /** Handle for a running combat-demo interval, so it can be stopped. */
   private demoTimer = 0;
+
+  // ── Post-processing (Phase H) ─────────────────────────────────────────────
+  private composer: EffectComposer | null = null;
+  private bloomComposer: EffectComposer | null = null;
+  private bloomPass: UnrealBloomPass | null = null;
+  private fxaaPass: ShaderPass | null = null;
+  // Post-FX (selective emissive bloom) is OFF by default: on this scene — a wide
+  // deck covered in long emissive guide-strips seen at a grazing angle — even a
+  // gentle UnrealBloom merges their halos into a floor-wide wash, which is the
+  // "künstliche globale Aufhellung" the brief explicitly rejects. The clean AgX
+  // render with capped emissive already reads the strips as coloured. The
+  // selective-bloom chain stays wired and correct, opt-in via ?bloom, for scenes
+  // (e.g. the space world) where compact emitters bloom cleanly.
+  static postFx =
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).has("bloom");
 
   /** World-space landing platform centre, and the authored camera pose. */
   private padWorld = new THREE.Vector3();
@@ -317,7 +370,91 @@ export class HangarScene {
 
     this.buildLights();
     this.combat = new CombatLights(this.scene);
+    if (HangarScene.postFx) this.buildComposer(w, h); // opt-in via ?bloom
     window.addEventListener("resize", this.onResize);
+  }
+
+  /**
+   * SELECTIVE-bloom post-FX chain (Phase H). Threshold-based bloom can't be
+   * "emission-only" in a bright studio scene — the lit walls/windows are already
+   * above any sane threshold and would bloom too. So we render bloom from a
+   * SEPARATE pass that only sees the emissive objects (a dedicated layer), then
+   * composite that glow additively over the full scene:
+   *
+   *   bloomComposer: RenderPass(layer BLOOM only, everything else black)
+   *                  → UnrealBloomPass → (render target, not screen)
+   *   finalComposer: RenderPass(full scene)
+   *                  → mixPass (adds the bloom target)
+   *                  → OutputPass (tone map + sRGB)
+   *                  → FXAA
+   *
+   * Emissive meshes are tagged onto BLOOM_LAYER in validateModel/parkShip; combat
+   * lights are lights (no mesh) so they light the scene directly rather than
+   * blooming, which is correct.
+   */
+  private buildComposer(w: number, h: number): void {
+    const size = new THREE.Vector2(w, h);
+    const pr = Math.min(window.devicePixelRatio, 2);
+
+    // — bloom-only composer (renders to its own target, renderToScreen=false) —
+    const bloomComposer = new EffectComposer(this.renderer);
+    bloomComposer.renderToScreen = false;
+    bloomComposer.setPixelRatio(pr);
+    bloomComposer.setSize(w, h);
+    bloomComposer.addPass(new RenderPass(this.scene, this.camera));
+    // Conservative: the layer is already isolated (threshold 0), so keep strength
+    // + radius low — the emissive cap gives sane input values.
+    const bloom = new UnrealBloomPass(size, 0.35, 0.3, 0.0);
+    bloomComposer.addPass(bloom);
+    this.bloomPass = bloom;
+    this.bloomComposer = bloomComposer;
+
+    // — final composer: full scene + additive bloom + tonemap + fxaa —
+    const finalComposer = new EffectComposer(this.renderer);
+    finalComposer.setPixelRatio(pr);
+    finalComposer.setSize(w, h);
+    finalComposer.addPass(new RenderPass(this.scene, this.camera));
+
+    const mixPass = new ShaderPass(
+      new THREE.ShaderMaterial({
+        uniforms: {
+          baseTexture: { value: null },
+          bloomTexture: { value: bloomComposer.renderTarget2.texture },
+        },
+        vertexShader:
+          "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
+        fragmentShader:
+          "uniform sampler2D baseTexture; uniform sampler2D bloomTexture; varying vec2 vUv;" +
+          "void main(){ gl_FragColor = texture2D(baseTexture, vUv) + texture2D(bloomTexture, vUv); }",
+        defines: {},
+      }),
+      "baseTexture",
+    );
+    mixPass.needsSwap = true;
+    finalComposer.addPass(mixPass);
+
+    finalComposer.addPass(new OutputPass());
+
+    const fxaa = new ShaderPass(FXAAShader);
+    fxaa.material.uniforms.resolution.value.set(1 / (w * pr), 1 / (h * pr));
+    finalComposer.addPass(fxaa);
+    this.fxaaPass = fxaa;
+
+    this.composer = finalComposer;
+  }
+
+  /** Render the selective-bloom chain: bloom-only first, then the composite. */
+  private renderComposed(): void {
+    if (!this.composer || !this.bloomComposer) {
+      this.renderer.render(this.scene, this.camera);
+      return;
+    }
+    // 1) Darken everything not on the bloom layer, render bloom-only.
+    this.camera.layers.set(BLOOM_LAYER);
+    this.bloomComposer.render();
+    // 2) Restore all layers, render the full composite.
+    this.camera.layers.enableAll();
+    this.composer.render();
   }
 
   // ── Construction ─────────────────────────────────────────────────────────
@@ -463,7 +600,8 @@ export class HangarScene {
       const dt = Math.min(0.05, (now - this.lastT) / 1000); // clamp backgrounded tabs
       this.lastT = now;
       this.pump(dt);
-      this.renderer.render(this.scene, this.camera);
+      if (HangarScene.postFx && this.composer) this.renderComposed();
+      else this.renderer.render(this.scene, this.camera);
       this.raf = requestAnimationFrame(tick);
     };
     this.raf = requestAnimationFrame(tick);
@@ -555,6 +693,12 @@ export class HangarScene {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    if (this.composer) {
+      this.composer.setSize(w, h);
+      this.bloomComposer?.setSize(w, h);
+      const pr = Math.min(window.devicePixelRatio, 2);
+      this.fxaaPass?.material.uniforms.resolution.value.set(1 / (w * pr), 1 / (h * pr));
+    }
   }
 
   // ── Dynamic combat lights (Phase G) ───────────────────────────────────────
@@ -669,6 +813,13 @@ export class HangarScene {
       },
       lights: { directional: dir, point, spot, hemisphere: hemi, ambient },
       combatLightsActive: this.combat?.activeCount ?? 0,
+      postFx: {
+        enabled: HangarScene.postFx && !!this.composer,
+        bloomStrength: +(this.bloomPass?.strength ?? 0).toFixed(2),
+        bloomThreshold: +(this.bloomPass?.threshold ?? 0).toFixed(2),
+        bloomRadius: +(this.bloomPass?.radius ?? 0).toFixed(2),
+        fxaa: !!this.fxaaPass,
+      },
       materials: mats,
     };
   }
@@ -678,6 +829,12 @@ export class HangarScene {
     if (this.demoTimer) { clearInterval(this.demoTimer); this.demoTimer = 0; }
     this.combat?.dispose();
     this.combat = null;
+    this.composer?.dispose();
+    this.bloomComposer?.dispose();
+    this.composer = null;
+    this.bloomComposer = null;
+    this.bloomPass = null;
+    this.fxaaPass = null;
     window.removeEventListener("resize", this.onResize);
     this.scene.traverse((o) => {
       const mesh = o as THREE.Mesh;
