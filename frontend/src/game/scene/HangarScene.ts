@@ -477,6 +477,7 @@ export class HangarScene {
     const canvas = document.createElement("canvas");
     const scene = new HangarScene(canvas, hangarRoot);
     scene.resolveNodes();
+    scene.buildStripLights(); // local lights on the emissive deck strips
     scene.parkShip(shipGLB.scene);
     return scene;
   }
@@ -563,6 +564,50 @@ export class HangarScene {
     shadowKey.shadow.normalBias = 0.02;
     this.scene.add(shadowKey);
     this.keyLight = shadowKey;
+  }
+
+  /**
+   * Real local lights on the emissive deck strips (audit finding #6). Emission +
+   * bloom alone light nothing around them — Blender had cyan RingLight PointLights
+   * at the strips for that. This samples the Hall_Cyan / Hall_Amber mesh centres at
+   * runtime (so a model re-export stays correct) and drops a small, short-range,
+   * SHADOWLESS coloured PointLight at a thinned subset of them, so the deck, ship,
+   * stairs and crates actually catch cyan/amber light. Thinned + range-limited so
+   * they never dominate and stay well under the light-uniform budget.
+   */
+  private buildStripLights(): void {
+    this.hangarRoot.updateWorldMatrix(true, true);
+    const cyan: THREE.Vector3[] = [];
+    const amber: THREE.Vector3[] = [];
+    const tmp = new THREE.Box3();
+    this.hangarRoot.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.material) return;
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      const nm = (mats[0] as THREE.Material)?.name ?? "";
+      if (!/Hall_Cyan|Hall_Amber/.test(nm)) return;
+      tmp.setFromObject(mesh);
+      const c = tmp.getCenter(new THREE.Vector3());
+      (/Cyan/.test(nm) ? cyan : amber).push(c);
+    });
+
+    // Thin: keep only the floor-level strips (they light the deck + ship best) and
+    // take every Nth so the total stays modest.
+    const floorOnly = (v: THREE.Vector3) => v.y < 1.0;
+    const addStrip = (pts: THREE.Vector3[], hex: number, every: number, intensity: number) => {
+      const floor = pts.filter(floorOnly);
+      for (let i = 0; i < floor.length; i += every) {
+        const p = floor[i];
+        const l = new THREE.PointLight(hex, intensity, 3.0, 2.0); // short range, physical decay
+        l.position.copy(p);
+        l.position.y += 0.15; // lift a touch off the deck
+        l.castShadow = false;
+        l.name = "strip";
+        this.scene.add(l);
+      }
+    };
+    addStrip(cyan, 0x2ec8ff, 2, 2.2); // cyan strips: every 2nd
+    addStrip(amber, 0xffb040, 2, 1.6); // amber strips: every 2nd, dimmer
   }
 
   /** Resolve the landing platform + authored camera pose from the model. */
