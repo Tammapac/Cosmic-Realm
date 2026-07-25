@@ -172,7 +172,7 @@ function paintStudioEquirect(w: number, h: number): HTMLCanvasElement {
   const blurred = document.createElement("canvas");
   blurred.width = w; blurred.height = h;
   const bctx = blurred.getContext("2d")!;
-  bctx.filter = `blur(${Math.round(h * 0.05)}px)`;
+  bctx.filter = `blur(${Math.round(h * 0.07)}px)`;
   bctx.drawImage(cv, 0, 0);
   bctx.filter = "none";
   return blurred;

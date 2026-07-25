@@ -62,20 +62,21 @@ const GLOSSY_ENV_INTENSITY = 2.5;
  * reflections would need SSR/reflection probes.)
  */
 const GLOSS_TUNING: Record<string, { roughMul: number; envI: number }> = {
-  // High roughMul = the PMREM samples a blurrier mip, so reflections read as SOFT
-  // diffuse glow, not sharp mirror images. envI stays up so the glow is still
-  // clearly visible — bright but blurred, per the "weicher, aber gut sichtbar" note.
-  Hall_Floor_Mat: { roughMul: 0.94, envI: 2.4 },   // deck: soft wide glow, no mirror
-  SS_Hull_DarkMetal: { roughMul: 0.94, envI: 2.4 }, // platform/hull: soft glow
-  Hall_Wall: { roughMul: 0.95, envI: 2.0 },        // walls: very soft sheen
-  Aged_Orange: { roughMul: 0.96, envI: 1.6 },      // crates: barely-there sheen
-  Aged_Blue: { roughMul: 0.96, envI: 1.6 },
-  Aged_Green: { roughMul: 0.96, envI: 1.6 },
-  Aged_Rust: { roughMul: 0.96, envI: 1.6 },
-  Aged_Orange2: { roughMul: 0.96, envI: 1.6 },
-  Aged_Blue2: { roughMul: 0.96, envI: 1.6 },
-  Barrel_Mil: { roughMul: 0.92, envI: 1.8 },       // barrels: soft metal sheen
-  Barrel_Red: { roughMul: 0.92, envI: 1.8 },
+  // Reflections should be BROAD + SOFT: roughness pushed near-max so the PMREM
+  // samples its blurriest mips (wide diffuse glow, no shape), envI kept up so the
+  // soft glow still reads. The baked roughness MAP still varies across the surface
+  // (roughness-variation), this just scales it up toward matte.
+  Hall_Floor_Mat: { roughMul: 1.0, envI: 2.6 },    // deck: broad soft glow
+  SS_Hull_DarkMetal: { roughMul: 1.0, envI: 2.6 }, // platform/hull
+  Hall_Wall: { roughMul: 1.0, envI: 2.2 },         // walls
+  Aged_Orange: { roughMul: 1.0, envI: 1.8 },       // crates: soft sheen
+  Aged_Blue: { roughMul: 1.0, envI: 1.8 },
+  Aged_Green: { roughMul: 1.0, envI: 1.8 },
+  Aged_Rust: { roughMul: 1.0, envI: 1.8 },
+  Aged_Orange2: { roughMul: 1.0, envI: 1.8 },
+  Aged_Blue2: { roughMul: 1.0, envI: 1.8 },
+  Barrel_Mil: { roughMul: 0.98, envI: 2.0 },       // barrels: soft metal sheen
+  Barrel_Red: { roughMul: 0.98, envI: 2.0 },
 };
 
 /** True if a material glows enough to belong on the bloom layer: a non-trivial
@@ -529,6 +530,7 @@ export class HangarScene {
     const scene = new HangarScene(canvas, hangarRoot);
     scene.resolveNodes();
     scene.buildStripLights(); // local lights on the emissive deck strips
+    scene.buildBounceLights(); // coloured bounce from crates/barrels (fake GI)
     scene.parkShip(shipGLB.scene);
     return scene;
   }
@@ -686,6 +688,61 @@ export class HangarScene {
     addLights(cyan, 0x2ec8ff, /*floor*/ 1.6, 2.6, /*high*/ 2.4, 5.5);
     // amber: pad lights, wall stripes, tank valves
     addLights(amber, 0xffb040, /*floor*/ 1.4, 2.6, /*high*/ 2.0, 5.0);
+  }
+
+  /**
+   * Coloured bounce light from the crates/barrels (fakes Cycles indirect/colour
+   * bleed). A blue crate bounces blue onto the deck beside it, an orange crate
+   * orange, etc. For each container/barrel mesh, sample its average albedo and
+   * drop a dim, wide, SHADOWLESS PointLight of that colour just outside it near the
+   * floor — so the surrounding deck + walls pick up its colour, the way GI does.
+   */
+  private buildBounceLights(): void {
+    this.hangarRoot.updateWorldMatrix(true, true);
+    const box = new THREE.Box3();
+    const seenMat = new Map<string, THREE.Color>();
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 8;
+    const cctx = canvas.getContext("2d")!;
+
+    const avgAlbedo = (m: THREE.MeshStandardMaterial): THREE.Color => {
+      const cached = seenMat.get(m.name);
+      if (cached) return cached;
+      const c = new THREE.Color(0.5, 0.5, 0.5);
+      const img = m.map?.image as CanvasImageSource | undefined;
+      if (img) {
+        try {
+          cctx.clearRect(0, 0, 8, 8);
+          cctx.drawImage(img, 0, 0, 8, 8);
+          const d = cctx.getImageData(0, 0, 8, 8).data;
+          let r = 0, g = 0, b = 0;
+          for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+          const n = d.length / 4;
+          // sRGB→linear-ish and lift saturation so the bounce reads as a colour
+          c.setRGB(r / n / 255, g / n / 255, b / n / 255).convertSRGBToLinear();
+        } catch { /* keep grey */ }
+      }
+      seenMat.set(m.name, c);
+      return c;
+    };
+
+    this.hangarRoot.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.material) return;
+      const m = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.MeshStandardMaterial;
+      const nm = m?.name ?? "";
+      if (!/Aged_|Barrel_/.test(nm)) return; // only crates + barrels bounce colour
+      box.setFromObject(mesh);
+      const c = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+      const col = avgAlbedo(m);
+      // place the bounce light low, at the container's base, tinted its colour
+      const l = new THREE.PointLight(col.getHex(), 0.9, Math.max(size.x, size.z) * 2.2, 2.0);
+      l.position.set(c.x, box.min.y + 0.2, c.z);
+      l.castShadow = false;
+      l.name = "bounce";
+      this.scene.add(l);
+    });
   }
 
   /** Resolve the landing platform + authored camera pose from the model. */
