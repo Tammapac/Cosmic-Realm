@@ -47,6 +47,9 @@ const BLOOM_LAYER = 1;
 /** Max emissiveIntensity — above this the hue clips to white in the tonemap. */
 const EMISSIVE_CAP = 2.0;
 
+/** envMapIntensity for glossy (roughness-mapped) surfaces, so reflections read. */
+const GLOSSY_ENV_INTENSITY = 2.5;
+
 /** True if a material glows enough to belong on the bloom layer: a non-trivial
  *  emissive colour with real intensity, or an emissive map. */
 function isEmissive(m: THREE.MeshStandardMaterial): boolean {
@@ -58,7 +61,12 @@ function isEmissive(m: THREE.MeshStandardMaterial): boolean {
 }
 
 // The hangar interior — a modeled room, its own GLB (from Blender HangarHall).
-const HANGAR_URL = "/models/stations/hangar_interior.glb";
+// ?pbrtest swaps in the test export that carries baked Roughness/Metallic maps on
+// Hall_Floor / Hall_Wall / Aged_Orange, for an A/B against the base-color-only GLB.
+const HANGAR_URL =
+  typeof window !== "undefined" && new URLSearchParams(window.location.search).has("pbrtest")
+    ? "/models/stations/hangar_interior_pbrtest.glb"
+    : "/models/stations/hangar_interior.glb";
 /** Node the ship parks on. */
 const PAD_NODE = "LandingPlatform";
 /** Authored camera node, used to derive the docked framing. */
@@ -211,6 +219,15 @@ function validateMaterial(m: THREE.MeshStandardMaterial): MatStat {
     m.emissiveIntensity = EMISSIVE_CAP;
   }
 
+  // Glossy surfaces (those carrying a baked roughness map) need a stronger env
+  // reflection to actually read as wet/polished — the studio IBL at intensity 1
+  // reflects too faintly to show the strip/lamp highlights. Push envMapIntensity
+  // ONLY on materials that have real gloss variation (a roughness map), so matte
+  // props are untouched and nothing turns into a mirror.
+  if (m.roughnessMap) {
+    m.envMapIntensity = GLOSSY_ENV_INTENSITY;
+  }
+
   m.needsUpdate = true;
   return {
     name: m.name || "(unnamed)", type: m.type,
@@ -320,7 +337,9 @@ export class HangarScene {
   // Which IBL the studio env installs, and how strong. Static so a harness can
   // set them before preload() to compare procedural-studio vs the space HDRI.
   static envKind: EnvKind = "studio";
-  static envIntensity = 1.0;
+  // Studio IBL a touch stronger so the now-glossy floor/walls have enough to
+  // reflect (the strip + lamp highlights that make the deck read as polished).
+  static envIntensity = 1.3;
 
   // ── Tone-mapping A/B config (Phase D) ─────────────────────────────────────
   // Blender 4.x's Material Preview uses the AgX view transform, so AgX is the
@@ -607,23 +626,33 @@ export class HangarScene {
       (/Cyan/.test(nm) ? cyan : amber).push(c);
     });
 
-    // Thin: keep only the floor-level strips (they light the deck + ship best) and
-    // take every Nth so the total stays modest.
-    const floorOnly = (v: THREE.Vector3) => v.y < 1.0;
-    const addStrip = (pts: THREE.Vector3[], hex: number, every: number, intensity: number) => {
-      const floor = pts.filter(floorOnly);
-      for (let i = 0; i < floor.length; i += every) {
-        const p = floor[i];
-        const l = new THREE.PointLight(hex, intensity, 3.0, 2.0); // short range, physical decay
+    // Two families of emissive fixture: floor-level DECK strips (light the deck +
+    // ship) and elevated WALL/CEILING panels — the Screen_* wall panels and
+    // Lamp*_panel ceiling tiles (they were previously ignored, so they glowed but
+    // lit nothing). Both get a short-range shadowless coloured PointLight; the
+    // elevated ones a longer reach so their glow actually reaches the wall + floor.
+    const addLights = (
+      pts: THREE.Vector3[], hex: number, every: number,
+      floorIntensity: number, floorRange: number,
+      highIntensity: number, highRange: number,
+    ) => {
+      for (let i = 0; i < pts.length; i += every) {
+        const p = pts[i];
+        const high = p.y >= 1.0;
+        const l = new THREE.PointLight(
+          hex, high ? highIntensity : floorIntensity, high ? highRange : floorRange, 2.0,
+        );
         l.position.copy(p);
-        l.position.y += 0.15; // lift a touch off the deck
+        l.position.y += high ? 0.0 : 0.15;
         l.castShadow = false;
         l.name = "strip";
         this.scene.add(l);
       }
     };
-    addStrip(cyan, 0x2ec8ff, 2, 2.2); // cyan strips: every 2nd
-    addStrip(amber, 0xffb040, 2, 1.6); // amber strips: every 2nd, dimmer
+    // cyan: deck strips + the wall Screen_* / ceiling Lamp panels
+    addLights(cyan, 0x2ec8ff, 2, /*floor*/ 2.2, 3.0, /*high*/ 3.0, 6.0);
+    // amber: pad lights + wall stripes
+    addLights(amber, 0xffb040, 2, /*floor*/ 1.6, 3.0, /*high*/ 2.2, 5.5);
   }
 
   /** Resolve the landing platform + authored camera pose from the model. */
