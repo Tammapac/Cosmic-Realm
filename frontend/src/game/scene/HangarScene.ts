@@ -775,55 +775,48 @@ export class HangarScene {
   }
 
   /**
-   * Coloured bounce light from the crates/barrels (fakes Cycles indirect/colour
-   * bleed). For each container/barrel mesh, sample its average albedo and drop a
-   * dim wide shadowless PointLight of that colour at its base, so the surrounding
-   * deck picks up its colour.
+   * Container bounce fill (spec #1/#8): the crates don't self-illuminate, but their
+   * colour should bleed dezent onto the deck + surroundings the way Cycles GI does.
+   * Grouped by colour FAMILY (so it reads as soft ambient bleed, not per-crate
+   * lamps): each family gets one very-low-intensity, LARGE-range, shadowless fill at
+   * the group's front-lower position. Colours per spec, tinted to the family.
    */
   private buildBounceLights(): void {
     this.hangarRoot.updateWorldMatrix(true, true);
     const box = new THREE.Box3();
-    const seenMat = new Map<string, THREE.Color>();
-    const canvas = document.createElement("canvas");
-    canvas.width = canvas.height = 8;
-    const cctx = canvas.getContext("2d")!;
-
-    const avgAlbedo = (m: THREE.MeshStandardMaterial): THREE.Color => {
-      const cached = seenMat.get(m.name);
-      if (cached) return cached;
-      const c = new THREE.Color(0.5, 0.5, 0.5);
-      const img = m.map?.image as CanvasImageSource | undefined;
-      if (img) {
-        try {
-          cctx.clearRect(0, 0, 8, 8);
-          cctx.drawImage(img, 0, 0, 8, 8);
-          const d = cctx.getImageData(0, 0, 8, 8).data;
-          let r = 0, g = 0, b = 0;
-          for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
-          const n = d.length / 4;
-          c.setRGB(r / n / 255, g / n / 255, b / n / 255).convertSRGBToLinear();
-        } catch { /* keep grey */ }
-      }
-      seenMat.set(m.name, c);
-      return c;
+    const pad = this.padWorld;
+    // spec colours: blue / orange(+rust) / green. Low intensity, big radius.
+    const groups: Record<string, { pts: THREE.Vector3[]; hex: number; intensity: number; distance: number }> = {
+      blue: { pts: [], hex: 0x3d78b8, intensity: 3.0, distance: 8 },
+      orange: { pts: [], hex: 0xc46d2e, intensity: 3.0, distance: 8 },
+      green: { pts: [], hex: 0x4f8b68, intensity: 2.2, distance: 7 },
     };
-
     this.hangarRoot.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh || !mesh.material) return;
-      const m = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.MeshStandardMaterial;
-      const nm = m?.name ?? "";
-      if (!/Aged_|Barrel_/.test(nm)) return; // only crates + barrels bounce colour
+      const nm = ((Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.Material)?.name ?? "";
+      // Rust reads as warm/orange; Mil barrel stays neutral (skip).
+      const key = /Blue/.test(nm) ? "blue"
+        : /Orange|Rust/.test(nm) ? "orange"
+        : /Green/.test(nm) ? "green" : null;
+      if (!key) return;
       box.setFromObject(mesh);
-      const c = box.getCenter(new THREE.Vector3());
-      const size = box.getSize(new THREE.Vector3());
-      const col = avgAlbedo(m);
-      const l = new THREE.PointLight(col.getHex(), 0.9, Math.max(size.x, size.z) * 2.2, 2.0);
-      l.position.set(c.x, box.min.y + 0.2, c.z);
+      groups[key].pts.push(box.getCenter(new THREE.Vector3()).setY(box.min.y));
+    });
+    for (const g of Object.values(groups)) {
+      if (!g.pts.length) continue;
+      const cx = g.pts.reduce((s, v) => s + v.x, 0) / g.pts.length;
+      const cy = g.pts.reduce((s, v) => s + v.y, 0) / g.pts.length;
+      const cz = g.pts.reduce((s, v) => s + v.z, 0) / g.pts.length;
+      const towardX = Math.sign(pad.x - cx) || 0;
+      const towardZ = Math.sign(pad.z - cz) || 0;
+      const l = new THREE.PointLight(g.hex, g.intensity, g.distance, 2.0);
+      // in front of + a touch below the faces so it bleeds onto the deck, not inside
+      l.position.set(cx + towardX * 1.0, cy + 0.5, cz + towardZ * 1.0);
       l.castShadow = false;
       l.name = "bounce";
       this.scene.add(l);
-    });
+    }
   }
 
   /** Resolve the landing platform + authored camera pose from the model. */
