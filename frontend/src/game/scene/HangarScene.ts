@@ -97,68 +97,105 @@ function findNode(root: THREE.Object3D, name: string): THREE.Object3D | null {
   return hit;
 }
 
-/**
- * Prepare the hangar GLB. The room's COLOURS are now baked into base-colour
- * textures (the procedural Blender node graphs → images; glTF can't carry the
- * nodes), so crates read orange/blue/green/rust and floors/walls grey out of the
- * box. The LIGHTING is done live by this scene's rig + IBL (below) — a bright,
- * lit hangar rather than the moody baked-in dark of the Blender source.
- *
- * The cyan/amber glow strips are a separate emissive (no base map) — cap their
- * strength so they read as markings, not floodlights.
- */
-function tameHangar(root: THREE.Object3D): void {
-  root.traverse((o) => {
-    const light = o as THREE.Light;
-    if (light.isLight) { light.visible = false; return; } // we light it ourselves
-    const mesh = o as THREE.Mesh;
-    if (!mesh.isMesh || !mesh.material) return;
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
-    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    for (const mm of mats) {
-      const m = mm as THREE.MeshStandardMaterial;
-      if (m.map) {
-        // Coloured surface: reflect the room a little (metal deck/walls glossier
-        // than matte crates), colour stays the baked albedo.
-        const n = (m.name || "").toLowerCase();
-        if (n.includes("hull") || n.includes("floor") || n.includes("wall")) {
-          m.metalness = 0.5; m.roughness = 0.45;
-        } else {
-          m.metalness = 0.0; m.roughness = 0.65;
-        }
-        m.envMapIntensity = 1.2;
-      } else {
-        // Glow strips: cap emissive to a line.
-        if ((m.emissiveIntensity ?? 0) > 1.5) m.emissiveIntensity = 1.4;
-      }
-      m.needsUpdate = true;
+// ── Material validation (Phase C — validate, don't override) ─────────────────
+// The user's goal is that a GLB looks in-game the way it does in Blender's
+// Material Preview. So we DO NOT rebuild materials, force metalness/roughness,
+// replace normal/rough/AO maps, tint albedo, or fake emission. We VALIDATE:
+//   • enforce correct texture colour spaces (base/emissive = sRGB, data = linear)
+//     — GLTFLoader already does this, but a re-export can get it wrong;
+//   • log missing maps and material stats so problems are visible, not hidden;
+//   • fix ONE narrowly-defined EXPORT BUG: a full-surface white/grey emissive
+//     (albedo mis-plugged into the emissive slot), which self-lights the whole
+//     model white. That is a broken material, not authored emission, so it is
+//     zeroed — and logged as a fix, not a style choice.
+// Everything else (authored metalness, roughness, normalScale, real coloured
+// emissive on windows/thrusters, envMapIntensity) is left EXACTLY as exported.
+
+interface MatStat {
+  name: string; type: string;
+  metal: number; rough: number;
+  maps: string[]; missing: string[];
+  emissiveFixed: boolean;
+}
+
+/** True for the broken "albedo dumped into emissive" export: bright, unsaturated,
+ *  full-surface white/grey emission that would self-light the whole mesh. */
+function isBrokenWhiteEmissive(m: THREE.MeshStandardMaterial): boolean {
+  if (!m.emissive) return false;
+  const sum = m.emissive.r + m.emissive.g + m.emissive.b;
+  if (sum < 0.35) return false;
+  const hsl = { h: 0, s: 0, l: 0 };
+  m.emissive.getHSL(hsl);
+  // white/grey (low saturation) + no emissive map (so it's a flat whole-surface
+  // glow, not authored windows/strips) = the export bug.
+  return hsl.s < 0.25 && !m.emissiveMap;
+}
+
+function validateMaterial(m: THREE.MeshStandardMaterial): MatStat {
+  const maps: string[] = [];
+  const missing: string[] = [];
+  const track = (map: THREE.Texture | null, label: string, linear: boolean) => {
+    if (map) {
+      maps.push(label);
+      // enforce colour space: base/emissive sRGB, data maps linear.
+      const want = linear ? THREE.NoColorSpace : THREE.SRGBColorSpace;
+      if (map.colorSpace !== want) { map.colorSpace = want; map.needsUpdate = true; }
+    } else {
+      missing.push(label);
     }
-  });
+  };
+  track(m.map, "base", false);
+  track(m.emissiveMap ?? null, "emissive", false);
+  track(m.normalMap ?? null, "normal", true);
+  track(m.roughnessMap ?? null, "rough", true);
+  track(m.metalnessMap ?? null, "metal", true);
+  track(m.aoMap ?? null, "ao", true);
+
+  let emissiveFixed = false;
+  if (isBrokenWhiteEmissive(m)) {
+    m.emissive.setScalar(0);
+    m.emissiveIntensity = 0;
+    m.emissiveMap = null;
+    emissiveFixed = true;
+  }
+  m.needsUpdate = true;
+  return {
+    name: m.name || "(unnamed)", type: m.type,
+    metal: +(m.metalness ?? 0).toFixed(2), rough: +(m.roughness ?? 0).toFixed(2),
+    maps, missing, emissiveFixed,
+  };
 }
 
 /**
- * Tame a raw player-ship GLB clone. The ship models plug their albedo into the
- * emissive slot (same bug the ship layer fixes with applySpaceMaterial), so
- * without this the parked ship is a self-lit white blob. Kill the emissive and
- * give the hull sane PBR values; the ship's own texture map carries its colours.
+ * Validate (not override) every material in a GLB clone, enable shadows, and log
+ * a per-material summary. `label` names the model in the log.
  */
-function tameShip(root: THREE.Object3D): void {
+function validateModel(root: THREE.Object3D, label: string, hideLights = false): void {
+  const stats: MatStat[] = [];
   root.traverse((o) => {
+    const light = o as THREE.Light;
+    if (light.isLight) { if (hideLights) light.visible = false; return; }
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh || !mesh.material) return;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const mm of mats) {
-      const m = mm as THREE.MeshStandardMaterial;
-      if (m.emissive) { m.emissive.setScalar(0); m.emissiveIntensity = 0; m.emissiveMap = null; }
-      m.metalness = 0.55;
-      m.roughness = 0.5;
-      m.envMapIntensity = 1.2; // pick up the hangar's reflections like the deck
-      m.needsUpdate = true;
+      const m = mm as THREE.Material;
+      if ((m as THREE.MeshStandardMaterial).isMeshStandardMaterial) {
+        stats.push(validateMaterial(m as THREE.MeshStandardMaterial));
+      }
     }
   });
+  const fixed = stats.filter((s) => s.emissiveFixed).length;
+  const noBase = stats.filter((s) => s.missing.includes("base")).length;
+  console.log(
+    `[HangarScene] validate "${label}": ${stats.length} MeshStandard mats · ` +
+    `${fixed} broken-emissive fixed · ${noBase} without base map`,
+  );
+  if ((window as unknown as { __PBR_DEBUG?: boolean }).__PBR_DEBUG) {
+    console.table(stats.map((s) => ({ ...s, maps: s.maps.join("+"), missing: s.missing.join("+") })));
+  }
 }
 
 export class HangarScene {
@@ -239,7 +276,7 @@ export class HangarScene {
     ]);
 
     const hangarRoot = hangarGLB.scene.clone(true);
-    tameHangar(hangarRoot);
+    validateModel(hangarRoot, "hangar", /* hideLights */ true);
     const canvas = document.createElement("canvas");
     const scene = new HangarScene(canvas, hangarRoot);
     scene.resolveNodes();
@@ -294,7 +331,7 @@ export class HangarScene {
 
   private parkShip(shipTemplate: THREE.Group): void {
     const ship = shipTemplate.clone(true);
-    tameShip(ship);
+    validateModel(ship, "ship");
     const box = new THREE.Box3().setFromObject(ship);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
