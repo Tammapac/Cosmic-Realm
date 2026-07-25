@@ -70,12 +70,15 @@ export function loadEnvironment(
 // so every model reads in the round without turning flat. Procedural (a 512×256
 // canvas → PMREM), so it costs nothing to ship and never 404s.
 //
-// `brightness` is the overall level (1.0 = the value chosen in the viewport
-// A/B). Returns the PMREM generator for disposal.
+// `brightness` (0..1) is the gradient's own level; `intensity` scales the IBL on
+// top and CAN exceed 1 to push the whole scene brighter than the gradient alone
+// allows (the gradient maxes at sRGB white). Returns the PMREM generator for
+// disposal.
 export function installBrightViewportEnv(
   renderer: THREE.WebGLRenderer,
   scene: THREE.Scene,
   brightness = 1.0,
+  intensity = 1.0,
 ): THREE.PMREMGenerator {
   const pmrem = new THREE.PMREMGenerator(renderer);
   pmrem.compileEquirectangularShader();
@@ -102,9 +105,7 @@ export function installBrightViewportEnv(
 
   const old = scene.environment;
   scene.environment = pmrem.fromEquirectangular(tex).texture;
-  // Intensity 1.0: the gradient already carries the brightness, so this is a
-  // straight 1:1 — no extra multiplier to reason about.
-  (scene as any).environmentIntensity = 1.0;
+  (scene as any).environmentIntensity = intensity;
 
   tex.dispose();
   if (old) old.dispose();

@@ -472,6 +472,46 @@ export default function DepthTest() {
         s.environmentIntensity = v;
         return "envI=" + v;
       },
+      // Flicker probe: render the SAME scene (player ship overlapping a station,
+      // as during undock) N times WITHOUT changing any input, and report how much
+      // the pixels differ frame-to-frame. Stable geometry should be identical
+      // every frame; a non-zero delta means z-fighting / non-deterministic
+      // rendering — the "material flickers on undock" bug. lift lets you place
+      // the ship inside the station footprint (0) or clear of it (1).
+      flicker: (lift = 0.4, frames = 6) => {
+        if (!gl || !world) return "no gl";
+        const shot = (): Uint8Array => {
+          setShipLiftFactor(lift);
+          setCameraZoom(1);
+          setStationCameraZoom(1);
+          beginFrame(); beginStationFrame();
+          updateStationOnly(STATION_ID, 0, 0, 0, 0);
+          // player ship sitting at the hangar mouth, overlapping the hull
+          updateShip3D("player", PLAYER_CLASS, 0, 200, -Math.PI / 2, 1, 0, 0, 0, 0);
+          markActive("player");
+          endFrame(); endStationFrame();
+          render3DLayer();
+          const bw = gl.drawingBufferWidth, bh = gl.drawingBufferHeight;
+          const buf = new Uint8Array(bw * bh * 4);
+          gl.readPixels(0, 0, bw, bh, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+          return buf;
+        };
+        const first = shot();
+        const deltas: number[] = [];
+        for (let f = 1; f < frames; f++) {
+          const cur = shot();
+          let changed = 0, maxd = 0;
+          for (let i = 0; i < cur.length; i += 4) {
+            const d = Math.abs(cur[i] - first[i]) + Math.abs(cur[i + 1] - first[i + 1]) + Math.abs(cur[i + 2] - first[i + 2]);
+            if (d > 12) changed++;
+            if (d > maxd) maxd = d;
+          }
+          deltas.push(+(100 * changed / (cur.length / 4)).toFixed(2));
+        }
+        removeShip3D("player");
+        setShipLiftFactor(1);
+        return { changedPctPerFrame: deltas, note: "0 = stable; >0 = flickering pixels" };
+      },
       // Swap in a BRIGHT neutral environment (a light-grey gradient sphere) as
       // the IBL source, the way an editor "viewport" is lit. Tests whether the
       // real fix is the ENVIRONMENT MAP being dark, not its intensity. col is the

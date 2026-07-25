@@ -1703,9 +1703,15 @@ export function render3DLayer(): void {
       // Post-processing path: the composer renders the scene + GTAO + UnrealBloom
       // + FXAA + vignette INTO outlineRT, then we blit that to screen. The
       // selection/FX passes below still composite on top, unchanged.
-      postFX.render(frameDt);                 // → outlineRT (composer target)
+      postFX.render(frameDt);
       fsQuad.material = copyMat;
-      copyMat.uniforms.tDiffuse.value = outlineRT.texture;
+      // Read the composer's ACTUAL output buffer, not outlineRT. EffectComposer
+      // ping-pongs between two targets; with the current pass count the result
+      // lands in the OTHER one on alternate frames, so a fixed outlineRT read
+      // showed last frame's image every other frame — the material flicker seen
+      // on undock (and everywhere, just most noticeable there). outputTexture()
+      // always returns the buffer render() actually left the image in.
+      copyMat.uniforms.tDiffuse.value = postFX.outputTexture();
       renderer.setRenderTarget(null);
       renderer.render(outlineScene, outlineCamera);
     } else {

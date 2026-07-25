@@ -30,6 +30,15 @@ export type PostFX = {
   vignette: ShaderPass | null;
   setSize(w: number, h: number): void;
   render(dt: number): void;
+  /**
+   * The texture holding the composited result AFTER render(). NOT necessarily
+   * the target passed to createPostFX: EffectComposer ping-pongs between two
+   * internal render targets and the final image lands in whichever one the pass
+   * COUNT leaves it in (readBuffer). Reading a fixed target instead gives the
+   * right image on even pass counts and last frame's stale image on odd ones —
+   * which is exactly the every-other-frame flicker. Always read THIS.
+   */
+  outputTexture(): THREE.Texture;
   dispose(): void;
 };
 
@@ -155,6 +164,13 @@ export function createPostFX(
     },
     render(dt: number) {
       composer.render(dt);
+    },
+    outputTexture() {
+      // After render(), the composed image is in the composer's readBuffer.
+      // (EffectComposer swaps read/write each pass; the caller-supplied target is
+      // only ONE of the two ping-pong buffers, so it holds the result only on an
+      // even pass count. readBuffer is always correct.)
+      return (composer as any).readBuffer.texture as THREE.Texture;
     },
     dispose() {
       composer.dispose();

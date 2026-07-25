@@ -136,7 +136,10 @@ export function ensureWorldLayer(
   // rendered as silhouettes no matter the exposure or key light. A bright neutral
   // gradient lights every model in the round — the "viewport render" look. The
   // per-material dark-hull hack that used to compensate for this is gone.
-  installBrightViewportEnv(renderer, scene, 1.0);
+  // brightness 1.0 (full gradient) · intensity 1.4 pushes the IBL a bit past the
+  // gradient's own level so stations and ships read brighter without clipping —
+  // the "a bit brighter" the viewport A/B landed on.
+  installBrightViewportEnv(renderer, scene, 1.0, 1.4);
 
   // Camera geometry comes from the STATION layer, not the ship layer: it has to
   // sit above the tallest station (y ≈ 1400 · zoom, and up to 3750 once ships
