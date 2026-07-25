@@ -70,14 +70,21 @@ const GLOSS_TUNING: Record<string, { roughMul: number; envI: number; roughSet?: 
   Hall_Floor_Mat: { roughMul: 1.0, envI: 1.2, roughSet: 0.42, metalSet: 0.45 },  // deck
   SS_Hull_DarkMetal: { roughMul: 1.0, envI: 1.2, roughSet: 0.42, metalSet: 0.45 }, // platform/hull
   Hall_Wall: { roughMul: 1.0, envI: 0.9 },         // walls
-  Aged_Orange: { roughMul: 1.0, envI: 0.8 },       // crates: soft sheen
-  Aged_Blue: { roughMul: 1.0, envI: 0.8 },
-  Aged_Green: { roughMul: 1.0, envI: 0.8 },
-  Aged_Rust: { roughMul: 1.0, envI: 0.8 },
-  Aged_Orange2: { roughMul: 1.0, envI: 0.8 },
-  Aged_Blue2: { roughMul: 1.0, envI: 0.8 },
-  Barrel_Mil: { roughMul: 1.0, envI: 0.9 },        // barrels: soft metal sheen
-  Barrel_Red: { roughMul: 1.0, envI: 0.9 },
+  // Containers + barrels: painted-metal look — catch light, soft wide highlights,
+  // NOT chrome (spec values). roughSet/metalSet pin absolute PBR; roughness never
+  // below 0.25 so nothing reads as a mirror. Painted crates get a light metalness
+  // for sheen; worn/rusty ones stay more matte + less metallic.
+  // — lackierte Container —
+  Aged_Orange: { roughMul: 1.0, envI: 1.35, roughSet: 0.4, metalSet: 0.28 },
+  Aged_Blue: { roughMul: 1.0, envI: 1.35, roughSet: 0.4, metalSet: 0.28 },
+  Aged_Green: { roughMul: 1.0, envI: 1.35, roughSet: 0.4, metalSet: 0.28 },
+  Aged_Orange2: { roughMul: 1.0, envI: 1.35, roughSet: 0.4, metalSet: 0.28 },
+  Aged_Blue2: { roughMul: 1.0, envI: 1.35, roughSet: 0.4, metalSet: 0.28 },
+  // — abgenutzter Metallcontainer —
+  Aged_Rust: { roughMul: 1.0, envI: 1.45, roughSet: 0.36, metalSet: 0.42 },
+  // — Fässer: Barrel_Red lackiert; Barrel_Mil stark abgenutzt/verrostet —
+  Barrel_Red: { roughMul: 1.0, envI: 1.5, roughSet: 0.34, metalSet: 0.35 },
+  Barrel_Mil: { roughMul: 1.0, envI: 1.15, roughSet: 0.48, metalSet: 0.18 },
   // The ship hull (authored PBR): lower roughness + higher envI so it actually
   // CATCHES the environment — it read dead/flat before. NOTE this only reflects the
   // env map, never the scene: a ship mirror-image on the deck needs planar
@@ -256,21 +263,21 @@ function validateMaterial(m: THREE.MeshStandardMaterial): MatStat {
     m.emissiveIntensity = EMISSIVE_CAP;
   }
 
-  // Glossy surfaces (those carrying a baked roughness map) need a stronger env
-  // reflection to read as wet/polished. Per-material tuning where dialled in
-  // (deck/platform wet-mirror, walls semi-gloss, crates softer sheen); otherwise
-  // the flat glossy default. Matte props (no roughness map) are untouched.
-  if (m.roughnessMap) {
-    const t = GLOSS_TUNING[m.name ?? ""];
-    if (t) {
-      // roughSet/metalSet pin absolute spec values (floor/platform) — the map stays
-      // for variation but multiplies against this base; otherwise roughMul scales it.
-      m.roughness = t.roughSet ?? t.roughMul;
-      if (t.metalSet !== undefined) m.metalness = t.metalSet;
-      m.envMapIntensity = t.envI;
-    } else {
-      m.envMapIntensity = GLOSSY_ENV_INTENSITY;
-    }
+  // Per-material PBR tuning (GLOSS_TUNING). A listed material gets its pinned
+  // roughSet/metalSet + envI so it reads as painted-metal / wet-polished as
+  // intended — this now applies WHETHER OR NOT the material has a roughness map
+  // (the containers/barrels mostly have none, but still need the spec values). A
+  // present roughness map is KEPT and multiplies against the roughSet base for
+  // surface variation. Non-listed materials with a rough map get the flat glossy
+  // default; matte non-listed props are untouched.
+  const t = GLOSS_TUNING[m.name ?? ""];
+  if (t) {
+    if (t.roughSet !== undefined) m.roughness = t.roughSet;      // absolute base
+    else if (m.roughnessMap) m.roughness = t.roughMul;           // scale the map
+    if (t.metalSet !== undefined) m.metalness = t.metalSet;
+    m.envMapIntensity = t.envI;
+  } else if (m.roughnessMap) {
+    m.envMapIntensity = GLOSSY_ENV_INTENSITY;
   }
 
   m.needsUpdate = true;
