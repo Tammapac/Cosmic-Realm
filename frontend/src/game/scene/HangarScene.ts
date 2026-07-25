@@ -208,6 +208,8 @@ export class HangarScene {
   private lastT = 0;
   private hangarRoot: THREE.Group;
   private ship: THREE.Group | null = null;
+  /** The dominant shadow-casting key light (kept for the debug overlay). */
+  private keyLight: THREE.DirectionalLight | null = null;
 
   /** World-space landing platform centre, and the authored camera pose. */
   private padWorld = new THREE.Vector3();
@@ -304,23 +306,43 @@ export class HangarScene {
   }
 
   private buildLights(): void {
-    // The exported GLB drops Blender's AREA lamps (glTF has no area lights), so
-    // this is the room's working rig. Warm key + cool fill + a soft ambient,
-    // tuned brighter than the space scene because a hangar interior is lit.
-    this.scene.add(new THREE.AmbientLight(0x8090a8, 0.7));
+    // Studio-lighting rig (Phase E), modelled on how Blender's Material Preview
+    // lights a subject: a directional Key/Fill/Rim trio plus a Hemisphere "sky".
+    //
+    // NO flat AmbientLight. A large ambient lights every surface equally
+    // regardless of its normal, which FLATTENS materials — the exact opposite of
+    // the shaped, normal-aware look we want. The soft ambient fill instead comes
+    // from (a) the studio IBL already installed in the constructor and (b) the
+    // HemisphereLight below, both of which vary with surface orientation.
+
+    // KEY — warm, strong, shadow-casting. The dominant light, high and to the
+    // front-right, like the main softbox in the preview.
     const key = new THREE.DirectionalLight(0xfff2e0, 2.6);
     key.position.set(3, 9, 4);
     key.castShadow = true;
-    key.shadow.mapSize.set(1024, 1024);
+    key.shadow.mapSize.set(2048, 2048);
     key.shadow.camera.near = 1;
     key.shadow.camera.far = 40;
+    key.shadow.bias = -0.0002;
+    key.shadow.normalBias = 0.02; // kills shadow acne on the low-poly deck
     this.scene.add(key);
-    const fill = new THREE.DirectionalLight(0x6f9be0, 1.0);
+    this.keyLight = key;
+
+    // FILL — cool, soft, opposite side. Lifts the shadow side without erasing it.
+    const fill = new THREE.DirectionalLight(0x6f9be0, 0.9);
     fill.position.set(-6, 4, -3);
     this.scene.add(fill);
-    const rim = new THREE.DirectionalLight(0x9ec2ff, 0.8);
+
+    // RIM / BACK — cool edge light from behind, separates the ship from the deck.
+    const rim = new THREE.DirectionalLight(0x9ec2ff, 0.7);
     rim.position.set(0, 3, -8);
     this.scene.add(rim);
+
+    // SKY — Hemisphere: cool sky from above, warm deck bounce from below. This is
+    // the normal-aware replacement for the old flat ambient; it reads as soft
+    // environmental fill without flattening the surface.
+    const sky = new THREE.HemisphereLight(0xaec6ff, 0x2a2620, 0.55);
+    this.scene.add(sky);
   }
 
   /** Resolve the landing platform + authored camera pose from the model. */
