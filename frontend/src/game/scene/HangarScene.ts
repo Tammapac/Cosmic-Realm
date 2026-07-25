@@ -357,13 +357,13 @@ export class HangarScene {
   private bloomComposer: EffectComposer | null = null;
   private bloomPass: UnrealBloomPass | null = null;
   private fxaaPass: ShaderPass | null = null;
-  // Post-FX = SELECTIVE emissive bloom (layer-based): only the emissive strips/
-  // panels bloom, never the lit deck/metal — so it's the soft emissive glow the
-  // reference shows (spec #10), NOT a global wash. On by default now that it's
-  // selective + gently tuned; ?nobloom disables for A/B.
+  // Post-FX (selective emissive bloom) is OFF by default. Even layer-isolated + at
+  // low strength, on THIS deck — long emissive guide-strips + many bright fixture
+  // highlights — the bloom smears into a scene-wide milky wash (verified by A/B:
+  // turning the composer off removes the haze entirely). The emissive cap already
+  // reads the strips as coloured without bloom. Opt-in via ?bloom for A/B only.
   static postFx =
-    typeof window === "undefined" ||
-    !new URLSearchParams(window.location.search).has("nobloom");
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).has("bloom");
 
   /** World-space landing platform centre, and the authored camera pose. */
   private padWorld = new THREE.Vector3();
@@ -395,10 +395,10 @@ export class HangarScene {
   // strongest candidate for matching it; ACESFilmic (the old default) and
   // Khronos Neutral are the alternatives. Static so the harness can compare.
   static toneMapping: THREE.ToneMapping = THREE.AgXToneMapping;
-  // AgX (as in Blender). Exposure 1.1 (per spec): the local light rig — not a
+  // AgX (as in Blender). Exposure 1.05 (per spec): the local light rig — not a
   // raised exposure — carries the brightness. Do NOT push exposure up to
   // compensate for lamp reach; fix the rig instead.
-  static toneExposure = 1.1;
+  static toneExposure = 1.05;
   /** Live setter used by the harness to switch tone mapping without a rebuild. */
   setToneMapping(mode: THREE.ToneMapping, exposure: number): void {
     this.renderer.toneMapping = mode;
