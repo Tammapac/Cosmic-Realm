@@ -124,12 +124,15 @@ export function ensureWorldLayer(
   renderer.shadowMap.enabled = rs.shadowsEnabled;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  // The ship layer's own exposure, unmodified. The "over-lit / washed-out at
-  // distance" the merged station showed was NOT a rig problem — it was a double
-  // sRGB encode in the post-FX blit (see COPY_FRAG in three-ship-layer.ts). With
-  // that fixed, the station reads correctly at the ship layer's own values, so
-  // there is nothing to compensate for here.
-  renderer.toneMappingExposure = rs.toneMappingExposure;
+  // A moderate lift over the ship layer's own exposure. Two real bugs used to
+  // fake brightness: a double sRGB encode (fixed in COPY_FRAG) and a per-model
+  // vignette (removed). With both gone the scene renders CORRECTLY — but correct
+  // turned out genuinely dark, because the station is a near-black hull top-lit
+  // in empty space. The ship layer's 0.85 was tuned for small bright ships; the
+  // big dark station needs a little more headroom to read. 1.35× lands ~1.15
+  // absolute — the station shows its panelling and the ships stay shy of
+  // clipping. Kept tier-relative so low-end tiers scale with it.
+  renderer.toneMappingExposure = rs.toneMappingExposure * 1.35;
 
   const scene = new THREE.Scene();
   loadEnvironment(renderer, scene);

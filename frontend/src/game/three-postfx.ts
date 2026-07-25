@@ -90,9 +90,32 @@ export function createPostFX(
   }
 
   // 4) FXAA — cheap edge AA on the composited result.
+  //
+  // ALPHA FIX: three's FXAAShader antialiases by nudging the sample UV along an
+  // edge and reading the neighbour — and it does that for ALL four channels,
+  // ALPHA included. On an opaque full-screen frame nobody notices. But this is a
+  // TRANSPARENT overlay Pixi composites over the 2D world: at an internal hull
+  // edge (a dark panel beside a bright one) the nudged sample partly lands on the
+  // transparent black around the model, so the edge pixel's alpha drops from 255
+  // to ~30–50. Pixi then bleeds the nebula/starfield THROUGH those pixels — the
+  // "milky, slightly see-through" haze all over the station. Measured: min hull
+  // alpha 255 raw → 30 with FXAA, back to 255 with FXAA off.
+  //
+  // The hull IS opaque, so its antialiased colour is wanted but its alpha must
+  // stay whatever the geometry wrote. Patch the shader to smooth RGB as usual
+  // and then restore alpha from the UNsmoothed pixel. One line, no behaviour
+  // change for genuinely translucent pixels (their own alpha is preserved too).
   let fxaa: ShaderPass | null = null;
   if (s.fxaa) {
-    fxaa = new ShaderPass(FXAAShader);
+    const alphaSafeFXAA = {
+      ...FXAAShader,
+      fragmentShader: FXAAShader.fragmentShader.replace(
+        "gl_FragColor = ApplyFXAA( tDiffuse, resolution.xy, vUv );",
+        "gl_FragColor = ApplyFXAA( tDiffuse, resolution.xy, vUv );\n" +
+        "\tgl_FragColor.a = texture2D( tDiffuse, vUv ).a;",
+      ),
+    };
+    fxaa = new ShaderPass(alphaSafeFXAA);
     fxaa.material.uniforms["resolution"].value.set(1 / bufW, 1 / bufH);
     composer.addPass(fxaa);
   }

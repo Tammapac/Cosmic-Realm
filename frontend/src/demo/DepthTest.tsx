@@ -423,6 +423,71 @@ export default function DepthTest() {
         return { withFX, noFX };
       },
       bypass: (v: boolean) => { __setBypassPostFX(v); return "bypass=" + v; },
+      // Set the live renderer exposure and re-grab over the checkerboard so the
+      // brightness can be dialled in visually. Returns the resulting mean hull
+      // luminance too.
+      setExposure: (e: number) => {
+        const w2 = getWorldLayer();
+        if (!w2) return "no world";
+        w2.renderer.toneMappingExposure = e;
+        const m = lookStation(1.0) as any;
+        return { exposure: e, meanLum: m.meanLum, hot: m.hotPct };
+      },
+      // Is the hull TRANSPARENT? Render the station, then over the solid hull
+      // measure the alpha distribution. A solid hull must be alpha 255; anything
+      // lower lets Pixi bleed the background through = the "milky transparent"
+      // look. Compares postFX on vs off, since the composer can lower alpha.
+      alphaProbe: (zoom = 1.0) => {
+        if (!gl || !world) return "no gl";
+        const sampleAlpha = (): { meanA: number; minA: number; solidPct: number; n: number } => {
+          const bw = gl.drawingBufferWidth, bh = gl.drawingBufferHeight;
+          const buf = new Uint8Array(bw * bh * 4);
+          gl.readPixels(0, 0, bw, bh, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+          let sa = 0, minA = 255, n = 0, solid = 0;
+          // only consider pixels that are clearly PART of the hull (some colour),
+          // ignoring the fully-empty background (alpha ~0).
+          for (let i = 0; i < buf.length; i += 4) {
+            const a = buf[i + 3];
+            const lum = Math.max(buf[i], buf[i + 1], buf[i + 2]);
+            if (a < 20 && lum < 12) continue; // empty space
+            n++; sa += a; if (a < minA) minA = a; if (a >= 250) solid++;
+          }
+          return { meanA: n ? +(sa / n).toFixed(1) : 0, minA, solidPct: n ? +(100 * solid / n).toFixed(1) : 0, n };
+        };
+        const sampleByPass = () => {
+          const fx: any = __getPostFX();
+          const passes = ["gtao", "bloom", "fxaa", "vignette"] as const;
+          const setAll = (on: boolean) => passes.forEach((p) => { if (fx?.[p]) fx[p].enabled = on; });
+          const out: Record<string, number> = {};
+          clearActors();
+          setStationCameraZoom(zoom);
+          beginFrame(); beginStationFrame();
+          updateStationOnly(STATION_ID, 0, 0, 0, 0);
+          endFrame(); endStationFrame();
+          __setBypassPostFX(true); render3DLayer(); out.raw_minA = sampleAlpha().minA;
+          if (fx) {
+            setAll(true); __setBypassPostFX(false); render3DLayer(); out.allOn_minA = sampleAlpha().minA;
+            for (const p of passes) {
+              if (!fx[p]) { out[`no_${p}_minA`] = -1; continue; }
+              setAll(true); fx[p].enabled = false; render3DLayer();
+              out[`no_${p}_minA`] = sampleAlpha().minA;
+            }
+            setAll(true);
+          }
+          return out;
+        };
+        clearActors();
+        setStationCameraZoom(zoom);
+        beginFrame(); beginStationFrame();
+        updateStationOnly(STATION_ID, 0, 0, 0, 0);
+        endFrame(); endStationFrame();
+        __setBypassPostFX(false); render3DLayer();
+        const withFX = sampleAlpha();
+        __setBypassPostFX(true); render3DLayer();
+        const raw = sampleAlpha();
+        __setBypassPostFX(false);
+        return { withFX, raw, byPass: sampleByPass() };
+      },
       // Render the station shifted so its hull sits at screen CENTRE vs far in a
       // CORNER, and measure the mean hull brightness in each, with postFX on and
       // off. If a corner reads much brighter/milkier than centre only when
@@ -487,7 +552,7 @@ export default function DepthTest() {
       // Grab the current drawing buffer as a data: URL so it can be inspected
       // even when the browser pane itself is not compositing frames. Renders the
       // station alone at `zoom` first. Flips vertically (GL is bottom-up).
-      grab: (zoom = 0.6, camOffX = 0, camOffY = 0): string => {
+      grab: (zoom = 0.6, camOffX = 0, camOffY = 0, bg = "dark"): string => {
         if (!gl || !world) return "";
         clearActors();
         // camOff shoves the station off screen-centre (worst case for radial
@@ -504,16 +569,27 @@ export default function DepthTest() {
         cv.width = bw; cv.height = bh;
         const ctx = cv.getContext("2d")!;
         const img = ctx.createImageData(bw, bh);
-        // flip rows + composite over the dark app bg so alpha reads naturally
+        // Composite the layer over a chosen background so its ALPHA is visible.
+        // bg="check": a bright magenta/cyan checkerboard — anything showing
+        // through the hull means the hull alpha is < 1 (the "see-through" bug).
+        // bg="dark": the normal dark app bg.
+        const bgAt = (x: number, y: number): [number, number, number] => {
+          if (bg === "check") {
+            const c = (((x >> 5) ^ (y >> 5)) & 1) === 1;
+            return c ? [255, 0, 200] : [0, 220, 255];
+          }
+          return [7, 11, 20];
+        };
         for (let y = 0; y < bh; y++) {
           const src = (bh - 1 - y) * bw * 4;
           const dst = y * bw * 4;
-          for (let x = 0; x < bw * 4; x += 4) {
-            const a = buf[src + x + 3] / 255;
-            img.data[dst + x] = buf[src + x] * a + 7 * (1 - a);
-            img.data[dst + x + 1] = buf[src + x + 1] * a + 11 * (1 - a);
-            img.data[dst + x + 2] = buf[src + x + 2] * a + 20 * (1 - a);
-            img.data[dst + x + 3] = 255;
+          for (let xp = 0; xp < bw; xp++) {
+            const a = buf[src + xp * 4 + 3] / 255;
+            const [br, bgc, bb] = bgAt(xp, y);
+            img.data[dst + xp * 4] = buf[src + xp * 4] * a + br * (1 - a);
+            img.data[dst + xp * 4 + 1] = buf[src + xp * 4 + 1] * a + bgc * (1 - a);
+            img.data[dst + xp * 4 + 2] = buf[src + xp * 4 + 2] * a + bb * (1 - a);
+            img.data[dst + xp * 4 + 3] = 255;
           }
         }
         ctx.putImageData(img, 0, 0);
