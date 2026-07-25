@@ -219,7 +219,7 @@ function validateMaterial(m: THREE.MeshStandardMaterial): MatStat {
   track(m.aoMap ?? null, "ao", true);
   // Baked AO/GI lightmap (uv1): push its strength up a touch so the contact
   // shading (where crates/objects darken the deck) reads clearly.
-  if (m.aoMap) m.aoMapIntensity = 1.3;
+  if (m.aoMap) m.aoMapIntensity = 1.5;
 
   let emissiveFixed = false;
   if (isBrokenWhiteEmissive(m)) {
@@ -544,6 +544,7 @@ export class HangarScene {
     scene.buildStripLights(); // local lights on the emissive deck strips
     scene.buildBounceLights(); // coloured bounce from crates/barrels (fake GI)
     scene.buildStairShadow(); // fake contact shadow under the stairs
+    scene.buildPropShadows(); // contact shadows under crates + barrels
     scene.parkShip(shipGLB.scene);
     return scene;
   }
@@ -914,6 +915,33 @@ export class HangarScene {
     const short = Math.min(s.x, s.z);
     const aspect = Math.max(0.35, short / long);
     this.addContactShadow(at, long * 1.8, aspect, 1.0);
+  }
+
+  /** Contact shadows under the crates + barrels (spec #4): stronger grounding
+   *  under each prop cluster so they don't float on the deck. One blob per crate/
+   *  barrel base, sized to its footprint. Only for floor-level props. */
+  private buildPropShadows(): void {
+    this.hangarRoot.updateWorldMatrix(true, true);
+    const box = new THREE.Box3();
+    const deckY = this.padWorld.y;
+    const seen = new Set<string>();
+    this.hangarRoot.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.material) return;
+      const nm = ((Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.Material)?.name ?? "";
+      if (!/Aged_|Barrel_/.test(nm)) return;
+      box.setFromObject(mesh);
+      const c = box.getCenter(new THREE.Vector3());
+      const s = box.getSize(new THREE.Vector3());
+      // only floor-level props (base near the deck), and de-dup near-identical spots
+      if (box.min.y > deckY + 0.5) return;
+      const key = `${Math.round(c.x)}_${Math.round(c.z)}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      const long = Math.max(s.x, s.z);
+      const aspect = Math.max(0.5, Math.min(s.x, s.z) / long);
+      this.addContactShadow(new THREE.Vector3(c.x, deckY, c.z), long * 1.3, aspect, 0.9);
+    });
   }
 
   /** Place the parked ship at a world point (keeping its recentre + lift). */
