@@ -35,7 +35,7 @@ import {
   initStation3DLayer, setStationCameraZoom, beginStationFrame,
   updateStationOnly, endStationFrame, removeStation3D, getStationDoorWorldOffset,
 } from "../game/three-station-layer";
-import { setShipLiftFactor, getWorldLayer } from "../game/three-world-layer";
+import { setShipLiftFactor, getWorldLayer, normalizeSharedDepth } from "../game/three-world-layer";
 
 const STATION_ID = "helix";
 const PLAYER_CLASS = "skimmer";
@@ -433,6 +433,165 @@ export default function DepthTest() {
         const m = lookStation(1.0) as any;
         return { exposure: e, meanLum: m.meanLum, hot: m.hotPct };
       },
+      // Live-tune the light rig to see whether ambient/fill (not exposure) is
+      // what lifts a dark model's body without clipping its bright bits.
+      // Live material boost on the enemy hull: lower metalness + lift the base
+      // colour so a near-black metallic body picks up diffuse light in the dark.
+      // Then re-grab so the effect is visible. metal/mul are the two knobs.
+      boostEnemy: (metal: number, mul: number, exposure = 1.15) => {
+        const grp = getWorldLayer()?.scene.getObjectByName("enemyShipsGroup");
+        if (!grp) return "no enemy";
+        grp.traverse((c: any) => {
+          const m = c.material;
+          if (!m) return;
+          for (const mm of (Array.isArray(m) ? m : [m])) {
+            if (!mm.isMeshStandardMaterial) continue;
+            // only the hull (grey), not the emissive lava cracks
+            const em = mm.emissive;
+            const isEmissive = (em.r + em.g + em.b) > 0.3 && (mm.emissiveIntensity ?? 0) > 0.1;
+            if (isEmissive) continue;
+            if (!mm.userData._origColor) mm.userData._origColor = mm.color.clone();
+            mm.metalness = metal;
+            mm.color.copy(mm.userData._origColor).multiplyScalar(mul);
+            mm.needsUpdate = true;
+          }
+        });
+        const url = (api as any).grabModel("enemy", exposure, 3.5);
+        let el = document.getElementById("__ab") as HTMLImageElement | null;
+        if (!el) {
+          el = document.createElement("img"); el.id = "__ab";
+          el.style.cssText = "position:fixed;inset:0;width:100%;height:100%;object-fit:contain;z-index:99999;background:#0a0e18";
+          document.body.appendChild(el);
+        }
+        el.src = url;
+        return { metal, mul };
+      },
+      setEnvI: (v: number) => {
+        const s = getWorldLayer()?.scene as any;
+        if (!s) return "no scene";
+        s.environmentIntensity = v;
+        return "envI=" + v;
+      },
+      // Re-run normalizeSharedDepth on the live enemy group to test liftDarkHull
+      // without needing a fresh model instance, then re-grab.
+      relift: () => {
+        const grp = getWorldLayer()?.scene.getObjectByName("enemyShipsGroup");
+        if (!grp) return "no enemy group";
+        (window as any).__LIFT_DEBUG = true;
+        normalizeSharedDepth(grp, "enemy:relift");
+        const after = (api as any).enemyMat().sample[0];
+        const url = (api as any).grabModel("enemy", 1.15, 3.5);
+        let el = document.getElementById("__ab") as HTMLImageElement | null;
+        if (!el) { el = document.createElement("img"); el.id = "__ab";
+          el.style.cssText = "position:fixed;inset:0;width:100%;height:100%;object-fit:contain;z-index:99999;background:#0a0e18";
+          document.body.appendChild(el); }
+        el.src = url;
+        return after;
+      },
+      setLights: (ambient?: number, sun?: number, fill?: number, rim?: number) => {
+        const s = getWorldLayer()?.scene;
+        if (!s) return "no scene";
+        let ai = 0, di = 0;
+        s.traverse((o: any) => {
+          if (o.isAmbientLight && ambient != null) o.intensity = ambient;
+          if (o.isDirectionalLight) {
+            // sun is the strongest; fill/rim weaker. Order of add: sun, fill, rim.
+            di++;
+            if (di === 1 && sun != null) o.intensity = sun;
+            if (di === 2 && fill != null) o.intensity = fill;
+            if (di === 3 && rim != null) o.intensity = rim;
+          }
+          void ai;
+        });
+        return "lights set";
+      },
+      // Mean luminance of ONE model rendered alone (no station), lifted, at
+      // screen centre — measures a ship or enemy's own brightness. kind:
+      // "player" | "enemy".
+      modelLum: (kind: "player" | "enemy", zoom = 1) => {
+        if (!gl || !world) return 0;
+        const id = kind === "enemy" ? "enemy:1" : "player";
+        const cls = kind === "enemy" ? ENEMY_CLASS : PLAYER_CLASS;
+        clearActors();
+        setCameraZoom(zoom);
+        beginFrame();
+        updateShip3D(id, cls, 0, 0, -Math.PI / 2, kind === "enemy" ? 1.4 : 1, 0, 0, 0, 0);
+        markActive(id);
+        endFrame();
+        setShipLiftFactor(0); // sit on plane so it's at screen centre
+        render3DLayer();
+        const bw = gl.drawingBufferWidth, bh = gl.drawingBufferHeight;
+        const buf = new Uint8Array(bw * bh * 4);
+        gl.readPixels(0, 0, bw, bh, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+        let sum = 0, n = 0;
+        for (let i = 0; i < buf.length; i += 4) {
+          if (buf[i + 3] < 30) continue;
+          sum += Math.max(buf[i], buf[i + 1], buf[i + 2]);
+          n++;
+        }
+        removeShip3D(id);
+        setShipLiftFactor(1);
+        return n ? +(sum / n).toFixed(1) : 0;
+      },
+      // Render one model alone at a given exposure and return it as a PNG so the
+      // brightness can be judged by eye (metrics proved too noisy).
+      grabModel: (kind: "player" | "enemy" | "station", exposure: number, zoom = 1): string => {
+        if (!gl || !world) return "";
+        world.renderer.toneMappingExposure = exposure;
+        clearActors();
+        if (kind === "station") {
+          setStationCameraZoom(zoom);
+          beginFrame(); beginStationFrame();
+          updateStationOnly(STATION_ID, 0, 0, 0, 0);
+          endFrame(); endStationFrame();
+        } else {
+          const id = kind === "enemy" ? "enemy:1" : "player";
+          const cls = kind === "enemy" ? ENEMY_CLASS : PLAYER_CLASS;
+          setCameraZoom(zoom);
+          setShipLiftFactor(0);
+          beginFrame();
+          updateShip3D(id, cls, 0, 0, -Math.PI / 2, kind === "enemy" ? 1.4 : 1, 0, 0, 0, 0);
+          markActive(id);
+          endFrame();
+        }
+        render3DLayer();
+        const bw = gl.drawingBufferWidth, bh = gl.drawingBufferHeight;
+        const buf = new Uint8Array(bw * bh * 4);
+        gl.readPixels(0, 0, bw, bh, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+        const cv = document.createElement("canvas");
+        cv.width = bw; cv.height = bh;
+        const ctx = cv.getContext("2d")!;
+        const img = ctx.createImageData(bw, bh);
+        for (let y = 0; y < bh; y++) {
+          const src = (bh - 1 - y) * bw * 4, dst = y * bw * 4;
+          for (let x = 0; x < bw * 4; x += 4) {
+            const a = buf[src + x + 3] / 255;
+            img.data[dst + x] = buf[src + x] * a + 10 * (1 - a);
+            img.data[dst + x + 1] = buf[src + x + 1] * a + 14 * (1 - a);
+            img.data[dst + x + 2] = buf[src + x + 2] * a + 24 * (1 - a);
+            img.data[dst + x + 3] = 255;
+          }
+        }
+        ctx.putImageData(img, 0, 0);
+        setShipLiftFactor(1);
+        return cv.toDataURL("image/png");
+      },
+      // Sweep exposure and report the mean brightness of station / player /
+      // enemy at each, so a single value can be chosen for all three.
+      exposureSweep: (values: number[]) => {
+        const w2 = getWorldLayer();
+        if (!w2) return "no world";
+        const rows = values.map((e) => {
+          w2.renderer.toneMappingExposure = e;
+          return {
+            exp: e,
+            station: (lookStation(1) as any).meanLum,
+            player: (api as any).modelLum("player", 1),
+            enemy: (api as any).modelLum("enemy", 1),
+          };
+        });
+        return rows;
+      },
       // Is the hull TRANSPARENT? Render the station, then over the solid hull
       // measure the alpha distribution. A solid hull must be alpha 255; anything
       // lower lets Pixi bleed the background through = the "milky transparent"
@@ -621,10 +780,34 @@ export default function DepthTest() {
       // Dump the roughness/metalness/envMapIntensity distribution of the station
       // hull materials — the drivers of specular-highlight sharpness that clips
       // to hard white when the model is small on screen.
+      // Dump the enemy hull material color/emissive/roughness — is the model
+      // itself near-black, or is it the lighting?
+      enemyMat: () => {
+        const grp = getWorldLayer()?.scene.getObjectByName("enemyShipsGroup");
+        if (!grp) return "no enemyShipsGroup";
+        const rows: any[] = [];
+        grp.traverse((c: any) => {
+          const m = c.material;
+          if (!m) return;
+          for (const mm of (Array.isArray(m) ? m : [m])) {
+            if (!mm.isMeshStandardMaterial) continue;
+            const col = mm.color, em = mm.emissive;
+            rows.push({
+              name: c.name || "(unnamed)",
+              color: [Math.round(col.r*255), Math.round(col.g*255), Math.round(col.b*255)],
+              emissiveI: +(mm.emissiveIntensity ?? 0).toFixed(2),
+              emissive: [Math.round(em.r*255), Math.round(em.g*255), Math.round(em.b*255)],
+              rough: +mm.roughness.toFixed(2), metal: +mm.metalness.toFixed(2),
+              env: +(mm.envMapIntensity ?? 1).toFixed(2),
+            });
+          }
+        });
+        return { count: rows.length, sample: rows.slice(0, 12) };
+      },
       mats: () => {
         const grp = getWorldLayer()?.scene.getObjectByName("stationsGroup");
         if (!grp) return "no stationsGroup";
-        const rows: { name: string; rough: number; metal: number; env: number; ts: boolean }[] = [];
+        const rows: { name: string; rough: number; metal: number; env: number; luma: number; color: number[]; ts: boolean }[] = [];
         grp.traverse((c: THREE.Object3D) => {
           const m = (c as THREE.Mesh).material;
           if (!m) return;
@@ -632,23 +815,28 @@ export default function DepthTest() {
           for (const mm of arr) {
             const sm = mm as THREE.MeshStandardMaterial;
             if (sm.isMeshStandardMaterial) {
+              const cl = sm.color;
               rows.push({
                 name: c.name || "(unnamed)",
                 rough: +sm.roughness.toFixed(2),
                 metal: +sm.metalness.toFixed(2),
                 env: +(sm.envMapIntensity ?? 1).toFixed(2),
+                luma: 0.2126 * cl.r + 0.7152 * cl.g + 0.0722 * cl.b,
+                color: [Math.round(cl.r * 255), Math.round(cl.g * 255), Math.round(cl.b * 255)],
                 ts: sm.transparent,
               });
             }
           }
         });
         const n = rows.length;
-        const avg = (k: "rough" | "metal" | "env") => +(rows.reduce((s, r) => s + r[k], 0) / n).toFixed(2);
+        const avg = (k: "rough" | "metal" | "env" | "luma") => +(rows.reduce((s, r) => s + (r as any)[k], 0) / n).toFixed(3);
         return {
           count: n,
           avgRough: avg("rough"), avgMetal: avg("metal"), avgEnv: avg("env"),
-          minRough: Math.min(...rows.map((r) => r.rough)),
-          sample: rows.slice(0, 8),
+          avgLuma: avg("luma"),
+          minLuma: +Math.min(...rows.map((r: any) => r.luma)).toFixed(3),
+          maxLuma: +Math.max(...rows.map((r: any) => r.luma)).toFixed(3),
+          sample: rows.slice(0, 6),
         };
       },
       tree: () => {
