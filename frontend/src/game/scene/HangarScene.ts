@@ -61,12 +61,11 @@ function isEmissive(m: THREE.MeshStandardMaterial): boolean {
 }
 
 // The hangar interior — a modeled room, its own GLB (from Blender HangarHall).
-// ?pbrtest swaps in the test export that carries baked Roughness/Metallic maps on
-// Hall_Floor / Hall_Wall / Aged_Orange, for an A/B against the base-color-only GLB.
-const HANGAR_URL =
-  typeof window !== "undefined" && new URLSearchParams(window.location.search).has("pbrtest")
-    ? "/models/stations/hangar_interior_pbrtest.glb"
-    : "/models/stations/hangar_interior.glb";
+// Now carries baked Roughness/Metallic maps on ALL surface materials (floor,
+// walls, hull/platform, every container + barrel) so the whole hangar reflects
+// the lights — not just flat base-colour. Emissive strips (Hall_Cyan/Amber) stay
+// map-free (colour from emissive).
+const HANGAR_URL = "/models/stations/hangar_interior.glb";
 /** Node the ship parks on. */
 const PAD_NODE = "LandingPlatform";
 /** Authored camera node, used to derive the docked framing. */
@@ -626,18 +625,19 @@ export class HangarScene {
       (/Cyan/.test(nm) ? cyan : amber).push(c);
     });
 
-    // Two families of emissive fixture: floor-level DECK strips (light the deck +
-    // ship) and elevated WALL/CEILING panels — the Screen_* wall panels and
-    // Lamp*_panel ceiling tiles (they were previously ignored, so they glowed but
-    // lit nothing). Both get a short-range shadowless coloured PointLight; the
-    // elevated ones a longer reach so their glow actually reaches the wall + floor.
+    // EVERY emissive fixture becomes a real light — the user found lamps that
+    // glowed but cast nothing (wall stripes, pad lights, screens). No thinning:
+    // each Hall_Cyan / Hall_Amber mesh (deck strip, wall Screen, ceiling Lamp
+    // panel, PadLight, WallStripe, rail) gets a short-range shadowless coloured
+    // PointLight so it lights the deck/wall/ship around it. Floor fixtures light
+    // the deck; elevated ones (y≥1) reach a bit further to hit wall + floor.
+    // Intensities are modest per-light because there are many.
     const addLights = (
-      pts: THREE.Vector3[], hex: number, every: number,
+      pts: THREE.Vector3[], hex: number,
       floorIntensity: number, floorRange: number,
       highIntensity: number, highRange: number,
     ) => {
-      for (let i = 0; i < pts.length; i += every) {
-        const p = pts[i];
+      for (const p of pts) {
         const high = p.y >= 1.0;
         const l = new THREE.PointLight(
           hex, high ? highIntensity : floorIntensity, high ? highRange : floorRange, 2.0,
@@ -649,10 +649,10 @@ export class HangarScene {
         this.scene.add(l);
       }
     };
-    // cyan: deck strips + the wall Screen_* / ceiling Lamp panels
-    addLights(cyan, 0x2ec8ff, 2, /*floor*/ 2.2, 3.0, /*high*/ 3.0, 6.0);
-    // amber: pad lights + wall stripes
-    addLights(amber, 0xffb040, 2, /*floor*/ 1.6, 3.0, /*high*/ 2.2, 5.5);
+    // cyan: deck strips, platform ring, rails + the wall Screen_* / ceiling Lamp panels
+    addLights(cyan, 0x2ec8ff, /*floor*/ 1.6, 2.6, /*high*/ 2.4, 5.5);
+    // amber: pad lights, wall stripes, tank valves
+    addLights(amber, 0xffb040, /*floor*/ 1.4, 2.6, /*high*/ 2.0, 5.0);
   }
 
   /** Resolve the landing platform + authored camera pose from the model. */
