@@ -357,15 +357,13 @@ export class HangarScene {
   private bloomComposer: EffectComposer | null = null;
   private bloomPass: UnrealBloomPass | null = null;
   private fxaaPass: ShaderPass | null = null;
-  // Post-FX (selective emissive bloom) is OFF by default: on this scene — a wide
-  // deck covered in long emissive guide-strips seen at a grazing angle — even a
-  // gentle UnrealBloom merges their halos into a floor-wide wash, which is the
-  // "künstliche globale Aufhellung" the brief explicitly rejects. The clean AgX
-  // render with capped emissive already reads the strips as coloured. The
-  // selective-bloom chain stays wired and correct, opt-in via ?bloom, for scenes
-  // (e.g. the space world) where compact emitters bloom cleanly.
+  // Post-FX = SELECTIVE emissive bloom (layer-based): only the emissive strips/
+  // panels bloom, never the lit deck/metal — so it's the soft emissive glow the
+  // reference shows (spec #10), NOT a global wash. On by default now that it's
+  // selective + gently tuned; ?nobloom disables for A/B.
   static postFx =
-    typeof window !== "undefined" && new URLSearchParams(window.location.search).has("bloom");
+    typeof window === "undefined" ||
+    !new URLSearchParams(window.location.search).has("nobloom");
 
   /** World-space landing platform centre, and the authored camera pose. */
   private padWorld = new THREE.Vector3();
@@ -473,9 +471,12 @@ export class HangarScene {
     bloomComposer.setPixelRatio(pr);
     bloomComposer.setSize(w, h);
     bloomComposer.addPass(new RenderPass(this.scene, this.camera));
-    // Conservative: the layer is already isolated (threshold 0), so keep strength
-    // + radius low — the emissive cap gives sane input values.
-    const bloom = new UnrealBloomPass(size, 0.35, 0.3, 0.0);
+    // Soft emissive glow (spec #10). Strength is kept LOW (0.07): this deck is
+    // covered in long emissive guide-strips, and higher values (the spec's 0.3)
+    // merge their halos into a scene-wide wash — the "ausgewaschene Szene" the spec
+    // forbids. 0.07/0.2 gives the strips a gentle glow while the scene stays dark +
+    // contrasty. Layer-isolated to emissive meshes, so metal never glows.
+    const bloom = new UnrealBloomPass(size, 0.07, 0.2, 0.0);
     bloomComposer.addPass(bloom);
     this.bloomPass = bloom;
     this.bloomComposer = bloomComposer;
@@ -651,6 +652,16 @@ export class HangarScene {
     giBounce.target.position.set(0, 2, 0);
     this.scene.add(giBounce);
     this.scene.add(giBounce.target);
+
+    // Rim light (spec #9): a weak COOL directional from above-right, no shadow,
+    // just to catch edges — the stair steps, railings and upper platform read as
+    // contours without a strong front light. Kept dim so it only rims.
+    const rim = new THREE.DirectionalLight(0xbcd4ff, 0.6);
+    rim.position.set(7, 8, -5); // above + right, from behind the props
+    rim.target.position.copy(this.padWorld);
+    rim.castShadow = false;
+    this.scene.add(rim);
+    this.scene.add(rim.target);
   }
 
   /**
