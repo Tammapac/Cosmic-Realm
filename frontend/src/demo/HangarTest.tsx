@@ -11,7 +11,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { HangarScene } from "../game/scene/HangarScene";
+import { HangarScene, type HangarDebugInfo } from "../game/scene/HangarScene";
 
 const SHIP_CLASSES = ["skimmer", "apex", "leviathan", "vanguard"];
 
@@ -33,6 +33,8 @@ export default function HangarTest() {
   const [tone, setTone] = useState("AgX");
   const [exposure, setExposure] = useState(1.35);
   const [busy, setBusy] = useState(false);
+  const [showDebug, setShowDebug] = useState(true);
+  const [dbg, setDbg] = useState<HangarDebugInfo | null>(null);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -71,6 +73,16 @@ export default function HangarTest() {
     hs.setToneMapping(t.mode, exposure);
   }, [tone, exposure, status]);
 
+  // Poll the renderer debug info ~2×/s while the panel is open (Phase F).
+  useEffect(() => {
+    if (!showDebug) return;
+    const id = window.setInterval(() => {
+      const hs = sceneRef.current;
+      if (hs) setDbg(hs.getDebugInfo());
+    }, 500);
+    return () => window.clearInterval(id);
+  }, [showDebug]);
+
   const run = (label: string, fn: () => Promise<void> | void) => {
     if (busy) return;
     setBusy(true);
@@ -86,10 +98,48 @@ export default function HangarTest() {
   return (
     <div style={{ position: "fixed", inset: 0, background: "#05070d", color: "#cfe3ff", fontFamily: "monospace" }}>
       <div ref={mountRef} style={{ position: "absolute", inset: "0 0 64px 0" }} />
-      <div style={{ position: "absolute", top: 10, left: 14, fontSize: 12, textShadow: "0 1px 2px #000" }}>
+      <div style={{ position: "fixed", top: 10, left: 14, fontSize: 12, textShadow: "0 1px 2px #000", zIndex: 10 }}>
         <strong>Hangar Scene Test</strong> · {status}
+        <button onClick={() => setShowDebug((v) => !v)} style={{ marginLeft: 12, fontSize: 11 }}>
+          {showDebug ? "hide" : "show"} debug
+        </button>
       </div>
-      <div style={{ position: "absolute", bottom: 12, left: 14, display: "flex", gap: 8, alignItems: "center" }}>
+
+      {showDebug && dbg && (
+        <div
+          style={{
+            position: "fixed", top: 40, right: 12, width: 320, maxHeight: "calc(100% - 90px)",
+            overflowY: "auto", background: "rgba(6,10,20,0.86)", border: "1px solid #234",
+            borderRadius: 6, padding: "10px 12px", fontSize: 11, lineHeight: 1.5,
+            color: "#bfe0ff", pointerEvents: "auto", zIndex: 10,
+          }}
+        >
+          <div style={{ fontWeight: "bold", color: "#7fd0ff", marginBottom: 4 }}>RENDERER</div>
+          <div>draw calls: <b>{dbg.renderer.drawCalls}</b> · tris: <b>{dbg.renderer.triangles.toLocaleString()}</b></div>
+          <div>textures: <b>{dbg.renderer.textures}</b> · geoms: <b>{dbg.renderer.geometries}</b> · programs: <b>{dbg.renderer.programs}</b></div>
+
+          <div style={{ fontWeight: "bold", color: "#7fd0ff", margin: "8px 0 4px" }}>ENV / IBL</div>
+          <div>PMREM: <b style={{ color: dbg.env.pmremActive ? "#7fff9f" : "#ff7f7f" }}>{dbg.env.pmremActive ? "active" : "off"}</b> · scene.environment: <b style={{ color: dbg.env.environmentInstalled ? "#7fff9f" : "#ff7f7f" }}>{dbg.env.environmentInstalled ? "set" : "none"}</b></div>
+          <div>kind: <b>{dbg.env.envKind}</b> · intensity: <b>{dbg.env.envIntensity}</b></div>
+
+          <div style={{ fontWeight: "bold", color: "#7fd0ff", margin: "8px 0 4px" }}>TONE MAPPING</div>
+          <div>mode: <b>{dbg.tone.mode}</b> · exposure: <b>{dbg.tone.exposure}</b></div>
+          <div>output: <b>{dbg.tone.outputColorSpace}</b></div>
+
+          <div style={{ fontWeight: "bold", color: "#7fd0ff", margin: "8px 0 4px" }}>LIGHTS</div>
+          <div>dir <b>{dbg.lights.directional}</b> · point <b>{dbg.lights.point}</b> · spot <b>{dbg.lights.spot}</b> · hemi <b>{dbg.lights.hemisphere}</b> · amb <b>{dbg.lights.ambient}</b></div>
+
+          <div style={{ fontWeight: "bold", color: "#7fd0ff", margin: "8px 0 4px" }}>MATERIALS ({dbg.materials.length})</div>
+          {dbg.materials.map((m, i) => (
+            <div key={i} style={{ borderTop: "1px solid #1a2838", paddingTop: 3, marginTop: 3 }}>
+              <div style={{ color: "#dfe" }}>{m.name} <span style={{ opacity: 0.6 }}>({m.type})</span></div>
+              <div style={{ opacity: 0.85 }}>metal {m.metalness} · rough {m.roughness} · envI {m.envMapIntensity}</div>
+              <div style={{ opacity: 0.7 }}>maps: {m.maps.length ? m.maps.join(", ") : "—"}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ position: "fixed", bottom: 12, left: 14, display: "flex", gap: 8, alignItems: "center", zIndex: 10, flexWrap: "wrap", maxWidth: "calc(100% - 28px)" }}>
         <button disabled={busy} onClick={() => run("intro", () => hs()?.playIntro())} style={{ fontWeight: "bold" }}>▶ FLY IN</button>
         <button disabled={busy} onClick={() => run("parked", () => hs()?.showParked())}>PARKED</button>
         <button disabled={busy} onClick={() => run("outro", () => hs()?.playOutro())}>◀ FLY OUT</button>

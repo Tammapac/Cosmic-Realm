@@ -198,6 +198,15 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
   }
 }
 
+/** Live PBR-pipeline state, surfaced by the debug overlay (Phase F). */
+export interface HangarDebugInfo {
+  renderer: { drawCalls: number; triangles: number; textures: number; geometries: number; programs: number };
+  env: { pmremActive: boolean; environmentInstalled: boolean; envKind: EnvKind; envIntensity: number };
+  tone: { mode: string; exposure: number; outputColorSpace: string };
+  lights: { directional: number; point: number; spot: number; hemisphere: number; ambient: number };
+  materials: { name: string; type: string; metalness: number; roughness: number; envMapIntensity: number; maps: string[] }[];
+}
+
 export class HangarScene {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene: THREE.Scene;
@@ -518,6 +527,85 @@ export class HangarScene {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+  }
+
+  // ── Renderer debug overlay (Phase F) ──────────────────────────────────────
+  // Reports the live state of the PBR pipeline so the render setup is auditable
+  // at a glance: renderer info, IBL/PMREM, tone mapping, and per-material +
+  // per-light census. Read by the harness overlay (and `window.__hangar`).
+  getDebugInfo(): HangarDebugInfo {
+    const info = this.renderer.info;
+    const tmName =
+      this.renderer.toneMapping === THREE.AgXToneMapping ? "AgX"
+      : this.renderer.toneMapping === THREE.ACESFilmicToneMapping ? "ACESFilmic"
+      : this.renderer.toneMapping === THREE.NeutralToneMapping ? "Neutral"
+      : this.renderer.toneMapping === THREE.CineonToneMapping ? "Cineon"
+      : this.renderer.toneMapping === THREE.ReinhardToneMapping ? "Reinhard"
+      : this.renderer.toneMapping === THREE.LinearToneMapping ? "Linear"
+      : "None";
+
+    // Light census.
+    let dir = 0, point = 0, spot = 0, hemi = 0, ambient = 0;
+    // Material census — sample distinct MeshStandardMaterials.
+    const seen = new Set<THREE.Material>();
+    const mats: HangarDebugInfo["materials"] = [];
+    this.scene.traverse((o) => {
+      const l = o as THREE.Light;
+      if (l.isLight) {
+        if ((l as THREE.DirectionalLight).isDirectionalLight) dir++;
+        else if ((l as THREE.PointLight).isPointLight) point++;
+        else if ((l as THREE.SpotLight).isSpotLight) spot++;
+        else if ((l as THREE.HemisphereLight).isHemisphereLight) hemi++;
+        else if ((l as THREE.AmbientLight).isAmbientLight) ambient++;
+      }
+      const mesh = o as THREE.Mesh;
+      if (mesh.isMesh) {
+        const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const mm of list) {
+          if (!mm || seen.has(mm)) continue;
+          seen.add(mm);
+          const sm = mm as THREE.MeshStandardMaterial;
+          if (sm.isMeshStandardMaterial && mats.length < 24) {
+            mats.push({
+              name: sm.name || "(unnamed)",
+              type: sm.type,
+              metalness: +sm.metalness.toFixed(2),
+              roughness: +sm.roughness.toFixed(2),
+              envMapIntensity: +(sm.envMapIntensity ?? 1).toFixed(2),
+              maps: [
+                sm.map && "base", sm.normalMap && "normal",
+                sm.roughnessMap && "rough", sm.metalnessMap && "metal",
+                sm.aoMap && "ao", sm.emissiveMap && "emissive",
+              ].filter(Boolean) as string[],
+            });
+          }
+        }
+      }
+    });
+
+    return {
+      renderer: {
+        drawCalls: info.render.calls,
+        triangles: info.render.triangles,
+        textures: info.memory.textures,
+        geometries: info.memory.geometries,
+        programs: info.programs?.length ?? 0,
+      },
+      env: {
+        pmremActive: !!this.envPmrem,
+        environmentInstalled: !!this.scene.environment,
+        envKind: HangarScene.envKind,
+        envIntensity: (this.scene as unknown as { environmentIntensity?: number })
+          .environmentIntensity ?? 1,
+      },
+      tone: {
+        mode: tmName,
+        exposure: +this.renderer.toneMappingExposure.toFixed(2),
+        outputColorSpace: this.renderer.outputColorSpace,
+      },
+      lights: { directional: dir, point, spot, hemisphere: hemi, ambient },
+      materials: mats,
+    };
   }
 
   dispose(): void {
