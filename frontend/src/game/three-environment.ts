@@ -111,3 +111,99 @@ export function installBrightViewportEnv(
   if (old) old.dispose();
   return pmrem;
 }
+
+// ── Studio IBL (AAA PBR) ─────────────────────────────────────────────────────
+// The reflection/IBL source for the professional PBR pipeline. NOT the space
+// background — this is an INVISIBLE studio environment, the way Blender's
+// Material Preview lights a model: a bright soft sky, a few large soft "softbox"
+// light panels, and a darker floor. That gives metals something rich and soft to
+// reflect (the whole point of PBR) without any of them reading as a mirror or as
+// the flat 3-stop gradient the old bright-viewport env used.
+//
+// Two builders share one installer:
+//   • "studio" — procedural, equirectangular, painted with radial soft panels so
+//     reflections have shape and gradient, not a flat wash. 0 KB, never 404s.
+//   • "hdr"    — a real .hdr file via HDRLoader (async; keeps the studio until it
+//     arrives). Used only for A/B comparison against the procedural studio.
+//
+// Returns the PMREM generator so the caller can dispose it on teardown. The
+// caller decides scene.background separately (this never touches background).
+
+/** Paint a neutral studio into an equirect canvas: sky, softboxes, floor. */
+function paintStudioEquirect(w: number, h: number): HTMLCanvasElement {
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  const ctx = cv.getContext("2d")!;
+
+  // Vertical base gradient: bright cool sky at top → neutral horizon → dark floor.
+  const base = ctx.createLinearGradient(0, 0, 0, h);
+  base.addColorStop(0.00, "#dfe6f0"); // sky, slightly cool
+  base.addColorStop(0.45, "#aab2be"); // upper horizon
+  base.addColorStop(0.55, "#8f97a3"); // horizon line
+  base.addColorStop(0.75, "#4a4f57"); // floor falloff
+  base.addColorStop(1.00, "#2a2d33"); // dark floor
+  ctx.fillStyle = base;
+  ctx.fillRect(0, 0, w, h);
+
+  // Soft light panels (softboxes) — large radial highlights in the upper half so
+  // metallic hulls catch broad, shaped reflections instead of a flat sky. Screen
+  // blend so they add light without hard edges.
+  ctx.globalCompositeOperation = "lighter";
+  const panel = (cx: number, cy: number, r: number, peak: number) => {
+    const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    g.addColorStop(0, `rgba(255,255,255,${peak})`);
+    g.addColorStop(0.6, `rgba(255,255,255,${peak * 0.25})`);
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+  };
+  // key (big, upper-left), fill (upper-right, dimmer), top wash
+  panel(w * 0.28, h * 0.20, h * 0.55, 0.55);
+  panel(w * 0.72, h * 0.26, h * 0.45, 0.30);
+  panel(w * 0.50, h * 0.06, h * 0.35, 0.22);
+  ctx.globalCompositeOperation = "source-over";
+
+  return cv;
+}
+
+export type EnvKind = "studio" | "hdr";
+
+export function installStudioEnv(
+  renderer: THREE.WebGLRenderer,
+  scene: THREE.Scene,
+  opts: { kind?: EnvKind; hdrUrl?: string; intensity?: number } = {},
+): THREE.PMREMGenerator {
+  const { kind = "studio", hdrUrl = "/assets/hdr/space_env_1k.hdr", intensity = 1.0 } = opts;
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  pmrem.compileEquirectangularShader();
+
+  // Always install the procedural studio first, so IBL is never missing even if
+  // the HDR is still loading or fails.
+  const cv = paintStudioEquirect(1024, 512);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  scene.environment = pmrem.fromEquirectangular(tex).texture;
+  (scene as any).environmentIntensity = intensity;
+  tex.dispose();
+
+  if (kind === "hdr") {
+    new HDRLoader().load(
+      hdrUrl,
+      (hdr) => {
+        try {
+          hdr.mapping = THREE.EquirectangularReflectionMapping;
+          const env = pmrem.fromEquirectangular(hdr).texture;
+          const old = scene.environment;
+          scene.environment = env;
+          hdr.dispose();
+          if (old && old !== env) old.dispose();
+        } catch { /* keep the studio on any error */ }
+      },
+      undefined,
+      () => { /* 404/decode → keep the studio */ },
+    );
+  }
+
+  return pmrem;
+}

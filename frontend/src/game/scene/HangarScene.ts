@@ -24,7 +24,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
-import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { installStudioEnv, type EnvKind } from "../three-environment";
 
 /** Clamped smoothstep — zero slope at both ends, matching DockingCameraController. */
 function smoothstep(x: number): number {
@@ -185,6 +185,15 @@ export class HangarScene {
     | { t: number; dur: number; kind: "intro" | "outro"; resolve: () => void }
     | null = null;
 
+  /** The studio-env PMREM generator, disposed on teardown (fixes the old leak). */
+  private envPmrem: THREE.PMREMGenerator | null = null;
+
+  // ── Env A/B config (Phase B) ──────────────────────────────────────────────
+  // Which IBL the studio env installs, and how strong. Static so a harness can
+  // set them before preload() to compare procedural-studio vs the space HDRI.
+  static envKind: EnvKind = "studio";
+  static envIntensity = 1.0;
+
   private constructor(canvas: HTMLCanvasElement, hangarRoot: THREE.Group) {
     this.canvas = canvas;
     this.hangarRoot = hangarRoot;
@@ -200,13 +209,13 @@ export class HangarScene {
 
     this.scene = new THREE.Scene();
     // Bright IBL — the room's colour is baked into the albedo, but the LIGHTING
-    // is live: RoomEnvironment fills the bay and gives the metal deck/walls
-    // something to reflect, so it reads bright and lit rather than the moody dark
-    // of the Blender source.
-    const pmrem = new THREE.PMREMGenerator(this.renderer);
-    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    (this.scene as unknown as { environmentIntensity: number }).environmentIntensity = 1.2;
-    pmrem.dispose();
+    // is live: a STUDIO IBL (not the space background) gives the metal deck/walls
+    // rich soft reflections, the way Blender's Material Preview lights a model.
+    // Kept as the caller-selected kind so procedural-studio vs HDRI can be A/B'd.
+    this.envPmrem = installStudioEnv(this.renderer, this.scene, {
+      kind: HangarScene.envKind,
+      intensity: HangarScene.envIntensity,
+    });
     this.scene.add(hangarRoot);
 
     const w = canvas.clientWidth || window.innerWidth;
@@ -444,6 +453,9 @@ export class HangarScene {
         (Array.isArray(m) ? m : [m]).forEach((mm) => mm?.dispose?.());
       }
     });
+    this.scene.environment?.dispose?.();
+    this.envPmrem?.dispose();
+    this.envPmrem = null;
     this.renderer.dispose();
     this.canvas.remove();
   }

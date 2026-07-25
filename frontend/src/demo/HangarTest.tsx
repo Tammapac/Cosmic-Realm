@@ -19,12 +19,16 @@ export default function HangarTest() {
   const sceneRef = useRef<HangarScene | null>(null);
   const [status, setStatus] = useState("booting…");
   const [shipClass, setShipClass] = useState("skimmer");
+  const [envKind, setEnvKind] = useState<"studio" | "hdr">("studio");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
     let dead = false;
+
+    // Env A/B (Phase B): set before preload so the scene builds with this IBL.
+    HangarScene.envKind = envKind;
 
     setStatus("loading GLBs…");
     HangarScene.preload(shipClass)
@@ -45,7 +49,7 @@ export default function HangarTest() {
       sceneRef.current = null;
       delete (window as never as Record<string, unknown>).__hangar;
     };
-  }, [shipClass]);
+  }, [shipClass, envKind]);
 
   const run = (label: string, fn: () => Promise<void> | void) => {
     if (busy) return;
@@ -71,6 +75,11 @@ export default function HangarTest() {
         <button disabled={busy} onClick={() => run("outro", () => hs()?.playOutro())}>◀ FLY OUT</button>
         <select value={shipClass} onChange={(e) => setShipClass(e.target.value)} style={{ marginLeft: 12 }}>
           {SHIP_CLASSES.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <label style={{ marginLeft: 12 }}>env:</label>
+        <select value={envKind} onChange={(e) => setEnvKind(e.target.value as "studio" | "hdr")}>
+          <option value="studio">studio (procedural)</option>
+          <option value="hdr">space HDRI</option>
         </select>
       </div>
     </div>
