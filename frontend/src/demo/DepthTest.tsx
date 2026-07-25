@@ -472,6 +472,156 @@ export default function DepthTest() {
         s.environmentIntensity = v;
         return "envI=" + v;
       },
+      // Swap in a BRIGHT neutral environment (a light-grey gradient sphere) as
+      // the IBL source, the way an editor "viewport" is lit. Tests whether the
+      // real fix is the ENVIRONMENT MAP being dark, not its intensity. col is the
+      // sky grey 0..1. Non-destructive to shipped code (harness scene only).
+      brightEnv: (col = 0.8, kind: "player" | "enemy" | "station" = "enemy", zoom?: number) => {
+        const w2 = getWorldLayer();
+        if (!w2 || !gl) return "no world";
+        const THREE2 = THREE;
+        // build an equirect gradient: bright top, mid sides, darker bottom
+        const cv = document.createElement("canvas");
+        cv.width = 512; cv.height = 256;
+        const c2 = cv.getContext("2d")!;
+        const g = c2.createLinearGradient(0, 0, 0, 256);
+        const hi = Math.round(col * 255), mid = Math.round(col * 200), lo = Math.round(col * 120);
+        g.addColorStop(0, `rgb(${hi},${hi},${Math.min(255, hi + 10)})`);
+        g.addColorStop(0.5, `rgb(${mid},${mid},${mid})`);
+        g.addColorStop(1, `rgb(${lo},${lo},${lo})`);
+        c2.fillStyle = g; c2.fillRect(0, 0, 512, 256);
+        const tex = new THREE2.CanvasTexture(cv);
+        tex.mapping = THREE2.EquirectangularReflectionMapping;
+        tex.colorSpace = THREE2.SRGBColorSpace;
+        const pmrem = new THREE2.PMREMGenerator(w2.renderer);
+        const env = pmrem.fromEquirectangular(tex).texture;
+        w2.scene.environment = env;
+        (w2.scene as any).environmentIntensity = 1.0;
+        tex.dispose(); pmrem.dispose();
+        const url = (api as any).grabModel(kind, w2.renderer.toneMappingExposure,
+          zoom ?? (kind === "station" ? 0.85 : 3.2));
+        let el = document.getElementById("__ab") as HTMLImageElement | null;
+        if (!el) { el = document.createElement("img"); el.id = "__ab";
+          el.style.cssText = "position:fixed;inset:0;width:100%;height:100%;object-fit:contain;z-index:99999;background:#0a0e18";
+          document.body.appendChild(el); }
+        el.src = url;
+        return "bright env " + col;
+      },
+      // Install a bright neutral env at brightness `col` and return the grab URL,
+      // WITHOUT drawing it — used by the grid below.
+      _brightEnvUrl: (col: number, kind: "player" | "enemy" | "station", zoom: number): string => {
+        const w2 = getWorldLayer();
+        if (!w2 || !gl) return "";
+        const cv = document.createElement("canvas");
+        cv.width = 512; cv.height = 256;
+        const c2 = cv.getContext("2d")!;
+        const g = c2.createLinearGradient(0, 0, 0, 256);
+        const hi = Math.round(col * 255), mid = Math.round(col * 200), lo = Math.round(col * 120);
+        g.addColorStop(0, `rgb(${hi},${hi},${Math.min(255, hi + 10)})`);
+        g.addColorStop(0.5, `rgb(${mid},${mid},${mid})`);
+        g.addColorStop(1, `rgb(${lo},${lo},${lo})`);
+        c2.fillStyle = g; c2.fillRect(0, 0, 512, 256);
+        const tex = new THREE.CanvasTexture(cv);
+        tex.mapping = THREE.EquirectangularReflectionMapping;
+        tex.colorSpace = THREE.SRGBColorSpace;
+        const pmrem = new THREE.PMREMGenerator(w2.renderer);
+        w2.scene.environment = pmrem.fromEquirectangular(tex).texture;
+        (w2.scene as any).environmentIntensity = 1.0;
+        tex.dispose(); pmrem.dispose();
+        return (api as any).grabModel(kind, 1.15, zoom);
+      },
+      // Grid: rows = env brightness (0.6/0.8/1.0), cols = enemy/station/player.
+      envGrid: (): void => {
+        const brights = [0.6, 0.8, 1.0];
+        const kinds: Array<["player" | "enemy" | "station", number]> =
+          [["enemy", 3.4], ["station", 0.85], ["player", 3.0]];
+        const cells: { url: string; label: string; r: number; c: number }[] = [];
+        brights.forEach((b, r) => kinds.forEach(([k, z], c) => {
+          cells.push({ url: (api as any)._brightEnvUrl(b, k, z), label: `${k} ${b}`, r, c });
+        }));
+        const imgs = cells.map((cell) => { const i = new Image(); i.src = cell.url; return i; });
+        let loaded = 0;
+        imgs.forEach((im) => im.onload = () => {
+          if (++loaded < imgs.length) return;
+          const W = 250, H = imgs[0].height * (W / imgs[0].width);
+          const cv = document.createElement("canvas");
+          cv.width = W * 3; cv.height = (H + 22) * 3;
+          const ctx = cv.getContext("2d")!;
+          ctx.fillStyle = "#0a0e18"; ctx.fillRect(0, 0, cv.width, cv.height);
+          cells.forEach((cell, i) => {
+            ctx.drawImage(imgs[i], cell.c * W, cell.r * (H + 22) + 22, W, H);
+            ctx.fillStyle = "#0ff"; ctx.font = "13px monospace";
+            ctx.fillText(cell.label, cell.c * W + 4, cell.r * (H + 22) + 15);
+          });
+          let el = document.getElementById("__ab") as HTMLImageElement | null;
+          if (!el) { el = document.createElement("img"); el.id = "__ab";
+            el.style.cssText = "position:fixed;inset:0;width:100%;height:100%;object-fit:contain;z-index:99999;background:#0a0e18";
+            document.body.appendChild(el); }
+          el.src = cv.toDataURL("image/png");
+        });
+      },
+      // A/B/C lighting comparison. Renders ONE model under four rigs side by side
+      // so the "which lighting system" decision can be made by eye, WITHOUT
+      // changing any shipped code. Variants:
+      //   A now      — current: envI 0.55, ambient 0.12, hard directionals
+      //   B high-GI  — envI 2.6, directionals halved: even all-around IBL light
+      //   C amb+fill — envI 0.55 but ambient 0.6 + strong fill
+      //   D GI+lift  — high-GI AND the exposure at 1.4
+      // kind: "player" | "enemy" | "station".
+      lightingAB: (kind: "player" | "enemy" | "station", zoom?: number): void => {
+        const w2 = getWorldLayer();
+        if (!w2 || !gl) return;
+        const z = zoom ?? (kind === "station" ? 0.85 : 3.2);
+
+        const apply = (envI: number, amb: number, sun: number, fill: number, rim: number, exp: number) => {
+          w2.renderer.toneMappingExposure = exp;
+          (w2.scene as any).environmentIntensity = envI;
+          let di = 0;
+          w2.scene.traverse((o: any) => {
+            if (o.isAmbientLight) o.intensity = amb;
+            if (o.isDirectionalLight) { di++;
+              if (di === 1) o.intensity = sun;
+              if (di === 2) o.intensity = fill;
+              if (di === 3) o.intensity = rim;
+            }
+          });
+        };
+        const grab = (): string => (api as any).grabModel(kind, w2.renderer.toneMappingExposure, z);
+
+        // capture the shipped defaults so we can restore them afterwards
+        apply(0.55, 0.12, 2.2, 0.4, 0.55, 1.15); const a = grab();
+        apply(2.6, 0.12, 1.1, 0.2, 0.3, 1.1);   const b = grab();
+        apply(0.55, 0.6, 2.2, 1.1, 0.55, 1.15); const c = grab();
+        apply(2.6, 0.2, 1.1, 0.3, 0.3, 1.4);    const d = grab();
+        apply(0.55, 0.12, 2.2, 0.4, 0.55, 1.15); // restore A
+
+        const labels = ["A now", "B high-GI", "C amb+fill", "D GI+bright"];
+        const urls = [a, b, c, d];
+        const imgs = urls.map((u) => { const i = new Image(); i.src = u; return i; });
+        let loaded = 0;
+        imgs.forEach((im, idx) => {
+          im.onload = () => {
+            if (++loaded < imgs.length) return;
+            const W = 370, H = imgs[0].height * (W / imgs[0].width);
+            const cv = document.createElement("canvas");
+            cv.width = W * 2; cv.height = (H + 26) * 2;
+            const ctx = cv.getContext("2d")!;
+            ctx.fillStyle = "#0a0e18"; ctx.fillRect(0, 0, cv.width, cv.height);
+            imgs.forEach((im2, i) => {
+              const col = i % 2, row = Math.floor(i / 2);
+              ctx.drawImage(im2, col * W, row * (H + 26) + 26, W, H);
+              ctx.fillStyle = "#0ff"; ctx.font = "16px monospace";
+              ctx.fillText(labels[i], col * W + 6, row * (H + 26) + 18);
+            });
+            let el = document.getElementById("__ab") as HTMLImageElement | null;
+            if (!el) { el = document.createElement("img"); el.id = "__ab";
+              el.style.cssText = "position:fixed;inset:0;width:100%;height:100%;object-fit:contain;z-index:99999;background:#0a0e18";
+              document.body.appendChild(el); }
+            el.src = cv.toDataURL("image/png");
+          };
+          void idx;
+        });
+      },
       // Re-run normalizeSharedDepth on the live enemy group to test liftDarkHull
       // without needing a fresh model instance, then re-grab.
       relift: () => {

@@ -1386,8 +1386,12 @@ export function updateShip3D(
       // renderer already uses to tell them apart — no new plumbing, and the
       // grouping is the only difference between them. Both groups sit in the
       // same scene, under the same camera, in the same depth buffer.
-      normalizeSharedDepth(model, shipClass);
-      (entityId.startsWith("enemy:") ? enemyShipsGroup : playerShipsGroup).add(wrapper);
+      const isEnemy = entityId.startsWith("enemy:");
+      // Enemies get the dark-hull lift (their metallic near-black hull stays a
+      // silhouette even under the bright viewport env); player ships don't need
+      // it and stations opt out.
+      normalizeSharedDepth(model, shipClass, isEnemy);
+      (isEnemy ? enemyShipsGroup : playerShipsGroup).add(wrapper);
     } else {
       scene.add(wrapper);
     }

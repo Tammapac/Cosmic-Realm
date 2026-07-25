@@ -55,3 +55,58 @@ export function loadEnvironment(
 
   return pmrem;
 }
+
+// ── Bright viewport IBL ──────────────────────────────────────────────────────
+// The shared 3D scene lights every model from ONE environment. The default
+// RoomEnvironment / space HDR is deliberately dark and cinematic, which is why
+// the GLBs — the near-black metallic enemy hulls worst of all — rendered as
+// silhouettes: a metal reflects its environment, and a dark environment gives it
+// nothing to reflect. No amount of exposure or key-light fixes that (it clips
+// the bright emissive bits first). The real lever is the environment itself.
+//
+// This installs a BRIGHT, neutral gradient environment — sky-grey overhead,
+// mid-grey at the horizon, darker underneath — the way an editor viewport is
+// lit. It fills the shadow side and gives the metal something bright to reflect,
+// so every model reads in the round without turning flat. Procedural (a 512×256
+// canvas → PMREM), so it costs nothing to ship and never 404s.
+//
+// `brightness` is the overall level (1.0 = the value chosen in the viewport
+// A/B). Returns the PMREM generator for disposal.
+export function installBrightViewportEnv(
+  renderer: THREE.WebGLRenderer,
+  scene: THREE.Scene,
+  brightness = 1.0,
+): THREE.PMREMGenerator {
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  pmrem.compileEquirectangularShader();
+
+  const cv = document.createElement("canvas");
+  cv.width = 512;
+  cv.height = 256;
+  const ctx = cv.getContext("2d")!;
+  const g = ctx.createLinearGradient(0, 0, 0, 256);
+  const hi = Math.round(Math.min(1, brightness) * 255);
+  const mid = Math.round(Math.min(1, brightness) * 200);
+  const lo = Math.round(Math.min(1, brightness) * 120);
+  // A hair of cool blue overhead so hulls pick up a subtle space tint rather
+  // than reading as neutral studio grey.
+  g.addColorStop(0.0, `rgb(${hi},${hi},${Math.min(255, hi + 12)})`);
+  g.addColorStop(0.5, `rgb(${mid},${mid},${mid})`);
+  g.addColorStop(1.0, `rgb(${lo},${lo},${lo})`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 512, 256);
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+
+  const old = scene.environment;
+  scene.environment = pmrem.fromEquirectangular(tex).texture;
+  // Intensity 1.0: the gradient already carries the brightness, so this is a
+  // straight 1:1 — no extra multiplier to reason about.
+  (scene as any).environmentIntensity = 1.0;
+
+  tex.dispose();
+  if (old) old.dispose();
+  return pmrem;
+}

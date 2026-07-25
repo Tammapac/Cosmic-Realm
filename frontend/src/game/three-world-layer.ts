@@ -31,7 +31,7 @@
 
 import * as THREE from "three";
 import { getRendererSettings } from "./RendererSettings";
-import { loadEnvironment } from "./three-environment";
+import { installBrightViewportEnv } from "./three-environment";
 import { setMaterialAnisotropyMax } from "./space-material";
 import { perfRegisterThree } from "./perf";
 import { PIXELATE_3D, PIXELATE_3D_SCALE, SHARED_3D_SHIP_LIFT } from "./renderer-config";
@@ -124,18 +124,19 @@ export function ensureWorldLayer(
   renderer.shadowMap.enabled = rs.shadowsEnabled;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  // A moderate lift over the ship layer's own exposure. Two real bugs used to
-  // fake brightness: a double sRGB encode (fixed in COPY_FRAG) and a per-model
-  // vignette (removed). With both gone the scene renders CORRECTLY — but correct
-  // turned out genuinely dark, because the station is a near-black hull top-lit
-  // in empty space. The ship layer's 0.85 was tuned for small bright ships; the
-  // big dark station needs a little more headroom to read. 1.35× lands ~1.15
-  // absolute — the station shows its panelling and the ships stay shy of
-  // clipping. Kept tier-relative so low-end tiers scale with it.
+  // Kept tier-relative, mildly lifted. Most of the "everything is too dark" was
+  // never exposure — it was the environment (see below). Exposure only fine-tunes
+  // on top of a scene that is now correctly lit.
   renderer.toneMappingExposure = rs.toneMappingExposure * 1.35;
 
   const scene = new THREE.Scene();
-  loadEnvironment(renderer, scene);
+  // BRIGHT viewport IBL instead of the dark RoomEnvironment/space HDR. This is
+  // the real fix for the dark GLBs: a metal reflects its environment, and the
+  // old environment was near-black, so metallic hulls (the enemy NPCs especially)
+  // rendered as silhouettes no matter the exposure or key light. A bright neutral
+  // gradient lights every model in the round — the "viewport render" look. The
+  // per-material dark-hull hack that used to compensate for this is gone.
+  installBrightViewportEnv(renderer, scene, 1.0);
 
   // Camera geometry comes from the STATION layer, not the ship layer: it has to
   // sit above the tallest station (y ≈ 1400 · zoom, and up to 3750 once ships
@@ -259,7 +260,6 @@ interface AuditResult {
   fixedDepthWrite: number;
   doubleSided: number;
   translucent: number;
-  lifted: number;
 }
 
 /** Additive/multiply glows — never touched; they are supposed to blend. */
@@ -267,64 +267,34 @@ function isEffectMaterial(m: THREE.Material): boolean {
   return m.blending !== THREE.NormalBlending;
 }
 
-// ── Dark-hull lift ───────────────────────────────────────────────────────────
-// Several models — the enemy NPCs worst of all — are authored as near-black,
-// highly metallic hull (e.g. enemy_raider: base colour ~rgb(74,74,75), metalness
-// 0.62). A metal that dark reflects almost nothing in the near-black void, so it
-// renders as a silhouette with only its emissive lava-cracks visible. It USED to
-// read because a double-sRGB encode in the post-FX blit was quietly lifting every
-// midtone; fixing that (correctly) took the crutch away and exposed how dark the
-// materials really are.
-//
-// Exposure and the light rig barely move it — pushing either just clips the
-// bright emissive bits long before the dark body lifts. The real lever is the
-// material: give a dark metallic hull a little more diffuse presence. This does
-// exactly that, and ONLY to genuinely dark surfaces — the lift fades to zero as
-// the base colour brightens, so already-light ship hulls are untouched and never
-// blow out. Emissive parts (lava, windows, thrusters) are skipped entirely.
-// Applied ONLY to the ship groups (player + enemy), never stations — the
-// station opts out (see its normalizeSharedDepth call), because its dark hull is
-// a deliberate look and an early global version blew it out to chalky grey. Free
-// of that constraint, these can be generous enough to rescue the near-black
-// enemy hull (luma ~0.08) into readability while a smooth falloff leaves the
-// already-light player ships (luma > knee) completely untouched.
-// The enemy hull isn't dark because its colour is black (it's mid-grey, luma
-// ~0.29) — it's dark because it's HIGHLY METALLIC (metalness ~0.62) in a
-// near-black void, so it reflects almost nothing and reads as a silhouette. The
-// real lever is therefore metalness, not colour: pull a dark metallic surface
-// toward diffuse so its own grey shows under the key light. Colour gets a
-// smaller lift on top. Both fade out as the surface gets lighter, so bright ship
-// hulls are untouched.
-const LIFT_LUMA_KNEE = 0.6;   // dark-ish (incl. mid-grey) hulls qualify
-const LIFT_COLOR_MAX = 0.35;  // modest colour boost at the dark end
-const LIFT_METAL_TARGET = 0.25; // pull metalness down toward this (if above it)
-const LIFT_METAL_FRAC = 0.7;  // how far toward the target, at the dark end
+// ── Enemy dark-hull lift ─────────────────────────────────────────────────────
+// The bright viewport environment lights ships and stations well, but the enemy
+// NPC hulls stay stubbornly dark: they are mid-grey (luma ~0.29) AND highly
+// metallic (~0.62), and a dark metal reflects the environment rather than
+// showing its own colour — so even a bright environment leaves them reading as
+// silhouettes. Ships aren't metallic-dark like this and stations opt out, so the
+// lift is applied to the ENEMY group only (see the liftDark flag on their
+// normalizeSharedDepth call). It eases the hull toward diffuse so it catches the
+// key light, lifts the base colour a touch, and — crucially — does NOT skip
+// emissive materials: on these enemies the hull and the glowing lava-cracks are
+// the SAME material (an emissive MAP, black except on the cracks), so skipping
+// would leave the whole enemy black. Only the base colour is lifted; the map
+// still glows on top.
+const LIFT_LUMA_KNEE = 0.6;     // dark-ish (incl. mid-grey) hulls qualify
+const LIFT_COLOR_MAX = 0.6;     // colour boost at the dark end
+const LIFT_METAL_TARGET = 0.15; // pull metalness down toward this (if above it)
+const LIFT_METAL_FRAC = 0.9;    // how far toward the target, at the dark end
 
-function liftDarkHull(m: THREE.MeshStandardMaterial, r: AuditResult): void {
+function liftEnemyHull(m: THREE.MeshStandardMaterial): void {
   if (!m || !m.isMeshStandardMaterial || !m.color) return;
-  // NOTE: do NOT skip on "has emissive". On several enemies the dark hull and the
-  // glowing lava-cracks are the SAME material — the cracks come from an emissive
-  // MAP that is black everywhere except the cracks, so the material carries both a
-  // dark base colour AND a bright emissive. Skipping it would leave the whole
-  // enemy black, which is exactly the case this function exists for. We only lift
-  // the base COLOUR (the diffuse hull); the emissive map is untouched, so the
-  // cracks keep glowing at full strength on top of the lifted hull.
   const luma = 0.2126 * m.color.r + 0.7152 * m.color.g + 0.0722 * m.color.b;
-  if (luma >= LIFT_LUMA_KNEE) return; // already light enough
-
-  // t: 1 for pure black, 0 at the knee. Everything scales with it, so the
-  // darkest hulls get the most help and the falloff is smooth.
-  const t = 1 - luma / LIFT_LUMA_KNEE;
+  if (luma >= LIFT_LUMA_KNEE) return;
+  const t = 1 - luma / LIFT_LUMA_KNEE; // 1 at black, 0 at the knee
   m.color.multiplyScalar(1 + LIFT_COLOR_MAX * t);
-  // Metalness is the main lever: ease a highly-metallic dark hull toward diffuse
-  // so it catches the key light instead of vanishing. Only pulls DOWN, only if
-  // the material is more metallic than the target, and only by the dark-end
-  // fraction — a mid-grey stays mostly metal, a near-black goes mostly diffuse.
   if (m.metalness > LIFT_METAL_TARGET) {
     m.metalness -= (m.metalness - LIFT_METAL_TARGET) * LIFT_METAL_FRAC * t;
   }
   m.needsUpdate = true;
-  r.lifted++;
 }
 
 /**
@@ -338,11 +308,11 @@ function liftDarkHull(m: THREE.MeshStandardMaterial, r: AuditResult): void {
 export function normalizeSharedDepth(
   root: THREE.Object3D,
   label: string,
-  liftDark = true,
+  liftEnemyDark = false,
 ): void {
   const r: AuditResult = {
     meshes: 0, materials: 0, fixedOpaque: 0,
-    fixedDepthWrite: 0, doubleSided: 0, translucent: 0, lifted: 0,
+    fixedDepthWrite: 0, doubleSided: 0, translucent: 0,
   };
   const doubleSidedNames: string[] = [];
 
@@ -390,15 +360,16 @@ export function normalizeSharedDepth(
       // the shared depth buffer replaces.
       mesh.renderOrder = 0;
 
-      if (liftDark) liftDarkHull(m as THREE.MeshStandardMaterial, r);
+      // Enemies only: rescue the dark metallic hull the bright env can't reach.
+      if (liftEnemyDark) liftEnemyHull(m as THREE.MeshStandardMaterial);
     }
   });
 
-  if (r.fixedOpaque || r.fixedDepthWrite || r.doubleSided || r.lifted) {
+  if (r.fixedOpaque || r.fixedDepthWrite || r.doubleSided) {
     console.log(
       `[World3D] depth audit "${label}": ${r.meshes} meshes / ${r.materials} materials · ` +
       `opaque-fixed ${r.fixedOpaque} · depth-fixed ${r.fixedDepthWrite} · ` +
-      `dark-hull lifted ${r.lifted} · translucent kept ${r.translucent}` +
+      `translucent kept ${r.translucent}` +
       (r.doubleSided
         ? ` · DoubleSide ${r.doubleSided} (left as authored: ${doubleSidedNames.join(", ")})`
         : ""),

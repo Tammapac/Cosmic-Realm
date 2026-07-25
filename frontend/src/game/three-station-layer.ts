@@ -649,12 +649,7 @@ export function updateStationOnly(
       // is just another group in it. No renderOrder, no clearDepth, nothing
       // pushing it in front of or behind anything: the hull occludes what it
       // geometrically covers and nothing else.
-      // liftDark=false: the station's dark hull is a deliberate moody look that
-      // reads fine after the gamma fix. The dark-hull lift exists for the
-      // near-black enemy NPCs, whose base colour is similar but which — unlike
-      // the station — genuinely disappear without it. Applying it here too blew
-      // the station out to a chalky grey.
-      normalizeSharedDepth(model, "station:" + id, false);
+      normalizeSharedDepth(model, "station:" + id);
       stationsGroup.add(wrapper);
     } else {
       scene.add(wrapper);
