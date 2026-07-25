@@ -61,13 +61,14 @@ const GLOSSY_ENV_INTENSITY = 2.5;
  * the scene objects, so there is no ship mirror-image regardless — real object
  * reflections would need SSR/reflection probes.)
  */
-const GLOSS_TUNING: Record<string, { roughMul: number; envI: number }> = {
-  // Reflections should be BROAD + SOFT: roughness pushed near-max so the PMREM
-  // samples its blurriest mips (wide diffuse glow, no shape), envI kept up so the
-  // soft glow still reads. The baked roughness MAP still varies across the surface
-  // (roughness-variation), this just scales it up toward matte.
-  Hall_Floor_Mat: { roughMul: 1.0, envI: 1.0 },    // deck: broad soft glow
-  SS_Hull_DarkMetal: { roughMul: 1.0, envI: 1.0 }, // platform/hull
+const GLOSS_TUNING: Record<string, { roughMul: number; envI: number; roughSet?: number; metalSet?: number }> = {
+  // Reflections should be BROAD + SOFT: high roughness → the PMREM samples its
+  // blurrier mips (wide diffuse glow, no sharp mirror). The baked roughness map is
+  // kept for surface variation. For the floor/platform, roughSet/metalSet pin the
+  // spec values (rough ~0.42, metal ~0.45, envI 1.2) so they read as wet/polished
+  // with broad soft reflections — not a mirror (spec #6).
+  Hall_Floor_Mat: { roughMul: 1.0, envI: 1.2, roughSet: 0.42, metalSet: 0.45 },  // deck
+  SS_Hull_DarkMetal: { roughMul: 1.0, envI: 1.2, roughSet: 0.42, metalSet: 0.45 }, // platform/hull
   Hall_Wall: { roughMul: 1.0, envI: 0.9 },         // walls
   Aged_Orange: { roughMul: 1.0, envI: 0.8 },       // crates: soft sheen
   Aged_Blue: { roughMul: 1.0, envI: 0.8 },
@@ -262,7 +263,10 @@ function validateMaterial(m: THREE.MeshStandardMaterial): MatStat {
   if (m.roughnessMap) {
     const t = GLOSS_TUNING[m.name ?? ""];
     if (t) {
-      m.roughness = t.roughMul; // scales the baked map (below 1 = shinier)
+      // roughSet/metalSet pin absolute spec values (floor/platform) — the map stays
+      // for variation but multiplies against this base; otherwise roughMul scales it.
+      m.roughness = t.roughSet ?? t.roughMul;
+      if (t.metalSet !== undefined) m.metalness = t.metalSet;
       m.envMapIntensity = t.envI;
     } else {
       m.envMapIntensity = GLOSSY_ENV_INTENSITY;
