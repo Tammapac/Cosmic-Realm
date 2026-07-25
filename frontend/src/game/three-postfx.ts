@@ -97,14 +97,22 @@ export function createPostFX(
     composer.addPass(fxaa);
   }
 
-  // 5) subtle vignette (high/ultra only).
-  let vignette: ShaderPass | null = null;
-  if (s.vignette) {
-    vignette = new ShaderPass(VignetteShader);
-    vignette.material.uniforms["offset"].value = 1.15;
-    vignette.material.uniforms["darkness"].value = s.vignetteAmount;
-    composer.addPass(vignette);
-  }
+  // 5) vignette — DISABLED.
+  //
+  // three's VignetteShader is a FULL-SCREEN effect: it multiplies every pixel by
+  // a radial factor keyed to its distance from screen centre. That is fine on an
+  // opaque frame, but these layers are a TRANSPARENT 3D overlay that Pixi then
+  // composites over the 2D world. A model drawn far from screen centre lands in
+  // the darkened/curved part of the vignette field, so its outer hull picks up a
+  // radial tint the SAME model at screen centre never gets — the "milky outer
+  // areas when the model is far from the camera centre" bug. The raw layer is
+  // radially uniform (measured: corner−centre = 0); the vignette alone opens a
+  // 67-point gap. The space vignette the game actually wants already exists as a
+  // full-screen pass in the Pixi layer (sceneLighting.setVignetteOnly), which is
+  // the correct place for it — it sees the whole composited frame, not one
+  // off-centre model. So this per-model vignette is pure artefact; drop it.
+  const vignette: ShaderPass | null = null;
+  void VignetteShader;
 
   // 6) output (tone map + color space handled by renderer; OutputPass ensures
   //    correct final encoding when rendering through the composer).

@@ -214,6 +214,29 @@ export default function DepthTest() {
       return { r: r / n, g: g / n, b: b / n, a: a / n };
     }
 
+    // Mean luminance of the OPAQUE pixels in a screen box (ignores empty space,
+    // so a station shoved into a corner is measured on its own hull, not on the
+    // black around it).
+    function probeMean(cx: number, cy: number, half: number): number {
+      if (!gl || !world) return 0;
+      const dpr = world.renderer.getPixelRatio();
+      const bw = gl.drawingBufferWidth, bh = gl.drawingBufferHeight;
+      const px = Math.round(cx * dpr), py = Math.round(cy * dpr);
+      const s = Math.max(1, Math.round(half * dpr));
+      const x0 = Math.max(0, px - s), y0 = Math.max(0, bh - py - s);
+      const ww = Math.min(bw - x0, s * 2), hh = Math.min(bh - y0, s * 2);
+      if (ww <= 0 || hh <= 0) return 0;
+      const buf = new Uint8Array(ww * hh * 4);
+      gl.readPixels(x0, y0, ww, hh, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+      let sum = 0, n = 0;
+      for (let i = 0; i < buf.length; i += 4) {
+        if (buf[i + 3] < 8) continue;
+        sum += Math.max(buf[i], buf[i + 1], buf[i + 2]);
+        n++;
+      }
+      return n ? +(sum / n).toFixed(1) : 0;
+    }
+
     function clearActors(): void {
       beginFrame(); endFrame();
       removeStation3D(STATION_ID);
@@ -400,6 +423,45 @@ export default function DepthTest() {
         return { withFX, noFX };
       },
       bypass: (v: boolean) => { __setBypassPostFX(v); return "bypass=" + v; },
+      // Render the station shifted so its hull sits at screen CENTRE vs far in a
+      // CORNER, and measure the mean hull brightness in each, with postFX on and
+      // off. If a corner reads much brighter/milkier than centre only when
+      // postFX is on, the culprit is a radial pass (vignette / lens effect),
+      // not the lighting.
+      radial: () => {
+        if (!gl || !world) return "no gl";
+        const measure = (camOffX: number, camOffY: number): number => {
+          // Move the CAMERA so the station (at world 0,0) lands off-centre. The
+          // layer maps screen = (world - cam) * zoom, so a cam offset shoves the
+          // station by -offset*zoom pixels.
+          setStationCameraZoom(1);
+          beginStationFrame();
+          updateStationOnly(STATION_ID, 0, 0, camOffX, camOffY);
+          endStationFrame();
+          render3DLayer();
+          // sample a fixed box around where the station centre now sits
+          const cx = w / 2 - camOffX; // screen px of world origin
+          const cy = h / 2 - camOffY;
+          const p = probeMean(cx, cy, 40);
+          return p;
+        };
+        const gap = () => measure(-320, -360) - measure(0, 0); // corner − centre
+        const out: Record<string, number> = {};
+        __setBypassPostFX(true);  out.raw_gap = gap();
+        __setBypassPostFX(false); out.allOn_gap = gap();
+        const fx: any = __getPostFX();
+        if (fx) {
+          const passes = ["gtao", "bloom", "fxaa", "vignette"] as const;
+          const setAll = (on: boolean) => passes.forEach((p) => { if (fx[p]) fx[p].enabled = on; });
+          for (const p of passes) {
+            if (!fx[p]) { out[`no_${p}_gap`] = -999; continue; }
+            setAll(true); fx[p].enabled = false;
+            out[`no_${p}_gap`] = gap();
+          }
+          setAll(true);
+        }
+        return out;
+      },
       // Toggle individual composer passes and measure, to find which one veils
       // the station. Disables each in turn (others on), then restores all.
       isolatePasses: (zoom = 0.5) => {
@@ -425,10 +487,16 @@ export default function DepthTest() {
       // Grab the current drawing buffer as a data: URL so it can be inspected
       // even when the browser pane itself is not compositing frames. Renders the
       // station alone at `zoom` first. Flips vertically (GL is bottom-up).
-      grab: (zoom = 0.6): string => {
+      grab: (zoom = 0.6, camOffX = 0, camOffY = 0): string => {
         if (!gl || !world) return "";
         clearActors();
-        frame([], true, zoom, 1);
+        // camOff shoves the station off screen-centre (worst case for radial
+        // artefacts: pass e.g. (-320,-360) to push it into the top-left corner).
+        setStationCameraZoom(zoom);
+        beginFrame(); beginStationFrame();
+        updateStationOnly(STATION_ID, 0, 0, camOffX, camOffY);
+        endFrame(); endStationFrame();
+        render3DLayer();
         const bw = gl.drawingBufferWidth, bh = gl.drawingBufferHeight;
         const buf = new Uint8Array(bw * bh * 4);
         gl.readPixels(0, 0, bw, bh, gl.RGBA, gl.UNSIGNED_BYTE, buf);
