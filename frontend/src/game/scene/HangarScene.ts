@@ -32,6 +32,7 @@ import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPa
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { FXAAShader } from "three/examples/jsm/shaders/FXAAShader.js";
+import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
 
 /** Clamped smoothstep — zero slope at both ends, matching DockingCameraController. */
 function smoothstep(x: number): number {
@@ -261,7 +262,7 @@ export interface HangarDebugInfo {
   renderer: { drawCalls: number; triangles: number; textures: number; geometries: number; programs: number };
   env: { pmremActive: boolean; environmentInstalled: boolean; envKind: EnvKind; envIntensity: number };
   tone: { mode: string; exposure: number; outputColorSpace: string };
-  lights: { directional: number; point: number; spot: number; hemisphere: number; ambient: number };
+  lights: { directional: number; point: number; spot: number; hemisphere: number; ambient: number; rectArea: number };
   combatLightsActive: number;
   postFx: { enabled: boolean; bloomStrength: number; bloomThreshold: number; bloomRadius: number; fxaa: boolean };
   materials: { name: string; type: string; metalness: number; roughness: number; envMapIntensity: number; maps: string[] }[];
@@ -326,10 +327,12 @@ export class HangarScene {
   // strongest candidate for matching it; ACESFilmic (the old default) and
   // Khronos Neutral are the alternatives. Static so the harness can compare.
   static toneMapping: THREE.ToneMapping = THREE.AgXToneMapping;
-  // AgX renders midtones darker than ACES by design, so it needs a hair more
-  // exposure to sit at Blender Material Preview's default brightness. 1.35 was
-  // dialled in against the reference viewport (Phase D A/B).
-  static toneExposure = 1.35;
+  // AgX (as in Blender). Exposure recalibrated to 1.05 after the real Blender
+  // light rig replaced the generic studio stand-in: 1.35 was compensating for the
+  // missing lights, which is exactly the "künstliche Aufhellung" to avoid. Blender
+  // itself runs AgX at exposure -0.5, but its 12 area lights + Cycles GI carry the
+  // brightness; with the rebuilt rig 1.05 sits close without lifting.
+  static toneExposure = 1.05;
   /** Live setter used by the harness to switch tone mapping without a rebuild. */
   setToneMapping(mode: THREE.ToneMapping, exposure: number): void {
     this.renderer.toneMapping = mode;
@@ -479,43 +482,87 @@ export class HangarScene {
   }
 
   private buildLights(): void {
-    // Studio-lighting rig (Phase E), modelled on how Blender's Material Preview
-    // lights a subject: a directional Key/Fill/Rim trio plus a Hemisphere "sky".
+    // REAL Blender rig (audit finding): the GLB carries ZERO lights — glTF can't
+    // export Blender's AREA lamps, and KHR_lights_punctual wasn't enabled, so even
+    // the 2 spots were dropped. The generic Key/Fill/Rim studio rig was a stand-in;
+    // this rebuilds the actual 12 HangarHall lights (10 AREA + 2 SPOT) at their
+    // exported positions/colours, so the room is lit the way Blender lit it.
     //
-    // NO flat AmbientLight. A large ambient lights every surface equally
-    // regardless of its normal, which FLATTENS materials — the exact opposite of
-    // the shaped, normal-aware look we want. The soft ambient fill instead comes
-    // from (a) the studio IBL already installed in the constructor and (b) the
-    // HemisphereLight below, both of which vary with surface orientation.
+    // Coordinate convert: the GLB was exported yup=True, so Blender Z-up →
+    // three Y-up is (x, z, -y). Positions are in the same unit scale as the model
+    // (verified: Blender lamps z=5.6 land just under the three ceiling at y≈6.15).
+    RectAreaLightUniformsLib.init();
+    const B = (bx: number, by: number, bz: number) => new THREE.Vector3(bx, bz, -by);
+    const col = (r: number, g: number, b: number) => new THREE.Color(r, g, b);
 
-    // KEY — warm, strong, shadow-casting. The dominant light, high and to the
-    // front-right, like the main softbox in the preview.
-    const key = new THREE.DirectionalLight(0xfff2e0, 2.6);
-    key.position.set(3, 9, 4);
-    key.castShadow = true;
-    key.shadow.mapSize.set(2048, 2048);
-    key.shadow.camera.near = 1;
-    key.shadow.camera.far = 40;
-    key.shadow.bias = -0.0002;
-    key.shadow.normalBias = 0.02; // kills shadow acne on the low-poly deck
-    this.scene.add(key);
-    this.keyLight = key;
+    // Blender watts → three intensity. RectAreaLight uses a different unit than
+    // Blender's radiometric watts; these divisors were picked so the key reads as
+    // the dominant light without clipping (calibrated against the reference).
+    const AREA_K = 1 / 220; // RectAreaLight intensity per Blender watt
+    const SPOT_K = 1 / 55;  // SpotLight intensity per Blender watt
 
-    // FILL — cool, soft, opposite side. Lifts the shadow side without erasing it.
-    const fill = new THREE.DirectionalLight(0x6f9be0, 0.9);
-    fill.position.set(-6, 4, -3);
-    this.scene.add(fill);
+    const addArea = (
+      name: string, bx: number, by: number, bz: number,
+      dx: number, dy: number, dz: number, w: number, sx: number, sy: number,
+      r: number, g: number, bl: number,
+    ) => {
+      const l = new THREE.RectAreaLight(col(r, g, bl).getHex(), w * AREA_K, Math.max(sx, 0.5), Math.max(sy, 0.5));
+      l.position.copy(B(bx, by, bz));
+      // aim: look from position toward position + Blender-dir (converted)
+      const target = B(bx + dx, by + dy, bz + dz);
+      l.lookAt(target);
+      l.name = name;
+      this.scene.add(l);
+    };
 
-    // RIM / BACK — cool edge light from behind, separates the ship from the deck.
-    const rim = new THREE.DirectionalLight(0x9ec2ff, 0.7);
-    rim.position.set(0, 3, -8);
-    this.scene.add(rim);
+    // — the 4 big hall lights (Key/Fill/Fill/Back) —
+    addArea("HallKey", 0, 1, 5.5,   0, 0, -1,  900, 8, 0.25,  0.7, 0.85, 1.0);
+    addArea("HallFill1", -5, 2, 3,  -0.866, 0, -0.5, 250, 5, 0.25, 0.4, 0.7, 1.0);
+    addArea("HallFill2",  5, 2, 3,   0.866, 0, -0.5, 250, 5, 0.25, 0.4, 0.7, 1.0);
+    addArea("HallBack",   0, -7, 3,  0, -0.866, -0.5, 180, 5, 0.25, 1.0, 0.7, 0.4);
 
-    // SKY — Hemisphere: cool sky from above, warm deck bounce from below. This is
-    // the normal-aware replacement for the old flat ambient; it reads as soft
-    // environmental fill without flattening the surface.
-    const sky = new THREE.HemisphereLight(0xaec6ff, 0x2a2620, 0.55);
-    this.scene.add(sky);
+    // — the 6 ceiling lamp panels (Lamp0..5), all pointing straight down —
+    const lampXY: [number, number][] = [[-2.5,-4],[2.5,-4],[-2.5,0],[2.5,0],[-2.5,4],[2.5,4]];
+    lampXY.forEach(([lx, ly], i) =>
+      addArea(`Lamp${i}`, lx, ly, 5.6, 0, 0, -1, 180, 1.4, 0.4, 0.6, 0.8, 1.0),
+    );
+
+    // — the 2 spots (these DO cast shadow; give the room its directional pop) —
+    const addSpot = (
+      name: string, bx: number, by: number, bz: number,
+      dx: number, dy: number, dz: number, w: number, angDeg: number, blend: number,
+      r: number, g: number, bl: number, shadow: boolean,
+    ) => {
+      const s = new THREE.SpotLight(col(r, g, bl).getHex(), w * SPOT_K, 0, (angDeg * Math.PI) / 180 / 2, blend, 1.5);
+      s.position.copy(B(bx, by, bz));
+      s.target.position.copy(B(bx + dx, by + dy, bz + dz));
+      s.name = name;
+      if (shadow) {
+        s.castShadow = true;
+        s.shadow.mapSize.set(2048, 2048);
+        s.shadow.camera.near = 0.5;
+        s.shadow.camera.far = 30;
+        s.shadow.bias = -0.0002;
+        s.shadow.normalBias = 0.02;
+      }
+      this.scene.add(s);
+      this.scene.add(s.target);
+    };
+    addSpot("Spot1", -3, 3, 5.5,  0.52, -0.347, -0.78, 400, 45, 0.4, 0.8, 0.9, 1.0, true);
+    addSpot("Spot2",  3, -1, 5.5, -0.52,  0.347, -0.78, 400, 45, 0.4, 0.8, 0.9, 1.0, false);
+
+    // Keep ONE shadow-casting directional as a broad key so the ship + crates get
+    // a clean contact shadow on the deck (RectAreaLights can't cast shadows).
+    const shadowKey = new THREE.DirectionalLight(0xdfe8ff, 0.5);
+    shadowKey.position.set(1.5, 8, 3);
+    shadowKey.castShadow = true;
+    shadowKey.shadow.mapSize.set(2048, 2048);
+    shadowKey.shadow.camera.near = 1;
+    shadowKey.shadow.camera.far = 40;
+    shadowKey.shadow.bias = -0.0002;
+    shadowKey.shadow.normalBias = 0.02;
+    this.scene.add(shadowKey);
+    this.keyLight = shadowKey;
   }
 
   /** Resolve the landing platform + authored camera pose from the model. */
@@ -753,7 +800,7 @@ export class HangarScene {
       : "None";
 
     // Light census.
-    let dir = 0, point = 0, spot = 0, hemi = 0, ambient = 0;
+    let dir = 0, point = 0, spot = 0, hemi = 0, ambient = 0, rectArea = 0;
     // Material census — sample distinct MeshStandardMaterials.
     const seen = new Set<THREE.Material>();
     const mats: HangarDebugInfo["materials"] = [];
@@ -761,6 +808,7 @@ export class HangarScene {
       const l = o as THREE.Light;
       if (l.isLight) {
         if ((l as THREE.DirectionalLight).isDirectionalLight) dir++;
+        else if ((l as THREE.RectAreaLight).isRectAreaLight) rectArea++;
         else if ((l as THREE.PointLight).isPointLight) point++;
         else if ((l as THREE.SpotLight).isSpotLight) spot++;
         else if ((l as THREE.HemisphereLight).isHemisphereLight) hemi++;
@@ -811,7 +859,7 @@ export class HangarScene {
         exposure: +this.renderer.toneMappingExposure.toFixed(2),
         outputColorSpace: this.renderer.outputColorSpace,
       },
-      lights: { directional: dir, point, spot, hemisphere: hemi, ambient },
+      lights: { directional: dir, point, spot, hemisphere: hemi, ambient, rectArea },
       combatLightsActive: this.combat?.activeCount ?? 0,
       postFx: {
         enabled: HangarScene.postFx && !!this.composer,

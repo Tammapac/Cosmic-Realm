@@ -19,7 +19,7 @@ const SHIP_CLASSES = ["skimmer", "apex", "leviathan", "vanguard"];
 // is the old default; Neutral (Khronos) is the third candidate. Each carries a
 // starting exposure — AgX renders darker so it wants a hair more.
 const TONE_MODES: { label: string; mode: THREE.ToneMapping; exposure: number }[] = [
-  { label: "AgX", mode: THREE.AgXToneMapping, exposure: 1.35 },
+  { label: "AgX", mode: THREE.AgXToneMapping, exposure: 1.05 },
   { label: "ACES", mode: THREE.ACESFilmicToneMapping, exposure: 1.0 },
   { label: "Neutral", mode: THREE.NeutralToneMapping, exposure: 1.0 },
 ];
@@ -31,7 +31,7 @@ export default function HangarTest() {
   const [shipClass, setShipClass] = useState("skimmer");
   const [envKind, setEnvKind] = useState<"studio" | "hdr">("studio");
   const [tone, setTone] = useState("AgX");
-  const [exposure, setExposure] = useState(1.35);
+  const [exposure, setExposure] = useState(1.05);
   const [busy, setBusy] = useState(false);
   const [showDebug, setShowDebug] = useState(true);
   const [dbg, setDbg] = useState<HangarDebugInfo | null>(null);
@@ -136,7 +136,7 @@ export default function HangarTest() {
           <div>output: <b>{dbg.tone.outputColorSpace}</b></div>
 
           <div style={{ fontWeight: "bold", color: "#7fd0ff", margin: "8px 0 4px" }}>LIGHTS</div>
-          <div>dir <b>{dbg.lights.directional}</b> · point <b>{dbg.lights.point}</b> · spot <b>{dbg.lights.spot}</b> · hemi <b>{dbg.lights.hemisphere}</b> · amb <b>{dbg.lights.ambient}</b></div>
+          <div>dir <b>{dbg.lights.directional}</b> · area <b>{dbg.lights.rectArea}</b> · spot <b>{dbg.lights.spot}</b> · point <b>{dbg.lights.point}</b> · hemi <b>{dbg.lights.hemisphere}</b> · amb <b>{dbg.lights.ambient}</b></div>
           <div>combat lights lit: <b style={{ color: dbg.combatLightsActive ? "#ff9060" : "#8ab" }}>{dbg.combatLightsActive}</b></div>
 
           <div style={{ fontWeight: "bold", color: "#7fd0ff", margin: "8px 0 4px" }}>POST-FX</div>
