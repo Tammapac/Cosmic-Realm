@@ -217,6 +217,9 @@ function validateMaterial(m: THREE.MeshStandardMaterial): MatStat {
   track(m.roughnessMap ?? null, "rough", true);
   track(m.metalnessMap ?? null, "metal", true);
   track(m.aoMap ?? null, "ao", true);
+  // Baked AO/GI lightmap (uv1): push its strength up a touch so the contact
+  // shading (where crates/objects darken the deck) reads clearly.
+  if (m.aoMap) m.aoMapIntensity = 1.3;
 
   let emissiveFixed = false;
   if (isBrokenWhiteEmissive(m)) {
