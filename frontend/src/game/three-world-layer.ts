@@ -124,6 +124,11 @@ export function ensureWorldLayer(
   renderer.shadowMap.enabled = rs.shadowsEnabled;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  // The ship layer's own exposure, unmodified. The "over-lit / washed-out at
+  // distance" the merged station showed was NOT a rig problem — it was a double
+  // sRGB encode in the post-FX blit (see COPY_FRAG in three-ship-layer.ts). With
+  // that fixed, the station reads correctly at the ship layer's own values, so
+  // there is nothing to compensate for here.
   renderer.toneMappingExposure = rs.toneMappingExposure;
 
   const scene = new THREE.Scene();
@@ -148,6 +153,8 @@ export function ensureWorldLayer(
   const ambient = new THREE.AmbientLight(0x232a42, 0.12);
   scene.add(ambient);
 
+  // The ship layer's warm key, unchanged — see the exposure note above; the
+  // washed-out look was a gamma bug, not this light.
   sun = new THREE.DirectionalLight(0xfff2e0, 2.2);
   sun.position.set(120, 320, -90);
   sun.castShadow = rs.shadowsEnabled;

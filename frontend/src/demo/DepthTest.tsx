@@ -29,6 +29,7 @@ import * as THREE from "three";
 import {
   init3DLayer, updateShip3D, removeShip3D, setCameraZoom,
   beginFrame, markActive, endFrame, render3DLayer, is3DReady,
+  __setBypassPostFX, __getPostFX,
 } from "../game/three-ship-layer";
 import {
   initStation3DLayer, setStationCameraZoom, beginStationFrame,
@@ -337,6 +338,43 @@ export default function DepthTest() {
       frame(sc.actors, true, sc.zoom, sc.lift);
     }
 
+    // Lighting inspection: render the STATION alone at a given zoom and leave it
+    // on screen. Low zoom = station small = the "over-lit at distance" case.
+    // Also reports the brightest pixel + how many pixels are near-white (a proxy
+    // for "hull plates crossing the bloom threshold and shimmering").
+    function lookStation(zoom: number): unknown {
+      if (!gl || !world) return "no gl";
+      clearActors();
+      frame([], true, zoom, 1);
+      const bw = gl.drawingBufferWidth, bh = gl.drawingBufferHeight;
+      const buf = new Uint8Array(bw * bh * 4);
+      gl.readPixels(0, 0, bw, bh, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+      let maxL = 0, hot = 0, lit = 0, n = 0;
+      for (let i = 0; i < buf.length; i += 4) {
+        if (buf[i + 3] < 8) continue;
+        n++;
+        const l = Math.max(buf[i], buf[i + 1], buf[i + 2]);
+        if (l > maxL) maxL = l;
+        if (l >= 250) hot++;   // near-clipped white — over-lit
+        if (l >= 210) lit++;   // bright, heading toward bloom
+      }
+      // Mean luminance of the drawn hull — the honest "how bright is it"
+      // number, independent of how many pixels the model happens to cover.
+      let sum = 0;
+      for (let i = 0; i < buf.length; i += 4) {
+        if (buf[i + 3] < 8) continue;
+        sum += Math.max(buf[i], buf[i + 1], buf[i + 2]);
+      }
+      return {
+        zoom, drawn: n, maxLum: maxL,
+        meanLum: n ? +(sum / n).toFixed(1) : 0,
+        hotPct: n ? +(100 * hot / n).toFixed(1) : 0,   // % clipped white
+        litPct: n ? +(100 * lit / n).toFixed(1) : 0,   // % very bright
+        exposure: +world.renderer.toneMappingExposure.toFixed(3),
+        envI: +((world.scene as any).environmentIntensity ?? -1),
+      };
+    }
+
     const api = {
       ready: () => is3DReady(PLAYER_CLASS) && is3DReady(ENEMY_CLASS) && !!getWorldLayer(),
       warm: () => {
@@ -349,6 +387,126 @@ export default function DepthTest() {
       run,
       all: () => { const r = all(); setRows(r); return r; },
       show,
+      lookStation,
+      // A/B: is the postFX chain (GTAO/Bloom/FXAA/Vignette/OutputPass) what makes
+      // the merged station read wrong? Returns before/after mean+clip metrics
+      // with the chain on vs bypassed, at a far zoom.
+      abPost: (zoom = 0.5) => {
+        __setBypassPostFX(false);
+        const withFX = lookStation(zoom);
+        __setBypassPostFX(true);
+        const noFX = lookStation(zoom);
+        __setBypassPostFX(false);
+        return { withFX, noFX };
+      },
+      bypass: (v: boolean) => { __setBypassPostFX(v); return "bypass=" + v; },
+      // Toggle individual composer passes and measure, to find which one veils
+      // the station. Disables each in turn (others on), then restores all.
+      isolatePasses: (zoom = 0.5) => {
+        const fx: any = __getPostFX();
+        if (!fx) return "no postFX";
+        const passes = ["gtao", "bloom", "fxaa", "vignette"] as const;
+        const setAll = (on: boolean) => passes.forEach((p) => { if (fx[p]) fx[p].enabled = on; });
+        const out: Record<string, number> = {};
+        setAll(true);
+        out.allOn = (lookStation(zoom) as any).meanLum;
+        for (const p of passes) {
+          if (!fx[p]) { out[`no_${p}`] = -1; continue; }
+          setAll(true);
+          fx[p].enabled = false;
+          out[`no_${p}`] = (lookStation(zoom) as any).meanLum;
+        }
+        setAll(true);
+        __setBypassPostFX(true);
+        out.bypassAll = (lookStation(zoom) as any).meanLum;
+        __setBypassPostFX(false);
+        return out;
+      },
+      // Grab the current drawing buffer as a data: URL so it can be inspected
+      // even when the browser pane itself is not compositing frames. Renders the
+      // station alone at `zoom` first. Flips vertically (GL is bottom-up).
+      grab: (zoom = 0.6): string => {
+        if (!gl || !world) return "";
+        clearActors();
+        frame([], true, zoom, 1);
+        const bw = gl.drawingBufferWidth, bh = gl.drawingBufferHeight;
+        const buf = new Uint8Array(bw * bh * 4);
+        gl.readPixels(0, 0, bw, bh, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+        const cv = document.createElement("canvas");
+        cv.width = bw; cv.height = bh;
+        const ctx = cv.getContext("2d")!;
+        const img = ctx.createImageData(bw, bh);
+        // flip rows + composite over the dark app bg so alpha reads naturally
+        for (let y = 0; y < bh; y++) {
+          const src = (bh - 1 - y) * bw * 4;
+          const dst = y * bw * 4;
+          for (let x = 0; x < bw * 4; x += 4) {
+            const a = buf[src + x + 3] / 255;
+            img.data[dst + x] = buf[src + x] * a + 7 * (1 - a);
+            img.data[dst + x + 1] = buf[src + x + 1] * a + 11 * (1 - a);
+            img.data[dst + x + 2] = buf[src + x + 2] * a + 20 * (1 - a);
+            img.data[dst + x + 3] = 255;
+          }
+        }
+        ctx.putImageData(img, 0, 0);
+        return cv.toDataURL("image/png");
+      },
+      // EXPERIMENT: mutate the station hull materials live, then re-measure, to
+      // find the values that kill the distant specular clipping before writing
+      // anything into the render code. dRough/dEnv are deltas applied on top of
+      // the authored values (clamped to [0,1] / [0,∞)).
+      tweak: (setRough?: number, setEnv?: number) => {
+        const grp = getWorldLayer()?.scene.getObjectByName("stationsGroup");
+        if (!grp) return "no stationsGroup";
+        let touched = 0;
+        grp.traverse((c: THREE.Object3D) => {
+          const m = (c as THREE.Mesh).material;
+          if (!m) return;
+          for (const mm of (Array.isArray(m) ? m : [m])) {
+            const sm = mm as THREE.MeshStandardMaterial;
+            if (!sm.isMeshStandardMaterial || sm.transparent) continue;
+            if (setRough != null) sm.roughness = Math.max(0, Math.min(1, setRough));
+            if (setEnv != null) sm.envMapIntensity = Math.max(0, setEnv);
+            sm.needsUpdate = true;
+            touched++;
+          }
+        });
+        const far = lookStation(0.4), near = lookStation(1.0);
+        return { touched, far, near };
+      },
+      // Dump the roughness/metalness/envMapIntensity distribution of the station
+      // hull materials — the drivers of specular-highlight sharpness that clips
+      // to hard white when the model is small on screen.
+      mats: () => {
+        const grp = getWorldLayer()?.scene.getObjectByName("stationsGroup");
+        if (!grp) return "no stationsGroup";
+        const rows: { name: string; rough: number; metal: number; env: number; ts: boolean }[] = [];
+        grp.traverse((c: THREE.Object3D) => {
+          const m = (c as THREE.Mesh).material;
+          if (!m) return;
+          const arr = Array.isArray(m) ? m : [m];
+          for (const mm of arr) {
+            const sm = mm as THREE.MeshStandardMaterial;
+            if (sm.isMeshStandardMaterial) {
+              rows.push({
+                name: c.name || "(unnamed)",
+                rough: +sm.roughness.toFixed(2),
+                metal: +sm.metalness.toFixed(2),
+                env: +(sm.envMapIntensity ?? 1).toFixed(2),
+                ts: sm.transparent,
+              });
+            }
+          }
+        });
+        const n = rows.length;
+        const avg = (k: "rough" | "metal" | "env") => +(rows.reduce((s, r) => s + r[k], 0) / n).toFixed(2);
+        return {
+          count: n,
+          avgRough: avg("rough"), avgMetal: avg("metal"), avgEnv: avg("env"),
+          minRough: Math.min(...rows.map((r) => r.rough)),
+          sample: rows.slice(0, 8),
+        };
+      },
       tree: () => {
         const s = getWorldLayer()?.scene;
         if (!s) return "no scene";

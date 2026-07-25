@@ -264,15 +264,31 @@ let initialized = false;
 // the existing selection-outline + FX passes still composite on top. When null,
 // the cheap inline bloom pipeline below runs instead.
 let postFX: PostFX | null = null;
+// Debug (depth-test harness): when true, render3DLayer skips the postFX composer
+// and takes the cheap inline path, so an A/B grab can isolate whether the
+// GTAO/Bloom/FXAA/Vignette chain is what makes the merged station read wrong.
+let _debugBypassPostFX = false;
+export function __setBypassPostFX(v: boolean): void { _debugBypassPostFX = v; }
+// depth-test harness: reach the individual composer passes so each can be
+// toggled to find which one washes the merged station out.
+export function __getPostFX(): PostFX | null { return postFX; }
 // Plain copy material to blit the composer's result (outlineRT) to screen,
 // preserving transparency. Used only when postFX is active.
+//
+// NO colorspace conversion here. The composer's final OutputPass already encodes
+// linear→sRGB; the target it writes (outlineRT) therefore holds sRGB pixels. A
+// `#include <colorspace_fragment>` here (which honours renderer.outputColorSpace =
+// sRGB) would encode a SECOND time — a double sRGB curve that lifts every mid-
+// tone toward white. On a small dark ship it read as a faint haze and went
+// unnoticed; on the big bright station in the merged scene it was an obvious
+// grey, washed-out veil that flattened all the hull detail. Straight copy fixes
+// it: sRGB in, sRGB out, once.
 let copyMat: THREE.ShaderMaterial | null = null;
 const COPY_FRAG = `
 uniform sampler2D tDiffuse;
 varying vec2 vUv;
 void main() {
   gl_FragColor = texture2D(tDiffuse, vUv);
-  #include <colorspace_fragment>
 }`;
 
 // Silhouette outline pass: ships render into an offscreen target, then a
@@ -1679,7 +1695,7 @@ export function render3DLayer(): void {
   if (outlineRT && outlineScene && outlineCamera && fsQuad && brightMat && blurMat && outlineMat && bloomRTA && bloomRTB) {
     camera.layers.set(0);
 
-    if (postFX && copyMat) {
+    if (postFX && copyMat && !_debugBypassPostFX) {
       // Post-processing path: the composer renders the scene + GTAO + UnrealBloom
       // + FXAA + vignette INTO outlineRT, then we blit that to screen. The
       // selection/FX passes below still composite on top, unchanged.
