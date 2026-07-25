@@ -659,61 +659,119 @@ export class HangarScene {
    */
   private buildStripLights(): void {
     this.hangarRoot.updateWorldMatrix(true, true);
-    const cyan: THREE.Vector3[] = [];
-    const amber: THREE.Vector3[] = [];
+    const pad = this.padWorld;
     const tmp = new THREE.Box3();
+    // Per-fixture light COLOUR must match the visible lamp's emissive (spec #13).
+    // The GLB has exactly two emitters: Hall_Cyan (cyan 0.1,0.7,1.0) and Hall_Amber
+    // (orange 1.0,0.6,0.2). We sub-tag by mesh ROLE for the calibrated hues but the
+    // family colour always tracks the emissive — a cyan strip never emits orange.
+    const cyan: THREE.Vector3[] = [];       // deck strips, rails, DeckMarks
+    const cyanRing: THREE.Vector3[] = [];   // PlatformRing perimeter
+    const cyanPanel: THREE.Vector3[] = [];  // rear-wall Screens + ceiling Lamp panels
+    const amber: THREE.Vector3[] = [];      // pad lights, tank valves
+    const amberStripe: THREE.Vector3[] = [];// side wall stripes
+
     this.hangarRoot.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh || !mesh.material) return;
-      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      const nm = (mats[0] as THREE.Material)?.name ?? "";
-      if (!/Hall_Cyan|Hall_Amber/.test(nm)) return;
+      const nm = ((Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.Material)?.name ?? "";
+      const isCyan = /Hall_Cyan/.test(nm);
+      const isAmber = /Hall_Amber/.test(nm);
+      if (!isCyan && !isAmber) return;
       tmp.setFromObject(mesh);
       const c = tmp.getCenter(new THREE.Vector3());
       const size = tmp.getSize(new THREE.Vector3());
-      const bucket = /Cyan/.test(nm) ? cyan : amber;
-      // A big flat RING mesh (e.g. PlatformRing, ~8×8) has its bbox centre in the
-      // MIDDLE of the platform, not on the ring — one light there lights nothing
-      // outward. Detect it (wide + flat) and distribute lights AROUND its perimeter
-      // so the ring actually throws light outward onto crates/barrels.
-      const wide = Math.max(size.x, size.z) > 4 && size.y < 1;
-      if (wide) {
-        const rx = size.x * 0.42, rz = size.z * 0.42;
-        const N = 12;
-        for (let i = 0; i < N; i++) {
-          const a = (i / N) * Math.PI * 2;
-          bucket.push(new THREE.Vector3(c.x + Math.cos(a) * rx, c.y, c.z + Math.sin(a) * rz));
-        }
+      const n = mesh.name;
+      if (isCyan) {
+        if (/PlatformRing/.test(n) || (Math.max(size.x, size.z) > 4 && size.y < 1)) {
+          // distribute AROUND the ring perimeter (bbox centre is in the middle)
+          const rx = size.x * 0.42, rz = size.z * 0.42, N = 12;
+          for (let i = 0; i < N; i++) {
+            const a = (i / N) * Math.PI * 2;
+            cyanRing.push(new THREE.Vector3(c.x + Math.cos(a) * rx, c.y, c.z + Math.sin(a) * rz));
+          }
+        } else if (/Screen_|Lamp\d+_panel/.test(n)) cyanPanel.push(c);
+        else cyan.push(c);
       } else {
-        bucket.push(c);
+        if (/WallStripe/.test(n)) amberStripe.push(c);
+        else amber.push(c);
       }
     });
 
-    // EVERY emissive fixture becomes a real light. No thinning: each Hall_Cyan /
-    // Hall_Amber mesh gets a short-range shadowless coloured PointLight. Floor
-    // fixtures light the deck; elevated ones (y≥1) reach a bit further to hit wall
-    // + floor. Intensities are modest per-light because there are many.
     const addLights = (
-      pts: THREE.Vector3[], hex: number,
-      floorIntensity: number, floorRange: number,
-      highIntensity: number, highRange: number,
+      pts: THREE.Vector3[], hex: number, intensity: number, range: number, lift = 0.15,
     ) => {
       for (const p of pts) {
-        const high = p.y >= 1.0;
-        const l = new THREE.PointLight(
-          hex, high ? highIntensity : floorIntensity, high ? highRange : floorRange, 2.0,
-        );
+        const l = new THREE.PointLight(hex, intensity, range, 2.0);
         l.position.copy(p);
-        l.position.y += high ? 0.0 : 0.15;
+        l.position.y += lift;
         l.castShadow = false;
         l.name = "strip";
         this.scene.add(l);
       }
     };
-    // cyan: deck strips, platform ring, rails + the wall Screen_* / ceiling Lamp panels
-    addLights(cyan, 0x2ec8ff, /*floor*/ 1.8, 4.5, /*high*/ 2.4, 6.0);
-    // amber: pad lights, wall stripes, tank valves
-    addLights(amber, 0xffb040, /*floor*/ 1.6, 4.5, /*high*/ 2.0, 5.5);
+
+    // Colours calibrated to the emissive per spec #13:
+    //   cyan strips/rails → cool cyan; ring → same but softer+wider; panels →
+    //   cool-white-cyan. amber pad/valves → yellow-amber; wall stripes → orange.
+    addLights(cyan, 0xbfefff, 1.8, 4.5);                 // FloorMarker cyan
+    addLights(cyanRing, 0xc8f7ff, 1.3, 6.5);             // Platform ring: dimmer + wider so pools blend
+    addLights(cyanPanel, 0xd8f8ff, 2.4, 6.5, 0.0);       // rear panels / ceiling lamps (cool white)
+    addLights(amber, 0xffcc66, 1.6, 4.5);                // pad lights / valves (yellow-amber)
+    addLights(amberStripe, 0xffb05e, 2.0, 5.5, 0.0);     // side wall stripes (orange)
+
+    // ── Platform FILL: one big, very weak light above the pad to bind the ring
+    // pools into connected illumination (NOT a global ambient — a positioned,
+    // decaying point light). Cyan-white to match the ring. ──
+    const fill = new THREE.PointLight(0xa9eaff, 6, 16, 2.0);
+    fill.position.set(pad.x, pad.y + 4.5, pad.z);
+    fill.castShadow = false;
+    fill.name = "strip";
+    this.scene.add(fill);
+
+    // ── Under-platform cyan glow (spec #7): weak cyan lights just below the ring
+    // so the deck underside + adjacent structures catch cyan, as in the reference. ──
+    this.hangarRoot.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      if (!/PlatformRing/.test(mesh.name)) return;
+      tmp.setFromObject(mesh);
+      const c = tmp.getCenter(new THREE.Vector3());
+      const s = tmp.getSize(new THREE.Vector3());
+      const rx = s.x * 0.4, rz = s.z * 0.4, N = 6;
+      for (let i = 0; i < N; i++) {
+        const a = (i / N) * Math.PI * 2 + 0.5;
+        const u = new THREE.PointLight(0xbfefff, 2.2, 5.0, 2.0);
+        u.position.set(c.x + Math.cos(a) * rx, c.y - 0.35, c.z + Math.sin(a) * rz);
+        u.castShadow = false;
+        u.name = "strip";
+        this.scene.add(u);
+      }
+    });
+
+    // ── Rear-wall panels: RectAreaLights in FRONT of the cool-cyan Screen panels,
+    // aimed at the platform, so the rear wall (structure + pipes) reads without hard
+    // hotspots (spec #2). Broad + soft. Grouped in pairs to keep the count sane. ──
+    RectAreaLightUniformsLib.init();
+    const screens: THREE.Vector3[] = [];
+    this.hangarRoot.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (mesh.isMesh && /Screen_/.test(mesh.name)) {
+        tmp.setFromObject(mesh);
+        screens.push(tmp.getCenter(new THREE.Vector3()));
+      }
+    });
+    for (let i = 0; i < screens.length; i += 2) {
+      const a = screens[i];
+      const b = screens[i + 1] ?? a;
+      const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2, cz = (a.z + b.z) / 2;
+      const toward = Math.sign(pad.z - cz) || -1; // toward the pad
+      const ra = new THREE.RectAreaLight(0xd8f8ff, 6, 3.0, 0.8);
+      ra.position.set(cx, cy, cz + toward * 0.5); // just in front of the panels
+      ra.lookAt(pad.x, cy, pad.z);                 // aim into the room, never at the wall
+      ra.name = "wallArea";
+      this.scene.add(ra);
+    }
   }
 
   /**
