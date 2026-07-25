@@ -35,6 +35,7 @@ export default function HangarTest() {
   const [busy, setBusy] = useState(false);
   const [showDebug, setShowDebug] = useState(true);
   const [dbg, setDbg] = useState<HangarDebugInfo | null>(null);
+  const [combatDemo, setCombatDemo] = useState(false);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -83,6 +84,14 @@ export default function HangarTest() {
     return () => window.clearInterval(id);
   }, [showDebug]);
 
+  // Combat-light demo toggle (Phase G).
+  useEffect(() => {
+    const hs = sceneRef.current;
+    if (!hs) return;
+    hs.toggleCombatDemo(combatDemo);
+    return () => hs.toggleCombatDemo(false);
+  }, [combatDemo, status]);
+
   const run = (label: string, fn: () => Promise<void> | void) => {
     if (busy) return;
     setBusy(true);
@@ -128,6 +137,7 @@ export default function HangarTest() {
 
           <div style={{ fontWeight: "bold", color: "#7fd0ff", margin: "8px 0 4px" }}>LIGHTS</div>
           <div>dir <b>{dbg.lights.directional}</b> · point <b>{dbg.lights.point}</b> · spot <b>{dbg.lights.spot}</b> · hemi <b>{dbg.lights.hemisphere}</b> · amb <b>{dbg.lights.ambient}</b></div>
+          <div>combat lights lit: <b style={{ color: dbg.combatLightsActive ? "#ff9060" : "#8ab" }}>{dbg.combatLightsActive}</b></div>
 
           <div style={{ fontWeight: "bold", color: "#7fd0ff", margin: "8px 0 4px" }}>MATERIALS ({dbg.materials.length})</div>
           {dbg.materials.map((m, i) => (
@@ -143,6 +153,12 @@ export default function HangarTest() {
         <button disabled={busy} onClick={() => run("intro", () => hs()?.playIntro())} style={{ fontWeight: "bold" }}>▶ FLY IN</button>
         <button disabled={busy} onClick={() => run("parked", () => hs()?.showParked())}>PARKED</button>
         <button disabled={busy} onClick={() => run("outro", () => hs()?.playOutro())}>◀ FLY OUT</button>
+        <button
+          onClick={() => setCombatDemo((v) => !v)}
+          style={{ marginLeft: 8, color: combatDemo ? "#ff9060" : undefined, fontWeight: combatDemo ? "bold" : undefined }}
+        >
+          {combatDemo ? "⏹ STOP FX" : "⚡ COMBAT FX"}
+        </button>
         <select value={shipClass} onChange={(e) => setShipClass(e.target.value)} style={{ marginLeft: 12 }}>
           {SHIP_CLASSES.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>

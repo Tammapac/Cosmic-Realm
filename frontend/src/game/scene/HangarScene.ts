@@ -25,6 +25,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { installStudioEnv, type EnvKind } from "../three-environment";
+import { CombatLights, type CombatLightKind } from "./CombatLights";
 
 /** Clamped smoothstep — zero slope at both ends, matching DockingCameraController. */
 function smoothstep(x: number): number {
@@ -224,6 +225,7 @@ export interface HangarDebugInfo {
   env: { pmremActive: boolean; environmentInstalled: boolean; envKind: EnvKind; envIntensity: number };
   tone: { mode: string; exposure: number; outputColorSpace: string };
   lights: { directional: number; point: number; spot: number; hemisphere: number; ambient: number };
+  combatLightsActive: number;
   materials: { name: string; type: string; metalness: number; roughness: number; envMapIntensity: number; maps: string[] }[];
 }
 
@@ -239,6 +241,10 @@ export class HangarScene {
   private ship: THREE.Group | null = null;
   /** The dominant shadow-casting key light (kept for the debug overlay). */
   private keyLight: THREE.DirectionalLight | null = null;
+  /** Pooled dynamic combat lights (laser / explosion / hit). */
+  private combat: CombatLights | null = null;
+  /** Handle for a running combat-demo interval, so it can be stopped. */
+  private demoTimer = 0;
 
   /** World-space landing platform centre, and the authored camera pose. */
   private padWorld = new THREE.Vector3();
@@ -310,6 +316,7 @@ export class HangarScene {
     this.camera = new THREE.PerspectiveCamera(50, w / h, 0.01, 200);
 
     this.buildLights();
+    this.combat = new CombatLights(this.scene);
     window.addEventListener("resize", this.onResize);
   }
 
@@ -475,6 +482,7 @@ export class HangarScene {
       else this.applyOutro(a.t);
       if (a.t >= 1) { const r = a.resolve; this.anim = null; r(); }
     }
+    this.combat?.update(dt);
   }
 
   // ── Framing + cinematics ─────────────────────────────────────────────────
@@ -547,6 +555,42 @@ export class HangarScene {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+  }
+
+  // ── Dynamic combat lights (Phase G) ───────────────────────────────────────
+  // Public hooks the combat system calls to throw real dynamic light onto the
+  // hulls: a laser bolt's red glow, an explosion's orange bloom, a hit's flash.
+  // Scene-agnostic — the same CombatLights class serves the world layer too.
+
+  /** Spawn a combat light at a world point. See CombatLights for kinds/tuning. */
+  spawnCombatLight(
+    kind: CombatLightKind,
+    pos: THREE.Vector3,
+    opts?: { color?: number; peakScale?: number; distanceScale?: number },
+  ): void {
+    this.combat?.spawn(kind, pos, opts);
+  }
+
+  /** Harness-only: toggle a looping demo that fires lasers/hits/explosions
+   *  around the parked ship so the dynamic lighting is visible in isolation. */
+  toggleCombatDemo(on: boolean): void {
+    if (this.demoTimer) { clearInterval(this.demoTimer); this.demoTimer = 0; }
+    if (!on || !this.combat) return;
+    let n = 0;
+    const near = () =>
+      this.padWorld.clone().add(new THREE.Vector3(
+        (Math.sin(n * 1.7) * 1.6),
+        0.4 + Math.abs(Math.cos(n * 0.9)) * 0.8,
+        (Math.cos(n * 1.3) * 1.6),
+      ));
+    this.demoTimer = window.setInterval(() => {
+      n++;
+      // Mostly laser bolts, an occasional hit flash, a rarer explosion.
+      const roll = n % 8;
+      if (roll === 0) this.spawnCombatLight("explosion", near(), { peakScale: 0.5, distanceScale: 0.4 });
+      else if (roll % 3 === 0) this.spawnCombatLight("hit", near());
+      else this.spawnCombatLight("laser", near());
+    }, 140);
   }
 
   // ── Renderer debug overlay (Phase F) ──────────────────────────────────────
@@ -624,12 +668,16 @@ export class HangarScene {
         outputColorSpace: this.renderer.outputColorSpace,
       },
       lights: { directional: dir, point, spot, hemisphere: hemi, ambient },
+      combatLightsActive: this.combat?.activeCount ?? 0,
       materials: mats,
     };
   }
 
   dispose(): void {
     this.stopLoop();
+    if (this.demoTimer) { clearInterval(this.demoTimer); this.demoTimer = 0; }
+    this.combat?.dispose();
+    this.combat = null;
     window.removeEventListener("resize", this.onResize);
     this.scene.traverse((o) => {
       const mesh = o as THREE.Mesh;
