@@ -321,6 +321,11 @@ export interface HangarDebugInfo {
   env: { pmremActive: boolean; environmentInstalled: boolean; envKind: EnvKind; envIntensity: number };
   tone: { mode: string; exposure: number; outputColorSpace: string };
   lights: { directional: number; point: number; spot: number; hemisphere: number; ambient: number; rectArea: number };
+  hangarLights: {
+    name: string; type: string; color: string; intensity: number; distance: number;
+    decay: number; pos: [number, number, number]; dir: [number, number, number] | null;
+    visible: boolean; camDist: number;
+  }[];
   combatLightsActive: number;
   postFx: { enabled: boolean; bloomStrength: number; bloomThreshold: number; bloomRadius: number; fxaa: boolean };
   materials: { name: string; type: string; metalness: number; roughness: number; envMapIntensity: number; maps: string[] }[];
@@ -388,12 +393,10 @@ export class HangarScene {
   // strongest candidate for matching it; ACESFilmic (the old default) and
   // Khronos Neutral are the alternatives. Static so the harness can compare.
   static toneMapping: THREE.ToneMapping = THREE.AgXToneMapping;
-  // AgX (as in Blender). Exposure recalibrated to 1.05 after the real Blender
-  // light rig replaced the generic studio stand-in: 1.35 was compensating for the
-  // missing lights, which is exactly the "künstliche Aufhellung" to avoid. Blender
-  // itself runs AgX at exposure -0.5, but its 12 area lights + Cycles GI carry the
-  // brightness; with the rebuilt rig 1.05 sits close without lifting.
-  static toneExposure = 1.05;
+  // AgX (as in Blender). Exposure 1.1 (per spec): the local light rig — not a
+  // raised exposure — carries the brightness. Do NOT push exposure up to
+  // compensate for lamp reach; fix the rig instead.
+  static toneExposure = 1.1;
   /** Live setter used by the harness to switch tone mapping without a rebuild. */
   setToneMapping(mode: THREE.ToneMapping, exposure: number): void {
     this.renderer.toneMapping = mode;
@@ -646,131 +649,143 @@ export class HangarScene {
   }
 
   /**
-   * Real local lights on the emissive deck strips (audit finding #6). Emission +
-   * bloom alone light nothing around them — Blender had cyan RingLight PointLights
-   * at the strips for that. This samples the Hall_Cyan / Hall_Amber mesh centres at
-   * runtime (so a model re-export stays correct) and drops a small, short-range,
-   * SHADOWLESS coloured PointLight at a thinned subset of them, so the deck, ship,
-   * stairs and crates actually catch cyan/amber light. Thinned + range-limited so
-   * they never dominate and stay well under the light-uniform budget.
+   * Local hangar light rig (rebuilt to spec). The old rig gave EVERY emissive
+   * fixture its own tiny short-range light (~93 of them), so the platform read as
+   * many isolated bright dots and the wall/rear lamps never reached the deck. This
+   * replaces it with a small set of stronger, wider, longer-range lights so the
+   * illumination is soft + connected and the wall lamps + rear panels visibly
+   * light the round platform. Budget (per spec): ~8-12 platform + 4-8 wall/panel +
+   * 3-5 container-bounce + 1 platform-fill. All SHADOWLESS, decay 2, built ONCE.
+   *
+   * Positions are resolved from the model (fixture mesh centres) so a re-export
+   * stays correct. Nothing here touches materials or the render architecture.
    */
   private buildStripLights(): void {
     this.hangarRoot.updateWorldMatrix(true, true);
-    const cyan: THREE.Vector3[] = [];
-    const amber: THREE.Vector3[] = [];
-    const tmp = new THREE.Box3();
+    const box = new THREE.Box3();
+    const pad = this.padWorld;
+
+    // Collect fixture positions by role from the model.
+    const screens: THREE.Vector3[] = [];   // rear-wall panels (Screen_*)
+    const ceilLamps: THREE.Vector3[] = []; // ceiling lamp panels (Lamp*_panel)
+    const wallStripes: { c: THREE.Vector3; s: THREE.Vector3 }[] = []; // side wall stripes
+    let ringMesh: { c: THREE.Vector3; s: THREE.Vector3 } | null = null;
     this.hangarRoot.traverse((o) => {
       const mesh = o as THREE.Mesh;
-      if (!mesh.isMesh || !mesh.material) return;
-      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      const nm = (mats[0] as THREE.Material)?.name ?? "";
-      if (!/Hall_Cyan|Hall_Amber/.test(nm)) return;
-      tmp.setFromObject(mesh);
-      const c = tmp.getCenter(new THREE.Vector3());
-      const size = tmp.getSize(new THREE.Vector3());
-      const bucket = /Cyan/.test(nm) ? cyan : amber;
-      // A big flat RING mesh (e.g. PlatformRing, ~8×8) has its bbox centre in the
-      // MIDDLE of the platform, not on the ring — one light there lights nothing
-      // outward. Detect it (wide + flat) and distribute lights AROUND its perimeter
-      // so the ring actually throws light outward onto crates/barrels.
-      const wide = Math.max(size.x, size.z) > 4 && size.y < 1;
-      if (wide) {
-        const rx = size.x * 0.42, rz = size.z * 0.42;
-        const N = 12;
-        for (let i = 0; i < N; i++) {
-          const a = (i / N) * Math.PI * 2;
-          bucket.push(new THREE.Vector3(c.x + Math.cos(a) * rx, c.y, c.z + Math.sin(a) * rz));
-        }
-      } else {
-        bucket.push(c);
-      }
+      if (!mesh.isMesh) return;
+      const n = mesh.name;
+      box.setFromObject(mesh);
+      const c = box.getCenter(new THREE.Vector3());
+      const s = box.getSize(new THREE.Vector3());
+      if (/Screen_/.test(n)) screens.push(c);
+      else if (/Lamp\d+_panel/.test(n)) ceilLamps.push(c);
+      else if (/WallStripe/.test(n)) wallStripes.push({ c, s });
+      else if (/PlatformRing/.test(n)) ringMesh = { c, s };
     });
 
-    // EVERY emissive fixture becomes a real light — the user found lamps that
-    // glowed but cast nothing (wall stripes, pad lights, screens). No thinning:
-    // each Hall_Cyan / Hall_Amber mesh (deck strip, wall Screen, ceiling Lamp
-    // panel, PadLight, WallStripe, rail) gets a short-range shadowless coloured
-    // PointLight so it lights the deck/wall/ship around it. Floor fixtures light
-    // the deck; elevated ones (y≥1) reach a bit further to hit wall + floor.
-    // Intensities are modest per-light because there are many.
-    const addLights = (
-      pts: THREE.Vector3[], hex: number,
-      floorIntensity: number, floorRange: number,
-      highIntensity: number, highRange: number,
-    ) => {
-      for (const p of pts) {
-        const high = p.y >= 1.0;
-        const l = new THREE.PointLight(
-          hex, high ? highIntensity : floorIntensity, high ? highRange : floorRange, 2.0,
-        );
-        l.position.copy(p);
-        l.position.y += high ? 0.0 : 0.15;
-        l.castShadow = false;
-        l.name = "strip";
-        this.scene.add(l);
-      }
+    const add = (hex: number, intensity: number, distance: number, x: number, y: number, z: number, name: string) => {
+      const l = new THREE.PointLight(hex, intensity, distance, 2.0);
+      l.position.set(x, y, z);
+      l.castShadow = false;
+      l.name = name;
+      this.scene.add(l);
     };
-    // cyan: deck strips, platform ring, rails + the wall Screen_* / ceiling Lamp
-    // panels. Longer range so the perimeter ring lights actually reach the crates +
-    // barrels at the platform edge (the user found they caught little light).
-    addLights(cyan, 0x2ec8ff, /*floor*/ 1.8, 4.5, /*high*/ 2.4, 6.0);
-    // amber: pad lights, wall stripes, tank valves
-    addLights(amber, 0xffb040, /*floor*/ 1.6, 4.5, /*high*/ 2.0, 5.5);
+
+    // ── Rear-wall panels — cast cold light INTO the hangar (toward the pad). ──
+    // Placed slightly in FRONT of each panel (toward the pad, lower z) so they
+    // aren't stuck in the wall. Grouped in pairs to stay within the budget.
+    for (let i = 0; i < screens.length; i += 2) {
+      const a = screens[i];
+      const b = screens[i + 1] ?? a;
+      const cx = (a.x + b.x) / 2;
+      const cz = (a.z + b.z) / 2;
+      const toward = Math.sign(pad.z - cz) || -1; // step toward the pad
+      add(0xcdf4ff, 12, 16, cx, a.y + 0.3, cz + toward * 0.6, "wallPanel");
+    }
+
+    // ── Ceiling lamp panels — cool overhead pools reaching the deck. ──
+    // Fewer, stronger: merge each x-pair so we place ~3 (one per z-row).
+    const byZ = new Map<number, THREE.Vector3[]>();
+    for (const c of ceilLamps) {
+      const key = Math.round(c.z);
+      (byZ.get(key) ?? byZ.set(key, []).get(key)!).push(c);
+    }
+    for (const [, group] of byZ) {
+      const cx = group.reduce((s, v) => s + v.x, 0) / group.length;
+      const cz = group.reduce((s, v) => s + v.z, 0) / group.length;
+      add(0xdaf6ff, 20, 20, cx, group[0].y - 0.4, cz, "wallLamp"); // just below the panel
+    }
+
+    // ── Side wall stripes — long lamps down each side wall; 2 lights each, aimed
+    // into the room (slightly inboard of the wall). ──
+    for (const w of wallStripes) {
+      const inboard = Math.sign(pad.x - w.c.x) || 1;
+      const zSpan = w.s.z;
+      for (const t of [-0.3, 0.3]) {
+        add(0xdaf6ff, 10, 16, w.c.x + inboard * 0.6, w.c.y + 0.2, w.c.z + t * zSpan, "wallLamp");
+      }
+    }
+
+    // ── Round platform ring — 10 soft cyan lights around the perimeter, lower
+    // intensity + longer range than before so they blend into connected pools,
+    // not isolated dots. ──
+    if (ringMesh) {
+      const rm = ringMesh as { c: THREE.Vector3; s: THREE.Vector3 };
+      const rx = rm.s.x * 0.42, rz = rm.s.z * 0.42;
+      const N = 10;
+      for (let i = 0; i < N; i++) {
+        const ang = (i / N) * Math.PI * 2;
+        add(0xc8f7ff, 5, 8, rm.c.x + Math.cos(ang) * rx, rm.c.y + 0.25, rm.c.z + Math.sin(ang) * rz, "ring");
+      }
+    }
+
+    // ── Platform FILL — one dim, high, wide light above the pad to softly bind
+    // the individual pools together (NOT a global ambient — it's a positioned,
+    // decaying point light). ──
+    add(0xa9eaff, 7.5, 14, pad.x, pad.y + 4, pad.z, "platformFill");
   }
 
   /**
-   * Coloured bounce light from the crates/barrels (fakes Cycles indirect/colour
-   * bleed). A blue crate bounces blue onto the deck beside it, an orange crate
-   * orange, etc. For each container/barrel mesh, sample its average albedo and
-   * drop a dim, wide, SHADOWLESS PointLight of that colour just outside it near the
-   * floor — so the surrounding deck + walls pick up its colour, the way GI does.
+   * Container bounce fill (fakes colour bleed — raster three has no real GI). A
+   * few DEZENT tinted fill lights placed just in front of + below the coloured
+   * container faces, so blue/orange/green crates tint the deck + surroundings.
+   * Budget: 3-5 lights. Grouped by container colour so we stay in budget rather
+   * than one light per crate mesh.
    */
   private buildBounceLights(): void {
     this.hangarRoot.updateWorldMatrix(true, true);
     const box = new THREE.Box3();
-    const seenMat = new Map<string, THREE.Color>();
-    const canvas = document.createElement("canvas");
-    canvas.width = canvas.height = 8;
-    const cctx = canvas.getContext("2d")!;
-
-    const avgAlbedo = (m: THREE.MeshStandardMaterial): THREE.Color => {
-      const cached = seenMat.get(m.name);
-      if (cached) return cached;
-      const c = new THREE.Color(0.5, 0.5, 0.5);
-      const img = m.map?.image as CanvasImageSource | undefined;
-      if (img) {
-        try {
-          cctx.clearRect(0, 0, 8, 8);
-          cctx.drawImage(img, 0, 0, 8, 8);
-          const d = cctx.getImageData(0, 0, 8, 8).data;
-          let r = 0, g = 0, b = 0;
-          for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
-          const n = d.length / 4;
-          // sRGB→linear-ish and lift saturation so the bounce reads as a colour
-          c.setRGB(r / n / 255, g / n / 255, b / n / 255).convertSRGBToLinear();
-        } catch { /* keep grey */ }
-      }
-      seenMat.set(m.name, c);
-      return c;
+    const pad = this.padWorld;
+    // Group crate/barrel mesh centres by their colour family.
+    const groups: Record<string, { pts: THREE.Vector3[]; hex: number; intensity: number; distance: number }> = {
+      blue: { pts: [], hex: 0x3d78b8, intensity: 3, distance: 7 },
+      orange: { pts: [], hex: 0xc46d2e, intensity: 3, distance: 7 },
+      green: { pts: [], hex: 0x4f8b68, intensity: 2.2, distance: 6 },
     };
-
     this.hangarRoot.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh || !mesh.material) return;
-      const m = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.MeshStandardMaterial;
-      const nm = m?.name ?? "";
-      if (!/Aged_|Barrel_/.test(nm)) return; // only crates + barrels bounce colour
+      const nm = ((Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.Material)?.name ?? "";
+      const key = /Blue/.test(nm) ? "blue" : /Orange/.test(nm) ? "orange" : /Green/.test(nm) ? "green" : null;
+      if (!key) return;
       box.setFromObject(mesh);
-      const c = box.getCenter(new THREE.Vector3());
-      const size = box.getSize(new THREE.Vector3());
-      const col = avgAlbedo(m);
-      // place the bounce light low, at the container's base, tinted its colour
-      const l = new THREE.PointLight(col.getHex(), 0.9, Math.max(size.x, size.z) * 2.2, 2.0);
-      l.position.set(c.x, box.min.y + 0.2, c.z);
+      groups[key].pts.push(box.getCenter(new THREE.Vector3()).setY(box.min.y));
+    });
+    // One fill light per colour family, at the group's average base, nudged toward
+    // the pad (in front of the faces) and a touch low.
+    for (const g of Object.values(groups)) {
+      if (!g.pts.length) continue;
+      const cx = g.pts.reduce((s, v) => s + v.x, 0) / g.pts.length;
+      const cy = g.pts.reduce((s, v) => s + v.y, 0) / g.pts.length;
+      const cz = g.pts.reduce((s, v) => s + v.z, 0) / g.pts.length;
+      const towardX = Math.sign(pad.x - cx) || 0;
+      const towardZ = Math.sign(pad.z - cz) || 0;
+      const l = new THREE.PointLight(g.hex, g.intensity, g.distance, 2.0);
+      l.position.set(cx + towardX * 0.8, cy + 0.4, cz + towardZ * 0.8);
       l.castShadow = false;
       l.name = "bounce";
       this.scene.add(l);
-    });
+    }
   }
 
   /** Resolve the landing platform + authored camera pose from the model. */
@@ -815,7 +830,7 @@ export class HangarScene {
     this.scene.add(ship);
 
     // Fake contact shadow under the ship (parked at runtime, can't be in the AO).
-    this.addContactShadow(this.padWorld, Math.max(size.x, size.z) * scale * 1.6, 0.7, 0.9);
+    this.addContactShadow(this.padWorld, Math.max(size.x, size.z) * scale * 1.7, 0.7, 1.0);
   }
 
   /** A soft radial dark blob on a flat plane just above the deck — grounds an
@@ -824,9 +839,12 @@ export class HangarScene {
     const cv = document.createElement("canvas");
     cv.width = cv.height = 128;
     const cx = cv.getContext("2d")!;
-    const g = cx.createRadialGradient(64, 64, 4, 64, 64, 64);
-    g.addColorStop(0, "rgba(0,0,0,0.55)");
-    g.addColorStop(0.5, "rgba(0,0,0,0.28)");
+    // Darker core + a tighter falloff → a stronger, more grounded shadow (the old
+    // blob read too weak/cheap).
+    const g = cx.createRadialGradient(64, 64, 2, 64, 64, 64);
+    g.addColorStop(0, "rgba(0,0,0,0.8)");
+    g.addColorStop(0.35, "rgba(0,0,0,0.55)");
+    g.addColorStop(0.7, "rgba(0,0,0,0.2)");
     g.addColorStop(1, "rgba(0,0,0,0)");
     cx.fillStyle = g;
     cx.fillRect(0, 0, 128, 128);
@@ -858,9 +876,13 @@ export class HangarScene {
     if (!found) return;
     const c = bb.getCenter(new THREE.Vector3());
     const s = bb.getSize(new THREE.Vector3());
-    // place the blob on the deck under the stair footprint
+    // A blob covering the whole stair footprint, elongated along the longer axis,
+    // darker + a bit oversized so the stairs read as genuinely grounded.
     const at = new THREE.Vector3(c.x, this.padWorld.y, c.z);
-    this.addContactShadow(at, Math.max(s.x, s.z) * 2.4, s.z / Math.max(s.x, 0.1) || 0.7, 0.8);
+    const long = Math.max(s.x, s.z);
+    const short = Math.min(s.x, s.z);
+    const aspect = Math.max(0.35, short / long);
+    this.addContactShadow(at, long * 1.8, aspect, 1.0);
   }
 
   /** Place the parked ship at a world point (keeping its recentre + lift). */
@@ -1052,6 +1074,9 @@ export class HangarScene {
 
     // Light census.
     let dir = 0, point = 0, spot = 0, hemi = 0, ambient = 0, rectArea = 0;
+    const hangarLights: HangarDebugInfo["hangarLights"] = [];
+    const camPos = this.camera.position;
+    const RIG_NAMES = /^(wallPanel|wallLamp|ring|platformFill|bounce)$/;
     // Material census — sample distinct MeshStandardMaterials.
     const seen = new Set<THREE.Material>();
     const mats: HangarDebugInfo["materials"] = [];
@@ -1064,6 +1089,24 @@ export class HangarScene {
         else if ((l as THREE.SpotLight).isSpotLight) spot++;
         else if ((l as THREE.HemisphereLight).isHemisphereLight) hemi++;
         else if ((l as THREE.AmbientLight).isAmbientLight) ambient++;
+        // Per-light detail for the RIG lights (spec debug list).
+        if (RIG_NAMES.test(l.name) && hangarLights.length < 40) {
+          const pl = l as THREE.PointLight;
+          const dir3 = (l as THREE.SpotLight).target
+            ? (l as THREE.SpotLight).target.position.clone().sub(l.position).normalize()
+            : null;
+          hangarLights.push({
+            name: l.name, type: l.type,
+            color: "#" + (l.color?.getHexString?.() ?? "ffffff"),
+            intensity: +(l.intensity ?? 0).toFixed(1),
+            distance: +((pl.distance ?? 0)).toFixed(1),
+            decay: +((pl.decay ?? 0)).toFixed(1),
+            pos: [+l.position.x.toFixed(1), +l.position.y.toFixed(1), +l.position.z.toFixed(1)],
+            dir: dir3 ? [+dir3.x.toFixed(2), +dir3.y.toFixed(2), +dir3.z.toFixed(2)] : null,
+            visible: l.visible,
+            camDist: +l.position.distanceTo(camPos).toFixed(1),
+          });
+        }
       }
       const mesh = o as THREE.Mesh;
       if (mesh.isMesh) {
@@ -1111,6 +1154,7 @@ export class HangarScene {
         outputColorSpace: this.renderer.outputColorSpace,
       },
       lights: { directional: dir, point, spot, hemisphere: hemi, ambient, rectArea },
+      hangarLights,
       combatLightsActive: this.combat?.activeCount ?? 0,
       postFx: {
         enabled: HangarScene.postFx && !!this.composer,
