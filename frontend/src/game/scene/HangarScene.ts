@@ -24,6 +24,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
 /** Clamped smoothstep — zero slope at both ends, matching DockingCameraController. */
 function smoothstep(x: number): number {
@@ -97,26 +98,19 @@ function findNode(root: THREE.Object3D, name: string): THREE.Object3D | null {
 }
 
 /**
- * Tame the raw hangar-interior GLB so it does not blow out. Two Blender-export
- * quirks bite here:
- *   • Floor/platform materials are pure-white metallic (colour [1,1,1], metal
- *     ≥0.9), which under any real light clips to white. Pull them to a mid grey
- *     with lower metalness so they read as a deck.
- *   • The cyan deck-guide strips carry emissive strength 8 — a floodlight, not a
- *     line. Cap it so they glow as thin markings.
- * Its imported Spot/Point lights come in at Blender's watt-scale intensity
- * (~21740!), which floods the whole bay — clamp any GLB light to something sane.
+ * Prepare the hangar GLB. The room's COLOURS are now baked into base-colour
+ * textures (the procedural Blender node graphs → images; glTF can't carry the
+ * nodes), so crates read orange/blue/green/rust and floors/walls grey out of the
+ * box. The LIGHTING is done live by this scene's rig + IBL (below) — a bright,
+ * lit hangar rather than the moody baked-in dark of the Blender source.
+ *
+ * The cyan/amber glow strips are a separate emissive (no base map) — cap their
+ * strength so they read as markings, not floodlights.
  */
 function tameHangar(root: THREE.Object3D): void {
   root.traverse((o) => {
     const light = o as THREE.Light;
-    if (light.isLight) {
-      // Any light that survived the export is watt-scaled; clamp hard.
-      if ((light as THREE.SpotLight).isSpotLight) light.intensity = 3;
-      else if ((light as THREE.PointLight).isPointLight) light.intensity = Math.min(light.intensity, 2);
-      else light.intensity = Math.min(light.intensity, 3);
-      return;
-    }
+    if (light.isLight) { light.visible = false; return; } // we light it ourselves
     const mesh = o as THREE.Mesh;
     if (!mesh.isMesh || !mesh.material) return;
     mesh.castShadow = true;
@@ -124,16 +118,19 @@ function tameHangar(root: THREE.Object3D): void {
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const mm of mats) {
       const m = mm as THREE.MeshStandardMaterial;
-      if (!m.color) continue;
-      const emSum = m.emissive ? m.emissive.r + m.emissive.g + m.emissive.b : 0;
-      // Bright coloured glow strips → cap to a line, not a floodlight.
-      if (emSum > 0.3 && (m.emissiveIntensity ?? 0) > 1.5) m.emissiveIntensity = 1.4;
-      // Pure-white metallic floor/platform → mid grey deck.
-      const lum = m.color.r * 0.299 + m.color.g * 0.587 + m.color.b * 0.114;
-      if (lum > 0.85 && (m.metalness ?? 0) > 0.5) {
-        m.color.setScalar(0.35);
-        m.metalness = 0.4;
-        m.roughness = 0.7;
+      if (m.map) {
+        // Coloured surface: reflect the room a little (metal deck/walls glossier
+        // than matte crates), colour stays the baked albedo.
+        const n = (m.name || "").toLowerCase();
+        if (n.includes("hull") || n.includes("floor") || n.includes("wall")) {
+          m.metalness = 0.5; m.roughness = 0.45;
+        } else {
+          m.metalness = 0.0; m.roughness = 0.65;
+        }
+        m.envMapIntensity = 1.2;
+      } else {
+        // Glow strips: cap emissive to a line.
+        if ((m.emissiveIntensity ?? 0) > 1.5) m.emissiveIntensity = 1.4;
       }
       m.needsUpdate = true;
     }
@@ -157,7 +154,8 @@ function tameShip(root: THREE.Object3D): void {
       const m = mm as THREE.MeshStandardMaterial;
       if (m.emissive) { m.emissive.setScalar(0); m.emissiveIntensity = 0; m.emissiveMap = null; }
       m.metalness = 0.55;
-      m.roughness = 0.55;
+      m.roughness = 0.5;
+      m.envMapIntensity = 1.2; // pick up the hangar's reflections like the deck
       m.needsUpdate = true;
     }
   });
@@ -196,11 +194,19 @@ export class HangarScene {
     this.renderer.setClearColor(0x05070d, 1); // opaque near-black behind the room
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.9;
+    this.renderer.toneMappingExposure = 1.05;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.scene = new THREE.Scene();
+    // Bright IBL — the room's colour is baked into the albedo, but the LIGHTING
+    // is live: RoomEnvironment fills the bay and gives the metal deck/walls
+    // something to reflect, so it reads bright and lit rather than the moody dark
+    // of the Blender source.
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    (this.scene as unknown as { environmentIntensity: number }).environmentIntensity = 1.2;
+    pmrem.dispose();
     this.scene.add(hangarRoot);
 
     const w = canvas.clientWidth || window.innerWidth;
@@ -236,17 +242,20 @@ export class HangarScene {
     // The exported GLB drops Blender's AREA lamps (glTF has no area lights), so
     // this is the room's working rig. Warm key + cool fill + a soft ambient,
     // tuned brighter than the space scene because a hangar interior is lit.
-    this.scene.add(new THREE.AmbientLight(0x3a4258, 0.35));
-    const key = new THREE.DirectionalLight(0xfff2e0, 1.3);
+    this.scene.add(new THREE.AmbientLight(0x8090a8, 0.7));
+    const key = new THREE.DirectionalLight(0xfff2e0, 2.6);
     key.position.set(3, 9, 4);
     key.castShadow = true;
     key.shadow.mapSize.set(1024, 1024);
     key.shadow.camera.near = 1;
     key.shadow.camera.far = 40;
     this.scene.add(key);
-    const fill = new THREE.DirectionalLight(0x6f9be0, 0.5);
+    const fill = new THREE.DirectionalLight(0x6f9be0, 1.0);
     fill.position.set(-6, 4, -3);
     this.scene.add(fill);
+    const rim = new THREE.DirectionalLight(0x9ec2ff, 0.8);
+    rim.position.set(0, 3, -8);
+    this.scene.add(rim);
   }
 
   /** Resolve the landing platform + authored camera pose from the model. */
