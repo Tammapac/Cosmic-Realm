@@ -564,6 +564,22 @@ export class HangarScene {
     shadowKey.shadow.normalBias = 0.02;
     this.scene.add(shadowKey);
     this.keyLight = shadowKey;
+
+    // Faked GI fill (chosen over a real lightmap bake, per the user): two soft,
+    // low-intensity fills that stand in for Cycles indirect light WITHOUT flat
+    // ambient and WITHOUT global lifting.
+    //   • giHemi  — cool sky above / warm deck below, normal-aware, lifts the
+    //     shadow side a touch the way sky+bounce GI does.
+    //   • giBounce — a dim WARM directional pointing UP from under the deck, so the
+    //     undersides of the ship/crates catch a floor-bounce tint (what Cycles GI
+    //     gives for free). Tuned low so it never plats the forms.
+    const giHemi = new THREE.HemisphereLight(0x9fb8ff, 0x40381f, 0.25);
+    this.scene.add(giHemi);
+    const giBounce = new THREE.DirectionalLight(0xffe8d0, 0.35);
+    giBounce.position.set(0, -3, 0);
+    giBounce.target.position.set(0, 2, 0);
+    this.scene.add(giBounce);
+    this.scene.add(giBounce.target);
   }
 
   /**
