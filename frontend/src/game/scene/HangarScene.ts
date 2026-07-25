@@ -50,6 +50,34 @@ const EMISSIVE_CAP = 2.0;
 /** envMapIntensity for glossy (roughness-mapped) surfaces, so reflections read. */
 const GLOSSY_ENV_INTENSITY = 2.5;
 
+/**
+ * Per-material gloss tuning (dialled in against the Blender reference). `roughMul`
+ * scales the baked roughness map, `envI` the reflection strength.
+ *
+ * The reference floor is SATIN, not a mirror: the lamps read as soft, broad,
+ * voluminous glow pools, not sharp reflections. So roughness is kept fairly HIGH
+ * (blurry reflection) with only a moderate envI — a wet-look sheen, not chrome.
+ * (Note: three's MeshStandardMaterial reflects only the environment map, never
+ * the scene objects, so there is no ship mirror-image regardless — real object
+ * reflections would need SSR/reflection probes.)
+ */
+const GLOSS_TUNING: Record<string, { roughMul: number; envI: number }> = {
+  // High roughMul = the PMREM samples a blurrier mip, so reflections read as SOFT
+  // diffuse glow, not sharp mirror images. envI stays up so the glow is still
+  // clearly visible — bright but blurred, per the "weicher, aber gut sichtbar" note.
+  Hall_Floor_Mat: { roughMul: 0.94, envI: 2.4 },   // deck: soft wide glow, no mirror
+  SS_Hull_DarkMetal: { roughMul: 0.94, envI: 2.4 }, // platform/hull: soft glow
+  Hall_Wall: { roughMul: 0.95, envI: 2.0 },        // walls: very soft sheen
+  Aged_Orange: { roughMul: 0.96, envI: 1.6 },      // crates: barely-there sheen
+  Aged_Blue: { roughMul: 0.96, envI: 1.6 },
+  Aged_Green: { roughMul: 0.96, envI: 1.6 },
+  Aged_Rust: { roughMul: 0.96, envI: 1.6 },
+  Aged_Orange2: { roughMul: 0.96, envI: 1.6 },
+  Aged_Blue2: { roughMul: 0.96, envI: 1.6 },
+  Barrel_Mil: { roughMul: 0.92, envI: 1.8 },       // barrels: soft metal sheen
+  Barrel_Red: { roughMul: 0.92, envI: 1.8 },
+};
+
 /** True if a material glows enough to belong on the bloom layer: a non-trivial
  *  emissive colour with real intensity, or an emissive map. */
 function isEmissive(m: THREE.MeshStandardMaterial): boolean {
@@ -219,12 +247,17 @@ function validateMaterial(m: THREE.MeshStandardMaterial): MatStat {
   }
 
   // Glossy surfaces (those carrying a baked roughness map) need a stronger env
-  // reflection to actually read as wet/polished — the studio IBL at intensity 1
-  // reflects too faintly to show the strip/lamp highlights. Push envMapIntensity
-  // ONLY on materials that have real gloss variation (a roughness map), so matte
-  // props are untouched and nothing turns into a mirror.
+  // reflection to read as wet/polished. Per-material tuning where dialled in
+  // (deck/platform wet-mirror, walls semi-gloss, crates softer sheen); otherwise
+  // the flat glossy default. Matte props (no roughness map) are untouched.
   if (m.roughnessMap) {
-    m.envMapIntensity = GLOSSY_ENV_INTENSITY;
+    const t = GLOSS_TUNING[m.name ?? ""];
+    if (t) {
+      m.roughness = t.roughMul; // scales the baked map (below 1 = shinier)
+      m.envMapIntensity = t.envI;
+    } else {
+      m.envMapIntensity = GLOSSY_ENV_INTENSITY;
+    }
   }
 
   m.needsUpdate = true;
@@ -336,9 +369,9 @@ export class HangarScene {
   // Which IBL the studio env installs, and how strong. Static so a harness can
   // set them before preload() to compare procedural-studio vs the space HDRI.
   static envKind: EnvKind = "studio";
-  // Studio IBL a touch stronger so the now-glossy floor/walls have enough to
-  // reflect (the strip + lamp highlights that make the deck read as polished).
-  static envIntensity = 1.3;
+  // Studio IBL stronger so the now-glossy floor/walls have enough to reflect (the
+  // strip + lamp highlights that make the deck read as polished/wet).
+  static envIntensity = 1.5;
 
   // ── Tone-mapping A/B config (Phase D) ─────────────────────────────────────
   // Blender 4.x's Material Preview uses the AgX view transform, so AgX is the
