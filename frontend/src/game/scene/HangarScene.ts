@@ -66,17 +66,17 @@ const GLOSS_TUNING: Record<string, { roughMul: number; envI: number }> = {
   // samples its blurriest mips (wide diffuse glow, no shape), envI kept up so the
   // soft glow still reads. The baked roughness MAP still varies across the surface
   // (roughness-variation), this just scales it up toward matte.
-  Hall_Floor_Mat: { roughMul: 1.0, envI: 2.6 },    // deck: broad soft glow
-  SS_Hull_DarkMetal: { roughMul: 1.0, envI: 2.6 }, // platform/hull
-  Hall_Wall: { roughMul: 1.0, envI: 2.2 },         // walls
-  Aged_Orange: { roughMul: 1.0, envI: 1.8 },       // crates: soft sheen
-  Aged_Blue: { roughMul: 1.0, envI: 1.8 },
-  Aged_Green: { roughMul: 1.0, envI: 1.8 },
-  Aged_Rust: { roughMul: 1.0, envI: 1.8 },
-  Aged_Orange2: { roughMul: 1.0, envI: 1.8 },
-  Aged_Blue2: { roughMul: 1.0, envI: 1.8 },
-  Barrel_Mil: { roughMul: 0.98, envI: 2.0 },       // barrels: soft metal sheen
-  Barrel_Red: { roughMul: 0.98, envI: 2.0 },
+  Hall_Floor_Mat: { roughMul: 1.0, envI: 1.0 },    // deck: broad soft glow
+  SS_Hull_DarkMetal: { roughMul: 1.0, envI: 1.0 }, // platform/hull
+  Hall_Wall: { roughMul: 1.0, envI: 0.9 },         // walls
+  Aged_Orange: { roughMul: 1.0, envI: 0.8 },       // crates: soft sheen
+  Aged_Blue: { roughMul: 1.0, envI: 0.8 },
+  Aged_Green: { roughMul: 1.0, envI: 0.8 },
+  Aged_Rust: { roughMul: 1.0, envI: 0.8 },
+  Aged_Orange2: { roughMul: 1.0, envI: 0.8 },
+  Aged_Blue2: { roughMul: 1.0, envI: 0.8 },
+  Barrel_Mil: { roughMul: 1.0, envI: 0.9 },        // barrels: soft metal sheen
+  Barrel_Red: { roughMul: 1.0, envI: 0.9 },
 };
 
 /** True if a material glows enough to belong on the bloom layer: a non-trivial
@@ -371,8 +371,9 @@ export class HangarScene {
   // set them before preload() to compare procedural-studio vs the space HDRI.
   // Space HDRI is the reflection source (user's choice) — the near-black space
   // env reflects only faintly, so surfaces read soft/dark, not mirror-bright.
+  // Lower intensity keeps reflections subtle/soft rather than crisp.
   static envKind: EnvKind = "hdr";
-  static envIntensity = 1.5;
+  static envIntensity = 0.8;
 
   // ── Tone-mapping A/B config (Phase D) ─────────────────────────────────────
   // Blender 4.x's Material Preview uses the AgX view transform, so AgX is the
@@ -754,12 +755,12 @@ export class HangarScene {
       this.padWorld.setFromMatrixPosition(padNode.matrixWorld);
     }
     // NOTE: the authored HallCam node is ignored — it exports with a broken ~173°
-    // FOV (1mm lens). Use a hand-tuned framing instead: camera set back toward the
-    // hangar mouth, lower, aimed DEEP into the interior (toward the back wall), so
-    // you look INTO the hangar — the full landing ring, stairs and back wall — not
-    // out through the open door.
-    this.camPos.copy(this.padWorld).add(new THREE.Vector3(-1.0, 1.9, 7.5));
-    this.camTarget.copy(this.padWorld).add(new THREE.Vector3(0, 1.0, -3));
+    // FOV (1mm lens). Hand-tuned framing: camera on the -z (interior) side aimed
+    // toward +z, so you look INTO the hangar (rear wall panels, lamps, stairs,
+    // crates), NOT out through the exit door (the big black wall on the +z side).
+    // Slightly left (target -x) for a more dynamic angle.
+    this.camPos.copy(this.padWorld).add(new THREE.Vector3(1.0, 1.9, -7.5));
+    this.camTarget.copy(this.padWorld).add(new THREE.Vector3(-1.0, 1.0, 3));
   }
 
   private parkShip(shipTemplate: THREE.Group): void {
