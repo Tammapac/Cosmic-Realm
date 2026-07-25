@@ -77,6 +77,11 @@ const GLOSS_TUNING: Record<string, { roughMul: number; envI: number }> = {
   Aged_Blue2: { roughMul: 1.0, envI: 0.8 },
   Barrel_Mil: { roughMul: 1.0, envI: 0.9 },        // barrels: soft metal sheen
   Barrel_Red: { roughMul: 1.0, envI: 0.9 },
+  // The ship hull (authored PBR): lower roughness + higher envI so it actually
+  // CATCHES the environment — it read dead/flat before. NOTE this only reflects the
+  // env map, never the scene: a ship mirror-image on the deck needs planar
+  // reflection (a separate step), which MeshStandardMaterial can't do.
+  Material_0: { roughMul: 0.55, envI: 1.5 },
 };
 
 /** True if a material glows enough to belong on the bloom layer: a non-trivial
@@ -758,9 +763,9 @@ export class HangarScene {
     // FOV (1mm lens). Hand-tuned framing: camera on the -z (interior) side aimed
     // toward +z, so you look INTO the hangar (rear wall panels, lamps, stairs,
     // crates), NOT out through the exit door (the big black wall on the +z side).
-    // Slightly left (target -x) for a more dynamic angle.
-    this.camPos.copy(this.padWorld).add(new THREE.Vector3(1.0, 1.9, -7.5));
-    this.camTarget.copy(this.padWorld).add(new THREE.Vector3(-1.0, 1.0, 3));
+    // Raised + to the right for an overview angle looking down into the ring.
+    this.camPos.copy(this.padWorld).add(new THREE.Vector3(2.5, 3.0, -7.5));
+    this.camTarget.copy(this.padWorld).add(new THREE.Vector3(-0.5, 1.0, 3));
   }
 
   private parkShip(shipTemplate: THREE.Group): void {
