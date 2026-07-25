@@ -791,6 +791,32 @@ export class HangarScene {
     this.ship = ship;
     this.parkAt(this.padWorld);
     this.scene.add(ship);
+
+    // Fake contact shadow under the ship: the ship is parked at runtime so it
+    // can't be baked into the floor AO. A soft radial dark blob on a flat plane
+    // just above the deck grounds it (what real contact shading would do).
+    const shadowSize = Math.max(size.x, size.z) * scale * 1.6;
+    const cv = document.createElement("canvas");
+    cv.width = cv.height = 128;
+    const cx = cv.getContext("2d")!;
+    const g = cx.createRadialGradient(64, 64, 4, 64, 64, 64);
+    g.addColorStop(0, "rgba(0,0,0,0.55)");
+    g.addColorStop(0.5, "rgba(0,0,0,0.28)");
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    cx.fillStyle = g;
+    cx.fillRect(0, 0, 128, 128);
+    const shadowTex = new THREE.CanvasTexture(cv);
+    shadowTex.colorSpace = THREE.SRGBColorSpace;
+    const blob = new THREE.Mesh(
+      new THREE.PlaneGeometry(shadowSize, shadowSize * 0.7),
+      new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false, opacity: 0.9 }),
+    );
+    blob.rotation.x = -Math.PI / 2; // flat on the deck
+    blob.position.copy(this.padWorld);
+    blob.position.y += 0.03; // just above the deck to avoid z-fight
+    blob.renderOrder = 1;
+    blob.name = "shipContactShadow";
+    this.scene.add(blob);
   }
 
   /** Place the parked ship at a world point (keeping its recentre + lift). */
