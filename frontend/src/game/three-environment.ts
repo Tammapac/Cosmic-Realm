@@ -145,25 +145,37 @@ function paintStudioEquirect(w: number, h: number): HTMLCanvasElement {
   ctx.fillStyle = base;
   ctx.fillRect(0, 0, w, h);
 
-  // Soft light panels (softboxes) — large radial highlights in the upper half so
-  // metallic hulls catch broad, shaped reflections instead of a flat sky. Screen
-  // blend so they add light without hard edges.
+  // Soft light panels (softboxes) — LARGE, broad radial highlights so reflections
+  // read as soft diffuse glow across every surface (floor, walls, ship, crates,
+  // barrels), never sharp mirror shapes. Screen blend + a wide falloff so there
+  // are no hard edges to reflect.
   ctx.globalCompositeOperation = "lighter";
   const panel = (cx: number, cy: number, r: number, peak: number) => {
     const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    // Gentle centre, long soft tail = broad glow, not a bright hot spot.
     g.addColorStop(0, `rgba(255,255,255,${peak})`);
-    g.addColorStop(0.6, `rgba(255,255,255,${peak * 0.25})`);
+    g.addColorStop(0.4, `rgba(255,255,255,${peak * 0.5})`);
+    g.addColorStop(0.75, `rgba(255,255,255,${peak * 0.15})`);
     g.addColorStop(1, "rgba(255,255,255,0)");
     ctx.fillStyle = g;
     ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
   };
-  // key (big, upper-left), fill (upper-right, dimmer), top wash
-  panel(w * 0.28, h * 0.20, h * 0.55, 0.55);
-  panel(w * 0.72, h * 0.26, h * 0.45, 0.30);
-  panel(w * 0.50, h * 0.06, h * 0.35, 0.22);
+  // Bigger, softer panels than before — key (upper-left), fill (upper-right), wash.
+  panel(w * 0.28, h * 0.22, h * 0.85, 0.42);
+  panel(w * 0.72, h * 0.28, h * 0.75, 0.26);
+  panel(w * 0.50, h * 0.10, h * 0.60, 0.20);
   ctx.globalCompositeOperation = "source-over";
 
-  return cv;
+  // Blur the whole equirect so EVERY reflection is soft regardless of a surface's
+  // roughness — this is the global lever that stops all objects (not just the
+  // floor) from showing sharp reflected lights. A big blur radius = diffuse glow.
+  const blurred = document.createElement("canvas");
+  blurred.width = w; blurred.height = h;
+  const bctx = blurred.getContext("2d")!;
+  bctx.filter = `blur(${Math.round(h * 0.05)}px)`;
+  bctx.drawImage(cv, 0, 0);
+  bctx.filter = "none";
+  return blurred;
 }
 
 export type EnvKind = "studio" | "hdr";
