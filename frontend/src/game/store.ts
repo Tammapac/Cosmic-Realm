@@ -155,6 +155,13 @@ export type GameState = {
   showAdmin: boolean;
   uiScale: number;
   cameraZoom: number;
+  /**
+   * Camera displacement from the ship, in world units. Normally {0,0} — the
+   * camera is hard-locked to the player. The docking cinematic (M5) uses it to
+   * lead the view toward the station. Only read by the renderer when
+   * ENABLE_NEW_DOCKING_FLOW is on, so it is inert while the flag is off.
+   */
+  cameraOffset: { x: number; y: number };
   /** Steuerungsschema: "mouse" = klassisch (Klick/Halten fliegt), "wasd" =
    *  bildschirm-relativer WASD-Schub, Cursor = Blickrichtung, Linksklick feuert. */
   controlMode: "mouse" | "wasd";
@@ -586,6 +593,7 @@ export const state: GameState = {
   showAdmin: false,
   uiScale: parseFloat(localStorage.getItem("sf-ui-scale") || "1"),
   cameraZoom: Math.min(window.innerWidth, 1200) / 1200,
+  cameraOffset: { x: 0, y: 0 },
   controlMode: (localStorage.getItem("cr-control-mode") === "wasd" ? "wasd" : "mouse") as "mouse" | "wasd",
   aimAngle: null,
 };

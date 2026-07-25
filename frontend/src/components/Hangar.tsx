@@ -8,7 +8,7 @@ import {
 } from "../game/types";
 import type { HangarTab } from "../game/store";
 import { ENABLE_NEW_DOCKING_FLOW } from "../game/renderer-config";
-import { requestUndock } from "../game/scene/DockingController";
+import { requestUndock, forceUndock } from "../game/scene/DockingController";
 import { useDraggable } from "./useDraggable";
 import { WeaponIcon } from "./hud-ui";
 import { effectiveStats } from "../game/loop";
@@ -218,8 +218,12 @@ export function Hangar({ stationId }: { stationId: string }) {
             className="gbtn gbtn-red shrink-0"
             style={{ padding: "6px 16px", fontSize: 11 }}
             onClick={() => {
+              // M7: the new flow owns the whole undock — it clears dockedAt,
+              // tells the server and flies the ship clear, all behind a fade.
+              // Running the legacy lines as well would teleport the ship out
+              // from under the cinematic before it started.
+              if (ENABLE_NEW_DOCKING_FLOW) { requestUndock(); return; }
               state.dockedAt = null; sendDockLeave();
-              if (ENABLE_NEW_DOCKING_FLOW) requestUndock();
               state.player.pos.y += 200;
               state.cameraTarget = { ...state.player.pos };
               save();
@@ -1419,7 +1423,7 @@ function DungeonsTab() {
               {confirmId === d.id ? (
                 <div className="mt-2" style={{ display: "flex", gap: 6 }}>
                   <button className="gbtn w-full" style={{ padding: "4px 8px", fontSize: 12 }} onClick={() => setConfirmId(null)}>Cancel</button>
-                  <button className="gbtn gbtn-gold w-full" style={{ padding: "4px 8px", fontSize: 12 }} onClick={() => { setConfirmId(null); state.dockedAt = null; sendDockLeave(); if (ENABLE_NEW_DOCKING_FLOW) requestUndock(); enterDungeon(d.id as DungeonId); }}>Confirm Entry</button>
+                  <button className="gbtn gbtn-gold w-full" style={{ padding: "4px 8px", fontSize: 12 }} onClick={() => { setConfirmId(null); state.dockedAt = null; sendDockLeave(); if (ENABLE_NEW_DOCKING_FLOW) forceUndock("dungeon entry"); enterDungeon(d.id as DungeonId); }}>Confirm Entry</button>
                 </div>
               ) : (
                 <button

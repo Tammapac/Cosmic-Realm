@@ -44,7 +44,13 @@ import {
   THREE_NEBULA_SCALE_B,
   PIXELATE_3D,
   PIXELATE_3D_SCALE,
+  ENABLE_SHARED_3D_SCENE,
 } from "./renderer-config";
+import {
+  ensureWorldLayer, claimWorldRenderDriver, isWorldRenderDriver,
+  playerShipsGroup, enemyShipsGroup, setShipLift, getShipLiftFactor,
+  normalizeSharedDepth, destroyWorldLayer,
+} from "./three-world-layer";
 
 // Effective downscale factor for the fake pixel-art render mode (1 = off)
 const PIX_SCALE = PIXELATE_3D ? Math.max(1, PIXELATE_3D_SCALE) : 1;
@@ -475,6 +481,29 @@ export function init3DLayer(canvas: HTMLCanvasElement): void {
 
   const w = canvas.clientWidth || window.innerWidth;
   const h = canvas.clientHeight || window.innerHeight;
+
+  // ── Shared scene ──────────────────────────────────────────────────────
+  // Everything below this block — renderer, camera, lights, environment — is
+  // exactly what three-world-layer.ts now owns for ALL four object groups.
+  // Adopt its objects instead of making a second set, and keep only what is
+  // genuinely this layer's: the post chain and the outline/FX passes, which
+  // still run on the shared scene at the end of the frame.
+  if (ENABLE_SHARED_3D_SCENE) {
+    const world = ensureWorldLayer(canvas, w, h);
+    renderer = world.renderer;
+    scene = world.scene;
+    camera = world.camera;
+    claimWorldRenderDriver("ships");
+
+    const dbShared = renderer.getDrawingBufferSize(new THREE.Vector2());
+    setupOutlinePass(dbShared.x, dbShared.y);
+    if (outlineRT) {
+      postFX = createPostFX(renderer, scene, camera, dbShared.x, dbShared.y, outlineRT);
+    }
+    window.addEventListener("resize", onResize);
+    console.log("[Three.js] INIT OK (shared world scene)", w, "x", h, "postFX:", !!postFX);
+    return;
+  }
 
   renderer = new THREE.WebGLRenderer({
     canvas,
@@ -1336,7 +1365,16 @@ export function updateShip3D(
     const wrapper = new THREE.Group();
     wrapper.rotation.x = SHIP_WRAPPER_TILT_X;
     wrapper.add(model);
-    scene.add(wrapper);
+    if (ENABLE_SHARED_3D_SCENE) {
+      // Which of the two ship groups this belongs to is decided by the id the
+      // renderer already uses to tell them apart — no new plumbing, and the
+      // grouping is the only difference between them. Both groups sit in the
+      // same scene, under the same camera, in the same depth buffer.
+      normalizeSharedDepth(model, shipClass);
+      (entityId.startsWith("enemy:") ? enemyShipsGroup : playerShipsGroup).add(wrapper);
+    } else {
+      scene.add(wrapper);
+    }
 
     // "aura" enemies (e.g. Erix): a translucent red LIQUID FLOW that runs over
     // the solid model like water — a shell clone with a scrolling flow texture
@@ -1519,9 +1557,11 @@ export function updateShip3D(
 
 export function removeShip3D(entityId: string): void {
   const ship = activeShips.get(entityId);
-  if (ship && scene) {
+  if (ship) {
     if (ship.mixer) ship.mixer.stopAllAction();
-    scene.remove(ship.wrapper);
+    // Detach from whatever actually holds it — the scene in the legacy layout,
+    // playerShipsGroup/enemyShipsGroup in the shared one.
+    ship.wrapper.parent?.remove(ship.wrapper);
     activeShips.delete(entityId);
   }
 }
@@ -1564,6 +1604,17 @@ export function endFrame(): void {
 
 export function render3DLayer(): void {
   if (!renderer || !scene || !camera) return;
+  // In the shared layout this single call draws stations, players, enemies and
+  // NPCs together. If some other module claimed the driver role (the isolated
+  // ?station-test harness does), stay out of its way rather than drawing the
+  // same scene twice.
+  if (ENABLE_SHARED_3D_SCENE) {
+    if (!isWorldRenderDriver("ships")) return;
+    // Ships float above the world plane so a station's hull cannot bury them
+    // during normal flight; the docking sequence ramps the factor to 0 and the
+    // ship sinks into the station, occluded by roof and door for real.
+    setShipLift(getShipLiftFactor(), cameraZoom);
+  }
   const now = performance.now() / 1000;
   if (lastFrameTime > 0) frameDt = Math.min(0.1, now - lastFrameTime);
   lastFrameTime = now;
@@ -1725,7 +1776,16 @@ export function destroy3DLayer(): void {
   brightMat = null;
   blurMat = null;
   fsQuad = null;
-  if (renderer) {
+  if (ENABLE_SHARED_3D_SCENE) {
+    // The renderer is not ours to dispose piecemeal — the station layer is
+    // attached to the same one. destroyWorldLayer empties every group, drops
+    // the driver claim and disposes it once.
+    destroyWorldLayer();
+    renderer = null;
+    scene = null;
+    camera = null;
+    initialized = false;
+  } else if (renderer) {
     renderer.dispose();
     renderer = null;
     scene = null;
@@ -1733,7 +1793,6 @@ export function destroy3DLayer(): void {
     initialized = false;
   }
   activeShips.clear();
-  activeStations.clear();
   loadedModels.clear();
   loadingModels.clear();
   failedModels.clear();

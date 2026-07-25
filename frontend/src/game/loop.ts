@@ -15,11 +15,15 @@ RESOURCES, pickAsteroidYield, SHIP_SIZE_SCALE, } from "./types";
 import { sfx } from "./sound";
 import { perfBegin, perfEnd, perfCount } from "./perf";
 import { type ServerEnemy, type ServerAsteroid, type ServerNpc, type EnemyHitEvent, type EnemyDieEvent, type EnemyAttackEvent, type DeltaPayload, type SnapshotPayload, type WelcomePayload, type DeltaEntity, type ProjectileSpawnEvent } from "../net/socket";
-import { sendInstanceEnemyHit } from "../net/socket";
+import { sendInstanceEnemyHit, sendDockEnter } from "../net/socket";
 import { getShipMuzzleWorldPositions, getShipMuzzleWorldPositionsAt } from "./three-ship-layer";
 import { MOVEMENT, NETCODE } from "../../../lib/game-constants";
 import { resolveAffixStats, itemDisplayName, rarityColor } from "../../../lib/loot/loot";
 import { shipHitTestSwept, enemyModelKey, enemySizeScale } from "../../../lib/hitbox";
+// Isolated docking flow (M4). GameSceneManager has no imports of its own, so
+// this cannot create an import cycle. Fully inert while the flag is off.
+import { ENABLE_NEW_DOCKING_FLOW } from "./renderer-config";
+import { sceneManager } from "./scene/GameSceneManager";
 
 // Silhouette hit test for the VISUAL impact (damage stays server-side with
 // its own inflate). The client uses a deflated hull (0.7) so projectiles fly
@@ -1177,6 +1181,7 @@ function tickWorld(dt: number): void {
       p.angle += diff * (1 - Math.exp(-12.0 * dt));
     }
   }
+
   // Face attack target when fighting (DarkOrbit style)
   if ((state.isLaserFiring || state.isRocketFiring) && state.attackTargetId) {
     const atk = state.enemies.find(e => e.id === state.attackTargetId);
@@ -1189,6 +1194,18 @@ function tickWorld(dt: number): void {
   // movement-direction and face-target angles above (server mirrors this
   // via input:aim, see engine.tickPlayers).
   if (state.aimAngle != null) p.angle = state.aimAngle;
+
+  // Isolated docking flow (M4): pump the scene state machine so the DOCKING
+  // state can fly the ship along its approach path. Placement is deliberate —
+  // it must run after EVERY other writer of p.pos/p.angle this tick:
+  // applyServerSmoothing() lerps toward the server position, the local branch
+  // integrates velocity, the authoritative branch slerps the angle toward
+  // cameraTarget, and the two blocks directly above override the heading for
+  // attack-target facing and WASD aim. The cinematic writes last so it
+  // actually owns the ship. It sits before the engine-trail block on purpose,
+  // so the velocity it derives still drives thrusters and trails.
+  // Adds no RAF loop of its own; a no-op when the flag is off.
+  if (ENABLE_NEW_DOCKING_FLOW) sceneManager.update(dt);
 
   // ── Engine particles + 16-bit trail + thruster sound
   const cls = SHIP_CLASSES[p.shipClass];
@@ -3673,6 +3690,12 @@ export function onWelcome(data: WelcomePayload): void {
   serverPlayerId = data.playerId;
   serverAuthoritative = true;
   serverEnemiesReceived = true;
+  // M8: the server's isDocked flag is per-connection and starts false, so a
+  // reconnect (or a login restored straight into the hangar) would leave a
+  // parked player counted as flying — and therefore shootable. "welcome" is the
+  // first point at which the server has finished setting the connection up and
+  // is listening for dock:enter, so re-assert it here rather than at boot.
+  if (ENABLE_NEW_DOCKING_FLOW && state.dockedAt) sendDockEnter();
 }
 
 export function onDelta(data: DeltaPayload): void {

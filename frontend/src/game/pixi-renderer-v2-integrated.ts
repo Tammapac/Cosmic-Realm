@@ -12,7 +12,7 @@
 import * as PIXI from "pixi.js";
 import { initHardpointEditor, toggleHardpointEditor, isEditorActive } from "./debug/HardpointEditor";
 import { DIRECTIONS_32 } from "./debug/hardpointTypes";
-import { has3DModel, is3DReady, updateShip3D, setCameraZoom, beginFrame, markActive, endFrame, render3DLayer, getShipHardpointPositions, getShipMuzzleWorldPositionsAt, updateEngineGlow, updateNebulaBackground, removeShip3D, preload3DModels, getLoadingProgress, debugEnumerateAllMuzzles, setSelectedShipIds } from "./three-ship-layer";
+import { init3DLayer, has3DModel, is3DReady, updateShip3D, setCameraZoom, beginFrame, markActive, endFrame, render3DLayer, getShipHardpointPositions, getShipMuzzleWorldPositionsAt, updateEngineGlow, updateNebulaBackground, removeShip3D, preload3DModels, getLoadingProgress, debugEnumerateAllMuzzles, setSelectedShipIds } from "./three-ship-layer";
 import { setStationCameraZoom, beginStationFrame, updateStationOnly, endStationFrame, renderStation3DLayer, removeStation3D, initStation3DLayer } from "./three-station-layer";
 // Second, independent instance of the ship layer (separate module via query
 // suffix): renders ENEMY ships — with the same outline + bloom pipeline — to
@@ -47,7 +47,7 @@ import {
   drawOtherPlayer, drawNpcShip, drawDrone, drawShip, drawHealthBar,
   drawHullShieldBars, drawRift, px, STATION_COLOR, STATION_GLYPH,
 } from "./render";
-import { DEBUG_OVERLAY } from "./renderer-config";
+import { DEBUG_OVERLAY, ENABLE_NEW_DOCKING_FLOW, ENABLE_SHARED_3D_SCENE } from "./renderer-config";
 import { EffectManager } from "./pixi-effect-manager";
 import { sfx } from "./sound";
 import {
@@ -100,6 +100,24 @@ let debugMuzzleLabels: PIXI.Container | null = null;
 let stationSprite: PIXI.Sprite | null = null;
 let stationTexture: PIXI.Texture | null = null;
 let stationBaseTexture: PIXI.BaseTexture | null = null;
+
+// ── Enemy 3D call routing ───────────────────────────────────────────────────
+// The enemy models used to come from a SECOND copy of the ship layer, loaded
+// through ?instance=enemy purely so they could own a second renderer and land
+// on a second canvas. With one shared scene there is nothing left for that copy
+// to do: enemies are just wrappers in enemyShipsGroup, handled by the same
+// functions as every other ship, told apart by their "enemy:" id prefix.
+//
+// The duplicate import stays (it is what the flag falls back to) but every call
+// site goes through these four aliases, so flipping ENABLE_SHARED_3D_SCENE
+// re-points them without touching the ~4 places that use them.
+const enemyHas3D = ENABLE_SHARED_3D_SCENE ? has3DModel : enemyHas3DModel;
+const enemyIsReady = ENABLE_SHARED_3D_SCENE ? is3DReady : enemyIs3DReady;
+const enemyUpdateShip3D = ENABLE_SHARED_3D_SCENE ? updateShip3D : updateEnemyShip3D;
+const enemyMarkActive = ENABLE_SHARED_3D_SCENE ? markActive : markEnemyActive;
+
+/** The one canvas the shared 3D scene draws to (null in the legacy layout). */
+let world3DCanvas: HTMLCanvasElement | null = null;
 
 // ── VFX systems: layered explosions (explosion-system.ts), layered laser
 // projectiles (laser-system.ts) and camera shake (starblast-camera-shake.ts).
@@ -1666,6 +1684,39 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
   app.stage.addChild(sceneLighting.container);
   app.stage.addChild(uiLayer);
 
+  // ── Shared 3D scene ─────────────────────────────────────────────────
+  // One offscreen canvas, one renderer, one scene: stations, players, other
+  // players, enemies and NPCs all draw into it in a single pass sharing one
+  // depth buffer. It composites as a SINGLE Pixi sprite in worldLayer at the
+  // enemy slot — one composite instead of the three that used to be stacked
+  // (station sprite under worldLayer, enemy sprite inside it, player ships on a
+  // DOM canvas above everything). Stacking is no longer what decides what hides
+  // what; geometry is.
+  //
+  // Order matters here: the ship layer boots the world layer and claims the
+  // render driver, then the station layer attaches its group to the scene that
+  // already exists.
+  if (ENABLE_SHARED_3D_SCENE) {
+    world3DCanvas = document.createElement("canvas");
+    world3DCanvas.width = window.innerWidth;
+    world3DCanvas.height = window.innerHeight;
+    world3DCanvas.dataset.perfName = "3d-world";
+    init3DLayer(world3DCanvas);
+    initStation3DLayer(app.screen.width, app.screen.height);
+
+    enemyShipCanvas = world3DCanvas;
+    enemyShipBaseTexture = new PIXI.BaseTexture(world3DCanvas, {
+      scaleMode: PIXI.SCALE_MODES.LINEAR,
+      alphaMode: PIXI.ALPHA_MODES.UNPACK,
+    });
+    enemyShipTexture = new PIXI.Texture(enemyShipBaseTexture);
+    enemyShipSprite = new PIXI.Sprite(enemyShipTexture);
+    enemyShipSprite.anchor.set(0.5, 0.5);
+    worldLayer.addChildAt(enemyShipSprite, worldLayer.getChildIndex(enemyLayer));
+    // Shadows still fall onto the background under the composite.
+    if (sceneShadows) app.stage.addChildAt(sceneShadows.screen.container, 1);
+  } else {
+
   // Bootstrap the Three.js station renderer to its own offscreen canvas, then
   // insert a Pixi sprite between bgLayer and worldLayer so the station renders
   // above the bg parallax but below enemies/player/projectiles/effects.
@@ -1703,6 +1754,8 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
   enemyShipSprite = new PIXI.Sprite(enemyShipTexture);
   enemyShipSprite.anchor.set(0.5, 0.5);
   worldLayer.addChildAt(enemyShipSprite, worldLayer.getChildIndex(enemyLayer));
+
+  } // ── end legacy three-renderer layout ─────────────────────────────────
 
   // Initialize hardpoint editor (F9 to toggle)
   initHardpointEditor(app, state.player?.shipClass || "skimmer");
@@ -1756,8 +1809,12 @@ export function destroyPixiRenderer(): void {
     enemyShipTexture = null;
     enemyShipBaseTexture = null;
   }
-  destroyEnemy3DLayer();
+  // In the shared layout the duplicate instance was never booted, and the
+  // renderer behind enemyShipCanvas is the shared one — destroy3DLayer() owns
+  // its teardown (App.tsx calls it right after this).
+  if (!ENABLE_SHARED_3D_SCENE) destroyEnemy3DLayer();
   enemyShipCanvas = null;
+  world3DCanvas = null;
 
   // Tear down the station sprite + texture (the Three.js layer keeps its own lifecycle)
   if (stationSprite) {
@@ -1878,7 +1935,15 @@ export function pixiRender(): void {
 
   const w = app.screen.width;
   const h = app.screen.height;
-  const cam = state.player.pos;
+  // The camera is normally hard-locked to the ship. The docking cinematic (M5)
+  // displaces it via state.cameraOffset to frame the station during the
+  // approach. Everything downstream only reads cam.x/cam.y, so a plain object
+  // is safe here. With the flag off this is the original reference, unchanged.
+  const off = state.cameraOffset;
+  const cam =
+    ENABLE_NEW_DOCKING_FLOW && (off.x !== 0 || off.y !== 0)
+      ? { x: state.player.pos.x + off.x, y: state.player.pos.y + off.y }
+      : state.player.pos;
   const zoom = state.cameraZoom;
 
   // Zone change
@@ -1913,10 +1978,15 @@ export function pixiRender(): void {
   // ── 3D Layer frame start ──
   setCameraZoom(zoom);
   setStationCameraZoom(zoom);
-  setEnemyCameraZoom(zoom);
   beginFrame();
   beginStationFrame();
-  beginEnemyFrame();
+  // Legacy layout only: the second ship-layer instance has its own zoom and its
+  // own per-frame liveness set. In the shared layout enemies go through the
+  // same beginFrame()/endFrame() as every other ship.
+  if (!ENABLE_SHARED_3D_SCENE) {
+    setEnemyCameraZoom(zoom);
+    beginEnemyFrame();
+  }
 
   // ── Background ──────────────────────────────────────────────────────
   renderBackground(w, h, cam);
@@ -1986,7 +2056,7 @@ export function pixiRender(): void {
   // ── 3D Layer cleanup + render ──
   endFrame();
   endStationFrame();
-  endEnemyFrame();
+  if (!ENABLE_SHARED_3D_SCENE) endEnemyFrame();
   // updateNebulaBackground(cam.x, cam.y); — disabled, using sprite layers
   renderStation3DLayer();
   // Push updated Three.js station pixels into the Pixi sprite texture
@@ -2005,12 +2075,23 @@ export function pixiRender(): void {
   if (swt?.kind === "enemy") _selEnemy.add("enemy:" + swt.id);
   else if (swt?.kind === "player") _selPlayer.add(swt.id);
   if (state.selectedPlayerId) _selPlayer.add(state.selectedPlayerId);
-  setSelectedShipIds(_selPlayer);      // player-instance holds local + other players
-  setEnemySelectedShipIds(_selEnemy);  // enemy-instance holds enemies
+  if (ENABLE_SHARED_3D_SCENE) {
+    // One scene, one selection set — the "enemy:" prefix already distinguishes
+    // them inside it, so the two sets just merge.
+    const _sel = new Set(_selPlayer);
+    for (const id of _selEnemy) _sel.add(id);
+    setSelectedShipIds(_sel);
+  } else {
+    setSelectedShipIds(_selPlayer);      // player-instance holds local + other players
+    setEnemySelectedShipIds(_selEnemy);  // enemy-instance holds enemies
+  }
 
-  // Enemy 3D pass: render offscreen, sync pixels, and counter-transform the
-  // sprite against worldLayer (pivot=cam, scale=zoom) so it stays screen-aligned.
-  renderEnemy3DLayer();
+  // The one 3D pass: stations + players + enemies + NPCs, single scene, single
+  // camera, single depth buffer. Then push the pixels into the composite sprite
+  // and counter-transform it against worldLayer (pivot=cam, scale=zoom) so it
+  // stays screen-aligned.
+  if (ENABLE_SHARED_3D_SCENE) render3DLayer();
+  else renderEnemy3DLayer();
   if (enemyShipBaseTexture && enemyShipCanvas) {
     if (enemyShipBaseTexture.width !== enemyShipCanvas.width || enemyShipBaseTexture.height !== enemyShipCanvas.height) {
       enemyShipBaseTexture.setRealSize(enemyShipCanvas.width, enemyShipCanvas.height);
@@ -2022,7 +2103,7 @@ export function pixiRender(): void {
     enemyShipSprite.width = w / zoom;
     enemyShipSprite.height = h / zoom;
   }
-  render3DLayer();
+  if (!ENABLE_SHARED_3D_SCENE) render3DLayer();
 
   // ── Starblast VFX systems tick ──────────────────────────────────────
   // Laserticles' shader/lifetime math is in Starblast's native 60Hz-tick
@@ -2364,12 +2445,12 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
     // enemyModelKey — the SAME mapping the silhouette hitboxes use, so what
     // you see is exactly what you hit.
     const enemyModelKey = sharedEnemyModelKey(e.type, e.id);
-    const enemyUse3D = !!enemyModelKey && enemyHas3DModel(enemyModelKey) && enemyIs3DReady(enemyModelKey);
+    const enemyUse3D = !!enemyModelKey && enemyHas3D(enemyModelKey) && enemyIsReady(enemyModelKey);
     if (enemyUse3D) {
       data.body.visible = false;
       if (data.coreGlow) data.coreGlow.visible = false;
-      updateEnemyShip3D("enemy:" + e.id, enemyModelKey, e.pos.x, e.pos.y, e.angle, e.size / 15.2, cam.x, cam.y, e.vel?.x, e.vel?.y);
-      markEnemyActive("enemy:" + e.id);
+      enemyUpdateShip3D("enemy:" + e.id, enemyModelKey, e.pos.x, e.pos.y, e.angle, e.size / 15.2, cam.x, cam.y, e.vel?.x, e.vel?.y);
+      enemyMarkActive("enemy:" + e.id);
     } else {
       data.body.visible = true;
       if (data.coreGlow) data.coreGlow.visible = true;

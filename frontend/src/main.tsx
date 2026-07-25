@@ -23,6 +23,26 @@ if (params.has("hud-showcase")) {
   import("./editor/HudEditor").then(({ default: HudEditor }) => {
     root.render(<HudEditor />);
   });
+} else if (params.has("dock-test")) {
+  // Isolated docking-approach test harness (M4): open with ?dock-test.
+  import("./demo/DockTest").then(({ default: DockTest }) => {
+    root.render(<DockTest />);
+  });
+} else if (params.has("station-test")) {
+  // Isolated station-3D-layer + door harness (M9): open with ?station-test.
+  import("./demo/StationTest").then(({ default: StationTest }) => {
+    root.render(<StationTest />);
+  });
+} else if (params.has("door-test")) {
+  // Isolated HangarDoorController test harness (M3): open with ?door-test.
+  import("./demo/DoorTest").then(({ default: DoorTest }) => {
+    root.render(<DoorTest />);
+  });
+} else if (params.has("depth-test")) {
+  // Shared-3D-scene depth proof harness: open with ?depth-test.
+  import("./demo/DepthTest").then(({ default: DepthTest }) => {
+    root.render(<DepthTest />);
+  });
 } else {
   root.render(<App />);
 }

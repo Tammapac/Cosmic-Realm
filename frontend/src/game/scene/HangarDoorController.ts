@@ -44,6 +44,8 @@ export class HangarDoorController {
   private clipScrub: { t: number; dur: number; from: number; to: number; resolve: () => void } | null = null;
   // Case B (mesh tween) state:
   private doorMeshes: THREE.Object3D[] = [];
+  /** The node the CLIP animates. Empty doorMeshes in "clip" mode, so tracked separately. */
+  private clipTarget: THREE.Object3D | null = null;
   private closedQuats: THREE.Quaternion[] = [];
   private openQuats: THREE.Quaternion[] = [];
   private tween: { t: number; dur: number; dir: 1 | -1; resolve: () => void } | null = null;
@@ -61,6 +63,15 @@ export class HangarDoorController {
 
   get ready(): boolean {
     return this.mode !== "none";
+  }
+
+  /**
+   * The node the door animation actually moves — i.e. where the hangar mouth
+   * IS. The station layer reads its world position to tell the docking flow
+   * which point in the world to fly the ship into. Null when no door.
+   */
+  get doorNode(): THREE.Object3D | null {
+    return this.clipTarget ?? this.doorMeshes[0] ?? null;
   }
 
   private detect(init: DoorInit): void {
@@ -141,6 +152,7 @@ export class HangarDoorController {
       if (target) break;
     }
     if (!target) { this.clipClosedTime = 0; this.clipOpenTime = clip.duration * 0.4; return; }
+    this.clipTarget = target;
 
     const rest = (target as THREE.Object3D).quaternion.clone();
     let maxAngle = -1, openT = 0;
@@ -256,6 +268,7 @@ export class HangarDoorController {
     this.openAction = null;
     this.closeAction = null;
     this.doorMeshes = [];
+    this.clipTarget = null;
     this.closedQuats = [];
     this.openQuats = [];
   }

@@ -6,9 +6,9 @@ import { render } from "./game/render";
 import { initPixiRenderer, destroyPixiRenderer, pixiRender } from "./game/pixi-renderer-v2-integrated";
 import { init3DLayer, destroy3DLayer, getLoadingProgress, initStationLayer, renderStationLayer, destroyStationLayer } from "./game/three-ship-layer";
 import { destroyStation3DLayer } from "./game/three-station-layer";
-import { activeRenderer, ENABLE_NEW_DOCKING_FLOW } from "./game/renderer-config";
+import { activeRenderer, ENABLE_NEW_DOCKING_FLOW, ENABLE_SHARED_3D_SCENE } from "./game/renderer-config";
 import { isControlLocked } from "./game/scene/docking-gate";
-import { requestDock } from "./game/scene/DockingController";
+import { requestDock, dockPoint } from "./game/scene/DockingController";
 import { WorldTargetHud, LogoutFlow } from "./components/TopBar";
 import { GameHud } from "./components/hud/GameHud";
 import "./styles/hud/hud-tokens.css";
@@ -73,9 +73,15 @@ function GameCanvas() {
       // Station 3D layer is now bootstrapped inside initPixiRenderer as an
       // offscreen canvas wrapped as a Pixi sprite; no DOM canvas here.
 
-      // Ships Three.js canvas at z=2 (above Pixi)
+      // Ships Three.js canvas at z=2 (above Pixi).
+      //
+      // With the shared 3D scene, ships are no longer a separate canvas at all:
+      // initPixiRenderer boots the one world renderer on an offscreen canvas
+      // and composites it as a sprite inside worldLayer, so this DOM canvas
+      // stays empty and must NOT be initialized (init3DLayer is idempotent —
+      // whichever canvas gets there first is the one the renderer draws to).
       const threeCanvas = threeCanvasRef.current;
-      if (threeCanvas) {
+      if (threeCanvas && !ENABLE_SHARED_3D_SCENE) {
         init3DLayer(threeCanvas);
         console.log("[App] Three.js ship canvas initialized");
       }
@@ -537,6 +543,13 @@ function GameCanvas() {
 
   const handleTouchMove = (e: React.TouchEvent) => {
     e.preventDefault();
+    // The two zoom/pan inputs were the only camera writers in this file without
+    // a control-lock guard — harmless while docking was instant, but the M4-M7
+    // cinematic writes cameraZoom and flies the ship every frame. A pinch would
+    // fight the scripted push-in; a one-finger drag would hand the server a new
+    // move target mid-approach. preventDefault stays above the guard so the page
+    // still doesn't scroll while control is locked.
+    if (isControlLocked()) return;
     if (e.touches.length === 2) {
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
@@ -568,6 +581,8 @@ function GameCanvas() {
 
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement | HTMLDivElement>) => {
     e.preventDefault();
+    // See handleTouchMove — the cinematic owns the zoom while it runs.
+    if (isControlLocked()) return;
     const delta = e.deltaY > 0 ? -0.1 : 0.1;
     const minZoom = Math.min(window.innerWidth, 1200) / 1200;
     state.cameraZoom = Math.max(minZoom * 0.7, Math.min(2.5, state.cameraZoom + delta));
@@ -702,9 +717,18 @@ function DockPrompt() {
   const player = useGame((s) => s.player);
   useGame((s) => s.tick);
 
-  const station = STATIONS.find(
-    (s) => s.zone === player.zone && Math.hypot(s.pos.x - player.pos.x, s.pos.y - player.pos.y) < 300
-  );
+  // Range is measured to the HANGAR MOUTH, not the station's nominal position.
+  // The model is ~1843 world units across and the door sits ~676 out from the
+  // centre, so a centre-measured 300 puts the prompt deep inside the hull —
+  // nowhere near the opening the player is being asked to fly into.
+  // dockPoint() returns the station's own position when there is no door
+  // (factories, and every station with ENABLE_NEW_DOCKING_FLOW off), so the
+  // legacy geometry is untouched.
+  const station = STATIONS.find((s) => {
+    if (s.zone !== player.zone) return false;
+    const d = dockPoint(s);
+    return Math.hypot(d.x - player.pos.x, d.y - player.pos.y) < 300;
+  });
   const portal = PORTALS.find(
     (po) => po.fromZone === player.zone && Math.hypot(po.pos.x - player.pos.x, po.pos.y - player.pos.y) < 70
   );
@@ -1013,8 +1037,19 @@ function GameApp() {
           exit: (next) => console.log(`[docking] exit ${s} → ${next}`),
         });
       }
-      sceneManager.forceState(GameState.SPACE);
+      // M4/M6: the real DOCKING, HANGAR_LOADING and HANGAR handlers (approach
+      // path, blackout, dock commit). Registered AFTER the placeholder loop
+      // above so they win — register() overwrites by state key.
+      const { installDockingScene, dockingProgress, bootIntoStoredLocation } =
+        await import("./game/scene/DockingController");
+      installDockingScene();
+      // M8: boot into wherever the player logged out — the hangar if they were
+      // docked, space otherwise. This effect runs only after auth succeeded and
+      // loadServerPlayer() has applied the server's zone, which the restore
+      // validates the stored station against.
+      bootIntoStoredLocation();
       (window as any).__docking = {
+        progress: () => dockingProgress(),
         state: () => sceneManager.state,
         toSpace: () => sceneManager.transitionTo(GameState.SPACE, { reason: "debug" }),
         dock: (id = "helix") => sceneManager.transitionTo(GameState.DOCKING, { stationId: id, reason: "debug" }),
@@ -1024,7 +1059,7 @@ function GameApp() {
         manager: sceneManager,
         GameState,
       };
-      console.log("[docking] Milestone 1 ready. Use window.__docking.dock() / .toHangar() / .undock() / .state()");
+      console.log("[docking] Milestone 6 ready. Use window.__docking.dock() / .progress() / .undock() / .state()");
     })();
     return () => { cancelled = true; };
   }, []);
