@@ -118,6 +118,10 @@ function isEmissive(m: THREE.MeshStandardMaterial): boolean {
 // the lights — not just flat base-colour. Emissive strips (Hall_Cyan/Amber) stay
 // map-free (colour from emissive).
 const HANGAR_URL = "/models/stations/hangar_interior.glb";
+// Reference base-colour textures exported from Blender (BaseColor only). Applied to
+// the barrel bodies + the BackPanel wall panels at load; see loadHangarBaseTex.
+const BARREL_BASE_URL = "/assets/textures/barrel_basecolor.png";
+const WALLPANEL_BASE_URL = "/assets/textures/wallpanel_basecolor.png";
 /** Node the ship parks on. */
 const PAD_NODE = "LandingPlatform";
 /** Authored camera node, used to derive the docked framing. */
@@ -254,6 +258,24 @@ function liftTextureShadows(
   tex.flipY = src.flipY;
   tex.needsUpdate = true;
   _liftCache.set(img, tex);
+  return tex;
+}
+
+// Cached sRGB base-colour texture loader for the hangar reference maps. Returns the
+// texture immediately (loads async in place); assign it as a material's .map and the
+// pixels fill in once decoded. One shared THREE.Texture per URL.
+const _hangarTexLoader = new THREE.TextureLoader();
+const _hangarTexCache = new Map<string, THREE.Texture>();
+function loadHangarBaseTex(url: string): THREE.Texture {
+  const cached = _hangarTexCache.get(url);
+  if (cached) return cached;
+  const tex = _hangarTexLoader.load(url);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.flipY = false; // match glTF UV convention (GLTFLoader sets flipY=false)
+  tex.anisotropy = 8;
+  _hangarTexCache.set(url, tex);
   return tex;
 }
 
@@ -399,24 +421,15 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
   // texture WITHOUT touching the scene-wide SS_Hull_DarkMetal (platform/stairs/pipes).
   let panelWallMat: THREE.MeshStandardMaterial | null = null;
 
-  // ── Texture unification pre-pass (user request) ────────────────────────────
-  // Harvest two DONOR base-colour maps up front so we can copy them onto other
-  // meshes in the main traverse: (1) Barrel_1's map (Barrel_Red) → onto ALL barrel
-  // bodies (only the base map; each barrel keeps its own roughness/metal); (2) the
-  // Hall_Wall map → onto the BackPanel_* wall panels (which currently use the
-  // SS_Hull_DarkMetal panel texture). Only meaningful for the hangar model.
-  let barrelDonorMap: THREE.Texture | null = null;
-  let wallDonorMap: THREE.Texture | null = null;
-  if (label === "hangar") {
-    root.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (!m.isMesh) return;
-      const mat = (Array.isArray(m.material) ? m.material[0] : m.material) as THREE.MeshStandardMaterial;
-      if (!mat) return;
-      if (!barrelDonorMap && m.name === "Barrel_1" && mat.map) barrelDonorMap = mat.map;
-      if (!wallDonorMap && /^Hall_WallL$/.test(m.name) && mat.map) wallDonorMap = mat.map;
-    });
-  }
+  // ── Reference base-colour textures (user request) ──────────────────────────
+  // The BaseColor maps of two Blender reference materials were exported to PNGs:
+  //   • barrel_basecolor.png    ← Barrel_1's "Scifi Panels 14" (→ all barrel bodies)
+  //   • wallpanel_basecolor.png ← Hall_WallR's "Sci-Fi Panel 16" (→ BackPanel walls)
+  // Load them once (sRGB, cached) and let the loader assign to the target materials
+  // asynchronously. Only the BASE map is applied — each material keeps its own
+  // roughness/metal/envI. Hangar model only.
+  const barrelBaseTex = label === "hangar" ? loadHangarBaseTex(BARREL_BASE_URL) : null;
+  const wallBaseTex = label === "hangar" ? loadHangarBaseTex(WALLPANEL_BASE_URL) : null;
 
   root.traverse((o) => {
     const light = o as THREE.Light;
@@ -435,10 +448,11 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
       for (const mm of bm) {
         const m = mm as THREE.MeshStandardMaterial;
         m.side = THREE.FrontSide;
-        // Unify: give every barrel Barrel_1's base map (keep this material's own
-        // roughness/metal/envI). Then lift the baked shadow wedges as before.
-        if (barrelDonorMap && m.map !== barrelDonorMap) { m.map = barrelDonorMap; m.needsUpdate = true; }
-        if (m.map) {
+        // Apply the reference barrel base-colour (Barrel_1 / Scifi Panels 14). Keep
+        // this material's own roughness/metal/envI (base map only). The clean Blender
+        // texture has no baked shadow wedges, so no lift is needed once it's applied.
+        if (barrelBaseTex) { m.map = barrelBaseTex; m.needsUpdate = true; }
+        else if (m.map) {
           const lifted = liftTextureShadows(m.map);
           if (lifted) { m.map = lifted; m.needsUpdate = true; }
         }
@@ -473,16 +487,17 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
       }
     }
 
-    // Wall panels: give the BackPanel_* meshes the Hall_Wall texture (user request).
-    // They share the scene-wide SS_Hull_DarkMetal, so use a single dedicated clone
-    // carrying the wall donor map — the platform/stairs/pipes keep their own metal.
-    if (!Array.isArray(mesh.material) && /^BackPanel_\d+$/.test(mesh.name) && wallDonorMap) {
+    // Wall panels: give the BackPanel_* meshes the reference wall base-colour
+    // (Hall_WallR / Sci-Fi Panel 16). They share the scene-wide SS_Hull_DarkMetal,
+    // so use a single dedicated clone carrying the new base map — the platform/
+    // stairs/pipes keep their own metal.
+    if (!Array.isArray(mesh.material) && /^BackPanel_\d+$/.test(mesh.name) && wallBaseTex) {
       const src = mesh.material as THREE.MeshStandardMaterial;
       if (src.isMeshStandardMaterial) {
         if (!panelWallMat) {
           panelWallMat = src.clone();
-          panelWallMat.name = "BackPanel_HallWallTex";
-          panelWallMat.map = wallDonorMap;
+          panelWallMat.name = "BackPanel_SciFiPanel16";
+          panelWallMat.map = wallBaseTex;
           panelWallMat.needsUpdate = true;
         }
         mesh.material = panelWallMat;
