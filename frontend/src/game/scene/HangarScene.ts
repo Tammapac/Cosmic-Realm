@@ -302,6 +302,16 @@ function validateMaterial(m: THREE.MeshStandardMaterial): MatStat {
  */
 function validateModel(root: THREE.Object3D, label: string, hideLights = false): void {
   const stats: MatStat[] = [];
+  // The container frame (corner posts + ribs) shares SS_Hull_DarkMetal with the
+  // whole scene (platform, stairs, pipes…). Those frame elements read flatter and
+  // darker than the glossy crate bodies — same dull dark-metal, but the user wants
+  // the crate FRAMES to reflect like the panels they hold. Give ONLY the container
+  // frame meshes a single shared gloss-boosted clone (rough↓, envI↑), leaving the
+  // shared platform/stair metal untouched. Built lazily on first frame mesh.
+  let frameGloss: THREE.MeshStandardMaterial | null = null;
+  const isContainerFrame = (name: string) =>
+    /^Cont_.*_corner_/.test(name) || /^Cont_.*_r\d/.test(name);
+
   root.traverse((o) => {
     const light = o as THREE.Light;
     if (light.isLight) { if (hideLights) light.visible = false; return; }
@@ -321,6 +331,22 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
     // Emissive meshes also live on the bloom layer so the selective-bloom pass
     // sees them; everything else stays on layer 0 only and never blooms.
     if (meshGlows) mesh.layers.enable(BLOOM_LAYER);
+
+    // Reassign container frame meshes to the glossier clone (post-validate so the
+    // clone inherits the validated base values, then we sharpen its reflection).
+    if (!Array.isArray(mesh.material) && isContainerFrame(mesh.name)) {
+      const src = mesh.material as THREE.MeshStandardMaterial;
+      if (src.isMeshStandardMaterial && src.name === "SS_Hull_DarkMetal") {
+        if (!frameGloss) {
+          frameGloss = src.clone();
+          frameGloss.name = "SS_Hull_DarkMetal_CrateFrame";
+          frameGloss.roughness = 0.28;       // sharper reflection than the 0.42 base
+          frameGloss.envMapIntensity = 1.6;  // catch more of the env, like the bodies
+          frameGloss.needsUpdate = true;
+        }
+        mesh.material = frameGloss;
+      }
+    }
   });
   const fixed = stats.filter((s) => s.emissiveFixed).length;
   const pbrFixed = stats.filter((s) => s.pbrFixed).length;
