@@ -81,14 +81,15 @@ const GLOSS_TUNING: Record<string, { roughMul: number; envI: number; roughSet?: 
   // NOT chrome (spec values). roughSet/metalSet pin absolute PBR; roughness never
   // below 0.25 so nothing reads as a mirror. Painted crates get a light metalness
   // for sheen; worn/rusty ones stay more matte + less metallic.
-  // — lackierte Container —
-  Aged_Orange: { roughMul: 1.0, envI: 1.35, roughSet: 0.4, metalSet: 0.28 },
-  Aged_Blue: { roughMul: 1.0, envI: 1.35, roughSet: 0.4, metalSet: 0.28 },
-  Aged_Green: { roughMul: 1.0, envI: 1.35, roughSet: 0.4, metalSet: 0.28 },
-  Aged_Orange2: { roughMul: 1.0, envI: 1.35, roughSet: 0.4, metalSet: 0.28 },
-  Aged_Blue2: { roughMul: 1.0, envI: 1.35, roughSet: 0.4, metalSet: 0.28 },
-  // — abgenutzter Metallcontainer —
-  Aged_Rust: { roughMul: 1.0, envI: 1.45, roughSet: 0.36, metalSet: 0.42 },
+  // — lackierte Container — a touch glossier now (rough 0.4->0.32, envI 1.35->1.5)
+  //   so they reflect a bit more without turning to chrome.
+  Aged_Orange: { roughMul: 1.0, envI: 1.5, roughSet: 0.32, metalSet: 0.3 },
+  Aged_Blue: { roughMul: 1.0, envI: 1.5, roughSet: 0.32, metalSet: 0.3 },
+  Aged_Green: { roughMul: 1.0, envI: 1.5, roughSet: 0.32, metalSet: 0.3 },
+  Aged_Orange2: { roughMul: 1.0, envI: 1.5, roughSet: 0.32, metalSet: 0.3 },
+  Aged_Blue2: { roughMul: 1.0, envI: 1.5, roughSet: 0.32, metalSet: 0.3 },
+  // — abgenutzter Metallcontainer — a hair glossier too
+  Aged_Rust: { roughMul: 1.0, envI: 1.55, roughSet: 0.32, metalSet: 0.44 },
   // — Fässer: Barrel_Red lackiert; Barrel_Mil stark abgenutzt/verrostet —
   Barrel_Red: { roughMul: 1.0, envI: 1.5, roughSet: 0.34, metalSet: 0.35 },
   Barrel_Mil: { roughMul: 1.0, envI: 1.15, roughSet: 0.48, metalSet: 0.18 },
@@ -518,13 +519,14 @@ export class HangarScene {
         blendIntensity: number;
         updateGtaoMaterial?: (o: Record<string, number>) => void;
       };
-      g.blendIntensity = 0.6; // VERY light — just a hint of AO in tight contacts
+      g.blendIntensity = 1.0; // light-moderate — reads clearly in the container
+                              //   seams/creases without darkening the whole room
       g.updateGtaoMaterial?.({
-        radius: 0.4,          // small radius → only the tight creases (container
-                              //   seams, stair steps, barrel rings) get occluded
+        radius: 0.5,          // small-ish radius → container seams, stair steps,
+                              //   barrel rings get occluded, not big flat areas
         distanceExponent: 1,
         thickness: 1,
-        scale: 0.9,          // gentle occlusion strength
+        scale: 1.1,          // occlusion strength
         distanceFallOff: 0.5,
       });
       finalComposer.addPass(gtao);
