@@ -496,22 +496,46 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
     }
 
     // The 3 big hall walls: give Hall_WallL / Hall_WallR / Hall_WallBack the
-    // reference Sci-Fi Panel 16 base-colour (as authored in Blender). Their
-    // materials (Hall_Wall / Hall_Wall_Hall_WallR) are used ONLY by these walls, so
-    // swap the .map directly — no clone needed. (BackPanels keep their own texture.)
+    // reference Sci-Fi Panel 16 base + normal (as authored in Blender). Their UVs map
+    // ONE texture tile across the whole ~16×6 wall → the panel is hugely stretched.
+    // Fix by TILING: clone the texture per wall with a repeat derived from the wall's
+    // world size (~1 tile per ~3.5 units) so the panels read at a natural scale. Each
+    // wall gets its own material+texture clone (materials are shared L/Back).
     if (!Array.isArray(mesh.material) && /^Hall_Wall(L|R|Back)$/.test(mesh.name) && wallBaseTex) {
       const src = mesh.material as THREE.MeshStandardMaterial;
-      if (src.isMeshStandardMaterial && src.map !== wallBaseTex) {
-        src.map = wallBaseTex;
-        if (wallNormalTex) { src.normalMap = wallNormalTex; src.normalScale.set(1, 1); }
-        // Matte the walls so the PANEL DETAIL (base + normal) reads instead of the
-        // env reflection washing it out. Higher roughness + lower envI.
-        src.roughness = 0.85;
-        src.metalness = 0.1;
-        src.envMapIntensity = 0.35;
-        src.needsUpdate = true;
+      if (src.isMeshStandardMaterial && !src.userData.wallTexApplied) {
+        mesh.geometry.computeBoundingBox();
+        const bb = mesh.geometry.boundingBox!;
+        const sz = bb.max.clone().sub(bb.min);
+        // Wall lies in a plane; its two large dimensions are width & height. The
+        // texture U should follow the long horizontal dim, V the height.
+        const horiz = Math.max(sz.x, sz.z); // wall length
+        const vert = sz.y;                  // wall height
+        const TILE = 3.5;                   // world units per texture tile
+        const ru = Math.max(1, Math.round(horiz / TILE));
+        const rv = Math.max(1, Math.round(vert / TILE));
+        const clone = src.clone();
+        clone.name = src.name + "_SciFiPanel16";
+        clone.map = wallBaseTex.clone(); clone.map.needsUpdate = true;
+        clone.map.repeat.set(ru, rv);
+        if (wallNormalTex) {
+          clone.normalMap = wallNormalTex.clone(); clone.normalMap.needsUpdate = true;
+          clone.normalMap.repeat.set(ru, rv);
+          clone.normalScale.set(1, 1);
+        }
+        // Matte so the panel detail reads instead of the env reflection washing it out.
+        clone.roughness = 0.85;
+        clone.metalness = 0.1;
+        clone.envMapIntensity = 0.35;
+        clone.userData.wallTexApplied = true;
+        clone.needsUpdate = true;
+        mesh.material = clone;
       }
     }
+
+    // The 4 thin BackPanel plates in front of the rear wall are visual clutter — the
+    // user wants them gone. Hide them (kept in the tree so nothing else breaks).
+    if (/^BackPanel_\d+$/.test(mesh.name)) mesh.visible = false;
   });
   const fixed = stats.filter((s) => s.emissiveFixed).length;
   const pbrFixed = stats.filter((s) => s.pbrFixed).length;
