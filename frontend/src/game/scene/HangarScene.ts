@@ -512,12 +512,13 @@ export class HangarScene {
         blendIntensity: number;
         updateGtaoMaterial?: (o: Record<string, number>) => void;
       };
-      g.blendIntensity = 1.4; // how strongly the AO darkens the image
+      g.blendIntensity = 2.0; // how strongly the AO darkens the image
       g.updateGtaoMaterial?.({
-        radius: 0.5,          // sample radius in world units (room is ~10u)
+        radius: 1.0,          // larger sample radius so AO reaches railings + the
+                              //   big platform, not just tight creases (room ~10u)
         distanceExponent: 1,
         thickness: 1,
-        scale: 1.2,          // occlusion strength
+        scale: 1.6,          // occlusion strength
         distanceFallOff: 0.5,
       });
       finalComposer.addPass(gtao);
@@ -770,10 +771,13 @@ export class HangarScene {
     // Colours calibrated to the emissive per spec #13:
     //   cyan strips/rails → cool cyan; ring → same but softer+wider; panels →
     //   cool-white-cyan. amber pad/valves → yellow-amber; wall stripes → orange.
-    addLights(cyan, 0xbfefff, 1.8, 4.5);                 // FloorMarker cyan
-    addLights(cyanRing, 0xc8f7ff, 1.3, 6.5);             // Platform ring: dimmer + wider so pools blend
+    // The FLOOR-level lights are lifted ~0.65 off the deck so their reflection on
+    // the glossy floor spreads into a soft wash instead of a sharp mirror-dot (the
+    // bright blue/white specks the user wanted gone) — they still light the deck.
+    addLights(cyan, 0xbfefff, 1.8, 4.5, 0.65);           // FloorMarker cyan
+    addLights(cyanRing, 0xc8f7ff, 1.3, 6.5, 0.65);       // Platform ring: dimmer + wider so pools blend
     addLights(cyanPanel, 0xd8f8ff, 2.4, 6.5, 0.0);       // rear panels / ceiling lamps (cool white)
-    addLights(amber, 0xffcc66, 1.6, 4.5);                // pad lights / valves (yellow-amber)
+    addLights(amber, 0xffcc66, 1.6, 4.5, 0.65);          // pad lights / valves (yellow-amber)
     addLights(amberStripe, 0xffb05e, 2.0, 5.5, 0.0);     // side wall stripes (orange)
 
     // ── Platform FILL: one big, very weak light above the pad to bind the ring
