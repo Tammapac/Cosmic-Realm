@@ -91,9 +91,10 @@ const GLOSS_TUNING: Record<string, { roughMul: number; envI: number; roughSet?: 
   Aged_Blue2: { roughMul: 1.0, envI: 1.5, roughSet: 0.32, metalSet: 0.3 },
   // — abgenutzter Metallcontainer — a hair glossier too
   Aged_Rust: { roughMul: 1.0, envI: 1.55, roughSet: 0.32, metalSet: 0.44 },
-  // — Fässer: Barrel_Red lackiert; Barrel_Mil stark abgenutzt/verrostet —
-  Barrel_Red: { roughMul: 1.0, envI: 1.5, roughSet: 0.34, metalSet: 0.35 },
-  Barrel_Mil: { roughMul: 1.0, envI: 1.15, roughSet: 0.48, metalSet: 0.18 },
+  // — Fässer: glossier so they catch the lights instead of reading matte. Barrel_Red
+  // lackiert; Barrel_Mil abgenutzt aber jetzt mit deutlich mehr Reflexion (war zu matt).
+  Barrel_Red: { roughMul: 1.0, envI: 1.8, roughSet: 0.28, metalSet: 0.4 },
+  Barrel_Mil: { roughMul: 1.0, envI: 1.7, roughSet: 0.34, metalSet: 0.35 },
   // The ship hull (authored PBR): lower roughness + higher envI so it actually
   // CATCHES the environment — it read dead/flat before. NOTE this only reflects the
   // env map, never the scene: a ship mirror-image on the deck needs planar
@@ -206,6 +207,54 @@ function findNode(root: THREE.Object3D, name: string): THREE.Object3D | null {
   const lower = name.toLowerCase();
   root.traverse((o) => { if (!hit && o.name.toLowerCase() === lower) hit = o; });
   return hit;
+}
+
+// The barrel base-colour textures have dark AO/dirt WEDGES baked into the albedo
+// (a bad Blender unwrap/AO-into-albedo bake) that read as ugly triangular shadow
+// patches on the cylinder — not a lighting problem, it's painted into the texture.
+// Lift the shadows in-engine: raise dark pixels toward mid-tone so the wedges fade
+// while the surface colour + detail survive. Cached per source image so a shared
+// material is processed once.
+const _liftCache = new WeakMap<TexImageSource, THREE.CanvasTexture>();
+function liftTextureShadows(
+  src: THREE.Texture, lift = 0.34, sat = 1.7,
+): THREE.CanvasTexture | null {
+  const img = src.image as (TexImageSource & { width: number; height: number }) | undefined;
+  if (!img || !img.width || !img.height) return null;
+  const cached = _liftCache.get(img);
+  if (cached) return cached;
+  const cv = document.createElement("canvas");
+  cv.width = img.width; cv.height = img.height;
+  const ctx = cv.getContext("2d");
+  if (!ctx) return null;
+  ctx.drawImage(img as CanvasImageSource, 0, 0);
+  const id = ctx.getImageData(0, 0, cv.width, cv.height);
+  const d = id.data;
+  // Global black-point lift flattens the baked-in dark wedges (raising the low end
+  // so the triangles fade). That washes colour toward grey, so re-saturate around
+  // each pixel's luma to bring the barrel's colour back. Together: no triangles,
+  // colour preserved.
+  for (let i = 0; i < d.length; i += 4) {
+    let r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255;
+    r = lift + (1 - lift) * r;
+    g = lift + (1 - lift) * g;
+    b = lift + (1 - lift) * b;
+    const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+    r = luma + (r - luma) * sat;
+    g = luma + (g - luma) * sat;
+    b = luma + (b - luma) * sat;
+    d[i] = Math.round(Math.max(0, Math.min(1, r)) * 255);
+    d[i + 1] = Math.round(Math.max(0, Math.min(1, g)) * 255);
+    d[i + 2] = Math.round(Math.max(0, Math.min(1, b)) * 255);
+  }
+  ctx.putImageData(id, 0, 0);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = src.colorSpace;
+  tex.wrapS = src.wrapS; tex.wrapT = src.wrapT;
+  tex.flipY = src.flipY;
+  tex.needsUpdate = true;
+  _liftCache.set(img, tex);
+  return tex;
 }
 
 // ── Material validation (Phase C — validate, don't override) ─────────────────
@@ -354,6 +403,22 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
     if (!mesh.isMesh || !mesh.material) return;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    // Barrel bodies (Barrel_0..3, not the _lid/_ring children which share the
+    // scene-wide SS_Hull_DarkMetal): (1) FrontSide — they're closed cylinders, no
+    // need to render inner faces; (2) lift the dark AO wedges baked into their base
+    // colour so they don't read as ugly triangular shadows. The lift cache keeps a
+    // shared material's map processed once.
+    if (/^Barrel_\d+$/.test(mesh.name)) {
+      const bm = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const mm of bm) {
+        const m = mm as THREE.MeshStandardMaterial;
+        m.side = THREE.FrontSide;
+        if (m.map) {
+          const lifted = liftTextureShadows(m.map);
+          if (lifted) { m.map = lifted; m.needsUpdate = true; }
+        }
+      }
+    }
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     let meshGlows = false;
     for (const mm of mats) {
