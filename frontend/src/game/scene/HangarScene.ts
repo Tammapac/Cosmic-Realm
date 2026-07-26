@@ -30,6 +30,7 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { FXAAShader } from "three/examples/jsm/shaders/FXAAShader.js";
 import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
@@ -338,7 +339,7 @@ export interface HangarDebugInfo {
     visible: boolean; camDist: number;
   }[];
   combatLightsActive: number;
-  postFx: { enabled: boolean; bloomStrength: number; bloomThreshold: number; bloomRadius: number; fxaa: boolean };
+  postFx: { enabled: boolean; ssao: boolean; bloomStrength: number; bloomThreshold: number; bloomRadius: number; fxaa: boolean };
   materials: { name: string; type: string; metalness: number; roughness: number; envMapIntensity: number; maps: string[] }[];
 }
 
@@ -359,18 +360,27 @@ export class HangarScene {
   /** Handle for a running combat-demo interval, so it can be stopped. */
   private demoTimer = 0;
 
-  // ── Post-processing (Phase H) ─────────────────────────────────────────────
+  // ── Post-processing ───────────────────────────────────────────────────────
   private composer: EffectComposer | null = null;
   private bloomComposer: EffectComposer | null = null;
   private bloomPass: UnrealBloomPass | null = null;
+  private gtaoPass: GTAOPass | null = null;
   private fxaaPass: ShaderPass | null = null;
-  // Post-FX (selective emissive bloom) is OFF by default. Even layer-isolated + at
-  // low strength, on THIS deck — long emissive guide-strips + many bright fixture
-  // highlights — the bloom smears into a scene-wide milky wash (verified by A/B:
-  // turning the composer off removes the haze entirely). The emissive cap already
-  // reads the strips as coloured without bloom. Opt-in via ?bloom for A/B only.
-  static postFx =
+  // Selective emissive bloom is OFF by default. Even layer-isolated + at low
+  // strength, on THIS deck — long emissive guide-strips + many bright fixture
+  // highlights — the bloom smears into a scene-wide milky wash (verified by A/B).
+  // Opt-in via ?bloom for A/B only.
+  static bloomOn =
     typeof window !== "undefined" && new URLSearchParams(window.location.search).has("bloom");
+  // Real screen-space AO (GTAO / ground-truth ambient occlusion) — ON by default;
+  // this replaces the old fake blob contact shadows. ?noao disables for A/B.
+  static ssaoOn =
+    typeof window === "undefined" ||
+    !new URLSearchParams(window.location.search).has("noao");
+  /** True when the composer is needed (AO and/or bloom). */
+  static get postFx(): boolean {
+    return HangarScene.ssaoOn || HangarScene.bloomOn;
+  }
 
   /** World-space landing platform centre, and the authored camera pose. */
   private padWorld = new THREE.Vector3();
@@ -472,45 +482,67 @@ export class HangarScene {
     const size = new THREE.Vector2(w, h);
     const pr = Math.min(window.devicePixelRatio, 2);
 
-    // — bloom-only composer (renders to its own target, renderToScreen=false) —
-    const bloomComposer = new EffectComposer(this.renderer);
-    bloomComposer.renderToScreen = false;
-    bloomComposer.setPixelRatio(pr);
-    bloomComposer.setSize(w, h);
-    bloomComposer.addPass(new RenderPass(this.scene, this.camera));
-    // Soft emissive glow (spec #10). Strength is kept LOW (0.07): this deck is
-    // covered in long emissive guide-strips, and higher values (the spec's 0.3)
-    // merge their halos into a scene-wide wash — the "ausgewaschene Szene" the spec
-    // forbids. 0.07/0.2 gives the strips a gentle glow while the scene stays dark +
-    // contrasty. Layer-isolated to emissive meshes, so metal never glows.
-    const bloom = new UnrealBloomPass(size, 0.07, 0.2, 0.0);
-    bloomComposer.addPass(bloom);
-    this.bloomPass = bloom;
-    this.bloomComposer = bloomComposer;
+    // — optional bloom-only composer (renders to its own target) —
+    if (HangarScene.bloomOn) {
+      const bloomComposer = new EffectComposer(this.renderer);
+      bloomComposer.renderToScreen = false;
+      bloomComposer.setPixelRatio(pr);
+      bloomComposer.setSize(w, h);
+      bloomComposer.addPass(new RenderPass(this.scene, this.camera));
+      const bloom = new UnrealBloomPass(size, 0.07, 0.2, 0.0);
+      bloomComposer.addPass(bloom);
+      this.bloomPass = bloom;
+      this.bloomComposer = bloomComposer;
+    }
 
-    // — final composer: full scene + additive bloom + tonemap + fxaa —
+    // — final composer: RenderPass → [GTAO] → [bloom mix] → OutputPass → FXAA —
     const finalComposer = new EffectComposer(this.renderer);
     finalComposer.setPixelRatio(pr);
     finalComposer.setSize(w, h);
     finalComposer.addPass(new RenderPass(this.scene, this.camera));
 
-    const mixPass = new ShaderPass(
-      new THREE.ShaderMaterial({
-        uniforms: {
-          baseTexture: { value: null },
-          bloomTexture: { value: bloomComposer.renderTarget2.texture },
-        },
-        vertexShader:
-          "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
-        fragmentShader:
-          "uniform sampler2D baseTexture; uniform sampler2D bloomTexture; varying vec2 vUv;" +
-          "void main(){ gl_FragColor = texture2D(baseTexture, vUv) + texture2D(bloomTexture, vUv); }",
-        defines: {},
-      }),
-      "baseTexture",
-    );
-    mixPass.needsSwap = true;
-    finalComposer.addPass(mixPass);
+    // Real screen-space AO (GTAO). Darkens creases/contacts where geometry meets —
+    // the ship on the deck, crates on the floor, ribs, stair base — replacing the
+    // fake blob shadows. Radius/scale tuned for the ~10-unit room; soft, not heavy.
+    if (HangarScene.ssaoOn) {
+      const gtao = new GTAOPass(this.scene, this.camera, w, h);
+      gtao.output = GTAOPass.OUTPUT.Default;
+      // three 0.184 exposes updateGtaoMaterial({radius,scale,...}) + blendIntensity.
+      const g = gtao as unknown as {
+        blendIntensity: number;
+        updateGtaoMaterial?: (o: Record<string, number>) => void;
+      };
+      g.blendIntensity = 1.4; // how strongly the AO darkens the image
+      g.updateGtaoMaterial?.({
+        radius: 0.5,          // sample radius in world units (room is ~10u)
+        distanceExponent: 1,
+        thickness: 1,
+        scale: 1.2,          // occlusion strength
+        distanceFallOff: 0.5,
+      });
+      finalComposer.addPass(gtao);
+      this.gtaoPass = gtao;
+    }
+
+    if (HangarScene.bloomOn && this.bloomComposer) {
+      const mixPass = new ShaderPass(
+        new THREE.ShaderMaterial({
+          uniforms: {
+            baseTexture: { value: null },
+            bloomTexture: { value: this.bloomComposer.renderTarget2.texture },
+          },
+          vertexShader:
+            "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
+          fragmentShader:
+            "uniform sampler2D baseTexture; uniform sampler2D bloomTexture; varying vec2 vUv;" +
+            "void main(){ gl_FragColor = texture2D(baseTexture, vUv) + texture2D(bloomTexture, vUv); }",
+          defines: {},
+        }),
+        "baseTexture",
+      );
+      mixPass.needsSwap = true;
+      finalComposer.addPass(mixPass);
+    }
 
     finalComposer.addPass(new OutputPass());
 
@@ -522,17 +554,18 @@ export class HangarScene {
     this.composer = finalComposer;
   }
 
-  /** Render the selective-bloom chain: bloom-only first, then the composite. */
+  /** Render the post-FX chain. If bloom is on, render the bloom-only pass first. */
   private renderComposed(): void {
-    if (!this.composer || !this.bloomComposer) {
+    if (!this.composer) {
       this.renderer.render(this.scene, this.camera);
       return;
     }
-    // 1) Darken everything not on the bloom layer, render bloom-only.
-    this.camera.layers.set(BLOOM_LAYER);
-    this.bloomComposer.render();
-    // 2) Restore all layers, render the full composite.
-    this.camera.layers.enableAll();
+    if (this.bloomComposer) {
+      // bloom: render emissive-only layer to the bloom target, then composite.
+      this.camera.layers.set(BLOOM_LAYER);
+      this.bloomComposer.render();
+      this.camera.layers.enableAll();
+    }
     this.composer.render();
   }
 
@@ -555,8 +588,8 @@ export class HangarScene {
     scene.resolveNodes();
     scene.buildStripLights(); // local lights on the emissive deck strips
     scene.buildBounceLights(); // coloured bounce from crates/barrels (fake GI)
-    scene.buildStairShadow(); // fake contact shadow under the stairs
-    scene.buildPropShadows(); // contact shadows under crates + barrels
+    // (fake blob contact shadows removed — real screen-space AO handles contact
+    //  shading now, see the GTAO pass in the composer.)
     scene.parkShip(shipGLB.scene);
     return scene;
   }
@@ -882,88 +915,7 @@ export class HangarScene {
     this.ship = ship;
     this.parkAt(this.padWorld);
     this.scene.add(ship);
-
-    // Fake contact shadow under the ship (parked at runtime, can't be in the AO).
-    this.addContactShadow(this.padWorld, Math.max(size.x, size.z) * scale * 1.7, 0.7, 1.0);
-  }
-
-  /** A soft radial dark blob on a flat plane just above the deck — grounds an
-   *  object that isn't in the baked floor AO (the ship, the stairs). */
-  private addContactShadow(pos: THREE.Vector3, size: number, aspect: number, opacity: number): void {
-    const cv = document.createElement("canvas");
-    cv.width = cv.height = 128;
-    const cx = cv.getContext("2d")!;
-    // Darker core + a tighter falloff → a stronger, more grounded shadow (the old
-    // blob read too weak/cheap).
-    const g = cx.createRadialGradient(64, 64, 2, 64, 64, 64);
-    g.addColorStop(0, "rgba(0,0,0,0.8)");
-    g.addColorStop(0.35, "rgba(0,0,0,0.55)");
-    g.addColorStop(0.7, "rgba(0,0,0,0.2)");
-    g.addColorStop(1, "rgba(0,0,0,0)");
-    cx.fillStyle = g;
-    cx.fillRect(0, 0, 128, 128);
-    const tex = new THREE.CanvasTexture(cv);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    const blob = new THREE.Mesh(
-      new THREE.PlaneGeometry(size, size * aspect),
-      new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, opacity }),
-    );
-    blob.rotation.x = -Math.PI / 2;
-    blob.position.copy(pos);
-    blob.position.y += 0.03; // just above the deck to avoid z-fight
-    blob.renderOrder = 1;
-    blob.name = "contactShadow";
-    this.scene.add(blob);
-  }
-
-  /** Contact shadow under the stairs (static, but its footprint isn't in the floor
-   *  AO cleanly). Resolves the stair-group footprint from the model and drops a
-   *  soft blob at its base. */
-  private buildStairShadow(): void {
-    this.hangarRoot.updateWorldMatrix(true, true);
-    const bb = new THREE.Box3();
-    let found = false;
-    this.hangarRoot.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      if (mesh.isMesh && /Stair|Step|StairRise/i.test(mesh.name)) { bb.expandByObject(mesh); found = true; }
-    });
-    if (!found) return;
-    const c = bb.getCenter(new THREE.Vector3());
-    const s = bb.getSize(new THREE.Vector3());
-    // A blob covering the whole stair footprint, elongated along the longer axis,
-    // darker + a bit oversized so the stairs read as genuinely grounded.
-    const at = new THREE.Vector3(c.x, this.padWorld.y, c.z);
-    const long = Math.max(s.x, s.z);
-    const short = Math.min(s.x, s.z);
-    const aspect = Math.max(0.35, short / long);
-    this.addContactShadow(at, long * 1.8, aspect, 1.0);
-  }
-
-  /** Contact shadows under the crates + barrels (spec #4): stronger grounding
-   *  under each prop cluster so they don't float on the deck. One blob per crate/
-   *  barrel base, sized to its footprint. Only for floor-level props. */
-  private buildPropShadows(): void {
-    this.hangarRoot.updateWorldMatrix(true, true);
-    const box = new THREE.Box3();
-    const deckY = this.padWorld.y;
-    const seen = new Set<string>();
-    this.hangarRoot.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      if (!mesh.isMesh || !mesh.material) return;
-      const nm = ((Array.isArray(mesh.material) ? mesh.material[0] : mesh.material) as THREE.Material)?.name ?? "";
-      if (!/Aged_|Barrel_/.test(nm)) return;
-      box.setFromObject(mesh);
-      const c = box.getCenter(new THREE.Vector3());
-      const s = box.getSize(new THREE.Vector3());
-      // only floor-level props (base near the deck), and de-dup near-identical spots
-      if (box.min.y > deckY + 0.5) return;
-      const key = `${Math.round(c.x)}_${Math.round(c.z)}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-      const long = Math.max(s.x, s.z);
-      const aspect = Math.max(0.5, Math.min(s.x, s.z) / long);
-      this.addContactShadow(new THREE.Vector3(c.x, deckY, c.z), long * 1.3, aspect, 0.9);
-    });
+    // (No fake contact-shadow blob — real screen-space AO grounds the ship now.)
   }
 
   /** Place the parked ship at a world point (keeping its recentre + lift). */
@@ -1239,6 +1191,7 @@ export class HangarScene {
       combatLightsActive: this.combat?.activeCount ?? 0,
       postFx: {
         enabled: HangarScene.postFx && !!this.composer,
+        ssao: !!this.gtaoPass,
         bloomStrength: +(this.bloomPass?.strength ?? 0).toFixed(2),
         bloomThreshold: +(this.bloomPass?.threshold ?? 0).toFixed(2),
         bloomRadius: +(this.bloomPass?.radius ?? 0).toFixed(2),
@@ -1255,9 +1208,11 @@ export class HangarScene {
     this.combat = null;
     this.composer?.dispose();
     this.bloomComposer?.dispose();
+    this.gtaoPass?.dispose?.();
     this.composer = null;
     this.bloomComposer = null;
     this.bloomPass = null;
+    this.gtaoPass = null;
     this.fxaaPass = null;
     window.removeEventListener("resize", this.onResize);
     this.scene.traverse((o) => {

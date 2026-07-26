@@ -149,7 +149,7 @@ export default function HangarTest() {
           ))}
 
           <div style={{ fontWeight: "bold", color: "#7fd0ff", margin: "8px 0 4px" }}>POST-FX</div>
-          <div>composer: <b style={{ color: dbg.postFx.enabled ? "#7fff9f" : "#ff7f7f" }}>{dbg.postFx.enabled ? "on" : "off"}</b> · fxaa: <b>{dbg.postFx.fxaa ? "yes" : "no"}</b></div>
+          <div>composer: <b style={{ color: dbg.postFx.enabled ? "#7fff9f" : "#ff7f7f" }}>{dbg.postFx.enabled ? "on" : "off"}</b> · SSAO(GTAO): <b style={{ color: dbg.postFx.ssao ? "#7fff9f" : "#ff7f7f" }}>{dbg.postFx.ssao ? "on" : "off"}</b> · fxaa: <b>{dbg.postFx.fxaa ? "yes" : "no"}</b></div>
           <div>bloom: strength <b>{dbg.postFx.bloomStrength}</b> · thresh <b>{dbg.postFx.bloomThreshold}</b> · radius <b>{dbg.postFx.bloomRadius}</b></div>
 
           <div style={{ fontWeight: "bold", color: "#7fd0ff", margin: "8px 0 4px" }}>MATERIALS ({dbg.materials.length})</div>
