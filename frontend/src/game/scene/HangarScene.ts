@@ -124,6 +124,8 @@ const BARREL_BASE_URL = "/assets/textures/barrel_basecolor.png";
 const WALLPANEL_BASE_URL = "/assets/textures/wallpanel_basecolor.png";
 const BARREL_NORMAL_URL = "/assets/textures/barrel_normal.png";
 const WALLPANEL_NORMAL_URL = "/assets/textures/wallpanel_normal.png";
+const CONSOLE_BASE_URL = "/assets/textures/console_basecolor.png";
+const CONSOLE_NORMAL_URL = "/assets/textures/console_normal.png";
 /** Node the ship parks on. */
 const PAD_NODE = "LandingPlatform";
 /** Authored camera node, used to derive the docked framing. */
@@ -434,6 +436,8 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
   const wallBaseTex = label === "hangar" ? loadHangarBaseTex(WALLPANEL_BASE_URL) : null;
   const barrelNormalTex = label === "hangar" ? loadHangarNormalTex(BARREL_NORMAL_URL) : null;
   const wallNormalTex = label === "hangar" ? loadHangarNormalTex(WALLPANEL_NORMAL_URL) : null;
+  const consoleBaseTex = label === "hangar" ? loadHangarBaseTex(CONSOLE_BASE_URL) : null;
+  const consoleNormalTex = label === "hangar" ? loadHangarNormalTex(CONSOLE_NORMAL_URL) : null;
 
   root.traverse((o) => {
     const light = o as THREE.Light;
@@ -536,6 +540,20 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
     // The 4 thin BackPanel plates in front of the rear wall are visual clutter — the
     // user wants them gone. Hide them (kept in the tree so nothing else breaks).
     if (/^BackPanel_\d+$/.test(mesh.name)) mesh.visible = false;
+
+    // Console_3: give it the Blender reference Sci-Fi Panel 13 base + normal. It
+    // shares the scene-wide SS_Hull_DarkMetal, so use a dedicated clone.
+    if (!Array.isArray(mesh.material) && mesh.name === "Console_3" && consoleBaseTex) {
+      const src = mesh.material as THREE.MeshStandardMaterial;
+      if (src.isMeshStandardMaterial) {
+        const clone = src.clone();
+        clone.name = "Console3_SciFiPanel13";
+        clone.map = consoleBaseTex;
+        if (consoleNormalTex) { clone.normalMap = consoleNormalTex; clone.normalScale.set(1, 1); }
+        clone.needsUpdate = true;
+        mesh.material = clone;
+      }
+    }
   });
   const fixed = stats.filter((s) => s.emissiveFixed).length;
   const pbrFixed = stats.filter((s) => s.pbrFixed).length;
@@ -744,14 +762,15 @@ export class HangarScene {
         blendIntensity: number;
         updateGtaoMaterial?: (o: Record<string, number>) => void;
       };
-      g.blendIntensity = 1.0; // light-moderate — reads clearly in the container
-                              //   seams/creases without darkening the whole room
+      g.blendIntensity = 1.5; // stronger so objects get a real CONTACT shadow at
+                              //   their base — before, crates/barrels/ship read as
+                              //   floating (no grounding shade where they meet the deck)
       g.updateGtaoMaterial?.({
-        radius: 0.5,          // small-ish radius → container seams, stair steps,
-                              //   barrel rings get occluded, not big flat areas
+        radius: 0.7,          // reaches the floor at each object's foot for a clear
+                              //   contact darkening, still tight enough for seams
         distanceExponent: 1,
         thickness: 1,
-        scale: 1.1,          // occlusion strength
+        scale: 1.5,          // occlusion strength
         distanceFallOff: 0.5,
       });
       finalComposer.addPass(gtao);
@@ -903,17 +922,19 @@ export class HangarScene {
     // cast shadows on the deck (RectAreaLights can't cast shadows). The frustum is
     // widened to ±10 so it covers the WHOLE room (stairs + side containers were
     // outside the old ±5 box and cast nothing). Aimed from high front-right.
-    const shadowKey = new THREE.DirectionalLight(0xdfe8ff, 1.2);
+    const shadowKey = new THREE.DirectionalLight(0xdfe8ff, 2.6);
     shadowKey.position.set(3, 12, -2);
     shadowKey.target.position.set(0, 0, -1); // ~pad centre
     shadowKey.castShadow = true;
-    shadowKey.shadow.mapSize.set(2048, 2048);
+    shadowKey.shadow.mapSize.set(4096, 4096);
     const scam = shadowKey.shadow.camera;
-    scam.left = -10; scam.right = 10; scam.top = 10; scam.bottom = -10;
+    scam.left = -9; scam.right = 9; scam.top = 9; scam.bottom = -9;
     scam.near = 1; scam.far = 40;
     scam.updateProjectionMatrix();
-    shadowKey.shadow.bias = -0.0004;
-    shadowKey.shadow.normalBias = 0.04;
+    // Lower normalBias so the cast shadow hugs the object's base (0.04 was
+    // Peter-panning it away → objects looked like they floated).
+    shadowKey.shadow.bias = -0.0002;
+    shadowKey.shadow.normalBias = 0.012;
     this.scene.add(shadowKey);
     this.scene.add(shadowKey.target);
     this.keyLight = shadowKey;
