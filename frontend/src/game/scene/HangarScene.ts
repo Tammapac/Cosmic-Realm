@@ -428,6 +428,12 @@ export class HangarScene {
     | { t: number; dur: number; kind: "intro" | "outro"; resolve: () => void }
     | null = null;
 
+  /** Turntable pivot at the pad centre. The round platform meshes (+ the parked
+   *  ship during the intro) are children, so rotating this spins them together. */
+  private platformPivot: THREE.Group | null = null;
+  /** Final platform yaw (radians) so the ship's nose ends toward the +Z exit. */
+  private exitYaw = 0;
+
   /** The studio-env PMREM generator, disposed on teardown (fixes the old leak). */
   private envPmrem: THREE.PMREMGenerator | null = null;
 
@@ -621,6 +627,7 @@ export class HangarScene {
     const canvas = document.createElement("canvas");
     const scene = new HangarScene(canvas, hangarRoot);
     scene.resolveNodes();
+    scene.buildPlatformPivot(); // turntable pivot owning the round platform meshes
     scene.buildStripLights(); // local lights on the emissive deck strips
     scene.buildBounceLights(); // coloured bounce from crates/barrels (fake GI)
     // (fake blob contact shadows removed — real screen-space AO handles contact
@@ -989,6 +996,27 @@ export class HangarScene {
     this.camTarget.copy(this.padWorld).add(new THREE.Vector3(-0.5, 1.0, 3));
   }
 
+  /**
+   * Build the turntable: a Group pivot at the pad centre that owns the round
+   * platform meshes (LandingPlatform, PlatformRing, DeckMark_*). Rotating the pivot
+   * spins the whole platform; during the intro the ship is parented in too so the
+   * platform carries it round like a real turntable. Meshes are reparented with
+   * their world transform preserved (attach()), so nothing visibly moves at build.
+   */
+  private buildPlatformPivot(): void {
+    const pivot = new THREE.Group();
+    pivot.name = "PlatformPivot";
+    pivot.position.copy(this.padWorld);
+    this.scene.add(pivot);
+    const names = /^(LandingPlatform|PlatformRing|DeckMark_)/;
+    const movers: THREE.Object3D[] = [];
+    this.hangarRoot.traverse((o) => {
+      if (o !== this.hangarRoot && names.test(o.name)) movers.push(o);
+    });
+    for (const m of movers) pivot.attach(m); // attach() keeps world transform
+    this.platformPivot = pivot;
+  }
+
   private parkShip(shipTemplate: THREE.Group): void {
     const ship = shipTemplate.clone(true);
     validateModel(ship, "ship");
@@ -1006,9 +1034,11 @@ export class HangarScene {
     });
     this.shipRecenter.copy(center).multiplyScalar(-scale);
     this.shipLift = (size.y * scale) / 2 + 0.05;
-    // Face the ship into the hangar (-90° / to the right); default export had its
-    // nose toward the stairs, which read wrong.
-    ship.rotation.y = -Math.PI / 2;
+    // Park yaw: nose toward +Z (the screens wall = the hangar exit the user wants
+    // the ship to end facing). Verified in-scene: at -π/2 the model's +X nose maps
+    // to world +Z. This is the turntable's settled orientation.
+    this.exitYaw = -Math.PI / 2;
+    ship.rotation.y = this.exitYaw;
     this.ship = ship;
     this.parkAt(this.padWorld);
     this.scene.add(ship);
@@ -1096,7 +1126,12 @@ export class HangarScene {
       a.t = Math.min(1, a.t + dt / a.dur);
       if (a.kind === "intro") this.applyIntro(a.t);
       else this.applyOutro(a.t);
-      if (a.t >= 1) { const r = a.resolve; this.anim = null; r(); }
+      if (a.t >= 1) {
+        // Intro ends with the pivot at yaw 0; hand the ship back to the scene so
+        // parkAt/outro keep working in world space, and snap to the clean park pose.
+        if (a.kind === "intro") this.finishIntro();
+        const r = a.resolve; this.anim = null; r();
+      }
     }
     this.combat?.update(dt);
   }
@@ -1111,21 +1146,53 @@ export class HangarScene {
 
   /** Static parked framing. */
   showParked(): void {
+    this.finishIntro(); // ensure the ship is scene-owned, not left in the pivot
     this.parkAt(this.padWorld);
     this.frameParked();
   }
 
-  /** The ship's start point for a fly-in: out toward the hangar mouth (-z),
-   *  raised, so it descends onto the platform. */
+  /**
+   * Return the ship from the turntable pivot to the scene and snap it to the clean
+   * parked pose (nose +Z). Idempotent — safe to call when already scene-owned.
+   */
+  private finishIntro(): void {
+    if (!this.ship) return;
+    if (this.platformPivot) this.platformPivot.rotation.y = 0;
+    if (this.ship.parent && this.ship.parent !== this.scene) {
+      this.scene.attach(this.ship); // back to world space
+    }
+    this.ship.rotation.set(0, this.exitYaw, 0);
+    this.parkAt(this.padWorld);
+  }
+
+  /** The ship's entry point: out toward the hangar mouth (-z), at hover height, so
+   *  it glides straight in over the deck (not a steep descent). */
   private mouthPoint(): THREE.Vector3 {
-    // The room's opening faces roughly -z (toward the camera / hangar mouth).
-    return this.padWorld.clone().add(new THREE.Vector3(0, 1.6, -9));
+    return this.padWorld.clone().add(new THREE.Vector3(0, 1.2, -9.5));
+  }
+
+  /** Turntable sweep for the intro: how far the platform+ship rotate during the
+   *  settle beat before the nose lands on the +Z exit axis. */
+  private static readonly TURN = (2 / 3) * Math.PI;
+
+  /**
+   * Parent the ship into the turntable pivot so pivot rotation carries it round.
+   * Its local transform is set so it renders at the given world pose; we drive the
+   * pivot's yaw for the turn. Called at intro start.
+   */
+  private enterPivot(): void {
+    if (!this.ship || !this.platformPivot) return;
+    this.platformPivot.attach(this.ship); // keep world transform
   }
 
   playIntro(): Promise<void> {
-    if (!this.ship) return Promise.resolve();
+    if (!this.ship || !this.platformPivot) return Promise.resolve();
+    // Start the turntable rotated by TURN so the fly-in nose is off the +Z axis and
+    // the settle beat visibly swings it onto the exit axis.
+    this.platformPivot.rotation.y = HangarScene.TURN;
+    this.enterPivot();
     return new Promise<void>((resolve) => {
-      this.anim = { t: 0, dur: 2.6, kind: "intro", resolve };
+      this.anim = { t: 0, dur: 3.2, kind: "intro", resolve };
     });
   }
 
@@ -1136,18 +1203,42 @@ export class HangarScene {
     });
   }
 
+  /**
+   * Three-beat fly-in: (1) t 0→0.55 straight glide from the -Z mouth to the pad,
+   * chase-cam flying in behind the ship with the full hangar ahead; (2) t 0.55→0.7
+   * touchdown/settle; (3) t 0.7→1 the platform+ship turntable-rotate (pivot yaw
+   * TURN→0) so the nose lands on the +Z exit axis, camera easing to a wide
+   * establishing shot so the whole rotation reads.
+   */
   private applyIntro(t: number): void {
-    if (!this.ship) return;
-    const e = smoothstep(t);
-    const from = this.mouthPoint();
-    const to = this.padWorld;
-    const p = from.clone().lerp(to, e);
-    this.ship.position.copy(this.shipRecenter).add(p);
-    this.ship.position.y += this.shipLift;
-    // Camera eases from a wide "coming in" angle to the parked framing.
-    const camFrom = this.padWorld.clone().add(new THREE.Vector3(-1.5, 4.5, -11));
-    this.camera.position.copy(camFrom.lerp(this.camPos, e));
-    this.camera.lookAt(this.ship.position);
+    if (!this.ship || !this.platformPivot) return;
+    const pad = this.padWorld;
+
+    // ── Ship glide (beats 1-2). The ship is a pivot child, so its position must be
+    // expressed in the pivot's frame. We set its WORLD target then convert. ──
+    const glide = smoothstep(Math.min(1, t / 0.7)); // reaches pad by t=0.7
+    const worldPos = this.mouthPoint().lerp(pad, glide);
+    worldPos.y += this.shipLift * glide; // settle to rest height
+    // Ship local = pivot⁻¹ · world. attach() already put it in the pivot; recompute
+    // its local position each frame from the desired world point.
+    this.platformPivot.updateWorldMatrix(true, false);
+    const local = this.platformPivot.worldToLocal(worldPos.clone());
+    // keep the recenter offset (baked so bbox centre sits on the point)
+    this.ship.position.copy(this.shipRecenter).add(local);
+
+    // ── Turntable (beat 3): pivot yaw eases TURN → 0. ──
+    const turn = smoothstep(Math.max(0, (t - 0.7) / 0.3));
+    this.platformPivot.rotation.y = HangarScene.TURN * (1 - turn);
+
+    // ── Camera: chase-cam behind the ship (-Z, low) during the glide, easing to
+    // the wide establishing pose during the turn so the full hangar + rotation
+    // are visible. ──
+    const camBeat = smoothstep(t);
+    const chase = pad.clone().add(new THREE.Vector3(0, 2.2, -11)); // behind + low
+    const wide = this.camPos;                                       // parked overview
+    this.camera.position.copy(chase.lerp(wide, camBeat));
+    const look = pad.clone().add(new THREE.Vector3(0, 1.0, 2)); // into the hangar
+    this.camera.lookAt(look);
   }
 
   private applyOutro(t: number): void {
