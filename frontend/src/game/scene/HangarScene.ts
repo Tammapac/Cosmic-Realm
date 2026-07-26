@@ -26,6 +26,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 import { installStudioEnv, type EnvKind } from "../three-environment";
 import { CombatLights, type CombatLightKind } from "./CombatLights";
+import { LandingSmoke } from "./LandingSmoke";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
@@ -424,6 +425,9 @@ export class HangarScene {
   private keyLight: THREE.DirectionalLight | null = null;
   /** Pooled dynamic combat lights (laser / explosion / hit). */
   private combat: CombatLights | null = null;
+  private smoke: LandingSmoke | null = null;
+  /** Guards the one-shot touchdown smoke burst during an intro. */
+  private smokeFired = false;
   /** Handle for a running combat-demo interval, so it can be stopped. */
   private demoTimer = 0;
 
@@ -529,6 +533,7 @@ export class HangarScene {
 
     this.buildLights();
     this.combat = new CombatLights(this.scene);
+    this.smoke = new LandingSmoke(this.scene);
     if (HangarScene.postFx) this.buildComposer(w, h); // opt-in via ?bloom
     window.addEventListener("resize", this.onResize);
   }
@@ -1073,10 +1078,11 @@ export class HangarScene {
     this.shipLift = (size.y * scale) / 2 + 0.05;
     // Orientation model (verified in-scene): the model's nose is its +X axis, which
     // maps to world +Z at ship yaw -π/2, and to world -Z at yaw +π/2.
-    // Intro choreography: the ship flies in NOSE-FIRST toward the +Z wall, lands,
-    // then the platform spins EXACTLY 180° so the nose ends toward the -Z exit
-    // (ready to depart). The PARKED (settled) orientation is therefore nose -Z.
-    this.exitYaw = Math.PI / 2; // settled: nose toward the -Z exit
+    // Intro choreography: the ship flies in NOSE-FIRST toward the -Z wall, lands,
+    // then the platform spins EXACTLY 180° so the nose ends toward the +Z exit.
+    // (Flipped 180° from the first pass — the ships were flying in backwards.)
+    // The PARKED (settled) orientation is therefore nose +Z.
+    this.exitYaw = -Math.PI / 2; // settled: nose toward the +Z exit
     ship.rotation.y = this.exitYaw;
     this.ship = ship;
     this.parkAt(this.padWorld);
@@ -1173,6 +1179,7 @@ export class HangarScene {
       }
     }
     this.combat?.update(dt);
+    this.smoke?.update(dt);
   }
 
   // ── Framing + cinematics ─────────────────────────────────────────────────
@@ -1224,8 +1231,10 @@ export class HangarScene {
     // (nose -Z) = the settled park orientation.
     this.platformPivot.rotation.y = HangarScene.TURN;
     this.platformPivot.add(this.ship);
-    // world yaw = pivot.yaw + ship.local.yaw. Want -π/2 at pivot=π → local = +π/2.
-    this.ship.rotation.set(0, this.exitYaw, 0); // exitYaw = π/2
+    // Local yaw = exitYaw; combined with the pivot's π start it gives the entry
+    // facing, and after the 180° turn (pivot→0) the ship settles at exitYaw.
+    this.ship.rotation.set(0, this.exitYaw, 0);
+    this.smokeFired = false; // arm the one-shot touchdown smoke
     return new Promise<void>((resolve) => {
       this.anim = { t: 0, dur: 3.2, kind: "intro", resolve };
     });
@@ -1259,6 +1268,20 @@ export class HangarScene {
     const local = this.platformPivot.worldToLocal(worldPos.clone());
     // keep the recenter offset (baked so bbox centre sits on the point)
     this.ship.position.copy(this.shipRecenter).add(local);
+
+    // ── Touchdown smoke: one soft burst under the ship as it sets down (~t 0.62,
+    // just before the glide fully settles) so the thrusters kick up smoke on the
+    // pad. Ring radius + strength scale with the ship's footprint (bigger ship →
+    // more smoke). ──
+    if (!this.smokeFired && t >= 0.62 && this.smoke) {
+      this.smokeFired = true;
+      const foot = Math.max(this.shipLift * 2, 1.2);
+      this.smoke.burst(
+        new THREE.Vector3(pad.x, pad.y + 0.02, pad.z),
+        1.0 + foot * 0.6,
+        0.9 + foot * 0.5,
+      );
+    }
 
     // ── Turntable (beat 3): pivot yaw eases exactly 180° (π → 0). ──
     const turn = smoothstep(Math.max(0, (t - 0.7) / 0.3));
@@ -1456,6 +1479,8 @@ export class HangarScene {
     if (this.demoTimer) { clearInterval(this.demoTimer); this.demoTimer = 0; }
     this.combat?.dispose();
     this.combat = null;
+    this.smoke?.dispose();
+    this.smoke = null;
     this.composer?.dispose();
     this.bloomComposer?.dispose();
     this.gtaoPass?.dispose?.();
