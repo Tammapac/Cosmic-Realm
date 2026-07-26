@@ -140,6 +140,34 @@ const SHIP_MODELS: Record<string, string> = {
   wasp: "/models/Wasp_Interceptor.glb",
 };
 
+// Per-class hangar footprint (world units for the ship's longest HORIZONTAL axis).
+// Bigger ship class → bigger number, so a Skimmer MK1 reads smaller than an Apex
+// Destroyer regardless of its model's raw export scale. The pad is ~8u across; the
+// biggest capital ships fill most of it. Fitting the horizontal span (not maxDim)
+// stops a tall antenna/fin from shrinking a ship's apparent size.
+const SHIP_HANGAR_SPAN: Record<string, number> = {
+  skimmer: 2.4,   // MK1 starter — smallest
+  wasp: 2.6,
+  reaver: 2.8,
+  marauder: 3.0,
+  specter: 3.0,
+  phalanx: 3.4,
+  apex: 3.6,      // Destroyer — clearly bigger than the Skimmer
+  eclipse: 3.8,
+  obsidian: 3.8,
+  harbinger: 4.0,
+  vanguard: 4.0,
+  titan: 4.4,
+  colossus: 4.6,
+  leviathan: 4.8, // Dreadnought
+  sovereign: 5.0, // Flagship — largest
+};
+const DEFAULT_HANGAR_SPAN = 3.0;
+
+function hangarSpan(shipClass: string): number {
+  return SHIP_HANGAR_SPAN[shipClass] ?? DEFAULT_HANGAR_SPAN;
+}
+
 function shipUrl(shipClass: string): string {
   return SHIP_MODELS[shipClass] ?? SHIP_MODELS.skimmer;
 }
@@ -278,10 +306,16 @@ function validateMaterial(m: THREE.MeshStandardMaterial): MatStat {
   // present roughness map is KEPT and multiplies against the roughSet base for
   // surface variation. Non-listed materials with a rough map get the flat glossy
   // default; matte non-listed props are untouched.
-  const t = GLOSS_TUNING[m.name ?? ""];
+  // Normalise the lookup name: glTF dedups shared materials across ship exports as
+  // "Material_0.022" etc. Strip the ".NNN" suffix so EVERY ship's hull material
+  // (all named Material_0*) gets the SAME skimmer tuning — otherwise the other
+  // ships keep their exported roughness 1.0 and read dead/matte ("no light").
+  const key = (m.name ?? "").replace(/\.\d+$/, "");
+  const t = GLOSS_TUNING[key];
   if (t) {
     if (t.roughSet !== undefined) m.roughness = t.roughSet;      // absolute base
     else if (m.roughnessMap) m.roughness = t.roughMul;           // scale the map
+    else m.roughness = t.roughMul;                               // no map: pin it
     if (t.metalSet !== undefined) m.metalness = t.metalSet;
     m.envMapIntensity = t.envI;
   } else if (m.roughnessMap) {
@@ -632,7 +666,7 @@ export class HangarScene {
     scene.buildBounceLights(); // coloured bounce from crates/barrels (fake GI)
     // (fake blob contact shadows removed — real screen-space AO handles contact
     //  shading now, see the GTAO pass in the composer.)
-    scene.parkShip(shipGLB.scene);
+    scene.parkShip(shipGLB.scene, shipClass);
     return scene;
   }
 
@@ -1017,16 +1051,19 @@ export class HangarScene {
     this.platformPivot = pivot;
   }
 
-  private parkShip(shipTemplate: THREE.Group): void {
+  private parkShip(shipTemplate: THREE.Group, shipClass = "skimmer"): void {
     const ship = shipTemplate.clone(true);
     validateModel(ship, "ship");
     const box = new THREE.Box3().setFromObject(ship);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
-    const maxDim = Math.max(size.x, size.y, size.z) || 1;
-    // The platform is ~2 units across; size the ship to a bit under that.
-    const shipSpan = 2.2;
-    const scale = shipSpan / maxDim;
+    // Normalise by the HORIZONTAL footprint (max of length/width), NOT maxDim: a
+    // tall dorsal fin/antenna would otherwise inflate maxDim and shrink the ship's
+    // apparent size, which is why the Skimmer looked bigger than the Apex. Then
+    // scale to the per-class target span so class sizes are consistent + ordered
+    // (Skimmer < Apex < Leviathan …).
+    const footprint = Math.max(size.x, size.z) || 1;
+    const scale = hangarSpan(shipClass) / footprint;
     ship.scale.setScalar(scale);
     ship.traverse((o) => {
       const m = o as THREE.Mesh;
@@ -1034,10 +1071,12 @@ export class HangarScene {
     });
     this.shipRecenter.copy(center).multiplyScalar(-scale);
     this.shipLift = (size.y * scale) / 2 + 0.05;
-    // Park yaw: nose toward +Z (the screens wall = the hangar exit the user wants
-    // the ship to end facing). Verified in-scene: at -π/2 the model's +X nose maps
-    // to world +Z. This is the turntable's settled orientation.
-    this.exitYaw = -Math.PI / 2;
+    // Orientation model (verified in-scene): the model's nose is its +X axis, which
+    // maps to world +Z at ship yaw -π/2, and to world -Z at yaw +π/2.
+    // Intro choreography: the ship flies in NOSE-FIRST toward the +Z wall, lands,
+    // then the platform spins EXACTLY 180° so the nose ends toward the -Z exit
+    // (ready to depart). The PARKED (settled) orientation is therefore nose -Z.
+    this.exitYaw = Math.PI / 2; // settled: nose toward the -Z exit
     ship.rotation.y = this.exitYaw;
     this.ship = ship;
     this.parkAt(this.padWorld);
@@ -1171,26 +1210,22 @@ export class HangarScene {
     return this.padWorld.clone().add(new THREE.Vector3(0, 1.2, -9.5));
   }
 
-  /** Turntable sweep for the intro: how far the platform+ship rotate during the
-   *  settle beat before the nose lands on the +Z exit axis. */
-  private static readonly TURN = (2 / 3) * Math.PI;
-
-  /**
-   * Parent the ship into the turntable pivot so pivot rotation carries it round.
-   * Its local transform is set so it renders at the given world pose; we drive the
-   * pivot's yaw for the turn. Called at intro start.
-   */
-  private enterPivot(): void {
-    if (!this.ship || !this.platformPivot) return;
-    this.platformPivot.attach(this.ship); // keep world transform
-  }
+  /** Turntable sweep for the intro: EXACTLY 180°. The ship lands nose-first at the
+   *  +Z wall (pivot yaw π), then the platform spins to yaw 0 so the nose ends
+   *  toward the -Z exit. */
+  private static readonly TURN = Math.PI;
 
   playIntro(): Promise<void> {
     if (!this.ship || !this.platformPivot) return Promise.resolve();
-    // Start the turntable rotated by TURN so the fly-in nose is off the +Z axis and
-    // the settle beat visibly swings it onto the exit axis.
+    // Start the turntable at π so the ship lands NOSE-FIRST toward the +Z wall; the
+    // settle beat then spins it exactly 180° (π→0) so the nose ends toward the -Z
+    // exit. Parent the ship into the pivot and set its LOCAL yaw so that at pivot=π
+    // its world yaw is -π/2 (nose +Z); after the 180° turn the world yaw is +π/2
+    // (nose -Z) = the settled park orientation.
     this.platformPivot.rotation.y = HangarScene.TURN;
-    this.enterPivot();
+    this.platformPivot.add(this.ship);
+    // world yaw = pivot.yaw + ship.local.yaw. Want -π/2 at pivot=π → local = +π/2.
+    this.ship.rotation.set(0, this.exitYaw, 0); // exitYaw = π/2
     return new Promise<void>((resolve) => {
       this.anim = { t: 0, dur: 3.2, kind: "intro", resolve };
     });
@@ -1204,29 +1239,28 @@ export class HangarScene {
   }
 
   /**
-   * Three-beat fly-in: (1) t 0→0.55 straight glide from the -Z mouth to the pad,
-   * chase-cam flying in behind the ship with the full hangar ahead; (2) t 0.55→0.7
-   * touchdown/settle; (3) t 0.7→1 the platform+ship turntable-rotate (pivot yaw
-   * TURN→0) so the nose lands on the +Z exit axis, camera easing to a wide
-   * establishing shot so the whole rotation reads.
+   * Fly-in: (1) t 0→0.7 straight nose-first glide from the -Z mouth to the pad,
+   * chase-cam flying in behind the ship with the full hangar ahead; (2) touchdown
+   * as it reaches the pad; (3) t 0.7→1 the platform + ship turntable-rotate exactly
+   * 180° (pivot yaw π→0) so the nose ends toward the -Z exit, camera easing to a
+   * wide establishing shot so the whole rotation reads.
    */
   private applyIntro(t: number): void {
     if (!this.ship || !this.platformPivot) return;
     const pad = this.padWorld;
 
-    // ── Ship glide (beats 1-2). The ship is a pivot child, so its position must be
-    // expressed in the pivot's frame. We set its WORLD target then convert. ──
+    // ── Ship glide (beat 1-2): straight from the mouth to the rest pose on the pad.
+    // The ship is a pivot child, so convert the desired WORLD point into pivot-local
+    // (the pivot is rotated 180° during the glide). ──
     const glide = smoothstep(Math.min(1, t / 0.7)); // reaches pad by t=0.7
-    const worldPos = this.mouthPoint().lerp(pad, glide);
-    worldPos.y += this.shipLift * glide; // settle to rest height
-    // Ship local = pivot⁻¹ · world. attach() already put it in the pivot; recompute
-    // its local position each frame from the desired world point.
+    const restWorld = pad.clone(); restWorld.y += this.shipLift; // rest height
+    const worldPos = this.mouthPoint().lerp(restWorld, glide);
     this.platformPivot.updateWorldMatrix(true, false);
     const local = this.platformPivot.worldToLocal(worldPos.clone());
     // keep the recenter offset (baked so bbox centre sits on the point)
     this.ship.position.copy(this.shipRecenter).add(local);
 
-    // ── Turntable (beat 3): pivot yaw eases TURN → 0. ──
+    // ── Turntable (beat 3): pivot yaw eases exactly 180° (π → 0). ──
     const turn = smoothstep(Math.max(0, (t - 0.7) / 0.3));
     this.platformPivot.rotation.y = HangarScene.TURN * (1 - turn);
 
