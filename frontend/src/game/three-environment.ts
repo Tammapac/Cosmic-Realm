@@ -178,6 +178,45 @@ function paintStudioEquirect(w: number, h: number): HTMLCanvasElement {
   return blurred;
 }
 
+/**
+ * Add a soft bright dome to the TOP pole of an equirectangular HDR DataTexture,
+ * in place. The equirect's first rows map to straight-up (+Y); brightening them
+ * gives upward-facing glossy surfaces a "ceiling glow" to reflect so their tops
+ * read as reflective as their sides. Operates directly on the float RGBE buffer
+ * (canvas 2D can't touch an HDR DataTexture). Additive with a smooth cosine
+ * falloff from the pole (row 0, full strength) down to `spanFrac` of the height
+ * (zero), so it fades out well above the horizon and never lifts the sides.
+ */
+function brightenOverheadPole(
+  hdr: THREE.DataTexture,
+  peak = 2.4,        // linear radiance added at the very top row
+  tint: [number, number, number] = [0.86, 0.92, 1.0], // slightly cool ceiling
+  spanFrac = 0.4,    // how far down from the top the glow reaches
+): void {
+  const img = hdr.image as { data: ArrayLike<number>; width: number; height: number };
+  const data = img.data as unknown as Float32Array | Uint16Array | Uint8Array;
+  const { width, height } = img;
+  if (!data || !width || !height) return;
+  const isFloat = data instanceof Float32Array;
+  if (!isFloat) return; // HDRLoader yields Float32 in this project; skip otherwise
+  const span = Math.max(1, Math.floor(height * spanFrac));
+  const stride = (img as any).data.length >= width * height * 4 ? 4 : 3;
+  for (let y = 0; y < span; y++) {
+    // 1 at the pole → 0 at y=span, smooth (raised cosine).
+    const t = y / span;
+    const w = 0.5 * (1 + Math.cos(Math.PI * t)); // 1→0
+    const add = peak * w;
+    if (add <= 0) continue;
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * stride;
+      (data as Float32Array)[i] += add * tint[0];
+      (data as Float32Array)[i + 1] += add * tint[1];
+      (data as Float32Array)[i + 2] += add * tint[2];
+    }
+  }
+  hdr.needsUpdate = true;
+}
+
 export type EnvKind = "studio" | "hdr";
 
 export function installStudioEnv(
@@ -214,6 +253,14 @@ export function installStudioEnv(
           hdr.minFilter = THREE.LinearMipmapLinearFilter;
           hdr.magFilter = THREE.LinearFilter;
           hdr.generateMipmaps = true;
+          // Overhead "ceiling glow": the space HDRI is near-black at the top pole,
+          // so upward-facing surfaces (crate lids, ship spine) reflect nothing and
+          // read matte while their vertical sides catch the bright wall fixtures.
+          // Baking a soft bright dome into the top rows of the equirect gives every
+          // upward face something to reflect, so lids look as glossy as sides. This
+          // touches ONLY the reflection map — the scene has no visible background, so
+          // nothing on-screen changes except reflections. (Env-only, no per-face mats.)
+          brightenOverheadPole(hdr);
           const env = pmrem.fromEquirectangular(hdr).texture;
           const old = scene.environment;
           scene.environment = env;

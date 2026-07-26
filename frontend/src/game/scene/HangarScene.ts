@@ -97,7 +97,7 @@ const GLOSS_TUNING: Record<string, { roughMul: number; envI: number; roughSet?: 
   // CATCHES the environment — it read dead/flat before. NOTE this only reflects the
   // env map, never the scene: a ship mirror-image on the deck needs planar
   // reflection (a separate step), which MeshStandardMaterial can't do.
-  Material_0: { roughMul: 0.55, envI: 1.5 },
+  Material_0: { roughMul: 0.4, envI: 1.7 },
 };
 
 /** True if a material glows enough to belong on the bloom layer: a non-trivial
