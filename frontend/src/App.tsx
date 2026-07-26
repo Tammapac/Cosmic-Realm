@@ -6,7 +6,7 @@ import { render } from "./game/render";
 import { initPixiRenderer, destroyPixiRenderer, pixiRender } from "./game/pixi-renderer-v2-integrated";
 import { init3DLayer, destroy3DLayer, getLoadingProgress, initStationLayer, renderStationLayer, destroyStationLayer } from "./game/three-ship-layer";
 import { destroyStation3DLayer } from "./game/three-station-layer";
-import { activeRenderer, ENABLE_NEW_DOCKING_FLOW, ENABLE_SHARED_3D_SCENE } from "./game/renderer-config";
+import { activeRenderer, ENABLE_NEW_DOCKING_FLOW, ENABLE_SHARED_3D_SCENE, ENABLE_HANGAR_3D_SCENE } from "./game/renderer-config";
 import { isControlLocked } from "./game/scene/docking-gate";
 import { requestDock, dockPoint } from "./game/scene/DockingController";
 import { WorldTargetHud, LogoutFlow } from "./components/TopBar";
@@ -1425,6 +1425,10 @@ function GameApp() {
   }, []);
 
   const docked = useGame((s) => s.dockedAt);
+  const hangarIntroDone = useGame((s) => s.hangarIntroDone);
+  // With the 3D hangar, hold the 2D menu until the fly-in intro finishes. With it
+  // off, dockedAt alone drives the menu (unchanged behaviour).
+  const showHangarMenu = docked && (!ENABLE_HANGAR_3D_SCENE || hangarIntroDone);
   const showSocial = useGame((s) => s.showSocial);
   const showAdmin = useGame((s) => s.showAdmin);
   const showSettings = useGame((s) => s.showSettings);
@@ -1472,7 +1476,7 @@ function GameApp() {
       <EventBanners />
       <GameTooltip />
       <Title />
-      {docked && <Hangar stationId={docked} />}
+      {showHangarMenu && docked && <Hangar stationId={docked} />}
       <DockingSummary />
       <div
         style={{

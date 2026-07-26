@@ -86,6 +86,10 @@ export type GameState = {
   cameraTarget: { x: number; y: number };
   cameraShake: number;          // 0..1, decays
   dockedAt: string | null;
+  /** True once the 3D hangar fly-in intro has finished (or immediately when the
+   *  3D hangar is disabled). Gates the 2D hangar menu so it appears AFTER the
+   *  cinematic. Only meaningful when ENABLE_HANGAR_3D_SCENE is on. */
+  hangarIntroDone: boolean;
   hangarTab: HangarTab;
   showMap: boolean;
   showClan: boolean;
@@ -535,6 +539,7 @@ export const state: GameState = {
   cameraTarget: { x: 0, y: 80 },
   cameraShake: 0,
   dockedAt: null,
+  hangarIntroDone: false,
   hangarTab: "bounties",
   showMap: false,
   showCargo: false,

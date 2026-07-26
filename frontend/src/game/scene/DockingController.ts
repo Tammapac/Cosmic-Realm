@@ -26,6 +26,8 @@ import { dockingCamera } from "./DockingCameraController";
 import { sceneFade } from "./SceneFade";
 import { saveLocation, loadLocation, clearLocation } from "./DockingPersistence";
 import { getStationDoor, getStationDoorWorldOffset } from "../three-station-layer";
+import { ENABLE_HANGAR_3D_SCENE } from "../renderer-config";
+import { HangarScene, activeHangarScene, setActiveHangarScene } from "./HangarScene";
 
 /**
  * Blackout timing (M6). The fade-out is STARTED before arrival so the screen is
@@ -43,9 +45,37 @@ const FADE_IN_MS = 500;
  */
 const MIN_BLACK_MS = 260;
 
-/** Placeholder for the HangarScene preload — see MIN_BLACK_MS. */
-function hangarReady(): Promise<void> {
-  return new Promise((resolve) => window.setTimeout(resolve, MIN_BLACK_MS));
+/**
+ * Prepare the hangar behind the blackout. With the 3D hangar flag on, this
+ * preloads the real HangarScene (its own GLB, cached) for the player's ship and
+ * stashes it in `activeHangarScene`. With the flag off, it just holds black for
+ * MIN_BLACK_MS so the 2D-panel swap doesn't read as a glitch (original behaviour).
+ */
+async function hangarReady(): Promise<void> {
+  if (!ENABLE_HANGAR_3D_SCENE) {
+    await new Promise<void>((resolve) => window.setTimeout(resolve, MIN_BLACK_MS));
+    return;
+  }
+  try {
+    disposeHangarScene(); // clear any stale scene first
+    const shipClass = String(state.player?.shipClass ?? "skimmer");
+    const hs = await HangarScene.preload(shipClass);
+    setActiveHangarScene(hs);
+  } catch (e) {
+    // Fall back to the black-hold + 2D panel if the 3D preload fails.
+    console.error("[docking] HangarScene preload failed — falling back to 2D", e);
+    setActiveHangarScene(null);
+    await new Promise<void>((resolve) => window.setTimeout(resolve, MIN_BLACK_MS));
+  }
+}
+
+/** Dispose + clear the active 3D hangar scene (idempotent). */
+function disposeHangarScene(): void {
+  if (activeHangarScene) {
+    try { activeHangarScene.dispose(); } catch { /* ignore */ }
+    setActiveHangarScene(null);
+  }
+  state.hangarIntroDone = false;
 }
 
 /**
@@ -207,6 +237,9 @@ let departure: Cinematic | null = null;
  * abandons instead of committing a dock nobody asked for any more.
  */
 let loadRun = 0;
+/** Set by bootIntoStoredLocation so the next HANGAR entry stages the 3D scene
+ *  PARKED (no fly-in) — a login-while-docked resumes, it doesn't re-fly-in. */
+let restoreParked = false;
 
 /** True while the approach owns the ship's position. */
 export function isDockingCinematicActive(): boolean {
@@ -389,6 +422,7 @@ export function installDockingScene(): void {
         } catch (e) {
           // Never leave the player staring at a black screen.
           console.error("[docking] hangar loading failed — recovering", e);
+          disposeHangarScene();
           sceneFade.clearNow();
           dockingCamera.release();
           sceneManager.forceState(GameState.SPACE);
@@ -401,7 +435,31 @@ export function installDockingScene(): void {
   // The world behind the blackout is now the hangar, so reveal it.
   sceneManager.register(GameState.HANGAR, {
     enter() {
-      void sceneFade.toClear(FADE_IN_MS);
+      if (ENABLE_HANGAR_3D_SCENE && activeHangarScene) {
+        const hs = activeHangarScene;
+        hs.show();          // attaches its own canvas at z-index 3
+        hs.showParked();    // stage the ship so the first frame isn't empty
+        if (restoreParked) {
+          // Login-while-docked: no fly-in, just reveal the parked hangar + menu.
+          restoreParked = false;
+          state.hangarIntroDone = true;
+          void sceneFade.toClear(FADE_IN_MS);
+        } else {
+          // Normal dock: reveal, then play the fly-in; the 2D menu is gated on
+          // state.hangarIntroDone so it appears only AFTER the cinematic settles.
+          state.hangarIntroDone = false;
+          void (async () => {
+            await sceneFade.toClear(FADE_IN_MS);
+            try { await hs.playIntro(); } catch { /* ignore */ }
+            state.hangarIntroDone = true;
+            bump();           // re-render so the menu mounts
+          })();
+        }
+      } else {
+        // 2D-panel path: menu shows immediately (dockedAt is already set).
+        state.hangarIntroDone = true;
+        void sceneFade.toClear(FADE_IN_MS);
+      }
     },
   });
 
@@ -422,6 +480,14 @@ export function installDockingScene(): void {
         try {
           await sceneFade.toBlack(FADE_OUT_MS);
           if (run !== loadRun) return;
+
+          // 3D hangar: play the lift-off outro behind the black, then tear the 3D
+          // scene down before the 2D departure flight takes over below.
+          if (ENABLE_HANGAR_3D_SCENE && activeHangarScene) {
+            try { await activeHangarScene.playOutro(); } catch { /* ignore */ }
+            if (run !== loadRun) return;
+            disposeHangarScene();
+          }
 
           const station = STATIONS.find((s) => s.id === stationId);
           // Clearing dockedAt restarts the sim loop (loop.ts:994) and with it
@@ -618,6 +684,9 @@ export function forceUndock(reason = "forced"): void {
   if (doorStation) trySetDoor(doorStation, false);
   cinematic = null;
   departure = null;
+  // Tear down the 3D hangar scene too — this catch-all (dungeon entry, error
+  // recovery, resets) must never leave the hangar canvas/renderer alive.
+  disposeHangarScene();
   // Abandon any in-flight load/undock sequence and lift the blackout. Without
   // this, a sequence still running would later fade the screen back in — or
   // worse, push into HANGAR — on top of a player already flying.
@@ -693,8 +762,27 @@ export function bootIntoStoredLocation(): boolean {
   // treats them as a valid target. Deliberately NOT runDockingServices() — that
   // repairs and refuels, and re-running it on every reload would be a free heal.
   sendDockEnter();
-  sceneManager.forceState(GameState.HANGAR);
-  bump();
+  // Login-while-docked skips the docking cinematic entirely, so preload the 3D
+  // hangar and stage it PARKED (no fly-in) before entering HANGAR. The
+  // restoreParked flag tells the HANGAR handler to showParked instead of playIntro.
+  if (ENABLE_HANGAR_3D_SCENE) {
+    restoreParked = true;
+    void (async () => {
+      try {
+        disposeHangarScene();
+        const hs = await HangarScene.preload(String(state.player?.shipClass ?? "skimmer"));
+        setActiveHangarScene(hs);
+      } catch (e) {
+        console.error("[docking] hangar restore preload failed — 2D fallback", e);
+        setActiveHangarScene(null);
+      }
+      sceneManager.forceState(GameState.HANGAR);
+      bump();
+    })();
+  } else {
+    sceneManager.forceState(GameState.HANGAR);
+    bump();
+  }
   console.log("[docking] restored into station", station.id);
   return true;
 }
