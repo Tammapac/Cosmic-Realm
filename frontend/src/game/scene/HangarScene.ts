@@ -417,9 +417,6 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
   let frameGloss: THREE.MeshStandardMaterial | null = null;
   const isContainerFrame = (name: string) =>
     /^Cont_.*_corner_/.test(name) || /^Cont_.*_r\d/.test(name);
-  // One shared clone for the BackPanel wall panels so they can carry the Hall_Wall
-  // texture WITHOUT touching the scene-wide SS_Hull_DarkMetal (platform/stairs/pipes).
-  let panelWallMat: THREE.MeshStandardMaterial | null = null;
 
   // ── Reference base-colour textures (user request) ──────────────────────────
   // The BaseColor maps of two Blender reference materials were exported to PNGs:
@@ -487,20 +484,15 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
       }
     }
 
-    // Wall panels: give the BackPanel_* meshes the reference wall base-colour
-    // (Hall_WallR / Sci-Fi Panel 16). They share the scene-wide SS_Hull_DarkMetal,
-    // so use a single dedicated clone carrying the new base map — the platform/
-    // stairs/pipes keep their own metal.
-    if (!Array.isArray(mesh.material) && /^BackPanel_\d+$/.test(mesh.name) && wallBaseTex) {
+    // The 3 big hall walls: give Hall_WallL / Hall_WallR / Hall_WallBack the
+    // reference Sci-Fi Panel 16 base-colour (as authored in Blender). Their
+    // materials (Hall_Wall / Hall_Wall_Hall_WallR) are used ONLY by these walls, so
+    // swap the .map directly — no clone needed. (BackPanels keep their own texture.)
+    if (!Array.isArray(mesh.material) && /^Hall_Wall(L|R|Back)$/.test(mesh.name) && wallBaseTex) {
       const src = mesh.material as THREE.MeshStandardMaterial;
-      if (src.isMeshStandardMaterial) {
-        if (!panelWallMat) {
-          panelWallMat = src.clone();
-          panelWallMat.name = "BackPanel_SciFiPanel16";
-          panelWallMat.map = wallBaseTex;
-          panelWallMat.needsUpdate = true;
-        }
-        mesh.material = panelWallMat;
+      if (src.isMeshStandardMaterial && src.map !== wallBaseTex) {
+        src.map = wallBaseTex;
+        src.needsUpdate = true;
       }
     }
   });
