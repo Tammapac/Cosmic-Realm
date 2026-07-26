@@ -97,7 +97,7 @@ const GLOSS_TUNING: Record<string, { roughMul: number; envI: number; roughSet?: 
   // CATCHES the environment — it read dead/flat before. NOTE this only reflects the
   // env map, never the scene: a ship mirror-image on the deck needs planar
   // reflection (a separate step), which MeshStandardMaterial can't do.
-  Material_0: { roughMul: 0.4, envI: 1.7 },
+  Material_0: { roughMul: 0.26, envI: 2.3 },
 };
 
 /** True if a material glows enough to belong on the bloom layer: a non-trivial
@@ -849,6 +849,38 @@ export class HangarScene {
     fill.castShadow = false;
     fill.name = "strip";
     this.scene.add(fill);
+
+    // ── Ring THROW toward the crate clusters: the perimeter ring lights (decay 2)
+    // die within ~2m and never reach the containers ~5-6m out, so the crates never
+    // catch the ring's cyan. Add a few wider, slower-decaying cyan lights on the
+    // ring's outer edge, lifted and pushed toward each crate cluster, so the cyan
+    // actually carries across the gap and washes the container faces. Sampled from
+    // the crate centres so it tracks the model, not hardcoded. ──
+    const crateCentres: THREE.Vector3[] = [];
+    this.hangarRoot.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (mesh.isMesh && /^Cont_[A-F]$/.test(mesh.name)) {
+        tmp.setFromObject(mesh);
+        crateCentres.push(tmp.getCenter(new THREE.Vector3()));
+      }
+    });
+    for (const cc of crateCentres) {
+      // Position the throw light on the ring edge, on the line pad→crate, lifted to
+      // the crate's mid-height so it rakes the vertical faces. decay 1.4 + range 16
+      // so it carries the ~5m to the crate without blowing out the pad.
+      const dir = new THREE.Vector3(cc.x - pad.x, 0, cc.z - pad.z);
+      const gap = dir.length() || 1;
+      dir.normalize();
+      const l = new THREE.PointLight(0xbfeeff, 3.2, 16, 1.4);
+      l.position.set(
+        pad.x + dir.x * Math.min(3.6, gap * 0.55),
+        cc.y + 0.3,
+        pad.z + dir.z * Math.min(3.6, gap * 0.55),
+      );
+      l.castShadow = false;
+      l.name = "ringThrow";
+      this.scene.add(l);
+    }
 
     // ── Under-platform cyan glow (spec #7): weak cyan lights just below the ring
     // so the deck underside + adjacent structures catch cyan, as in the reference. ──
