@@ -395,6 +395,28 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
   let frameGloss: THREE.MeshStandardMaterial | null = null;
   const isContainerFrame = (name: string) =>
     /^Cont_.*_corner_/.test(name) || /^Cont_.*_r\d/.test(name);
+  // One shared clone for the BackPanel wall panels so they can carry the Hall_Wall
+  // texture WITHOUT touching the scene-wide SS_Hull_DarkMetal (platform/stairs/pipes).
+  let panelWallMat: THREE.MeshStandardMaterial | null = null;
+
+  // ── Texture unification pre-pass (user request) ────────────────────────────
+  // Harvest two DONOR base-colour maps up front so we can copy them onto other
+  // meshes in the main traverse: (1) Barrel_1's map (Barrel_Red) → onto ALL barrel
+  // bodies (only the base map; each barrel keeps its own roughness/metal); (2) the
+  // Hall_Wall map → onto the BackPanel_* wall panels (which currently use the
+  // SS_Hull_DarkMetal panel texture). Only meaningful for the hangar model.
+  let barrelDonorMap: THREE.Texture | null = null;
+  let wallDonorMap: THREE.Texture | null = null;
+  if (label === "hangar") {
+    root.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      const mat = (Array.isArray(m.material) ? m.material[0] : m.material) as THREE.MeshStandardMaterial;
+      if (!mat) return;
+      if (!barrelDonorMap && m.name === "Barrel_1" && mat.map) barrelDonorMap = mat.map;
+      if (!wallDonorMap && /^Hall_WallL$/.test(m.name) && mat.map) wallDonorMap = mat.map;
+    });
+  }
 
   root.traverse((o) => {
     const light = o as THREE.Light;
@@ -413,6 +435,9 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
       for (const mm of bm) {
         const m = mm as THREE.MeshStandardMaterial;
         m.side = THREE.FrontSide;
+        // Unify: give every barrel Barrel_1's base map (keep this material's own
+        // roughness/metal/envI). Then lift the baked shadow wedges as before.
+        if (barrelDonorMap && m.map !== barrelDonorMap) { m.map = barrelDonorMap; m.needsUpdate = true; }
         if (m.map) {
           const lifted = liftTextureShadows(m.map);
           if (lifted) { m.map = lifted; m.needsUpdate = true; }
@@ -445,6 +470,22 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
           frameGloss.needsUpdate = true;
         }
         mesh.material = frameGloss;
+      }
+    }
+
+    // Wall panels: give the BackPanel_* meshes the Hall_Wall texture (user request).
+    // They share the scene-wide SS_Hull_DarkMetal, so use a single dedicated clone
+    // carrying the wall donor map — the platform/stairs/pipes keep their own metal.
+    if (!Array.isArray(mesh.material) && /^BackPanel_\d+$/.test(mesh.name) && wallDonorMap) {
+      const src = mesh.material as THREE.MeshStandardMaterial;
+      if (src.isMeshStandardMaterial) {
+        if (!panelWallMat) {
+          panelWallMat = src.clone();
+          panelWallMat.name = "BackPanel_HallWallTex";
+          panelWallMat.map = wallDonorMap;
+          panelWallMat.needsUpdate = true;
+        }
+        mesh.material = panelWallMat;
       }
     }
   });
