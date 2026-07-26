@@ -45,8 +45,11 @@ function smoothstep(x: number): number {
  *  it (in addition to layer 0) so only they contribute glow. */
 const BLOOM_LAYER = 1;
 
-/** Max emissiveIntensity — above this the hue clips to white in the tonemap. */
-const EMISSIVE_CAP = 2.0;
+/** Max emissiveIntensity for the emissive fixtures. Raised to 5 so the wall
+ *  Screens, ceiling lamp panels and deck strips read as WHOLE glowing faces
+ *  (the user wanted them to light up as full surfaces, not tiny points) while the
+ *  hue still survives (8+ clips to white). */
+const EMISSIVE_CAP = 5.0;
 
 /** envMapIntensity for glossy (roughness-mapped) surfaces, so reflections read. */
 const GLOSSY_ENV_INTENSITY = 2.5;
@@ -512,13 +515,12 @@ export class HangarScene {
         blendIntensity: number;
         updateGtaoMaterial?: (o: Record<string, number>) => void;
       };
-      g.blendIntensity = 2.0; // how strongly the AO darkens the image
+      g.blendIntensity = 1.2; // softened — real cast shadows now do the heavy lifting
       g.updateGtaoMaterial?.({
-        radius: 1.0,          // larger sample radius so AO reaches railings + the
-                              //   big platform, not just tight creases (room ~10u)
+        radius: 0.7,          // reaches creases + edges without over-darkening
         distanceExponent: 1,
         thickness: 1,
-        scale: 1.6,          // occlusion strength
+        scale: 1.2,          // occlusion strength
         distanceFallOff: 0.5,
       });
       finalComposer.addPass(gtao);
@@ -665,17 +667,23 @@ export class HangarScene {
     addSpot("Spot1", -3, 3, 5.5,  0.52, -0.347, -0.78, 400, 45, 0.4, 0.8, 0.9, 1.0, true);
     addSpot("Spot2",  3, -1, 5.5, -0.52,  0.347, -0.78, 400, 45, 0.4, 0.8, 0.9, 1.0, false);
 
-    // Keep ONE shadow-casting directional as a broad key so the ship + crates get
-    // a clean contact shadow on the deck (RectAreaLights can't cast shadows).
-    const shadowKey = new THREE.DirectionalLight(0xdfe8ff, 0.5);
-    shadowKey.position.set(1.5, 8, 3);
+    // ONE shadow-casting directional key so the ship, stairs + crates throw real
+    // cast shadows on the deck (RectAreaLights can't cast shadows). The frustum is
+    // widened to ±10 so it covers the WHOLE room (stairs + side containers were
+    // outside the old ±5 box and cast nothing). Aimed from high front-right.
+    const shadowKey = new THREE.DirectionalLight(0xdfe8ff, 1.2);
+    shadowKey.position.set(3, 12, -2);
+    shadowKey.target.position.set(0, 0, -1); // ~pad centre
     shadowKey.castShadow = true;
     shadowKey.shadow.mapSize.set(2048, 2048);
-    shadowKey.shadow.camera.near = 1;
-    shadowKey.shadow.camera.far = 40;
-    shadowKey.shadow.bias = -0.0002;
-    shadowKey.shadow.normalBias = 0.02;
+    const scam = shadowKey.shadow.camera;
+    scam.left = -10; scam.right = 10; scam.top = 10; scam.bottom = -10;
+    scam.near = 1; scam.far = 40;
+    scam.updateProjectionMatrix();
+    shadowKey.shadow.bias = -0.0004;
+    shadowKey.shadow.normalBias = 0.04;
     this.scene.add(shadowKey);
+    this.scene.add(shadowKey.target);
     this.keyLight = shadowKey;
 
     // Faked GI fill (chosen over a real lightmap bake, per the user): two soft,
