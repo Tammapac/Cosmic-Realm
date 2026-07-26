@@ -122,6 +122,8 @@ const HANGAR_URL = "/models/stations/hangar_interior.glb";
 // the barrel bodies + the BackPanel wall panels at load; see loadHangarBaseTex.
 const BARREL_BASE_URL = "/assets/textures/barrel_basecolor.png";
 const WALLPANEL_BASE_URL = "/assets/textures/wallpanel_basecolor.png";
+const BARREL_NORMAL_URL = "/assets/textures/barrel_normal.png";
+const WALLPANEL_NORMAL_URL = "/assets/textures/wallpanel_normal.png";
 /** Node the ship parks on. */
 const PAD_NODE = "LandingPlatform";
 /** Authored camera node, used to derive the docked framing. */
@@ -266,11 +268,12 @@ function liftTextureShadows(
 // pixels fill in once decoded. One shared THREE.Texture per URL.
 const _hangarTexLoader = new THREE.TextureLoader();
 const _hangarTexCache = new Map<string, THREE.Texture>();
-function loadHangarBaseTex(url: string): THREE.Texture {
+function loadHangarTex(url: string, linear = false): THREE.Texture {
   const cached = _hangarTexCache.get(url);
   if (cached) return cached;
   const tex = _hangarTexLoader.load(url);
-  tex.colorSpace = THREE.SRGBColorSpace;
+  // Base colour = sRGB; normal/data maps = linear (NoColorSpace) or they'd be wrong.
+  tex.colorSpace = linear ? THREE.NoColorSpace : THREE.SRGBColorSpace;
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
   tex.flipY = false; // match glTF UV convention (GLTFLoader sets flipY=false)
@@ -278,6 +281,8 @@ function loadHangarBaseTex(url: string): THREE.Texture {
   _hangarTexCache.set(url, tex);
   return tex;
 }
+function loadHangarBaseTex(url: string): THREE.Texture { return loadHangarTex(url, false); }
+function loadHangarNormalTex(url: string): THREE.Texture { return loadHangarTex(url, true); }
 
 // ── Material validation (Phase C — validate, don't override) ─────────────────
 // The user's goal is that a GLB looks in-game the way it does in Blender's
@@ -427,6 +432,8 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
   // roughness/metal/envI. Hangar model only.
   const barrelBaseTex = label === "hangar" ? loadHangarBaseTex(BARREL_BASE_URL) : null;
   const wallBaseTex = label === "hangar" ? loadHangarBaseTex(WALLPANEL_BASE_URL) : null;
+  const barrelNormalTex = label === "hangar" ? loadHangarNormalTex(BARREL_NORMAL_URL) : null;
+  const wallNormalTex = label === "hangar" ? loadHangarNormalTex(WALLPANEL_NORMAL_URL) : null;
 
   root.traverse((o) => {
     const light = o as THREE.Light;
@@ -445,11 +452,15 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
       for (const mm of bm) {
         const m = mm as THREE.MeshStandardMaterial;
         m.side = THREE.FrontSide;
-        // Apply the reference barrel base-colour (Barrel_1 / Scifi Panels 14). Keep
-        // this material's own roughness/metal/envI (base map only). The clean Blender
-        // texture has no baked shadow wedges, so no lift is needed once it's applied.
-        if (barrelBaseTex) { m.map = barrelBaseTex; m.needsUpdate = true; }
-        else if (m.map) {
+        // Apply the reference barrel base-colour + normal (Barrel_1 / Scifi Panels 14).
+        // Keep this material's own roughness/metal/envI. The clean Blender texture has
+        // no baked shadow wedges, so no lift is needed once it's applied. The normal
+        // map gives the rivets/panel seams real relief.
+        if (barrelBaseTex) {
+          m.map = barrelBaseTex;
+          if (barrelNormalTex) { m.normalMap = barrelNormalTex; m.normalScale.set(1, 1); }
+          m.needsUpdate = true;
+        } else if (m.map) {
           const lifted = liftTextureShadows(m.map);
           if (lifted) { m.map = lifted; m.needsUpdate = true; }
         }
@@ -492,6 +503,12 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
       const src = mesh.material as THREE.MeshStandardMaterial;
       if (src.isMeshStandardMaterial && src.map !== wallBaseTex) {
         src.map = wallBaseTex;
+        if (wallNormalTex) { src.normalMap = wallNormalTex; src.normalScale.set(1, 1); }
+        // Matte the walls so the PANEL DETAIL (base + normal) reads instead of the
+        // env reflection washing it out. Higher roughness + lower envI.
+        src.roughness = 0.85;
+        src.metalness = 0.1;
+        src.envMapIntensity = 0.35;
         src.needsUpdate = true;
       }
     }
