@@ -126,6 +126,8 @@ const BARREL_NORMAL_URL = "/assets/textures/barrel_normal.png";
 const WALLPANEL_NORMAL_URL = "/assets/textures/wallpanel_normal.png";
 const CONSOLE_BASE_URL = "/assets/textures/console_basecolor.png";
 const CONSOLE_NORMAL_URL = "/assets/textures/console_normal.png";
+const BARREL3_BASE_URL = "/assets/textures/barrel3_basecolor.png";
+const BARREL3_NORMAL_URL = "/assets/textures/barrel3_normal.png";
 /** Node the ship parks on. */
 const PAD_NODE = "LandingPlatform";
 /** Authored camera node, used to derive the docked framing. */
@@ -440,6 +442,8 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
   const wallNormalTex = label === "hangar" ? loadHangarNormalTex(WALLPANEL_NORMAL_URL) : null;
   const consoleBaseTex = label === "hangar" ? loadHangarBaseTex(CONSOLE_BASE_URL) : null;
   const consoleNormalTex = label === "hangar" ? loadHangarNormalTex(CONSOLE_NORMAL_URL) : null;
+  const barrel3BaseTex = label === "hangar" ? loadHangarBaseTex(BARREL3_BASE_URL) : null;
+  const barrel3NormalTex = label === "hangar" ? loadHangarNormalTex(BARREL3_NORMAL_URL) : null;
 
   root.traverse((o) => {
     const light = o as THREE.Light;
@@ -454,21 +458,32 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
     // colour so they don't read as ugly triangular shadows. The lift cache keeps a
     // shared material's map processed once.
     if (/^Barrel_\d+$/.test(mesh.name)) {
-      const bm = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      for (const mm of bm) {
-        const m = mm as THREE.MeshStandardMaterial;
-        m.side = THREE.FrontSide;
-        // Apply the reference barrel base-colour + normal (Barrel_1 / Scifi Panels 14).
-        // Keep this material's own roughness/metal/envI. The clean Blender texture has
-        // no baked shadow wedges, so no lift is needed once it's applied. The normal
-        // map gives the rivets/panel seams real relief.
-        if (barrelBaseTex) {
-          m.map = barrelBaseTex;
-          if (barrelNormalTex) { m.normalMap = barrelNormalTex; m.normalScale.set(1, 1); }
-          m.needsUpdate = true;
-        } else if (m.map) {
-          const lifted = liftTextureShadows(m.map);
-          if (lifted) { m.map = lifted; m.needsUpdate = true; }
+      // Barrel_3 gets its OWN reference texture (Sci-Fi Panel 19). It shares the
+      // Barrel_Red material with Barrel_1, so clone it so only Barrel_3 changes.
+      if (mesh.name === "Barrel_3" && !Array.isArray(mesh.material) && barrel3BaseTex) {
+        const src = mesh.material as THREE.MeshStandardMaterial;
+        const clone = src.clone();
+        clone.name = "Barrel3_SciFiPanel19";
+        clone.side = THREE.FrontSide;
+        clone.map = barrel3BaseTex;
+        if (barrel3NormalTex) { clone.normalMap = barrel3NormalTex; clone.normalScale.set(1, 1); }
+        clone.needsUpdate = true;
+        mesh.material = clone;
+      } else {
+        const bm = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const mm of bm) {
+          const m = mm as THREE.MeshStandardMaterial;
+          m.side = THREE.FrontSide;
+          // Reference barrel base-colour + normal (Barrel_1 / Scifi Panels 14). Keep
+          // this material's own roughness/metal/envI. Clean texture, so no lift.
+          if (barrelBaseTex) {
+            m.map = barrelBaseTex;
+            if (barrelNormalTex) { m.normalMap = barrelNormalTex; m.normalScale.set(1, 1); }
+            m.needsUpdate = true;
+          } else if (m.map) {
+            const lifted = liftTextureShadows(m.map);
+            if (lifted) { m.map = lifted; m.needsUpdate = true; }
+          }
         }
       }
     }
@@ -954,19 +969,22 @@ export class HangarScene {
     // cast shadows on the deck (RectAreaLights can't cast shadows). The frustum is
     // widened to ±10 so it covers the WHOLE room (stairs + side containers were
     // outside the old ±5 box and cast nothing). Aimed from high front-right.
-    const shadowKey = new THREE.DirectionalLight(0xdfe8ff, 2.6);
+    const shadowKey = new THREE.DirectionalLight(0xdfe8ff, 3.6);
     shadowKey.position.set(3, 12, -2);
     shadowKey.target.position.set(0, 0, -1); // ~pad centre
     shadowKey.castShadow = true;
     shadowKey.shadow.mapSize.set(4096, 4096);
     const scam = shadowKey.shadow.camera;
-    scam.left = -9; scam.right = 9; scam.top = 9; scam.bottom = -9;
+    // Tighter frustum → more shadow-map texels per unit → sharper, more defined
+    // cast shadows (a clear single KEY shadow for realistic lighting).
+    scam.left = -8; scam.right = 8; scam.top = 8; scam.bottom = -8;
     scam.near = 1; scam.far = 40;
     scam.updateProjectionMatrix();
-    // Lower normalBias so the cast shadow hugs the object's base (0.04 was
-    // Peter-panning it away → objects looked like they floated).
+    // Low normalBias so the cast shadow hugs the object's base (0.04 Peter-panned it
+    // away → objects looked like they floated). radius 1 keeps the edge crisp.
     shadowKey.shadow.bias = -0.0002;
     shadowKey.shadow.normalBias = 0.012;
+    shadowKey.shadow.radius = 2; // slight softening so it isn't razor-hard aliased
     this.scene.add(shadowKey);
     this.scene.add(shadowKey.target);
     this.keyLight = shadowKey;
