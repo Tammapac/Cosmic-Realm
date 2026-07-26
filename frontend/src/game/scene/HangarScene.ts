@@ -422,6 +422,8 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
   // frame meshes a single shared gloss-boosted clone (rough↓, envI↑), leaving the
   // shared platform/stair metal untouched. Built lazily on first frame mesh.
   let frameGloss: THREE.MeshStandardMaterial | null = null;
+  // One shared clone for all consoles (they share SS_Hull_DarkMetal with the scene).
+  let consoleMat: THREE.MeshStandardMaterial | null = null;
   const isContainerFrame = (name: string) =>
     /^Cont_.*_corner_/.test(name) || /^Cont_.*_r\d/.test(name);
 
@@ -541,17 +543,20 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
     // user wants them gone. Hide them (kept in the tree so nothing else breaks).
     if (/^BackPanel_\d+$/.test(mesh.name)) mesh.visible = false;
 
-    // Console_3: give it the Blender reference Sci-Fi Panel 13 base + normal. It
-    // shares the scene-wide SS_Hull_DarkMetal, so use a dedicated clone.
-    if (!Array.isArray(mesh.material) && mesh.name === "Console_3" && consoleBaseTex) {
+    // Consoles: give ALL Console_* the Blender reference Sci-Fi Panel 13 base +
+    // normal (all 4 share this material in Blender). They share the scene-wide
+    // SS_Hull_DarkMetal, so use ONE dedicated clone for the whole set.
+    if (!Array.isArray(mesh.material) && /^Console_\d+$/.test(mesh.name) && consoleBaseTex) {
       const src = mesh.material as THREE.MeshStandardMaterial;
       if (src.isMeshStandardMaterial) {
-        const clone = src.clone();
-        clone.name = "Console3_SciFiPanel13";
-        clone.map = consoleBaseTex;
-        if (consoleNormalTex) { clone.normalMap = consoleNormalTex; clone.normalScale.set(1, 1); }
-        clone.needsUpdate = true;
-        mesh.material = clone;
+        if (!consoleMat) {
+          consoleMat = src.clone();
+          consoleMat.name = "Console_SciFiPanel13";
+          consoleMat.map = consoleBaseTex;
+          if (consoleNormalTex) { consoleMat.normalMap = consoleNormalTex; consoleMat.normalScale.set(1, 1); }
+          consoleMat.needsUpdate = true;
+        }
+        mesh.material = consoleMat;
       }
     }
   });
