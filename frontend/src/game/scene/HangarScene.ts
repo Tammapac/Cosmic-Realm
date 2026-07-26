@@ -539,6 +539,33 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
       }
     }
 
+    // The floor: give Hall_Floor the SAME Sci-Fi Panel 16 texture as the walls (user
+    // request). Its material Hall_Floor_Mat is used ONLY by the floor, so swap the
+    // .map directly. Tile by the floor's two horizontal dims (x, z) with the same
+    // ~3.5-units-per-tile scale, and matte it so the panel detail reads.
+    if (!Array.isArray(mesh.material) && mesh.name === "Hall_Floor" && wallBaseTex) {
+      const src = mesh.material as THREE.MeshStandardMaterial;
+      if (src.isMeshStandardMaterial && !src.userData.floorTexApplied) {
+        mesh.geometry.computeBoundingBox();
+        const sz = mesh.geometry.boundingBox!.max.clone().sub(mesh.geometry.boundingBox!.min);
+        const TILE = 3.5;
+        const ru = Math.max(1, Math.round(sz.x / TILE));
+        const rv = Math.max(1, Math.round(sz.z / TILE));
+        src.map = wallBaseTex.clone(); src.map.needsUpdate = true;
+        src.map.repeat.set(ru, rv);
+        if (wallNormalTex) {
+          src.normalMap = wallNormalTex.clone(); src.normalMap.needsUpdate = true;
+          src.normalMap.repeat.set(ru, rv);
+          src.normalScale.set(1, 1);
+        }
+        src.roughness = 0.85;
+        src.metalness = 0.1;
+        src.envMapIntensity = 0.35;
+        src.userData.floorTexApplied = true;
+        src.needsUpdate = true;
+      }
+    }
+
     // The 4 thin BackPanel plates in front of the rear wall are visual clutter — the
     // user wants them gone. Hide them (kept in the tree so nothing else breaks).
     if (/^BackPanel_\d+$/.test(mesh.name)) mesh.visible = false;
