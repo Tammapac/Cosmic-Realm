@@ -478,15 +478,18 @@ export function installDockingScene(): void {
       // deadlock the machine.
       void (async () => {
         try {
-          await sceneFade.toBlack(FADE_OUT_MS);
-          if (run !== loadRun) return;
-
-          // 3D hangar: play the lift-off outro behind the black, then tear the 3D
-          // scene down before the 2D departure flight takes over below.
+          // 3D hangar: play the lift-off outro FIRST, while the hangar is still
+          // visible (no black yet) — otherwise the fly-out would run hidden behind
+          // the blackout and read as "no animation". THEN black out and tear it down.
           if (ENABLE_HANGAR_3D_SCENE && activeHangarScene) {
             try { await activeHangarScene.playOutro(); } catch { /* ignore */ }
             if (run !== loadRun) return;
+            await sceneFade.toBlack(FADE_OUT_MS);
+            if (run !== loadRun) return;
             disposeHangarScene();
+          } else {
+            await sceneFade.toBlack(FADE_OUT_MS);
+            if (run !== loadRun) return;
           }
 
           const station = STATIONS.find((s) => s.id === stationId);

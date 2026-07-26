@@ -7,7 +7,7 @@ import {
   PET_DRONE_UPGRADE_COST, PET_DRONE_SLOT_ORDER, PetDroneSlot, petDroneSlotCount,
 } from "../game/types";
 import type { HangarTab } from "../game/store";
-import { ENABLE_NEW_DOCKING_FLOW } from "../game/renderer-config";
+import { ENABLE_NEW_DOCKING_FLOW, ENABLE_HANGAR_3D_SCENE } from "../game/renderer-config";
 import { requestUndock, forceUndock } from "../game/scene/DockingController";
 import { useDraggable } from "./useDraggable";
 import { WeaponIcon } from "./hud-ui";
@@ -175,16 +175,49 @@ export function Hangar({ stationId }: { stationId: string }) {
   const station = STATIONS.find((s) => s.id === stationId);
   if (!station) return null;
 
+  // In the 3D hangar the menu floats over the live scene: drop the opaque scrim
+  // and make the panel glassy (frosted) so the hangar lights read through it, and
+  // move the undock control out to a standalone top-right button.
+  const glass = ENABLE_HANGAR_3D_SCENE;
+  const undock = () => {
+    if (ENABLE_NEW_DOCKING_FLOW) { requestUndock(); return; }
+    state.dockedAt = null; sendDockLeave();
+    state.player.pos.y += 200;
+    state.cameraTarget = { ...state.player.pos };
+    save();
+    bump();
+  };
+
   return (
     <div
       className="absolute inset-0 z-50 flex items-center justify-center"
-      style={{ background: "rgba(2, 4, 12, 0.88)" }}
+      style={{ background: glass ? "rgba(2, 4, 12, 0.28)" : "rgba(2, 4, 12, 0.88)" }}
     >
+      {/* Standalone undock button, top-right (3D hangar only). */}
+      {glass && (
+        <button
+          className="gbtn gbtn-red"
+          style={{
+            position: "fixed", top: 18, right: 18, zIndex: 60,
+            padding: "10px 20px", fontSize: 13, letterSpacing: "0.08em",
+            backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
+            background: "rgba(40,8,12,0.5)",
+          }}
+          onClick={undock}
+        >
+          ✕ UNDOCK
+        </button>
+      )}
       <div
         className="panel panel-framed panel-gold relative flex flex-col"
         style={{
           width: "min(1280px, 96vw)",
           height: "min(820px, 94vh)",
+          ...(glass ? {
+            background: "rgba(6,10,20,0.46)",
+            backdropFilter: "blur(14px) saturate(1.1)",
+            WebkitBackdropFilter: "blur(14px) saturate(1.1)",
+          } : {}),
           ...drag.style,
         }}
       >
@@ -214,24 +247,17 @@ export function Hangar({ stationId }: { stationId: string }) {
               </div>
             </div>
           </div>
-          <button
-            className="gbtn gbtn-red shrink-0"
-            style={{ padding: "6px 16px", fontSize: 11 }}
-            onClick={() => {
-              // M7: the new flow owns the whole undock — it clears dockedAt,
-              // tells the server and flies the ship clear, all behind a fade.
-              // Running the legacy lines as well would teleport the ship out
-              // from under the cinematic before it started.
-              if (ENABLE_NEW_DOCKING_FLOW) { requestUndock(); return; }
-              state.dockedAt = null; sendDockLeave();
-              state.player.pos.y += 200;
-              state.cameraTarget = { ...state.player.pos };
-              save();
-              bump();
-            }}
-          >
-            ✕ UNDOCK
-          </button>
+          {/* In the 3D hangar the undock control lives standalone top-right; keep
+              the header button only for the 2D version. */}
+          {!glass && (
+            <button
+              className="gbtn gbtn-red shrink-0"
+              style={{ padding: "6px 16px", fontSize: 11 }}
+              onClick={undock}
+            >
+              ✕ UNDOCK
+            </button>
+          )}
         </div>
 
         {/* Station body: bay rail · content · info rail */}
