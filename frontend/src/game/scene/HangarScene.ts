@@ -518,12 +518,13 @@ export class HangarScene {
         blendIntensity: number;
         updateGtaoMaterial?: (o: Record<string, number>) => void;
       };
-      g.blendIntensity = 1.2; // softened — real cast shadows now do the heavy lifting
+      g.blendIntensity = 0.6; // VERY light — just a hint of AO in tight contacts
       g.updateGtaoMaterial?.({
-        radius: 0.7,          // reaches creases + edges without over-darkening
+        radius: 0.4,          // small radius → only the tight creases (container
+                              //   seams, stair steps, barrel rings) get occluded
         distanceExponent: 1,
         thickness: 1,
-        scale: 1.2,          // occlusion strength
+        scale: 0.9,          // gentle occlusion strength
         distanceFallOff: 0.5,
       });
       finalComposer.addPass(gtao);
@@ -737,7 +738,7 @@ export class HangarScene {
     const cyanRing: THREE.Vector3[] = [];   // PlatformRing perimeter
     const cyanPanel: THREE.Vector3[] = [];  // rear-wall Screens + ceiling Lamp panels
     const amber: THREE.Vector3[] = [];      // pad lights, tank valves
-    const amberStripe: THREE.Vector3[] = [];// side wall stripes
+    const wallStripeMeshes: { c: THREE.Vector3; size: THREE.Vector3 }[] = []; // long side-wall bars → RectAreaLights
 
     this.hangarRoot.traverse((o) => {
       const mesh = o as THREE.Mesh;
@@ -762,23 +763,13 @@ export class HangarScene {
         else cyan.push(c);
       } else {
         if (/WallStripe/.test(n)) {
-          // A WallStripe is one long emissive bar (≈14u along z) on a side wall.
-          // Its bbox centre is in the MIDDLE, so a single light there can't reach
-          // the containers down the wall. Distribute lights ALONG its length, and
-          // push them INBOARD (toward the room centre) so the crates catch the
-          // orange light + bounce it, like the blue wall lamps do.
-          const len = Math.max(size.x, size.z);
-          const along = size.z >= size.x ? "z" : "x";
-          const inboardX = Math.sign(pad.x - c.x) || 0;
-          const inboardZ = Math.sign(pad.z - c.z) || 0;
-          const N = 7;
-          for (let i = 0; i < N; i++) {
-            const t = (i / (N - 1) - 0.5) * len * 0.9;
-            const p = c.clone();
-            if (along === "z") { p.z += t; p.x += inboardX * 0.5; }
-            else { p.x += t; p.z += inboardZ * 0.5; }
-            amberStripe.push(p);
-          }
+          // A WallStripe is one long emissive bar (≈14u) on a side wall. It should
+          // light as a WHOLE STRIP, not a row of point-dots — so it becomes ONE
+          // RectAreaLight spanning its full length, facing into the room. The
+          // containers then catch + bounce the warm light across their faces the
+          // way the blue wall lamps do. (RectAreaLights are collected + built after
+          // the traverse, since they need RectAreaLightUniformsLib.init().)
+          wallStripeMeshes.push({ c, size });
         } else amber.push(c);
       }
     });
@@ -806,9 +797,19 @@ export class HangarScene {
     addLights(cyanRing, 0xc8f7ff, 1.3, 6.5, 0.65);       // Platform ring: dimmer + wider so pools blend
     addLights(cyanPanel, 0xd8f8ff, 2.4, 6.5, 0.0);       // rear panels / ceiling lamps (cool white)
     addLights(amber, 0xffcc66, 1.6, 4.5, 0.65);          // pad lights / valves (yellow-amber)
-    // side wall stripes (orange) — distributed along each wall, reaching the
-    // containers so they catch + bounce the warm light like they do the blue lamps.
-    addLights(amberStripe, 0xffb05e, 3.0, 6.5, 0.2);
+    // side wall stripes (orange) — ONE RectAreaLight per bar, spanning its full
+    // length + facing into the room, so the whole strip lights as a surface (not
+    // point-dots) and the containers catch + bounce it like the blue wall lamps.
+    RectAreaLightUniformsLib.init();
+    for (const w of wallStripeMeshes) {
+      const len = Math.max(w.size.x, w.size.z);
+      const ra = new THREE.RectAreaLight(0xffb05e, 6, len, 0.6);
+      const inboardX = Math.sign(pad.x - w.c.x) || 0;
+      ra.position.set(w.c.x + inboardX * 0.15, w.c.y, w.c.z);
+      ra.lookAt(pad.x, w.c.y, w.c.z); // face into the room toward the containers
+      ra.name = "wallStripeArea";
+      this.scene.add(ra);
+    }
 
     // ── Platform FILL: one big, very weak light above the pad to bind the ring
     // pools into connected illumination (NOT a global ambient — a positioned,
