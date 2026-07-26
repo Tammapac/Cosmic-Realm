@@ -822,7 +822,9 @@ export class HangarScene {
     // the glossy floor spreads into a soft wash instead of a sharp mirror-dot (the
     // bright blue/white specks the user wanted gone) — they still light the deck.
     addLights(cyan, 0xbfefff, 1.8, 4.5, 0.65);           // FloorMarker cyan
-    addLights(cyanRing, 0xc8f7ff, 1.3, 6.5, 0.65);       // Platform ring: dimmer + wider so pools blend
+    // Platform ring: brighter + longer range so it actually throws cyan onto the
+    // ship + crates around the pad (before it was too dim/short to reach them).
+    addLights(cyanRing, 0xc8f7ff, 3.6, 10, 0.7);
     addLights(cyanPanel, 0xd8f8ff, 2.4, 6.5, 0.0);       // rear panels / ceiling lamps (cool white)
     addLights(amber, 0xffcc66, 1.6, 4.5, 0.65);          // pad lights / valves (yellow-amber)
     // side wall stripes (orange) — ONE RectAreaLight per bar, spanning its full
@@ -979,6 +981,34 @@ export class HangarScene {
     this.parkAt(this.padWorld);
     this.scene.add(ship);
     // (No fake contact-shadow blob — real screen-space AO grounds the ship now.)
+    this.addShipFill();
+  }
+
+  /**
+   * Dedicated soft fill on the parked ship so it catches more light than the room
+   * rig alone gives it (the ship sits low in the pad well, shadowed from the wall
+   * fixtures). Two shadowless point lights keyed to the ship's own position: a cool
+   * key from front-above-left and a warm-neutral fill from the right, both
+   * short-range so they touch the ship + pad but don't wash the whole hangar.
+   */
+  private addShipFill(): void {
+    if (!this.ship) return;
+    const box = new THREE.Box3().setFromObject(this.ship);
+    const c = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const span = Math.max(size.x, size.z) || 2;
+
+    const key = new THREE.PointLight(0xdfe8ff, 5.0, span * 5, 2.0); // cool key
+    key.position.set(c.x - span * 0.7, c.y + span * 1.4, c.z - span * 0.9);
+    key.castShadow = false;
+    key.name = "shipFill";
+    this.scene.add(key);
+
+    const fill = new THREE.PointLight(0xfff0dc, 3.0, span * 5, 2.0); // warm fill
+    fill.position.set(c.x + span * 1.0, c.y + span * 0.8, c.z + span * 0.6);
+    fill.castShadow = false;
+    fill.name = "shipFill";
+    this.scene.add(fill);
   }
 
   /** Place the parked ship at a world point (keeping its recentre + lift). */
