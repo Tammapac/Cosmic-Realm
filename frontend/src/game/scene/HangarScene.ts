@@ -1031,7 +1031,9 @@ export class HangarScene {
     // toward +z, so you look INTO the hangar (rear wall panels, lamps, stairs,
     // crates), NOT out through the exit door (the big black wall on the +z side).
     // Raised + to the right for an overview angle looking down into the ring.
-    this.camPos.copy(this.padWorld).add(new THREE.Vector3(2.5, 3.0, -7.5));
+    // Pulled further back + up (out toward the -Z mouth) so more of the hangar is
+    // in frame — the parked/establishing shot shows the full room, not just the pad.
+    this.camPos.copy(this.padWorld).add(new THREE.Vector3(2.5, 4.2, -11.5));
     this.camTarget.copy(this.padWorld).add(new THREE.Vector3(-0.5, 1.0, 3));
   }
 
@@ -1242,6 +1244,7 @@ export class HangarScene {
 
   playOutro(): Promise<void> {
     if (!this.ship) return Promise.resolve();
+    this.smokeFired = false; // arm the one-shot lift-off smoke
     return new Promise<void>((resolve) => {
       this.anim = { t: 0, dur: 2.2, kind: "outro", resolve };
     });
@@ -1300,8 +1303,20 @@ export class HangarScene {
 
   private applyOutro(t: number): void {
     if (!this.ship) return;
+    const pad = this.padWorld;
+    // Lift-off smoke: one burst on the pad as the thrusters spool up at the very
+    // start of departure, before the ship clears the deck. Scaled by ship size.
+    if (!this.smokeFired && t >= 0.02 && this.smoke) {
+      this.smokeFired = true;
+      const foot = Math.max(this.shipLift * 2, 1.2);
+      this.smoke.burst(
+        new THREE.Vector3(pad.x, pad.y + 0.02, pad.z),
+        1.0 + foot * 0.6,
+        0.9 + foot * 0.5,
+      );
+    }
     const e = smoothstep(t);
-    const from = this.padWorld;
+    const from = pad;
     const to = this.mouthPoint();
     const p = from.clone().lerp(to, e);
     this.ship.position.copy(this.shipRecenter).add(p);
