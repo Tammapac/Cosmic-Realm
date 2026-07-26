@@ -71,7 +71,10 @@ const GLOSS_TUNING: Record<string, { roughMul: number; envI: number; roughSet?: 
   // kept for surface variation. For the floor/platform, roughSet/metalSet pin the
   // spec values (rough ~0.42, metal ~0.45, envI 1.2) so they read as wet/polished
   // with broad soft reflections — not a mirror (spec #6).
-  Hall_Floor_Mat: { roughMul: 1.0, envI: 1.2, roughSet: 0.42, metalSet: 0.45 },  // deck
+  // The DECK floor was reflecting too hard — matter it (rough 0.42->0.6, envI
+  // 1.2->0.9) so it's a soft sheen, not a mirror. Only the floor; the platform +
+  // hull keep their polished look.
+  Hall_Floor_Mat: { roughMul: 1.0, envI: 0.9, roughSet: 0.6, metalSet: 0.4 },  // deck
   SS_Hull_DarkMetal: { roughMul: 1.0, envI: 1.2, roughSet: 0.42, metalSet: 0.45 }, // platform/hull
   Hall_Wall: { roughMul: 1.0, envI: 0.9 },         // walls
   // Containers + barrels: painted-metal look — catch light, soft wide highlights,
@@ -758,8 +761,25 @@ export class HangarScene {
         } else if (/Screen_|Lamp\d+_panel/.test(n)) cyanPanel.push(c);
         else cyan.push(c);
       } else {
-        if (/WallStripe/.test(n)) amberStripe.push(c);
-        else amber.push(c);
+        if (/WallStripe/.test(n)) {
+          // A WallStripe is one long emissive bar (≈14u along z) on a side wall.
+          // Its bbox centre is in the MIDDLE, so a single light there can't reach
+          // the containers down the wall. Distribute lights ALONG its length, and
+          // push them INBOARD (toward the room centre) so the crates catch the
+          // orange light + bounce it, like the blue wall lamps do.
+          const len = Math.max(size.x, size.z);
+          const along = size.z >= size.x ? "z" : "x";
+          const inboardX = Math.sign(pad.x - c.x) || 0;
+          const inboardZ = Math.sign(pad.z - c.z) || 0;
+          const N = 7;
+          for (let i = 0; i < N; i++) {
+            const t = (i / (N - 1) - 0.5) * len * 0.9;
+            const p = c.clone();
+            if (along === "z") { p.z += t; p.x += inboardX * 0.5; }
+            else { p.x += t; p.z += inboardZ * 0.5; }
+            amberStripe.push(p);
+          }
+        } else amber.push(c);
       }
     });
 
@@ -786,7 +806,9 @@ export class HangarScene {
     addLights(cyanRing, 0xc8f7ff, 1.3, 6.5, 0.65);       // Platform ring: dimmer + wider so pools blend
     addLights(cyanPanel, 0xd8f8ff, 2.4, 6.5, 0.0);       // rear panels / ceiling lamps (cool white)
     addLights(amber, 0xffcc66, 1.6, 4.5, 0.65);          // pad lights / valves (yellow-amber)
-    addLights(amberStripe, 0xffb05e, 2.0, 5.5, 0.0);     // side wall stripes (orange)
+    // side wall stripes (orange) — distributed along each wall, reaching the
+    // containers so they catch + bounce the warm light like they do the blue lamps.
+    addLights(amberStripe, 0xffb05e, 3.0, 6.5, 0.2);
 
     // ── Platform FILL: one big, very weak light above the pad to bind the ring
     // pools into connected illumination (NOT a global ambient — a positioned,
