@@ -342,36 +342,21 @@ export function installDockingScene(): void {
 
       flyPath(cin, dt);
 
-      // "Fly INTO the hangar" read (top-down): the ship normally floats 1500·zoom
-      // above every station so it can never sink into a hull. Ramp that lift DOWN
-      // over the last stretch of the approach so the ship descends onto the world
-      // plane and the station's roof/door geometry OCCLUDES it — from the overhead
-      // camera it looks like the ship slips under the hangar door into the station.
-      // Only in the shared 3D scene (where the station is real geometry with depth).
-      const sharedSink = ENABLE_SHARED_3D_SCENE;
-      if (sharedSink) {
-        // t 0.45 → 1.0 maps lift 1 → 0 (smoothstepped): the ship descends through
-        // the whole run-in and is only FULLY under the station roof right at arrival,
-        // so the player watches the entire fly-in-and-disappear with NO fade over it.
-        const k = Math.max(0, Math.min(1, (cin.t - 0.45) / 0.55));
-        const e = k * k * (3 - 2 * k); // smoothstep
-        setShipLiftFactor(1 - e);
-      }
+      // The ship keeps its FULL lift the whole approach: it floats above the station
+      // rather than sinking into the hull, so it never buggs THROUGH the station and
+      // the station's roof/door geometry never layers over it. (An earlier version
+      // ramped the lift down to sink the ship under the roof — that read as clipping
+      // through the station, so it's gone.)
 
       // M9: the station's 3D instance is created on its first rendered frame, so
       // enter() can be a tick or two too early. Keep asking until a door answers.
       if (!cin.doorDone) cin.doorDone = tryAnimateDoor(cin.stationId, true);
 
-      // Blackout timing. WITHOUT the 3D sink (old path), start FADE_OUT_MS before
-      // arrival so black lands exactly on arrival. WITH it, DO NOT fade during the
-      // fly-in at all — the whole point is to watch the ship enter. Only once the
-      // ship is fully inside (arrival, t≈1) does a short black bridge to the hangar.
-      const fadeAt = sharedSink
-        ? cin.t >= 0.995
-        : (1 - cin.t) * cin.duration <= FADE_OUT_MS / 1000;
-      if (!cin.fading && fadeAt) {
+      // Blackout: start FADE_OUT_MS before arrival so it lands exactly as the ship
+      // reaches the dock, then the hangar scene takes over behind the black.
+      if (!cin.fading && (1 - cin.t) * cin.duration <= FADE_OUT_MS / 1000) {
         cin.fading = true;
-        void sceneFade.toBlack(sharedSink ? 300 : FADE_OUT_MS);
+        void sceneFade.toBlack(FADE_OUT_MS);
       }
 
       if (cin.t >= 1) {
