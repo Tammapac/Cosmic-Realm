@@ -5,6 +5,7 @@ import { PIXELATE_3D, PIXELATE_3D_SCALE, ENABLE_NEW_DOCKING_FLOW, ENABLE_SHARED_
 import {
   ensureWorldLayer, claimWorldRenderDriver, isWorldRenderDriver,
   stationsGroup, normalizeSharedDepth,
+  playerShipsGroup, getShipLiftFactor,
 } from "./three-world-layer";
 import { STATIONS } from "./types";
 import { applySpaceMaterial, setMaterialAnisotropyMax } from "./space-material";
@@ -630,6 +631,45 @@ export function getStationDoorWorldOffset(id: string): { x: number; y: number } 
   };
 }
 
+
+/**
+ * DEBUG: dump the live scene geometry needed to tune the docking sink — the
+ * station wrapper position + scale, the door-node WORLD position (all 3 axes, so
+ * we can read the opening's height), and the current player-ship group Y (the
+ * lift). Returns null if the station has no 3D instance. Read from the console
+ * while docking to compute the exact sink depth. Zero cost when not called.
+ */
+export function debugStationDoor(id: string): Record<string, unknown> | null {
+  const st = activeStations.get(id);
+  const node = st?.door?.doorNode;
+  if (!st) return null;
+  st.wrapper.updateWorldMatrix(true, false);
+  node?.updateWorldMatrix(true, false);
+  const doorWorld = node ? new THREE.Vector3().setFromMatrixPosition(node.matrixWorld) : null;
+  const r = (v: number) => Math.round(v * 100) / 100;
+  return {
+    cameraZoom,
+    stationWrapper: { x: r(st.wrapper.position.x), y: r(st.wrapper.position.y), z: r(st.wrapper.position.z) },
+    stationScale: r(st.wrapper.scale.x),
+    maxDim: st.maxDim,
+    doorNodeWorld: doorWorld ? { x: r(doorWorld.x), y: r(doorWorld.y), z: r(doorWorld.z) } : null,
+    // door height above the station's own plane (what the ship must descend TO):
+    doorYaboveStation: doorWorld ? r(doorWorld.y - st.wrapper.position.y) : null,
+    playerShipGroupY: r(playerShipsGroup.position.y),
+    shipLiftFactor: getShipLiftFactor(),
+  };
+}
+// Expose the door debug on window so it can be read from the console while docking.
+if (typeof window !== "undefined") {
+  (window as unknown as Record<string, unknown>).__debugDoor = debugStationDoor;
+  // Convenience: dump for whatever station the player is currently docking with.
+  (window as unknown as Record<string, unknown>).__dockedDoor = () => {
+    for (const id of activeStations.keys()) {
+      // eslint-disable-next-line no-console
+      console.log("[door]", id, debugStationDoor(id));
+    }
+  };
+}
 
 export function updateStationOnly(
   id: string,
