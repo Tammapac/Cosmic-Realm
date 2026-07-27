@@ -617,12 +617,24 @@ export function getStationDoorWorldOffset(id: string): { x: number; y: number } 
   // pure garbage.
   const world = doorScratch.setFromMatrixPosition(node.matrixWorld);
   // Scene space is (x, y=up, z) with the ortho camera looking down -Y, so the
-  // world plane is (x, z). Subtract the station's own screen position to get the
-  // offset, then undo the zoom scaling.
-  return {
-    x: (world.x - st.wrapper.position.x) / cameraZoom,
-    y: (world.z - st.wrapper.position.z) / cameraZoom,
-  };
+  // world plane is (x, z). Raw offset of the HangarRamp NODE from the station.
+  let dx = (world.x - st.wrapper.position.x) / cameraZoom;
+  let dy = (world.z - st.wrapper.position.z) / cameraZoom;
+  // In cosmic_station.glb the HangarRamp node's ORIGIN sits ~at the model centre
+  // (local z 0.447 of a ±8 model → only ~51 world units out), so the raw offset
+  // above lands the dock target almost on the station centre and the ship never
+  // visibly flies INTO the hangar. The mouth is really at the model's +Z edge.
+  // Push the offset out ALONG the ramp's direction to a fraction of the model's
+  // world half-size, so the approach aims at the actual opening. Falls back to
+  // pure +Z (screen-bottom, where door stations are pinned) if the node is dead
+  // centre and gives no direction.
+  // The station is scaled so maxDim maps to targetPixels(1843) world units, so its
+  // world half-size is 1843/2 regardless of maxDim. The mouth sits at ~0.82 of that.
+  const reach = (1843 / 2) * 0.82; // ≈ 756 world units out along the ramp axis
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-3) { dx = 0; dy = 1; } // dead-centre node → default +Z
+  else { dx /= len; dy /= len; }
+  return { x: dx * reach, y: dy * reach };
 }
 
 
