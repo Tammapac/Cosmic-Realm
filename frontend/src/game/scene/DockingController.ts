@@ -350,10 +350,10 @@ export function installDockingScene(): void {
       // Only in the shared 3D scene (where the station is real geometry with depth).
       const sharedSink = ENABLE_SHARED_3D_SCENE;
       if (sharedSink) {
-        // t 0.5 → 0.9 maps lift 1 → 0 (smoothstepped): the ship is FULLY sunk under
-        // the station roof by t=0.9, i.e. WHILE still visible, so the "fly in under
-        // the door" reads before anything blacks out.
-        const k = Math.max(0, Math.min(1, (cin.t - 0.5) / 0.4));
+        // t 0.45 → 1.0 maps lift 1 → 0 (smoothstepped): the ship descends through
+        // the whole run-in and is only FULLY under the station roof right at arrival,
+        // so the player watches the entire fly-in-and-disappear with NO fade over it.
+        const k = Math.max(0, Math.min(1, (cin.t - 0.45) / 0.55));
         const e = k * k * (3 - 2 * k); // smoothstep
         setShipLiftFactor(1 - e);
       }
@@ -363,16 +363,15 @@ export function installDockingScene(): void {
       if (!cin.doorDone) cin.doorDone = tryAnimateDoor(cin.stationId, true);
 
       // Blackout timing. WITHOUT the 3D sink (old path), start FADE_OUT_MS before
-      // arrival so black lands exactly on arrival. WITH it, hold the picture until
-      // the ship has visibly slipped under the roof (t≈0.92) — otherwise the fade
-      // covers the very moment we want the player to see — then a short black bridges
-      // into the hangar scene.
+      // arrival so black lands exactly on arrival. WITH it, DO NOT fade during the
+      // fly-in at all — the whole point is to watch the ship enter. Only once the
+      // ship is fully inside (arrival, t≈1) does a short black bridge to the hangar.
       const fadeAt = sharedSink
-        ? cin.t >= 0.92
+        ? cin.t >= 0.995
         : (1 - cin.t) * cin.duration <= FADE_OUT_MS / 1000;
       if (!cin.fading && fadeAt) {
         cin.fading = true;
-        void sceneFade.toBlack(FADE_OUT_MS);
+        void sceneFade.toBlack(sharedSink ? 300 : FADE_OUT_MS);
       }
 
       if (cin.t >= 1) {
