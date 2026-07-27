@@ -164,8 +164,12 @@ const activeThisFrame = new Set<string>();
 // throw, and every station would be invisible — which is exactly what "shared
 // scene = no stations" turned out to be, not a depth-buffer bug.
 const USE_COSMIC_STATION = ENABLE_NEW_DOCKING_FLOW || ENABLE_SHARED_3D_SCENE;
+// v2 = the station with the oversized Hall_Floor plate removed, so maxDim reflects
+// the BUILDING (~0.96) not the plate (16). That lets the game scale the actual
+// station up to a sane on-screen size and puts the hangar opening at a height the
+// docking sink can reach (see targetPixels below).
 const STATION_MODEL_URLS = USE_COSMIC_STATION
-  ? ["/models/stations/cosmic_station.glb"]
+  ? ["/models/stations/cosmic_station_v2.glb"]
   : [
       "/models/stations/spacestation1.glb",
       "/models/stations/spacestation2.glb",
@@ -175,7 +179,7 @@ const FACTORY_MODEL_URLS = USE_COSMIC_STATION
   // Factories have no deployed model either, so reuse the cosmic hull for the
   // test rather than leave every factory invisible. Cosmetic only — the merge
   // being verified is about depth, not which mesh a factory wears.
-  ? ["/models/stations/cosmic_station.glb"]
+  ? ["/models/stations/cosmic_station_v2.glb"]
   : [
       "/models/stations/factorystation.glb",
       "/models/stations/factorystation2.glb",
@@ -727,7 +731,11 @@ export function updateStationOnly(
   // camera sits at y=8000 (far above the tallest station at max zoom 2.5),
   // so zooming in can never push a model through the near plane — the hull
   // always renders solid, top to bottom.
-  const targetPixels = 1843;
+  // cosmic_station_v2 has maxDim ~0.96 (the BUILDING, no floor plate), so scale it
+  // to ~900px on screen — a few times the ship's size, a station you dock at without
+  // it filling the screen. The old plate model was maxDim 16 @ 1843px = a ~111px
+  // building; this makes the building itself the on-screen size instead.
+  const targetPixels = st.maxDim < 4 ? 900 : 1843;
   const finalScale = (targetPixels * cameraZoom) / st.maxDim;
   st.wrapper.scale.setScalar(finalScale);
 

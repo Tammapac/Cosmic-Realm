@@ -92,6 +92,10 @@ const APPROACH_MAX = 4.5;   // longer, so the fly-in under the hangar door reads
  *  so the player actually sees the ship reach the station instead of it cutting to
  *  black mid-approach. */
 const DOCK_ARRIVAL_HOLD_S = 0.8;
+/** Ship lift factor the approach descends TO (1 = full float above stations). The
+ *  hangar opening on cosmic_station_v2 @ 900px sits at ~0.047 of full lift; a touch
+ *  above that lands the ship IN the opening, occluded by the roof, not through it. */
+const DOCK_SINK_FACTOR = 0.06;
 
 function approachDuration(length: number): number {
   return Math.max(APPROACH_MIN, Math.min(APPROACH_MAX, length / APPROACH_SPEED));
@@ -348,11 +352,18 @@ export function installDockingScene(): void {
 
       flyPath(cin, dt);
 
-      // The ship keeps its FULL lift the whole approach: it floats above the station
-      // rather than sinking into the hull, so it never buggs THROUGH the station and
-      // the station's roof/door geometry never layers over it. (An earlier version
-      // ramped the lift down to sink the ship under the roof — that read as clipping
-      // through the station, so it's gone.)
+      // "Fly INTO the hangar" (top-down): the ship normally floats 1500·zoom above
+      // every station so it can never clip a hull. Ramp that lift DOWN over the run-in
+      // so the ship descends to the hangar-opening height and the station's roof/door
+      // geometry OCCLUDES it — it reads as the ship slipping into the station. With
+      // cosmic_station_v2 (building-scaled), the opening sits at ~0.05 of full lift,
+      // a comfortable target that lands the ship IN the opening (not through the hull).
+      if (ENABLE_SHARED_3D_SCENE) {
+        // t 0.3 → 1.0 maps lift 1 → DOCK_SINK_FACTOR (smoothstepped for a soft descent).
+        const k = Math.max(0, Math.min(1, (cin.t - 0.3) / 0.7));
+        const e = k * k * (3 - 2 * k); // smoothstep
+        setShipLiftFactor(1 - e * (1 - DOCK_SINK_FACTOR));
+      }
 
       // M9: the station's 3D instance is created on its first rendered frame, so
       // enter() can be a tick or two too early. Keep asking until a door answers.
