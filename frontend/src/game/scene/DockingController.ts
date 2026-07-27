@@ -26,8 +26,9 @@ import { dockingCamera } from "./DockingCameraController";
 import { sceneFade } from "./SceneFade";
 import { saveLocation, loadLocation, clearLocation } from "./DockingPersistence";
 import { getStationDoor, getStationDoorWorldOffset } from "../three-station-layer";
-import { ENABLE_HANGAR_3D_SCENE } from "../renderer-config";
+import { ENABLE_HANGAR_3D_SCENE, ENABLE_SHARED_3D_SCENE } from "../renderer-config";
 import { HangarScene, activeHangarScene, setActiveHangarScene } from "./HangarScene";
+import { setShipLiftFactor } from "../three-world-layer";
 
 /**
  * Blackout timing (M6). The fade-out is STARTED before arrival so the screen is
@@ -341,6 +342,19 @@ export function installDockingScene(): void {
 
       flyPath(cin, dt);
 
+      // "Fly INTO the hangar" read (top-down): the ship normally floats 1500·zoom
+      // above every station so it can never sink into a hull. Ramp that lift DOWN
+      // over the last stretch of the approach so the ship descends onto the world
+      // plane and the station's roof/door geometry OCCLUDES it — from the overhead
+      // camera it looks like the ship slips under the hangar door into the station.
+      // Only in the shared 3D scene (where the station is real geometry with depth).
+      if (ENABLE_SHARED_3D_SCENE) {
+        // t 0.6 → 1.0 maps lift 1 → 0 (smoothstepped for a soft descent).
+        const k = Math.max(0, (cin.t - 0.6) / 0.4);
+        const e = k * k * (3 - 2 * k); // smoothstep
+        setShipLiftFactor(1 - e);
+      }
+
       // M9: the station's 3D instance is created on its first rendered frame, so
       // enter() can be a tick or two too early. Keep asking until a door answers.
       if (!cin.doorDone) cin.doorDone = tryAnimateDoor(cin.stationId, true);
@@ -378,6 +392,9 @@ export function installDockingScene(): void {
         // leaving a cancelled dock with a door hanging open. Going the other way
         // (on to the hangar) is handled behind the blackout instead.
         if (aborted) tryAnimateDoor(aborted.stationId, false);
+        // Cancelled dock → put the ship back up to full lift, or it would stay sunk
+        // into the world plane (half-buried in stations) as the player flies on.
+        if (ENABLE_SHARED_3D_SCENE) setShipLiftFactor(1);
         dockingCamera.release();
         // Aborted mid-fade: drop the blackout instantly rather than fading a
         // screen the player never agreed to lose.
@@ -665,6 +682,9 @@ export function requestUndock(): void {
 /** The world half of undocking, run behind the blackout by the UNDOCKING state. */
 function commitUndock(): void {
   state.dockedAt = null;
+  // Restore full ship lift so the ship reappears floating above the station (the
+  // approach ramped it down to sink under the roof); otherwise it exits half-buried.
+  if (ENABLE_SHARED_3D_SCENE) setShipLiftFactor(1);
   sendDockLeave();
   saveLocation("SPACE", null, state.player.zone);
   save();
@@ -690,6 +710,8 @@ export function forceUndock(reason = "forced"): void {
   // Tear down the 3D hangar scene too — this catch-all (dungeon entry, error
   // recovery, resets) must never leave the hangar canvas/renderer alive.
   disposeHangarScene();
+  // And restore full ship lift, or a ship that was mid-descent stays sunk in a hull.
+  if (ENABLE_SHARED_3D_SCENE) setShipLiftFactor(1);
   // Abandon any in-flight load/undock sequence and lift the blackout. Without
   // this, a sequence still running would later fade the screen back in — or
   // worse, push into HANGAR — on top of a player already flying.
