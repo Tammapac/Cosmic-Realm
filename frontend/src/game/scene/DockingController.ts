@@ -88,6 +88,10 @@ function disposeHangarScene(): void {
 const APPROACH_SPEED = 150; // world units / second (slower = more deliberate run-in)
 const APPROACH_MIN = 2.0;
 const APPROACH_MAX = 4.5;   // longer, so the fly-in under the hangar door reads
+/** Visible pause at the hangar opening AFTER arrival, before the blackout starts —
+ *  so the player actually sees the ship reach the station instead of it cutting to
+ *  black mid-approach. */
+const DOCK_ARRIVAL_HOLD_S = 0.8;
 
 function approachDuration(length: number): number {
   return Math.max(APPROACH_MIN, Math.min(APPROACH_MAX, length / APPROACH_SPEED));
@@ -220,6 +224,8 @@ interface Cinematic {
   fading: boolean;
   /** M9: set once the door request actually reached a door, so it fires once. */
   doorDone: boolean;
+  /** Seconds elapsed since the ship arrived at the opening (the visible hold). */
+  holdT?: number;
 }
 
 let cinematic: Cinematic | null = null;
@@ -352,20 +358,23 @@ export function installDockingScene(): void {
       // enter() can be a tick or two too early. Keep asking until a door answers.
       if (!cin.doorDone) cin.doorDone = tryAnimateDoor(cin.stationId, true);
 
-      // Blackout: start FADE_OUT_MS before arrival so it lands exactly as the ship
-      // reaches the dock, then the hangar scene takes over behind the black.
-      if (!cin.fading && (1 - cin.t) * cin.duration <= FADE_OUT_MS / 1000) {
+      // Let the WHOLE approach play visibly (no fade during the fly-in) so the
+      // player can see the ship reach the station opening. Only once it has ARRIVED
+      // do we hold briefly at the opening, then fade — never before.
+      if (cin.t < 1) return;
+
+      // Arrived. Count up a short visible hold at the opening before the blackout,
+      // so the player sees the ship sitting in the hangar mouth.
+      cin.holdT = (cin.holdT ?? 0) + dt;
+      if (!cin.fading && cin.holdT >= DOCK_ARRIVAL_HOLD_S) {
         cin.fading = true;
         void sceneFade.toBlack(FADE_OUT_MS);
       }
-
-      if (cin.t >= 1) {
+      // Commit + transition only once the black has covered the screen, so the
+      // scene swap happens behind it (no visible pop).
+      if (cin.fading && cin.holdT >= DOCK_ARRIVAL_HOLD_S + FADE_OUT_MS / 1000) {
         cin.committed = true;
-        // Drop the lead offset but keep the push-in, so there is no zoom-out
-        // pop between the dock landing and the hangar opening.
         dockingCamera.settle();
-        // The dock itself is committed by the HANGAR_LOADING state, behind the
-        // blackout — see installDockingScene below.
         void sceneManager.transitionTo(GameState.HANGAR_LOADING, {
           stationId: cin.stationId,
           kind: cin.kind,
