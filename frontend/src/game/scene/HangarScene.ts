@@ -1438,10 +1438,11 @@ export class HangarScene {
     this.parkAt(this.padWorld);
   }
 
-  /** The ship's entry point: out toward the hangar mouth (-z), at hover height, so
-   *  it glides straight in over the deck (not a steep descent). */
+  /** The ship's entry point: well OUTSIDE the hangar mouth (-z), at hover height,
+   *  so the fly-in visibly comes from outside and passes THROUGH the opening (the
+   *  -z side of the interior has no wall) before reaching the pad. */
   private mouthPoint(): THREE.Vector3 {
-    return this.padWorld.clone().add(new THREE.Vector3(0, 1.2, -9.5));
+    return this.padWorld.clone().add(new THREE.Vector3(0, 1.2, -18));
   }
 
   /** Turntable sweep for the intro: EXACTLY 180°. The ship lands nose-first at the
@@ -1463,7 +1464,7 @@ export class HangarScene {
     this.ship.rotation.set(0, this.exitYaw, 0);
     this.smokeFired = false; // arm the one-shot touchdown smoke
     return new Promise<void>((resolve) => {
-      this.anim = { t: 0, dur: 3.2, kind: "intro", resolve };
+      this.anim = { t: 0, dur: 4.0, kind: "intro", resolve };
     });
   }
 
@@ -1476,11 +1477,12 @@ export class HangarScene {
   }
 
   /**
-   * Fly-in: (1) t 0→0.7 straight nose-first glide from the -Z mouth to the pad,
-   * chase-cam flying in behind the ship with the full hangar ahead; (2) touchdown
-   * as it reaches the pad; (3) t 0.7→1 the platform + ship turntable-rotate exactly
-   * 180° (pivot yaw π→0) so the nose ends toward the -Z exit, camera easing to a
-   * wide establishing shot so the whole rotation reads.
+   * Fly-in: (1) t 0→0.7 straight glide from WELL OUTSIDE the -Z opening, through the
+   * hangar mouth, to the pad — a true chase-cam rides directly behind the ship so
+   * you fly in behind it through the door; (2) touchdown as it reaches the pad;
+   * (3) t 0.7→1 the platform + ship turntable-rotate exactly 180° (pivot yaw π→0)
+   * so the nose ends toward the -Z exit, camera easing out to the wide establishing
+   * shot so the whole rotation reads.
    */
   private applyIntro(t: number): void {
     if (!this.ship || !this.platformPivot) return;
@@ -1515,15 +1517,27 @@ export class HangarScene {
     const turn = smoothstep(Math.max(0, (t - 0.7) / 0.3));
     this.platformPivot.rotation.y = HangarScene.TURN * (1 - turn);
 
-    // ── Camera: chase-cam behind the ship (-Z, low) during the glide, easing to
-    // the wide establishing pose during the turn so the full hangar + rotation
-    // are visible. ──
-    const camBeat = smoothstep(t);
-    const chase = pad.clone().add(new THREE.Vector3(0, 2.2, -11)); // behind + low
-    const wide = this.camPos;                                       // parked overview
-    this.camera.position.copy(chase.lerp(wide, camBeat));
-    const look = pad.clone().add(new THREE.Vector3(0, 1.0, 2)); // into the hangar
-    this.camera.lookAt(look);
+    // ── Camera: a TRUE chase-cam that trails directly BEHIND the ship (further -Z,
+    // slightly above) and follows it THROUGH the opening, so you ride in behind the
+    // ship as it enters the hangar. It looks at a point just ahead of the ship
+    // (+Z), keeping the interior it's flying into centred. Once the ship has landed
+    // (glide done, t>0.7) the camera eases out to the wide establishing pose so the
+    // whole 180° turntable reads. ──
+    this.ship.updateWorldMatrix(true, false); // position was just set above
+    const shipWorld = new THREE.Vector3().setFromMatrixPosition(this.ship.matrixWorld);
+    const chasePos = new THREE.Vector3(shipWorld.x, shipWorld.y + 2.0, shipWorld.z - 6.5);
+    const chaseLook = new THREE.Vector3(shipWorld.x, shipWorld.y + 0.4, shipWorld.z + 4);
+    if (turn <= 0) {
+      // Glide phase: pure chase behind the ship.
+      this.camera.position.copy(chasePos);
+      this.camera.lookAt(chaseLook);
+    } else {
+      // Landed → turning: blend from the chase pose to the wide overview.
+      const e = smoothstep(turn);
+      this.camera.position.copy(chasePos.lerp(this.camPos, e));
+      const look = chaseLook.lerp(pad.clone().add(new THREE.Vector3(-0.5, 1.0, 3)), e);
+      this.camera.lookAt(look);
+    }
   }
 
   private applyOutro(t: number): void {
