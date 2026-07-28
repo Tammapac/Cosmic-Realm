@@ -176,13 +176,16 @@ const SHIP_3D_MODELS: Record<string, string> = {
 // different tool may need a quarter/half turn — set it here instead of
 // re-exporting the GLB. Baked into the model at load (see loadModel).
 export const MODEL_YAW_OFFSET: Record<string, number> = {
-  // enemy_erix: Math.PI,  // uncomment/adjust if Erix faces the wrong way
-  // silikum's hull is authored nose-DOWN (+Z), the reverse of the -Z convention —
-  // top-down renders show the pointed nose at the bottom, the engine block up — so
-  // it flew backwards/sideways. Half-turn corrects it. (angin/crobium/draug/nabas
-  // render nose-up = correct; maron/knoton/simonit are radially symmetric so a
-  // heading offset is visually moot.)
-  enemy_silikum: Math.PI,
+  // Per-model heading correction, dialled in from live in-game observation.
+  // Convention: +Y rotation is COUNTER-clockwise (turn LEFT); clockwise (turn
+  // RIGHT) is negative. So "90° right" = -π/2, "90° left" = +π/2.
+  enemy_nabas: -Math.PI / 2,    // 90° right
+  enemy_silikum: Math.PI / 2,   // 90° left
+  enemy_erix: -Math.PI / 2,     // 90° right
+  enemy_angin: -Math.PI / 2,    // 90° right
+  enemy_crobium: Math.PI / 2,   // 90° left
+  enemy_draug: -Math.PI / 2,    // 90° right
+  // maron/knoton/simonit are radially symmetric — no meaningful facing.
 };
 
 // Models whose AUTHORED texture look must be preserved: no space-metal
