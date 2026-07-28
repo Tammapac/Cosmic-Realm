@@ -909,6 +909,12 @@ export class HangarScene {
     // (fake blob contact shadows removed — real screen-space AO handles contact
     //  shading now, see the GTAO pass in the composer.)
     scene.parkShip(shipGLB.scene, shipClass);
+    // Pre-compile every shader NOW, while this runs behind the docking blackout —
+    // otherwise the FIRST visible render() in show() compiles hundreds of PBR
+    // programs synchronously (a multi-second GPU stall the player sees AFTER the
+    // fade-in as a frozen frame). renderer.compile() warms them behind the black
+    // so the first shown frame is instant.
+    try { scene.warmupCompile(); } catch { /* non-fatal — first render just compiles */ }
     return scene;
   }
 
@@ -1410,6 +1416,31 @@ export class HangarScene {
   }
 
   // ── Lifecycle ──────────────────────────────────────────────────────────────
+
+  /**
+   * Compile every shader program up front, behind the docking blackout, so the
+   * first VISIBLE frame in show() doesn't stall for seconds building PBR programs
+   * on the fly. Sizes the offscreen canvas + camera to the window, frames the
+   * parked shot, then renderer.compile() (and a warm render through the composer
+   * so the GTAO/FXAA passes' programs compile too).
+   */
+  warmupCompile(): void {
+    const w = window.innerWidth || 1280;
+    const h = window.innerHeight || 720;
+    this.renderer.setSize(w, h, false);
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+    this.frameParked();
+    // Base scene programs.
+    this.renderer.compile(this.scene, this.camera);
+    // If the post-FX chain is active, size + run it once so its passes compile too.
+    if (HangarScene.postFx && this.composer) {
+      this.composer.setSize(w, h);
+      this.renderComposed();
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
+  }
 
   /** Attach the canvas to the DOM (full-screen, above Pixi, below the menu). */
   show(host: HTMLElement = document.body): void {
