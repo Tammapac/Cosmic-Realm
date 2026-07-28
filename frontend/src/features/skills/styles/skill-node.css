@@ -204,10 +204,16 @@
 
 /* ═══ STATES ════════════════════════════════════════════════════════════ */
 
-/* LOCKED — desaturated, dark, icon receded */
-.skn--locked { filter: saturate(0.15) brightness(0.62); }
-.skn--locked .skn-ring { border-color: rgba(70, 80, 106, 0.5); }
-.skn--locked .skn-icon { color: #6b7789; opacity: 0.6; }
+/* LOCKED — desaturated and cool, but still clearly READABLE. It was previously
+   dimmed so far (brightness .62 on an already dark plate) that locked nodes
+   vanished into the backdrop and the tree looked half-empty. */
+.skn--locked { filter: saturate(0.35) brightness(0.95); }
+.skn--locked .skn-frame {
+  background: linear-gradient(180deg, #35465f 0%, #1b2740 55%, #0d1424 100%);
+  border-color: rgba(130, 165, 205, 0.4);
+}
+.skn--locked .skn-ring { border-color: rgba(120, 140, 175, 0.55); }
+.skn--locked .skn-icon { color: #9fb0c8; opacity: 0.85; }
 
 /* AVAILABLE — cyan-ish rim + slow breathing pulse */
 .skn--available .skn-ring {

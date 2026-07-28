@@ -58,13 +58,13 @@ function SkillDetailPanelImpl({ skillId, player, accent, variant, busy, onLearn 
     };
   }, [def, player]);
 
+  // Nothing selected → collapse to a slim prompt strip instead of holding a
+  // full-width empty column, which was stealing half the canvas from the tree.
   if (!def || !view) {
     return (
       <aside className="skd skd--empty" aria-live="polite">
-        <div className="skd-empty-inner">
-          <span className="skd-empty-glyph">◈</span>
-          <p>Select a module to inspect its specification.</p>
-        </div>
+        <span className="skd-empty-glyph" aria-hidden="true">◈</span>
+        <span className="skd-empty-text">Select a module</span>
       </aside>
     );
   }

@@ -59,17 +59,21 @@ function CanvasInner({ layout, player, accent, selectedId, onSelect }: Props) {
       // Instead: frame the ROOT area at ~1:1 and let the player pan outward —
       // "you start here, the tree extends beyond". minZoom clamps the fit so a
       // small tree still can't be scaled down into unreadability.
-      const roots = layout.nodes.filter((n) => n.visualTier === 0);
-      if (roots.length) {
+      // Frame the opening BRANCH (root + its first two tiers), not just the
+      // root: focusing the single root node showed almost nothing of the map.
+      // This opens on a readable chunk of tree while still starting the player
+      // at the bottom of the cluster they grow from.
+      const opening = layout.nodes.filter((n) => n.visualTier <= 2);
+      if (opening.length) {
         fitView({
-          nodes: roots.map((n) => ({ id: n.skillId })),
-          padding: 3.2,          // wide padding => the root sits in context
+          nodes: opening.map((n) => ({ id: n.skillId })),
+          padding: 0.22,
           duration: 420,
-          minZoom: 0.72,
-          maxZoom: 1.0,
+          minZoom: 0.62,
+          maxZoom: 0.95,
         });
       } else {
-        fitView({ padding: 0.14, duration: 420, minZoom: 0.72, maxZoom: 1.0 });
+        fitView({ padding: 0.16, duration: 420, minZoom: 0.62, maxZoom: 0.95 });
       }
     }, 30);
     return () => window.clearTimeout(t);
@@ -110,10 +114,10 @@ function CanvasInner({ layout, player, accent, selectedId, onSelect }: Props) {
         // The floor must match the fit clamp below: React Flow applies the
         // instance minZoom AFTER a fitView, so a lower global floor silently
         // let big trees scale down to ~0.38 and made every node tiny again.
-        minZoom={0.7}
+        minZoom={0.5}
         maxZoom={1.6}
         fitView
-        fitViewOptions={{ padding: 3.2, minZoom: 0.72, maxZoom: 1.0 }}
+        fitViewOptions={{ padding: 0.22, minZoom: 0.62, maxZoom: 0.95 }}
         translateExtent={[
           [-bounds.width, -bounds.height],
           [bounds.width * 2, bounds.height * 2],

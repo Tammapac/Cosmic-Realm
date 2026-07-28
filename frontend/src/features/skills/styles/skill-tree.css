@@ -119,93 +119,158 @@
 }
 
 /* ── Tabs (vertical rail on desktop) ───────────────────────────────────── */
+/* ── Category rail: a stack of angled command bays ─────────────────────── */
 .skt-tabs {
+  position: relative;
   flex-shrink: 0;
-  width: 186px;
+  width: 234px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 14px 10px;
-  border-right: 1px solid var(--hud-border);
-  background: rgba(6, 10, 20, 0.35); /* lets the panel's glass read through */
-  overflow-y: auto;
+  gap: 10px;
+  padding: 20px 0 20px 14px;
+  background:
+    linear-gradient(90deg, rgba(8, 14, 26, 0.55), rgba(6, 10, 20, 0.18));
+  overflow: visible;
 }
-.skt-tab {
+/* the vertical bus the bays hang off */
+.skt-tabs-spine {
+  position: absolute;
+  left: 20px;
+  top: 26px;
+  bottom: 26px;
+  width: 2px;
+  background: linear-gradient(180deg,
+    transparent,
+    rgba(120, 170, 220, 0.28) 12%,
+    rgba(120, 170, 220, 0.28) 88%,
+    transparent);
+}
+
+.skt-bay {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 11px 12px;
+  gap: 12px;
+  padding: 12px 14px 12px 26px;
   cursor: pointer;
   text-align: left;
-  border: 1px solid transparent;
-  background: transparent;
   color: var(--text-dim, #9fb0c8);
-  transition: background 140ms ease, border-color 140ms ease,
-              transform 140ms ease, color 140ms ease;
+  background: linear-gradient(100deg, rgba(20, 30, 50, 0.5), rgba(10, 16, 30, 0.28));
+  border: 1px solid rgba(90, 130, 180, 0.22);
+  /* angled bay: the outer edge is cut, so the stack reads as machined slots
+     rather than a list of rectangles */
+  clip-path: polygon(0 0, 100% 0, calc(100% - 14px) 100%, 0 100%);
+  transition: transform 180ms cubic-bezier(0.22, 0.61, 0.36, 1),
+              background 180ms ease, border-color 180ms ease, color 180ms ease;
 }
-.skt-tab:hover {
-  background: rgba(78, 226, 255, 0.05);
-  border-color: rgba(78, 226, 255, 0.2);
-  transform: translateX(2px);
+.skt-bay:hover {
+  transform: translateX(5px);
+  color: var(--text-bright, #dce8f7);
+  border-color: color-mix(in srgb, var(--tab-accent) 40%, transparent);
+  background: linear-gradient(100deg,
+    color-mix(in srgb, var(--tab-accent) 10%, rgba(20, 30, 50, 0.5)),
+    rgba(10, 16, 30, 0.28));
 }
-.skt-tab--on {
-  background: rgba(78, 226, 255, 0.08);
-  border-color: var(--hud-border-bright);
-  box-shadow: var(--mat-rim);
-  transform: translateX(4px);
+.skt-bay--on {
+  transform: translateX(12px);
+  color: var(--text-bright, #dce8f7);
+  border-color: color-mix(in srgb, var(--tab-accent) 65%, transparent);
+  background: linear-gradient(100deg,
+    color-mix(in srgb, var(--tab-accent) 17%, rgba(22, 34, 56, 0.72)),
+    rgba(10, 16, 30, 0.34));
+  box-shadow:
+    inset 0 1px 0 rgba(220, 240, 255, 0.14),
+    0 4px 16px rgba(0, 0, 0, 0.45);
 }
-/* Energy bar that lights up on the active tab (left edge). */
-.skt-tab--on::before {
+/* live bay: bright tick on the spine side */
+.skt-bay--on::before {
   content: "";
   position: absolute;
-  left: -11px; top: 8px; bottom: 8px;
+  left: -12px; top: 10px; bottom: 10px;
   width: 3px;
   background: var(--tab-accent, var(--skill-energy));
-  box-shadow: 0 0 10px var(--tab-accent, var(--skill-energy));
+  box-shadow: 0 0 12px var(--tab-accent, var(--skill-energy));
 }
-.skt-tab-glyph {
-  flex-shrink: 0;
-  width: 30px; height: 30px;
-  display: grid; place-items: center;
-  font-size: 16px;
-  border: 1px solid var(--hud-border-dim);
-  background: rgba(0, 0, 0, 0.3);
-  color: var(--tab-accent, var(--skill-energy));
-  transition: box-shadow 140ms ease;
+/* connector reaching toward the canvas */
+.skt-bay-link {
+  position: absolute;
+  right: -14px;
+  top: 50%;
+  width: 0;
+  height: 1px;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--tab-accent) 70%, transparent), transparent);
+  transition: width 220ms ease;
 }
-.skt-tab--on .skt-tab-glyph {
-  box-shadow: 0 0 12px color-mix(in srgb, var(--tab-accent) 45%, transparent);
-  border-color: color-mix(in srgb, var(--tab-accent) 50%, transparent);
-}
-.skt-tab-body { min-width: 0; flex: 1; }
-.skt-tab-name {
+.skt-bay--on .skt-bay-link { width: 26px; }
+
+/* bay index tick */
+.skt-bay-idx {
+  position: absolute;
+  left: 7px;
+  top: 9px;
   font-family: var(--font-display, var(--hud-font));
-  font-size: 12px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-bright, #dce8f7);
-  white-space: nowrap;
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  color: var(--text-mute, #7f8ea6);
+  opacity: 0.6;
 }
-.skt-tab-meta {
+.skt-bay--on .skt-bay-idx { color: var(--tab-accent); opacity: 0.95; }
+
+/* ring gauge + glyph */
+.skt-bay-gauge {
+  position: relative;
+  flex-shrink: 0;
+  width: 38px; height: 38px;
+  display: grid;
+  place-items: center;
+}
+.skt-bay-ring { position: absolute; inset: 0; transform: rotate(-90deg); }
+.skt-bay-ring-bg {
+  fill: none;
+  stroke: rgba(0, 0, 0, 0.55);
+  stroke-width: 2.5;
+}
+.skt-bay-ring-fg {
+  fill: none;
+  stroke: var(--tab-accent, var(--skill-energy));
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--tab-accent) 55%, transparent));
+  transition: stroke-dasharray 320ms ease;
+}
+.skt-bay-glyph {
+  position: relative;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--tab-accent, var(--skill-energy));
+  transition: text-shadow 180ms ease, transform 180ms ease;
+}
+.skt-bay--on .skt-bay-glyph {
+  text-shadow: 0 0 12px color-mix(in srgb, var(--tab-accent) 70%, transparent);
+  transform: scale(1.12);
+}
+
+.skt-bay-text { min-width: 0; flex: 1; }
+.skt-bay-name {
+  display: block;
+  font-family: var(--font-display, var(--hud-font));
+  font-size: 11px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.skt-bay-meta {
+  display: block;
+  margin-top: 3px;
   font-size: 10px;
   color: var(--text-mute, #7f8ea6);
   font-variant-numeric: tabular-nums;
-  margin-top: 3px;
 }
-/* Thin progress rail under each tab label. */
-.skt-tab-bar {
-  margin-top: 5px;
-  height: 2px;
-  background: rgba(0, 0, 0, 0.5);
-  overflow: hidden;
-}
-.skt-tab-bar-fill {
-  height: 100%;
-  background: var(--tab-accent, var(--skill-energy));
-  box-shadow: 0 0 6px var(--tab-accent, var(--skill-energy));
-  transition: width 260ms ease;
-}
+.skt-bay-meta b { color: var(--tab-accent); font-weight: 700; }
+.skt-bay-slash { opacity: 0.45; margin: 0 3px; }
 
 /* ── Canvas viewport ───────────────────────────────────────────────────── */
 .skt-canvas-wrap {
@@ -323,15 +388,25 @@
   background: linear-gradient(180deg, rgba(14, 22, 40, 0.62), rgba(6, 10, 20, 0.72));
   box-shadow: var(--mat-ao);
 }
-.skd--empty { justify-content: center; align-items: center; }
-.skd-empty-inner {
-  text-align: center;
-  color: var(--text-mute, #7f8ea6);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  max-width: 200px;
+/* Collapsed state — a slim vertical prompt so the tree keeps the width. */
+.skd--empty {
+  width: 44px;
+  padding: 14px 0;
+  gap: 14px;
+  align-items: center;
+  justify-content: flex-start;
+  background: linear-gradient(180deg, rgba(14, 22, 40, 0.4), rgba(6, 10, 20, 0.5));
 }
-.skd-empty-glyph { display: block; font-size: 30px; opacity: 0.35; margin-bottom: 10px; }
+.skd--empty .skd-empty-glyph { font-size: 18px; opacity: 0.4; }
+.skd-empty-text {
+  writing-mode: vertical-rl;
+  font-family: var(--font-display, var(--hud-font));
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-mute, #7f8ea6);
+  opacity: 0.7;
+}
 
 .skd-head { display: flex; align-items: center; gap: 12px; }
 .skd-icon {
@@ -501,9 +576,11 @@
    that fitView has to zoom the tree out. The detail console floats over the
    canvas instead of taking a column, and the tab rail slims down. */
 @media (max-width: 1180px) and (min-width: 861px) {
-  .skt-tabs { width: 150px; }
+  .skt-tabs { width: 186px; }
   .skt-main { position: relative; }
-  .skd {
+  /* only the POPULATED panel floats; the collapsed strip stays in flow so it
+     can't hover as an empty slab over the tree */
+  .skd:not(.skd--empty) {
     position: absolute;
     top: 10px; right: 10px; bottom: 10px;
     width: 290px;
@@ -532,9 +609,16 @@
     border-bottom: 1px solid var(--hud-border);
     padding: 10px;
   }
-  .skt-tab { flex-shrink: 0; min-width: 150px; }
-  .skt-tab--on { transform: none; }
-  .skt-tab--on::before { left: 8px; right: 8px; top: auto; bottom: -10px; width: auto; height: 3px; }
+  .skt-tabs-spine { display: none; }
+  .skt-bay {
+    flex-shrink: 0;
+    min-width: 168px;
+    clip-path: none;            /* the angled cut only reads in a vertical stack */
+    padding: 10px 12px 10px 22px;
+  }
+  .skt-bay:hover, .skt-bay--on { transform: none; }
+  .skt-bay--on::before { left: 8px; right: 8px; top: auto; bottom: -8px; width: auto; height: 3px; }
+  .skt-bay-link { display: none; }
 
   /* Detail panel becomes a bottom sheet. */
   .skt-main { flex-direction: column; }
@@ -549,5 +633,5 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .skt-tab, .skt-tab-bar-fill { transition: none !important; }
+  .skt-bay, .skt-bay-ring-fg, .skt-bay-link, .skt-bay-glyph { transition: none !important; }
 }
