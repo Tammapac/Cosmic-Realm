@@ -47,7 +47,11 @@ function readHangarFlag(): boolean {
   const p = new URLSearchParams(window.location.search);
   // ?hangar-test is the isolated harness for the hangar scene; it must force the
   // whole stack on the same way ?depth-test forces the shared scene.
-  return p.has("hangar") || p.has("hangar-test");
+  if (p.has("hangar") || p.has("hangar-test")) return true;
+  // FULL ROLLOUT: the 3D docking experience is now the default for EVERY player —
+  // no ?hangar needed. ?no-hangar is the emergency opt-out (reverts that browser to
+  // the old 2D dock) in case a client hits a problem in the field.
+  return !p.has("no-hangar");
 }
 
 function readDockingFlowFlag(): boolean {

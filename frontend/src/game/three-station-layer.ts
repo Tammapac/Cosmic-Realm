@@ -732,10 +732,12 @@ export function updateStationOnly(
   // so zooming in can never push a model through the near plane — the hull
   // always renders solid, top to bottom.
   // cosmic_station_v2 has maxDim ~0.96 (the BUILDING, no floor plate), so scale it
-  // to ~900px on screen — a few times the ship's size, a station you dock at without
-  // it filling the screen. The old plate model was maxDim 16 @ 1843px = a ~111px
-  // building; this makes the building itself the on-screen size instead.
-  const targetPixels = st.maxDim < 4 ? 900 : 1843;
+  // to ~1400px on screen — a station clearly larger than the ship (the ship renders
+  // at a few hundred px), one you dock INTO without it filling the whole viewport.
+  // The old plate model was maxDim 16 @ 1843px = a ~111px building; this makes the
+  // building itself the on-screen size instead. 900px read as "too small" next to the
+  // ship, so it's bumped up here.
+  const targetPixels = st.maxDim < 4 ? 1400 : 1843;
   const finalScale = (targetPixels * cameraZoom) / st.maxDim;
   st.wrapper.scale.setScalar(finalScale);
 

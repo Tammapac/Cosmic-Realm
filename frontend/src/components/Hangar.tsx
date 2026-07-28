@@ -9,6 +9,7 @@ import {
 import type { HangarTab } from "../game/store";
 import { ENABLE_NEW_DOCKING_FLOW, ENABLE_HANGAR_3D_SCENE } from "../game/renderer-config";
 import { requestUndock, forceUndock } from "../game/scene/DockingController";
+import { swapActiveHangarShip } from "../game/scene/HangarScene";
 import { useDraggable } from "./useDraggable";
 import { WeaponIcon } from "./hud-ui";
 import { effectiveStats } from "../game/loop";
@@ -188,6 +189,13 @@ export function Hangar({ stationId }: { stationId: string }) {
     bump();
   };
 
+  // 3D hangar: a floating column of INDIVIDUAL menu items over the live scene.
+  // Nothing else is shown until one is clicked, at which point a content drawer
+  // slides out left→right. Clicking the active item (or its ✕) closes the drawer.
+  if (glass) {
+    return <HangarGlassMenu station={station} stationId={stationId} tab={tab} undock={undock} />;
+  }
+
   return (
     <div
       className="absolute inset-0 z-50 flex items-center justify-center"
@@ -285,18 +293,7 @@ export function Hangar({ stationId }: { stationId: string }) {
 
           {/* content */}
           <div className="overflow-y-auto flex-1 min-h-0">
-            {tab === "bounties" && <BountiesTab />}
-            {tab === "missions" && <MissionsTab />}
-            {tab === "skills" && <SkillsTab />}
-            {tab === "loadout" && <LoadoutTab stationId={stationId} />}
-            {tab === "dungeons" && <DungeonsTab />}
-            {tab === "ships" && <ShipsTab />}
-            {tab === "drones" && <DronesTab />}
-            {tab === "market" && <MarketTab stationId={stationId} />}
-            {tab === "ammo" && <AmmoTab />}  {/* kept for loadout inline popup */}
-            {tab === "cargo" && <CargoTab />}
-            {tab === "refinery" && <RefineryTab stationId={stationId} />}
-            {tab === "repair" && <RepairTab stationId={stationId} />}
+            <TabContent tab={tab} stationId={stationId} />
           </div>
 
           {/* info rail: pilot + resources summary */}
@@ -307,6 +304,120 @@ export function Hangar({ stationId }: { stationId: string }) {
         <HangarDockStrip station={station} />
       </div>
 
+    </div>
+  );
+}
+
+// The section body for a given tab — shared by the 2D panel and the 3D glass drawer.
+function TabContent({ tab, stationId }: { tab: HangarTab; stationId: string }) {
+  return (
+    <>
+      {tab === "bounties" && <BountiesTab />}
+      {tab === "missions" && <MissionsTab />}
+      {tab === "skills" && <SkillsTab />}
+      {tab === "loadout" && <LoadoutTab stationId={stationId} />}
+      {tab === "dungeons" && <DungeonsTab />}
+      {tab === "ships" && <ShipsTab />}
+      {tab === "drones" && <DronesTab />}
+      {tab === "market" && <MarketTab stationId={stationId} />}
+      {tab === "ammo" && <AmmoTab />}  {/* kept for loadout inline popup */}
+      {tab === "cargo" && <CargoTab />}
+      {tab === "refinery" && <RefineryTab stationId={stationId} />}
+      {tab === "repair" && <RepairTab stationId={stationId} />}
+    </>
+  );
+}
+
+/**
+ * 3D-hangar menu (glass mode). Instead of one big panel, the individual menu items
+ * float in a column on the left over the live hangar scene. Nothing else is shown
+ * until the pilot clicks one — then a frosted content drawer slides out from left to
+ * right beside the column. Clicking the active item again (or the drawer's ✕) closes
+ * it, returning to just the scene + item list. `tab === null` = closed.
+ */
+function HangarGlassMenu({
+  station, stationId, tab, undock,
+}: {
+  station: (typeof STATIONS)[number];
+  stationId: string;
+  tab: HangarTab;
+  undock: () => void;
+}) {
+  const items = station.kind === "factory" ? FACTORY_TABS : TABS;
+  const open = tab !== null;
+  const active = items.find((t) => t.id === tab) ?? null;
+
+  const pick = (id: HangarTab) => {
+    // Toggle: clicking the open section closes the drawer.
+    state.hangarTab = state.hangarTab === id ? null : id;
+    bump();
+  };
+  const close = () => { state.hangarTab = null; bump(); };
+
+  return (
+    <div className="absolute inset-0 z-50" style={{ pointerEvents: "none" }}>
+      {/* Standalone undock button, top-right. */}
+      <button
+        className="gbtn gbtn-red"
+        style={{
+          position: "fixed", top: 18, right: 18, zIndex: 60, pointerEvents: "auto",
+          padding: "10px 20px", fontSize: 13, letterSpacing: "0.08em",
+          backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
+          background: "rgba(40,8,12,0.5)",
+        }}
+        onClick={undock}
+      >
+        ✕ UNDOCK
+      </button>
+
+      {/* Station identity chip, top-left above the item column. */}
+      <div className="hangar-glass-head">
+        <div className="hangar-glass-head-icon">⬡</div>
+        <div className="min-w-0">
+          <div className="hud-label" style={{ fontSize: 9 }}>DOCKED · {station.kind.toUpperCase()}</div>
+          <div className="hangar-glass-head-name">{station.name.toUpperCase()}</div>
+        </div>
+      </div>
+
+      {/* Floating item column + slide-out drawer. */}
+      <div className="hangar-glass-menu">
+        <nav className="hangar-glass-rail">
+          {items.map((t, i, arr) => {
+            const dividerBefore = station.kind !== "factory" && (t.id === "missions" || t.id === "ships");
+            return (
+              <div key={t.id} className="contents">
+                {dividerBefore && <div className="hangar-glass-div" />}
+                <button
+                  className={`hangar-glass-item ${tab === t.id ? "hangar-glass-item--on" : ""}`}
+                  onClick={() => pick(t.id)}
+                >
+                  <span className="hangar-glass-glyph">{t.glyph}</span>
+                  <span className="hangar-glass-lbl">{t.label}</span>
+                </button>
+              </div>
+            );
+          })}
+        </nav>
+
+        {/* Content drawer — slides open from the rail's right edge. Rendered always
+            so the width transition animates; content only mounts while open. */}
+        <div className={`hangar-glass-drawer ${open ? "hangar-glass-drawer--open" : ""}`}>
+          {open && active && (
+            <>
+              <div className="hangar-glass-drawer-head">
+                <span className="hangar-glass-drawer-title">
+                  <span style={{ opacity: 0.7, marginRight: 8 }}>{active.glyph}</span>
+                  {active.label.toUpperCase()}
+                </span>
+                <button className="hangar-glass-close" onClick={close} title="Close">✕</button>
+              </div>
+              <div className="hangar-glass-drawer-body">
+                <TabContent tab={tab} stationId={stationId} />
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1482,6 +1593,9 @@ function ShipsTab() {
       const stats = effectiveStats();
       player.hull = stats.hullMax; player.shield = stats.shieldMax;
       pushNotification(`Boarded ${cls.name}`, "good");
+      // Live-swap the parked hull in the 3D hangar so the ship you just boarded is
+      // the one standing on the pad (no re-dock needed).
+      swapActiveHangarShip(id);
       save(); bump();
       return;
     }
@@ -1494,6 +1608,7 @@ function ShipsTab() {
     const stats = effectiveStats();
     player.hull = stats.hullMax; player.shield = stats.shieldMax;
     pushNotification(`Acquired ${cls.name}!`, "good");
+    swapActiveHangarShip(id);
     save(); bump();
   };
 

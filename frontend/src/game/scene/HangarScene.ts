@@ -211,6 +211,21 @@ function loadGLB(url: string): Promise<LoadedGLB> {
   return p;
 }
 
+/**
+ * Kick off the hangar-interior + ship GLB fetches WITHOUT building a scene.
+ * Called at the start of the docking approach so the ~7 MB interior is fetched
+ * and Draco-decoded WHILE the ship flies in (~4 s of otherwise-idle network),
+ * not serially behind the blackout. preload() then hits the warm cache and the
+ * black-screen wait collapses to just the PMREM/scene build.
+ *
+ * Idempotent and fire-and-forget — the cache dedupes, and a rejected warm-up is
+ * swallowed here so preload() is still the one place load errors are handled.
+ */
+export function warmHangarAssets(shipClass: string): void {
+  void loadGLB(HANGAR_URL).catch(() => {});
+  void loadGLB(shipUrl(shipClass)).catch(() => {});
+}
+
 /** Find a node by exact name (case-insensitive) in a model. */
 function findNode(root: THREE.Object3D, name: string): THREE.Object3D | null {
   let hit: THREE.Object3D | null = null;
@@ -640,6 +655,8 @@ export class HangarScene {
   private lastT = 0;
   private hangarRoot: THREE.Group;
   private ship: THREE.Group | null = null;
+  /** Class of the currently parked ship, so setShip() can no-op an identical swap. */
+  private shipClass = "";
   /** The dominant shadow-casting key light (kept for the debug overlay). */
   private keyLight: THREE.DirectionalLight | null = null;
   /** Pooled dynamic combat lights (laser / explosion / hit). */
@@ -1283,7 +1300,47 @@ export class HangarScene {
     this.platformPivot = pivot;
   }
 
+  /**
+   * Swap the parked ship for a different class WHILE docked — the player changed
+   * ship in the Shipyard, so the hangar must show the new hull immediately. Fetches
+   * the GLB (cached after the first time), tears down the current ship, and parks the
+   * new one on the pad in the settled pose. No fly-in — it's an in-place change.
+   */
+  async setShip(shipClass: string): Promise<void> {
+    if (shipClass === this.shipClass) return;
+    let glb: LoadedGLB;
+    try {
+      glb = await loadGLB(shipUrl(shipClass));
+    } catch (e) {
+      console.error("[hangar] ship swap load failed", shipClass, e);
+      return;
+    }
+    // finishIntro() first so the ship is scene-owned (not inside the turntable pivot)
+    // before we remove it, or disposing a pivot child would leave the pivot dirty.
+    this.finishIntro();
+    this.parkShip(glb.scene, shipClass); // disposes the old ship + fill lights
+    this.frameParked();
+  }
+
   private parkShip(shipTemplate: THREE.Group, shipClass = "skimmer"): void {
+    // Tear down any previously parked ship + its dedicated fill lights first, so this
+    // doubles as the swap path (setShip) — not just the initial park.
+    if (this.ship) {
+      this.ship.parent?.remove(this.ship);
+      this.ship.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh) {
+          m.geometry?.dispose?.();
+          const mat = m.material;
+          (Array.isArray(mat) ? mat : [mat]).forEach((mm) => mm?.dispose?.());
+        }
+      });
+      this.ship = null;
+    }
+    for (const l of [...this.scene.children].filter((c) => c.name === "shipFill")) {
+      this.scene.remove(l);
+    }
+    this.shipClass = shipClass;
     const ship = shipTemplate.clone(true);
     validateModel(ship, "ship");
     const box = new THREE.Box3().setFromObject(ship);
@@ -1438,11 +1495,16 @@ export class HangarScene {
     this.parkAt(this.padWorld);
   }
 
-  /** The ship's entry point: well OUTSIDE the hangar mouth (-z), at hover height,
-   *  so the fly-in visibly comes from outside and passes THROUGH the opening (the
-   *  -z side of the interior has no wall) before reaching the pad. */
+  /** How far in front of the pad (-z) the ship starts its fly-in / ends its fly-out.
+   *  Kept SHORT so the ship starts just inside the hangar mouth — the player never
+   *  sees the hangar "as a box from far away". The old -18 flew the camera far enough
+   *  out to frame the whole exterior; this keeps the whole move inside the room. */
+  private static readonly ENTRY_Z = -7;
+
+  /** The ship's entry point: just inside the hangar mouth (-z), at hover height, so
+   *  the fly-in reads as coming through the opening without ever showing the exterior. */
   private mouthPoint(): THREE.Vector3 {
-    return this.padWorld.clone().add(new THREE.Vector3(0, 1.2, -18));
+    return this.padWorld.clone().add(new THREE.Vector3(0, 1.2, HangarScene.ENTRY_Z));
   }
 
   /** Turntable sweep for the intro: EXACTLY 180°. The ship lands nose-first at the
@@ -1517,27 +1579,13 @@ export class HangarScene {
     const turn = smoothstep(Math.max(0, (t - 0.7) / 0.3));
     this.platformPivot.rotation.y = HangarScene.TURN * (1 - turn);
 
-    // ── Camera: a TRUE chase-cam that trails directly BEHIND the ship (further -Z,
-    // slightly above) and follows it THROUGH the opening, so you ride in behind the
-    // ship as it enters the hangar. It looks at a point just ahead of the ship
-    // (+Z), keeping the interior it's flying into centred. Once the ship has landed
-    // (glide done, t>0.7) the camera eases out to the wide establishing pose so the
-    // whole 180° turntable reads. ──
-    this.ship.updateWorldMatrix(true, false); // position was just set above
-    const shipWorld = new THREE.Vector3().setFromMatrixPosition(this.ship.matrixWorld);
-    const chasePos = new THREE.Vector3(shipWorld.x, shipWorld.y + 2.0, shipWorld.z - 6.5);
-    const chaseLook = new THREE.Vector3(shipWorld.x, shipWorld.y + 0.4, shipWorld.z + 4);
-    if (turn <= 0) {
-      // Glide phase: pure chase behind the ship.
-      this.camera.position.copy(chasePos);
-      this.camera.lookAt(chaseLook);
-    } else {
-      // Landed → turning: blend from the chase pose to the wide overview.
-      const e = smoothstep(turn);
-      this.camera.position.copy(chasePos.lerp(this.camPos, e));
-      const look = chaseLook.lerp(pad.clone().add(new THREE.Vector3(-0.5, 1.0, 3)), e);
-      this.camera.lookAt(look);
-    }
+    // ── Camera: STATIC. The player asked for no chase-cam and no zoom-in — the
+    // camera never moves during the fly-in. It sits at the fixed parked establishing
+    // pose looking into the hangar the whole time; only the SHIP (and the turntable)
+    // move. The ship simply glides in from the mouth to the pad within this fixed
+    // frame. Nothing of the exterior is ever shown because the camera stays put. ──
+    this.camera.position.copy(this.camPos);
+    this.camera.lookAt(this.camTarget);
   }
 
   private applyOutro(t: number): void {
@@ -1560,7 +1608,12 @@ export class HangarScene {
     const p = from.clone().lerp(to, e);
     this.ship.position.copy(this.shipRecenter).add(p);
     this.ship.position.y += this.shipLift;
-    this.camera.lookAt(this.ship.position);
+    // Camera stays PUT at the interior establishing pose and keeps looking into the
+    // room — it must NOT pan out after the ship through the mouth, or it reveals the
+    // exterior "box". The ship simply glides out of frame toward the -Z opening while
+    // the shot holds on the hangar interior. Hold the parked framing throughout.
+    this.camera.position.copy(this.camPos);
+    this.camera.lookAt(this.camTarget);
   }
 
   // ── Resize / teardown ───────────────────────────────────────────────────────
@@ -1764,4 +1817,15 @@ export class HangarScene {
 export let activeHangarScene: HangarScene | null = null;
 export function setActiveHangarScene(s: HangarScene | null): void {
   activeHangarScene = s;
+}
+
+/**
+ * Swap the parked ship in the active hangar scene, if one is live. A function (not a
+ * raw binding) so callers always read the CURRENT module-local `activeHangarScene`
+ * rather than a possibly-stale imported value — the Shipyard calls this the moment
+ * the player boards a different hull so the pad shows it immediately. No-op when not
+ * docked in the 3D hangar.
+ */
+export function swapActiveHangarShip(shipClass: string): void {
+  void activeHangarScene?.setShip(shipClass);
 }

@@ -63,7 +63,10 @@ import { lootSellPrice } from "./loot-ui";
 import { sendWarp, sendStatsUpdate, sendDockRepair, sendDockLeave, sendInstanceEnter, sendInstanceLeave } from "../net/socket";
 
 export type HangarTab =
-  | "bounties" | "loadout" | "ships" | "drones" | "market" | "ammo" | "cargo" | "repair" | "skills" | "missions" | "dungeons" | "refinery";
+  | "bounties" | "loadout" | "ships" | "drones" | "market" | "ammo" | "cargo" | "repair" | "skills" | "missions" | "dungeons" | "refinery"
+  // null = no section open (3D-hangar glass menu starts with only the item list
+  // visible over the live scene; a click slides the content panel out left→right).
+  | null;
 // "ammo" kept as valid value for internal use by loadout popup
 
 export type DockServiceEntry = {

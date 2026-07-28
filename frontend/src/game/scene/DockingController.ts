@@ -27,7 +27,7 @@ import { sceneFade } from "./SceneFade";
 import { saveLocation, loadLocation, clearLocation } from "./DockingPersistence";
 import { getStationDoor, getStationDoorWorldOffset } from "../three-station-layer";
 import { ENABLE_HANGAR_3D_SCENE, ENABLE_SHARED_3D_SCENE } from "../renderer-config";
-import { HangarScene, activeHangarScene, setActiveHangarScene } from "./HangarScene";
+import { HangarScene, activeHangarScene, setActiveHangarScene, warmHangarAssets } from "./HangarScene";
 import { setShipLiftFactor } from "../three-world-layer";
 
 /**
@@ -325,6 +325,14 @@ export function installDockingScene(): void {
       // pacing to an asset detail. If the station's 3D instance is not built yet
       // this misses, and update() keeps asking.
       cinematic.doorDone = tryAnimateDoor(station.id, true);
+      // Pre-fetch the 3D hangar's ~7 MB interior + the ship GLB NOW, at the start of
+      // the approach, so the ~4 s fly-in doubles as the load. By the time the screen
+      // blacks out for HANGAR_LOADING the assets are cached and the black hold is just
+      // the scene build — the "Ladezeit zu lang" the player felt was this fetch running
+      // serially behind the black instead of overlapped with the flight.
+      if (ENABLE_HANGAR_3D_SCENE) {
+        warmHangarAssets(String(state.player?.shipClass ?? "skimmer"));
+      }
       // Kill drift immediately — from here the path, not physics, moves the ship.
       state.player.vel = { x: 0, y: 0 };
       // Point the SERVER at the station too. The cinematic only moves the local
@@ -479,7 +487,12 @@ export function installDockingScene(): void {
           state.hangarIntroDone = false;
           void (async () => {
             await sceneFade.toClear(FADE_IN_MS);
-            try { await hs.playIntro(); } catch { /* ignore */ }
+            // Race the intro against a hard timeout: if playIntro() ever fails to
+            // settle (a stalled RAF, a lost WebGL context), the menu — and with it
+            // the ONLY undock button — must still appear, or the player is trapped
+            // DOCKED with no way out. The intro is 4 s; 8 s is a generous ceiling.
+            const timeout = new Promise<void>((r) => window.setTimeout(r, 8000));
+            try { await Promise.race([hs.playIntro(), timeout]); } catch { /* ignore */ }
             state.hangarIntroDone = true;
             bump();           // re-render so the menu mounts
           })();
@@ -511,7 +524,11 @@ export function installDockingScene(): void {
           // visible (no black yet) — otherwise the fly-out would run hidden behind
           // the blackout and read as "no animation". THEN black out and tear it down.
           if (ENABLE_HANGAR_3D_SCENE && activeHangarScene) {
-            try { await activeHangarScene.playOutro(); } catch { /* ignore */ }
+            // Timeout-race the outro too — a stalled fly-out must never wedge the
+            // undock (the outro is 2.2 s; 6 s is a safe ceiling). Without this a hung
+            // playOutro() would leave the player stuck DOCKED with the fade never firing.
+            const timeout = new Promise<void>((r) => window.setTimeout(r, 6000));
+            try { await Promise.race([activeHangarScene.playOutro(), timeout]); } catch { /* ignore */ }
             if (run !== loadRun) return;
             await sceneFade.toBlack(FADE_OUT_MS);
             if (run !== loadRun) return;
@@ -597,6 +614,17 @@ export function installDockingScene(): void {
 
       flyPath(dep, dt);
 
+      // "Fly OUT of the hangar" (top-down): the exact reverse of the dock sink.
+      // commitUndock() left the ship at DOCK_SINK_FACTOR — sunk in the hangar mouth,
+      // occluded by the roof/door. Ramp that lift back UP to 1 over the run-out so the
+      // ship RISES OUT of the opening instead of gliding over the door. Front-loaded
+      // (t 0 → 0.7) so it has fully cleared the roof before the flight ends.
+      if (ENABLE_SHARED_3D_SCENE) {
+        const k = Math.max(0, Math.min(1, dep.t / 0.7));
+        const e = k * k * (3 - 2 * k); // smoothstep
+        setShipLiftFactor(DOCK_SINK_FACTOR + e * (1 - DOCK_SINK_FACTOR));
+      }
+
       // M9: the station instance is rebuilt from scratch when the world comes
       // back, so the snap in enter() often lands before it exists. Animate on the
       // retry rather than snapping — by now the screen is no longer black, and a
@@ -614,6 +642,9 @@ export function installDockingScene(): void {
       // watching, so this one is animated.
       if (departure) tryAnimateDoor(departure.stationId, false);
       departure = null;
+      // The rise-out ramp normally reaches ~1 by t 0.7, but pin it exactly so the
+      // ship is never left even slightly sunk once it's out flying in space.
+      if (ENABLE_SHARED_3D_SCENE) setShipLiftFactor(1);
       // Hand the camera back at the player's own zoom. apply() has already
       // ramped it there, so this is normally a no-op — it matters on the
       // aborted paths, where the flight never finished.
@@ -651,7 +682,10 @@ export async function requestDock(stationId: string): Promise<void> {
 function commitDock(stationId: string, kind: string): void {
   state.dockedAt = stationId;
   sendDockEnter();
-  state.hangarTab = kind === "factory" ? "refinery" : "bounties";
+  // 3D glass hangar opens with NO section selected — only the floating item column
+  // over the live scene, so the pilot sees the hangar first and opens a drawer on
+  // demand. The 2D panel still defaults to its first tab (it has no "closed" look).
+  state.hangarTab = ENABLE_HANGAR_3D_SCENE ? null : (kind === "factory" ? "refinery" : "bounties");
   state.player.vel = { x: 0, y: 0 };
   // M8: remember it, so closing the tab in the hangar puts you back in the
   // hangar. save() below persists the position the ship ended at, which is the
@@ -694,9 +728,12 @@ export function requestUndock(): void {
 /** The world half of undocking, run behind the blackout by the UNDOCKING state. */
 function commitUndock(): void {
   state.dockedAt = null;
-  // Restore full ship lift so the ship reappears floating above the station (the
-  // approach ramped it down to sink under the roof); otherwise it exits half-buried.
-  if (ENABLE_SHARED_3D_SCENE) setShipLiftFactor(1);
+  // Mirror of the dock approach: the ship must REAPPEAR sunk inside the hangar
+  // mouth (occluded by the roof/door) and then RISE OUT of the opening as it flies
+  // away — not pop in floating above the station and glide over the door. So start
+  // it at the sink level; the UNDOCKING update() ramps this back up to 1 over the
+  // outbound flight.
+  if (ENABLE_SHARED_3D_SCENE) setShipLiftFactor(DOCK_SINK_FACTOR);
   sendDockLeave();
   saveLocation("SPACE", null, state.player.zone);
   save();
@@ -719,6 +756,13 @@ export function forceUndock(reason = "forced"): void {
   if (doorStation) trySetDoor(doorStation, false);
   cinematic = null;
   departure = null;
+  // CRITICAL: clear dockedAt. Without this the ship stays flagged DOCKED even after
+  // we force SPACE — the HUD hides, the "DOCKED" overlay lingers, no hangar menu
+  // mounts, and the player is trapped (the exact wedge this catch-all exists to
+  // break). commitUndock() clears it on the animated path; the instant path must too.
+  state.dockedAt = null;
+  sendDockLeave();
+  state.hangarIntroDone = false;
   // Tear down the 3D hangar scene too — this catch-all (dungeon entry, error
   // recovery, resets) must never leave the hangar canvas/renderer alive.
   disposeHangarScene();
@@ -737,8 +781,17 @@ export function forceUndock(reason = "forced"): void {
   // leave a stored location of SPACE, or the next login drops the player into a
   // hangar they already left.
   saveLocation("SPACE", null, state.player.zone);
-  if (sceneManager.state === GameState.SPACE) return; // already there
-  sceneManager.forceState(GameState.SPACE);
+  // Nudge the ship clear of the station so it doesn't sit inside the dock radius and
+  // immediately re-dock, and point the server there too (legacy instant-undock did
+  // this). Mirrors the old inline undock.
+  state.player.pos.y += 200;
+  state.cameraTarget = { ...state.player.pos };
+  state.player.vel = { x: 0, y: 0 };
+  if (sceneManager.state !== GameState.SPACE) {
+    sceneManager.forceState(GameState.SPACE);
+  }
+  save();
+  bump(); // force the React re-render so the HUD comes back and the DOCKED overlay clears
   console.log("[docking] forced undock → SPACE (", reason, ")");
 }
 
@@ -807,7 +860,15 @@ export function bootIntoStoredLocation(): boolean {
     void (async () => {
       try {
         disposeHangarScene();
-        const hs = await HangarScene.preload(String(state.player?.shipClass ?? "skimmer"));
+        // Race the preload against a timeout: if the GLB fetch stalls on login, we
+        // must STILL forceState(HANGAR) below (with a null scene → 2D fallback menu),
+        // or the player is stranded DOCKED in the world view with no menu + no undock.
+        const timeout = new Promise<never>((_, rej) =>
+          window.setTimeout(() => rej(new Error("preload timeout")), 12000));
+        const hs = await Promise.race([
+          HangarScene.preload(String(state.player?.shipClass ?? "skimmer")),
+          timeout,
+        ]);
         setActiveHangarScene(hs);
       } catch (e) {
         console.error("[docking] hangar restore preload failed — 2D fallback", e);

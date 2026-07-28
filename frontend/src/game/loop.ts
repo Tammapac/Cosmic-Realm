@@ -981,6 +981,19 @@ function distance(ax: number, ay: number, bx: number, by: number): number {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
+/**
+ * Age + expire toast notifications while docked, where the full sim tick (which
+ * normally does this at loop.ts' notification-ttl block) is halted. Only re-renders
+ * when something actually expires, so it costs nothing on idle frames.
+ */
+function tickNotificationsWhileDocked(dt: number): void {
+  if (state.notifications.length === 0) return;
+  for (const n of state.notifications) n.ttl -= dt;
+  const before = state.notifications.length;
+  state.notifications = state.notifications.filter((n) => n.ttl > 0);
+  if (state.notifications.length !== before) bump(); // list changed → repaint
+}
+
 // ── MAIN LOOP ─────────────────────────────────────────────────────────────
 export function startLoop(): void {
   if (raf) return;
@@ -995,6 +1008,11 @@ export function startLoop(): void {
         perfBegin("sim");
         tickWorld(dt);
         perfEnd("sim");
+      } else if (!state.paused) {
+        // Docked: the sim tick (which ages notifications) is halted, so toast
+        // pop-ups would hang on screen forever in the hangar. Age + expire them
+        // here so "DOCKING WITH…" / "BOARDED …" fade out like they do in space.
+        tickNotificationsWhileDocked(dt);
       }
     } catch (err) { console.error("[LOOP] tickWorld error:", err); }
     raf = requestAnimationFrame(step);

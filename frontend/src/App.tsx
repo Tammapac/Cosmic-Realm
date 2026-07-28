@@ -8,7 +8,7 @@ import { init3DLayer, destroy3DLayer, getLoadingProgress, initStationLayer, rend
 import { destroyStation3DLayer } from "./game/three-station-layer";
 import { activeRenderer, ENABLE_NEW_DOCKING_FLOW, ENABLE_SHARED_3D_SCENE, ENABLE_HANGAR_3D_SCENE } from "./game/renderer-config";
 import { isControlLocked } from "./game/scene/docking-gate";
-import { requestDock, dockPoint } from "./game/scene/DockingController";
+import { requestDock, dockPoint, requestUndock, forceUndock } from "./game/scene/DockingController";
 import { WorldTargetHud, LogoutFlow } from "./components/TopBar";
 import { GameHud } from "./components/hud/GameHud";
 import "./styles/hud/hud-tokens.css";
@@ -1477,6 +1477,24 @@ function GameApp() {
       <GameTooltip />
       <Title />
       {showHangarMenu && docked && <Hangar stationId={docked} />}
+      {/* Fail-safe undock: if we're docked in the 3D hangar but the menu hasn't
+          appeared yet (intro still running, or a stalled preload left us with no
+          menu at all), give the player a standalone escape hatch so they can never
+          be trapped DOCKED. Hidden once the real menu (with its own undock) is up. */}
+      {docked && ENABLE_HANGAR_3D_SCENE && !showHangarMenu && (
+        <button
+          onClick={() => { try { requestUndock(); } catch { forceUndock("failsafe button"); } }}
+          style={{
+            position: "fixed", top: 18, right: 18, zIndex: 70, pointerEvents: "auto",
+            padding: "10px 20px", fontSize: 13, letterSpacing: "0.08em",
+            color: "#ffb4b4", fontFamily: "var(--font-display, monospace)",
+            border: "1px solid rgba(255,120,120,0.5)", background: "rgba(40,8,12,0.7)",
+            backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", cursor: "pointer",
+          }}
+        >
+          ✕ UNDOCK
+        </button>
+      )}
       <DockingSummary />
       <div
         style={{

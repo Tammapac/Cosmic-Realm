@@ -718,6 +718,184 @@ select.ginput {
   margin: 5px 0;
 }
 
+/* ── 3D-hangar glass menu ──────────────────────────────────────────────────
+   Individual floating items over the live scene; a content drawer slides out
+   left→right when one is picked. No full-screen scrim — the hangar stays visible. */
+.hangar-glass-head {
+  position: fixed;
+  top: 20px;
+  left: 22px;
+  z-index: 55;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 15px 9px 11px;
+  pointer-events: auto;
+  background: rgba(6, 12, 22, 0.42);
+  border: 1px solid rgba(78, 226, 255, 0.22);
+  -webkit-backdrop-filter: blur(12px) saturate(1.1);
+          backdrop-filter: blur(12px) saturate(1.1);
+  box-shadow: 0 6px 26px rgba(0, 0, 0, 0.4);
+}
+.hangar-glass-head-icon {
+  width: 34px; height: 34px; flex-shrink: 0;
+  display: grid; place-items: center;
+  font-size: 17px; color: var(--hud-cyan);
+  border: 1px solid rgba(78, 226, 255, 0.3);
+  background: rgba(78, 226, 255, 0.06);
+  box-shadow: 0 0 12px rgba(78, 226, 255, 0.18);
+}
+.hangar-glass-head-name {
+  font-family: var(--font-display, var(--hud-font));
+  font-size: 14px; letter-spacing: 0.12em;
+  color: var(--accent-cyan, var(--hud-cyan));
+  line-height: 1.15;
+  text-shadow: 0 0 10px rgba(78, 226, 255, 0.35);
+}
+
+/* the column + drawer sit vertically centred on the left */
+.hangar-glass-menu {
+  position: absolute;
+  top: 50%;
+  left: 22px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: stretch;
+  max-height: 82vh;
+  pointer-events: none;
+}
+.hangar-glass-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 12px 10px;
+  flex-shrink: 0;
+  z-index: 2;
+  pointer-events: auto;
+  background: rgba(6, 12, 22, 0.42);
+  border: 1px solid rgba(90, 130, 180, 0.28);
+  -webkit-backdrop-filter: blur(12px) saturate(1.08);
+          backdrop-filter: blur(12px) saturate(1.08);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+}
+.hangar-glass-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 190px;
+  padding: 11px 14px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--hud-text-dim);
+  border: 1px solid transparent;
+  background: transparent;
+  transition: color var(--hud-t-fast), background var(--hud-t-fast),
+              border-color var(--hud-t-fast), transform var(--hud-t-fast);
+}
+.hangar-glass-item:hover {
+  color: var(--hud-text-bright);
+  background: rgba(78, 226, 255, 0.07);
+  border-color: rgba(78, 226, 255, 0.22);
+  transform: translateX(2px);
+}
+.hangar-glass-item--on {
+  color: var(--hud-cyan);
+  background: rgba(78, 226, 255, 0.1);
+  border-color: var(--hud-border-bright, rgba(78, 226, 255, 0.5));
+  box-shadow: var(--mat-rim, 0 0 0 1px rgba(78, 226, 255, 0.25) inset);
+}
+.hangar-glass-item--on::before {
+  content: "";
+  position: absolute;
+  left: -11px; top: 7px; bottom: 7px;
+  width: 3px;
+  background: var(--hud-cyan);
+  box-shadow: 0 0 9px var(--hud-cyan-glow, rgba(78, 226, 255, 0.7));
+}
+.hangar-glass-glyph {
+  flex-shrink: 0;
+  width: 22px;
+  text-align: center;
+  font-size: 17px;
+}
+.hangar-glass-lbl {
+  font-family: var(--font-display, var(--hud-font));
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.hangar-glass-div {
+  height: 1px;
+  margin: 3px 8px;
+  background: var(--hud-border-dim);
+}
+
+/* content drawer — collapsed to 0 width, animates open to the right of the rail */
+.hangar-glass-drawer {
+  width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid transparent;
+  border-right: 1px solid transparent;
+  border-bottom: 1px solid transparent;
+  background: rgba(6, 10, 20, 0.5);
+  -webkit-backdrop-filter: blur(15px) saturate(1.12);
+          backdrop-filter: blur(15px) saturate(1.12);
+  transition: width 320ms cubic-bezier(0.22, 0.61, 0.36, 1),
+              border-color 320ms ease;
+  pointer-events: auto;
+}
+.hangar-glass-drawer--open {
+  width: min(760px, 68vw);
+  border-top-color: rgba(90, 130, 180, 0.28);
+  border-right-color: rgba(90, 130, 180, 0.28);
+  border-bottom-color: rgba(90, 130, 180, 0.28);
+  box-shadow: 0 8px 34px rgba(0, 0, 0, 0.5);
+}
+.hangar-glass-drawer-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--hud-border-dim);
+  background: rgba(78, 226, 255, 0.04);
+}
+.hangar-glass-drawer-title {
+  font-family: var(--font-display, var(--hud-font));
+  font-size: 14px;
+  letter-spacing: 0.16em;
+  color: var(--accent-cyan, var(--hud-cyan));
+  text-shadow: 0 0 10px rgba(78, 226, 255, 0.3);
+  white-space: nowrap;
+}
+.hangar-glass-close {
+  width: 28px; height: 28px;
+  display: grid; place-items: center;
+  flex-shrink: 0;
+  cursor: pointer;
+  color: var(--hud-text-dim);
+  border: 1px solid var(--hud-border-dim);
+  background: transparent;
+  transition: color var(--hud-t-fast), border-color var(--hud-t-fast), background var(--hud-t-fast);
+}
+.hangar-glass-close:hover {
+  color: #ff8a8a;
+  border-color: rgba(255, 120, 120, 0.5);
+  background: rgba(255, 60, 60, 0.08);
+}
+.hangar-glass-drawer-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 2px;
+  /* keep the inner content at a readable width even as the drawer animates */
+  min-width: min(760px, 68vw);
+}
+
 /* central ship stage — the docked ship is the focal point */
 .hangar-stage {
   position: relative;
