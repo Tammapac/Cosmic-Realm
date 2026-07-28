@@ -437,7 +437,27 @@ export type SkillId =
   | "ut-cargo" | "ut-thrust" | "ut-salvage" | "ut-droneops"
   | "ut-trade" | "ut-scan" | "ut-warp" | "ut-drone2"
   | "eng-coolant" | "eng-capacitor" | "eng-targeting" | "eng-warp-core"
-  | "eng-overdrive" | "eng-singularity";
+  | "eng-overdrive" | "eng-singularity"
+  // ── expansion: offense (16) ──
+  | "off-caliber" | "off-steady" | "off-weakpoint" | "off-firstblood"
+  | "off-coldbore" | "off-headhunter" | "off-sustain" | "off-cadence"
+  | "off-attrition" | "off-barrage" | "off-splash" | "off-shrapnel"
+  | "off-chain" | "off-saturation" | "off-render" | "off-apex"
+  // ── expansion: defense (15) ──
+  | "def-lattice" | "def-diffuse" | "def-overshield" | "def-aegis"
+  | "def-coolant" | "def-triage" | "def-secondwind" | "def-phoenix"
+  | "def-ablative" | "def-hardened" | "def-lastditch" | "def-immovable"
+  | "def-spines" | "def-backlash" | "def-nemesis"
+  // ── expansion: utility (15) ──
+  | "ut-hold" | "ut-broker" | "ut-contraband" | "ut-magnate"
+  | "ut-vector" | "ut-slipstream" | "ut-evasion" | "ut-phaserunner"
+  | "ut-swarm" | "ut-repairbay" | "ut-hivemind" | "ut-survey"
+  | "ut-refinery" | "ut-assay" | "ut-prospector"
+  // ── expansion: engineering (16) ──
+  | "eng-plasma" | "eng-fusion" | "eng-surge" | "eng-meltdown"
+  | "eng-radiator" | "eng-cryoflow" | "eng-heatsink" | "eng-runaway"
+  | "eng-regulator" | "eng-harmonics" | "eng-transfer" | "eng-resonance"
+  | "eng-equilibrium" | "eng-recursion" | "eng-eventhorizon" | "eng-zeropoint";
 
 export type SkillNode = {
   id: SkillId;
@@ -489,6 +509,76 @@ export const SKILL_NODES: SkillNode[] = [
   { id: "eng-warp-core",  branch: "engineering", name: "Warp Core Shunt",    description: "+15% speed per rank from generator overclock.",  maxRank: 3, cost: 2, pos: { row: 3, col: 0 }, icon: "⌬", requires: "eng-targeting" },
   { id: "eng-overdrive",  branch: "engineering", name: "Overdrive Module",   description: "+18% all stats (damage, shield, speed) per rank.", maxRank: 3, cost: 2, pos: { row: 4, col: 0 }, icon: "⚙", requires: "eng-warp-core" },
   { id: "eng-singularity",branch: "engineering", name: "Singularity Core",   description: "Endgame: +30% damage, +25% fire rate, +15% speed.", maxRank: 1, cost: 3, pos: { row: 5, col: 0 }, icon: "✸", requires: "eng-overdrive" },
+
+  // ── OFFENSE (expansion) ──────────────────────────────────────────────────
+  { id: "off-caliber",    branch: "offense", name: "Heavy Caliber",      description: "+4 laser damage per rank.",                          maxRank: 5, cost: 1, pos: { row: 4, col: 0 }, icon: "⚡", requires: "off-power" },
+  { id: "off-steady",     branch: "offense", name: "Steady Aim",         description: "+2% crit chance per rank.",                          maxRank: 5, cost: 1, pos: { row: 4, col: 1 }, icon: "◎", requires: "off-caliber" },
+  { id: "off-weakpoint",  branch: "offense", name: "Weak Point",         description: "+8% crit damage per rank.",                          maxRank: 5, cost: 1, pos: { row: 4, col: 2 }, icon: "✦", requires: "off-steady" },
+  { id: "off-firstblood", branch: "offense", name: "First Blood",        description: "+25% damage per rank to enemies at full hull.",      maxRank: 3, cost: 2, pos: { row: 4, col: 3 }, icon: "⚔", requires: "off-weakpoint" },
+  { id: "off-coldbore",   branch: "offense", name: "Cold Bore",          description: "Crits grant +6% damage for 4s per rank.",            maxRank: 3, cost: 2, pos: { row: 4, col: 4 }, icon: "❄", requires: "off-firstblood" },
+  { id: "off-headhunter", branch: "offense", name: "Headhunter",         description: "+60% crit damage, but -25% fire rate.",              maxRank: 1, cost: 3, pos: { row: 4, col: 5 }, icon: "✺", requires: "off-coldbore" },
+  { id: "off-sustain",    branch: "offense", name: "Sustained Fire",     description: "+0.04 fire rate per rank.",                          maxRank: 5, cost: 1, pos: { row: 5, col: 0 }, icon: "≫", requires: "off-rapid" },
+  { id: "off-cadence",    branch: "offense", name: "Cadence Lock",       description: "Every 3rd shot deals +50% damage per rank.",         maxRank: 3, cost: 2, pos: { row: 5, col: 1 }, icon: "⋙", requires: "off-sustain" },
+  { id: "off-attrition",  branch: "offense", name: "Attrition",          description: "+4% damage per rank while above 70% hull.",          maxRank: 3, cost: 2, pos: { row: 5, col: 2 }, icon: "◈", requires: "off-cadence" },
+  { id: "off-barrage",    branch: "offense", name: "Barrage Doctrine",   description: "+0.25 fire rate, but -15% damage.",                  maxRank: 1, cost: 3, pos: { row: 5, col: 3 }, icon: "↯", requires: "off-attrition" },
+  { id: "off-splash",     branch: "offense", name: "Fragmentation",      description: "+5 splash radius per rank.",                         maxRank: 5, cost: 1, pos: { row: 6, col: 0 }, icon: "✸", requires: "off-pierce" },
+  { id: "off-shrapnel",   branch: "offense", name: "Shrapnel Load",      description: "Splash damage +10% per rank.",                       maxRank: 3, cost: 2, pos: { row: 6, col: 1 }, icon: "❖", requires: "off-splash" },
+  { id: "off-chain",      branch: "offense", name: "Chain Detonation",   description: "Kills trigger a blast (radius 40 per rank).",        maxRank: 3, cost: 2, pos: { row: 6, col: 2 }, icon: "⊕", requires: "off-shrapnel" },
+  { id: "off-saturation", branch: "offense", name: "Saturation",         description: "+50% splash radius, but -20% direct damage.",        maxRank: 1, cost: 3, pos: { row: 6, col: 3 }, icon: "⌬", requires: "off-chain" },
+  { id: "off-render",     branch: "offense", name: "Armour Render",      description: "+6% damage vs bosses per rank.",                     maxRank: 3, cost: 2, pos: { row: 7, col: 0 }, icon: "◆", requires: "off-execute" },
+  { id: "off-apex",       branch: "offense", name: "Apex Predator",      description: "+35% damage below 30% hull; kills refund 15% shield.", maxRank: 1, cost: 3, pos: { row: 7, col: 1 }, icon: "◉", requires: "off-render" },
+
+  // ── DEFENSE (expansion) ──────────────────────────────────────────────────
+  { id: "def-lattice",    branch: "defense", name: "Shield Lattice",     description: "+20 max shield per rank.",                           maxRank: 5, cost: 1, pos: { row: 4, col: 0 }, icon: "◈", requires: "def-shield" },
+  { id: "def-diffuse",    branch: "defense", name: "Diffusion Field",    description: "+4% shield absorb per rank.",                        maxRank: 5, cost: 1, pos: { row: 4, col: 1 }, icon: "◇", requires: "def-lattice" },
+  { id: "def-overshield", branch: "defense", name: "Overshield",         description: "+5% damage reduction per rank while shield is full.", maxRank: 3, cost: 2, pos: { row: 4, col: 2 }, icon: "⛨", requires: "def-diffuse" },
+  { id: "def-aegis",      branch: "defense", name: "Aegis Protocol",     description: "+40% max shield, but -50% shield regen.",            maxRank: 1, cost: 3, pos: { row: 4, col: 3 }, icon: "❖", requires: "def-overshield" },
+  { id: "def-coolant",    branch: "defense", name: "Cryo Cells",         description: "+2 shield regen per rank.",                          maxRank: 5, cost: 1, pos: { row: 5, col: 0 }, icon: "❄", requires: "def-regen" },
+  { id: "def-triage",     branch: "defense", name: "Triage Systems",     description: "+50% shield regen per rank while below 40% shield.", maxRank: 3, cost: 2, pos: { row: 5, col: 1 }, icon: "↺", requires: "def-coolant" },
+  { id: "def-secondwind", branch: "defense", name: "Second Wind",        description: "Kills restore 4 shield per rank.",                   maxRank: 3, cost: 2, pos: { row: 5, col: 2 }, icon: "⬡", requires: "def-triage" },
+  { id: "def-phoenix",    branch: "defense", name: "Phoenix Circuit",    description: "Once per 90s, survive a lethal hit at 20% hull.",    maxRank: 1, cost: 3, pos: { row: 5, col: 3 }, icon: "✺", requires: "def-secondwind" },
+  { id: "def-ablative",   branch: "defense", name: "Ablative Plating",   description: "+25 max hull per rank.",                             maxRank: 5, cost: 1, pos: { row: 6, col: 0 }, icon: "▣", requires: "def-armor" },
+  { id: "def-hardened",   branch: "defense", name: "Hardened Frame",     description: "+2% damage reduction per rank.",                     maxRank: 5, cost: 1, pos: { row: 6, col: 1 }, icon: "⬛", requires: "def-ablative" },
+  { id: "def-lastditch",  branch: "defense", name: "Last Ditch",         description: "+8% damage reduction per rank while below 30% hull.", maxRank: 3, cost: 2, pos: { row: 6, col: 2 }, icon: "◆", requires: "def-hardened" },
+  { id: "def-immovable",  branch: "defense", name: "Immovable",          description: "+25% max hull and +8% damage reduction, but -20% speed.", maxRank: 1, cost: 3, pos: { row: 6, col: 3 }, icon: "⌬", requires: "def-lastditch" },
+  { id: "def-spines",     branch: "defense", name: "Static Spines",      description: "Reflect 8% of incoming damage per rank.",            maxRank: 3, cost: 2, pos: { row: 7, col: 0 }, icon: "⟲", requires: "def-reflect" },
+  { id: "def-backlash",   branch: "defense", name: "Backlash",           description: "Reflected damage +30% per rank.",                    maxRank: 3, cost: 2, pos: { row: 7, col: 1 }, icon: "↯", requires: "def-spines" },
+  { id: "def-nemesis",    branch: "defense", name: "Nemesis Field",      description: "Taking a hit grants +10% damage for 5s.",            maxRank: 1, cost: 3, pos: { row: 7, col: 2 }, icon: "◉", requires: "def-backlash" },
+
+  // ── UTILITY (expansion) ──────────────────────────────────────────────────
+  { id: "ut-hold",        branch: "utility", name: "Reinforced Hold",    description: "+12% cargo capacity per rank.",                      maxRank: 5, cost: 1, pos: { row: 4, col: 0 }, icon: "▤", requires: "ut-cargo" },
+  { id: "ut-broker",      branch: "utility", name: "Broker Licence",     description: "+4% sell price per rank.",                           maxRank: 5, cost: 1, pos: { row: 4, col: 1 }, icon: "$", requires: "ut-trade" },
+  { id: "ut-contraband",  branch: "utility", name: "Contraband Runs",    description: "+3% loot bonus per rank, but -8% cargo.",            maxRank: 3, cost: 2, pos: { row: 4, col: 2 }, icon: "❖", requires: "ut-broker" },
+  { id: "ut-magnate",     branch: "utility", name: "Magnate",            description: "+30% credits, but -15% experience.",                 maxRank: 1, cost: 3, pos: { row: 4, col: 3 }, icon: "◈", requires: "ut-contraband" },
+  { id: "ut-vector",      branch: "utility", name: "Vector Thrusters",   description: "+6 top speed per rank.",                             maxRank: 5, cost: 1, pos: { row: 5, col: 0 }, icon: "➤", requires: "ut-thrust" },
+  { id: "ut-slipstream",  branch: "utility", name: "Slipstream",         description: "+8% speed per rank while shield is full.",           maxRank: 3, cost: 2, pos: { row: 5, col: 1 }, icon: "▶", requires: "ut-vector" },
+  { id: "ut-evasion",     branch: "utility", name: "Evasive Pattern",    description: "+3% chance per rank to avoid a hit.",                maxRank: 3, cost: 2, pos: { row: 5, col: 2 }, icon: "⟲", requires: "ut-slipstream" },
+  { id: "ut-phaserunner", branch: "utility", name: "Phase Runner",       description: "+25% speed, but -20% max hull.",                     maxRank: 1, cost: 3, pos: { row: 5, col: 3 }, icon: "✺", requires: "ut-evasion" },
+  { id: "ut-swarm",       branch: "utility", name: "Swarm Logic",        description: "+15% drone damage per rank.",                        maxRank: 5, cost: 1, pos: { row: 6, col: 0 }, icon: "◆", requires: "ut-drone2" },
+  { id: "ut-repairbay",   branch: "utility", name: "Repair Bay",         description: "Drones repair 2 hull/s per rank out of combat.",     maxRank: 3, cost: 2, pos: { row: 6, col: 1 }, icon: "⬡", requires: "ut-swarm" },
+  { id: "ut-hivemind",    branch: "utility", name: "Hive Mind",          description: "Drones gain your crit chance and splash.",           maxRank: 1, cost: 3, pos: { row: 6, col: 2 }, icon: "⌬", requires: "ut-repairbay" },
+  { id: "ut-survey",      branch: "utility", name: "Survey Array",       description: "+3% loot bonus per rank.",                           maxRank: 5, cost: 1, pos: { row: 7, col: 0 }, icon: "◎", requires: "ut-scan" },
+  { id: "ut-refinery",    branch: "utility", name: "Refinery Module",    description: "+10% mining yield per rank.",                        maxRank: 5, cost: 1, pos: { row: 7, col: 1 }, icon: "⚙", requires: "ut-survey" },
+  { id: "ut-assay",       branch: "utility", name: "Assay Protocol",     description: "+5% rare-drop chance per rank.",                     maxRank: 3, cost: 2, pos: { row: 7, col: 2 }, icon: "⊕", requires: "ut-refinery" },
+  { id: "ut-prospector",  branch: "utility", name: "Prospector",         description: "+50% mining yield, but -25% cargo.",                 maxRank: 1, cost: 3, pos: { row: 7, col: 3 }, icon: "◇", requires: "ut-assay" },
+
+  // ── ENGINEERING (expansion) ──────────────────────────────────────────────
+  { id: "eng-plasma",      branch: "engineering", name: "Plasma Injectors",     description: "+3 damage per rank.",                                 maxRank: 5, cost: 1, pos: { row: 0, col: 1 }, icon: "⚡", requires: "eng-capacitor" },
+  { id: "eng-fusion",      branch: "engineering", name: "Fusion Feed",          description: "+6% damage per rank.",                                maxRank: 5, cost: 1, pos: { row: 1, col: 1 }, icon: "✺", requires: "eng-plasma" },
+  { id: "eng-surge",       branch: "engineering", name: "Power Surge",          description: "+12% damage per rank for 5s after a kill.",           maxRank: 3, cost: 2, pos: { row: 2, col: 1 }, icon: "↯", requires: "eng-fusion" },
+  { id: "eng-meltdown",    branch: "engineering", name: "Controlled Meltdown",  description: "+35% damage, but -20% max shield.",                   maxRank: 1, cost: 3, pos: { row: 3, col: 1 }, icon: "⚔", requires: "eng-surge" },
+  { id: "eng-radiator",    branch: "engineering", name: "Radiator Array",       description: "+0.03 fire rate per rank.",                           maxRank: 5, cost: 1, pos: { row: 0, col: 2 }, icon: "≫", requires: "eng-coolant" },
+  { id: "eng-cryoflow",    branch: "engineering", name: "Cryo Flow",            description: "+5% fire rate per rank.",                             maxRank: 5, cost: 1, pos: { row: 1, col: 2 }, icon: "⋙", requires: "eng-radiator" },
+  { id: "eng-heatsink",    branch: "engineering", name: "Heat Sink",            description: "Crits grant +0.08 fire rate for 3s per rank.",        maxRank: 3, cost: 2, pos: { row: 2, col: 2 }, icon: "❄", requires: "eng-cryoflow" },
+  { id: "eng-runaway",     branch: "engineering", name: "Thermal Runaway",      description: "+40% fire rate, but heat builds twice as fast.",      maxRank: 1, cost: 3, pos: { row: 3, col: 2 }, icon: "✸", requires: "eng-heatsink" },
+  { id: "eng-regulator",   branch: "engineering", name: "Flux Regulator",       description: "+1 shield regen per rank.",                           maxRank: 5, cost: 1, pos: { row: 0, col: 3 }, icon: "↺", requires: "eng-capacitor" },
+  { id: "eng-harmonics",   branch: "engineering", name: "Field Harmonics",      description: "+10 max shield and +10 max hull per rank.",           maxRank: 5, cost: 1, pos: { row: 1, col: 3 }, icon: "⬡", requires: "eng-regulator" },
+  { id: "eng-transfer",    branch: "engineering", name: "Energy Transfer",      description: "Crits restore 2 shield per rank.",                    maxRank: 3, cost: 2, pos: { row: 2, col: 3 }, icon: "⊕", requires: "eng-harmonics" },
+  { id: "eng-resonance",   branch: "engineering", name: "Resonance Cascade",    description: "+4% damage per rank while shield is above 50%.",      maxRank: 3, cost: 2, pos: { row: 3, col: 3 }, icon: "◈", requires: "eng-transfer" },
+  { id: "eng-equilibrium", branch: "engineering", name: "Equilibrium",          description: "Convert 20% of max shield into damage.",              maxRank: 1, cost: 3, pos: { row: 4, col: 3 }, icon: "◇", requires: "eng-resonance" },
+  { id: "eng-recursion",   branch: "engineering", name: "Recursive Loop",       description: "+5% to all Engineering bonuses per rank.",            maxRank: 3, cost: 2, pos: { row: 4, col: 1 }, icon: "⟲", requires: "eng-overdrive" },
+  { id: "eng-eventhorizon",branch: "engineering", name: "Event Horizon",        description: "+20% damage, +15% fire rate, +20% max shield.",       maxRank: 1, cost: 3, pos: { row: 5, col: 1 }, icon: "⌬", requires: "eng-singularity" },
+  { id: "eng-zeropoint",   branch: "engineering", name: "Zero Point",           description: "Below 25% shield, +50% damage and +50% shield regen.", maxRank: 1, cost: 3, pos: { row: 6, col: 1 }, icon: "◉", requires: "eng-eventhorizon" },
 ];
 
 // ── MISSIONS & MILESTONES ────────────────────────────────────────────────

@@ -1,0 +1,88 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Skill edge — a technical energy CONDUIT, not a line.
+
+   Four stacked SVG strokes per connection:
+     1 .skt-edge-trench  dark recessed channel (widest)
+     2 .skt-edge-casing  metallic housing
+     3 .skt-edge-core    the energy path itself
+     4 .skt-edge-pulse   travelling light impulse (active only)
+   ───────────────────────────────────────────────────────────────────────── */
+
+.skt-edge-trench {
+  stroke: #05080f;
+  stroke-width: calc(var(--skill-line-width) + 7px);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+.skt-edge-casing {
+  stroke: #1b2942;
+  stroke-width: calc(var(--skill-line-width) + 3px);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+.skt-edge-core {
+  stroke: var(--ske-accent, #4ee2ff);
+  stroke-width: var(--skill-line-width);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  transition: stroke 240ms ease, opacity 240ms ease, filter 240ms ease;
+}
+.skt-edge-pulse {
+  stroke: #ffffff;
+  stroke-width: calc(var(--skill-line-width) - 0.5px);
+  stroke-linecap: round;
+  fill: none;
+  opacity: 0.9;
+}
+
+/* Junction node drawn where a branch splits. */
+.skt-edge-junction {
+  fill: #16223a;
+  stroke: rgba(140, 180, 225, 0.4);
+  stroke-width: 1;
+}
+
+/* ── States ────────────────────────────────────────────────────────────── */
+
+/* LOCKED — dead conduit, almost no energy */
+.ske--locked .skt-edge-core { stroke: #2a3350; opacity: 0.75; }
+.ske--locked .skt-edge-casing { stroke: #151d2e; }
+
+/* AVAILABLE — faint pulsing charge */
+.ske--available .skt-edge-core {
+  stroke: color-mix(in srgb, var(--ske-accent, #4ee2ff) 55%, #2a3350);
+  animation: ske-charge 2.4s ease-in-out infinite;
+}
+
+/* ACTIVE — clear flow + travelling impulses */
+.ske--active .skt-edge-core {
+  stroke: var(--ske-accent, #4ee2ff);
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--ske-accent, #4ee2ff) 65%, transparent));
+}
+
+/* MAXED BRANCH — gold accent over the accent flow */
+.ske--maxed-branch .skt-edge-core {
+  stroke: var(--skill-gold, #e8b94d);
+  filter: drop-shadow(0 0 5px rgba(232, 185, 77, 0.5));
+}
+.ske--maxed-branch .skt-edge-pulse { stroke: #fff2d4; }
+
+/* BLOCKED — energy severed, visible break */
+.ske--blocked .skt-edge-core { stroke: #4a2230; opacity: 0.8; stroke-dasharray: 6 7; }
+.ske--blocked .skt-edge-sever {
+  stroke: var(--skill-danger, #ff4d5e);
+  stroke-width: 2;
+}
+
+@keyframes ske-charge {
+  0%, 100% { opacity: 0.45; }
+  50%      { opacity: 0.95; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ske--available .skt-edge-core { animation: none !important; opacity: 0.8; }
+  .skt-edge-pulse { display: none !important; }
+}

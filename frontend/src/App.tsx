@@ -6,7 +6,7 @@ import { render } from "./game/render";
 import { initPixiRenderer, destroyPixiRenderer, pixiRender } from "./game/pixi-renderer-v2-integrated";
 import { init3DLayer, destroy3DLayer, getLoadingProgress, initStationLayer, renderStationLayer, destroyStationLayer } from "./game/three-ship-layer";
 import { destroyStation3DLayer } from "./game/three-station-layer";
-import { activeRenderer, ENABLE_NEW_DOCKING_FLOW, ENABLE_SHARED_3D_SCENE, ENABLE_HANGAR_3D_SCENE } from "./game/renderer-config";
+import { activeRenderer, ENABLE_NEW_DOCKING_FLOW, ENABLE_SHARED_3D_SCENE, ENABLE_HANGAR_3D_SCENE, ENABLE_NEW_SKILLS } from "./game/renderer-config";
 import { isControlLocked } from "./game/scene/docking-gate";
 import { requestDock, dockPoint, requestUndock, forceUndock } from "./game/scene/DockingController";
 import { WorldTargetHud, LogoutFlow } from "./components/TopBar";
@@ -24,6 +24,7 @@ import { EventBanners } from "./components/EventBanners";
 import { GameTooltip } from "./components/GameTooltip";
 import { InventoryPanel } from "./components/InventoryPanel";
 import { SkillTreePanel } from "./components/SkillTreePanel";
+import { SkillTreeWindowGate } from "./features/skills/components/SkillTreeWindow";
 import { PlayerStatsPanel } from "./components/PlayerStatsPanel";
 import { BossBar } from "./components/BossBar";
 import { QuestTracker } from "./components/QuestTracker";
@@ -1510,7 +1511,10 @@ function GameApp() {
       </div>
       <CargoOverlay />
       <InventoryPanel />
-      <SkillTreePanel />
+      {/* ?newskills swaps the legacy panel for the redesigned React-Flow tree.
+          Both read the same store flag + the same SKILL_NODES catalog, so only
+          one may mount at a time. */}
+      {ENABLE_NEW_SKILLS ? <SkillTreeWindowGate /> : <SkillTreePanel />}
       <PlayerStatsPanel />
       <BossBar />
       <IdleRewardModal />

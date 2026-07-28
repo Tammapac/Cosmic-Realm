@@ -71,7 +71,27 @@ export type SkillId =
   | "ut-cargo" | "ut-thrust" | "ut-salvage" | "ut-droneops"
   | "ut-trade" | "ut-scan" | "ut-warp" | "ut-drone2"
   | "eng-coolant" | "eng-capacitor" | "eng-targeting" | "eng-warp-core"
-  | "eng-overdrive" | "eng-singularity";
+  | "eng-overdrive" | "eng-singularity"
+  // ── expansion: offense (16) ──
+  | "off-caliber" | "off-steady" | "off-weakpoint" | "off-firstblood"
+  | "off-coldbore" | "off-headhunter" | "off-sustain" | "off-cadence"
+  | "off-attrition" | "off-barrage" | "off-splash" | "off-shrapnel"
+  | "off-chain" | "off-saturation" | "off-render" | "off-apex"
+  // ── expansion: defense (15) ──
+  | "def-lattice" | "def-diffuse" | "def-overshield" | "def-aegis"
+  | "def-coolant" | "def-triage" | "def-secondwind" | "def-phoenix"
+  | "def-ablative" | "def-hardened" | "def-lastditch" | "def-immovable"
+  | "def-spines" | "def-backlash" | "def-nemesis"
+  // ── expansion: utility (15) ──
+  | "ut-hold" | "ut-broker" | "ut-contraband" | "ut-magnate"
+  | "ut-vector" | "ut-slipstream" | "ut-evasion" | "ut-phaserunner"
+  | "ut-swarm" | "ut-repairbay" | "ut-hivemind" | "ut-survey"
+  | "ut-refinery" | "ut-assay" | "ut-prospector"
+  // ── expansion: engineering (16) ──
+  | "eng-plasma" | "eng-fusion" | "eng-surge" | "eng-meltdown"
+  | "eng-radiator" | "eng-cryoflow" | "eng-heatsink" | "eng-runaway"
+  | "eng-regulator" | "eng-harmonics" | "eng-transfer" | "eng-resonance"
+  | "eng-equilibrium" | "eng-recursion" | "eng-eventhorizon" | "eng-zeropoint";
 
 export type ConsumableId =
   | "rocket-ammo"
@@ -762,6 +782,76 @@ export const SKILL_NODES: {
   { id: "eng-warp-core",   branch: "engineering", maxRank: 3, cost: 2, requires: "eng-targeting" },
   { id: "eng-overdrive",   branch: "engineering", maxRank: 3, cost: 2, requires: "eng-warp-core" },
   { id: "eng-singularity", branch: "engineering", maxRank: 1, cost: 3, requires: "eng-overdrive" },
+
+  // Offense (expansion)
+  { id: "off-caliber",    branch: "offense",  maxRank: 5, cost: 1, requires: "off-power" },
+  { id: "off-steady",     branch: "offense",  maxRank: 5, cost: 1, requires: "off-caliber" },
+  { id: "off-weakpoint",  branch: "offense",  maxRank: 5, cost: 1, requires: "off-steady" },
+  { id: "off-firstblood", branch: "offense",  maxRank: 3, cost: 2, requires: "off-weakpoint" },
+  { id: "off-coldbore",   branch: "offense",  maxRank: 3, cost: 2, requires: "off-firstblood" },
+  { id: "off-headhunter", branch: "offense",  maxRank: 1, cost: 3, requires: "off-coldbore" },
+  { id: "off-sustain",    branch: "offense",  maxRank: 5, cost: 1, requires: "off-rapid" },
+  { id: "off-cadence",    branch: "offense",  maxRank: 3, cost: 2, requires: "off-sustain" },
+  { id: "off-attrition",  branch: "offense",  maxRank: 3, cost: 2, requires: "off-cadence" },
+  { id: "off-barrage",    branch: "offense",  maxRank: 1, cost: 3, requires: "off-attrition" },
+  { id: "off-splash",     branch: "offense",  maxRank: 5, cost: 1, requires: "off-pierce" },
+  { id: "off-shrapnel",   branch: "offense",  maxRank: 3, cost: 2, requires: "off-splash" },
+  { id: "off-chain",      branch: "offense",  maxRank: 3, cost: 2, requires: "off-shrapnel" },
+  { id: "off-saturation", branch: "offense",  maxRank: 1, cost: 3, requires: "off-chain" },
+  { id: "off-render",     branch: "offense",  maxRank: 3, cost: 2, requires: "off-execute" },
+  { id: "off-apex",       branch: "offense",  maxRank: 1, cost: 3, requires: "off-render" },
+
+  // Defense (expansion)
+  { id: "def-lattice",    branch: "defense",  maxRank: 5, cost: 1, requires: "def-shield" },
+  { id: "def-diffuse",    branch: "defense",  maxRank: 5, cost: 1, requires: "def-lattice" },
+  { id: "def-overshield", branch: "defense",  maxRank: 3, cost: 2, requires: "def-diffuse" },
+  { id: "def-aegis",      branch: "defense",  maxRank: 1, cost: 3, requires: "def-overshield" },
+  { id: "def-coolant",    branch: "defense",  maxRank: 5, cost: 1, requires: "def-regen" },
+  { id: "def-triage",     branch: "defense",  maxRank: 3, cost: 2, requires: "def-coolant" },
+  { id: "def-secondwind", branch: "defense",  maxRank: 3, cost: 2, requires: "def-triage" },
+  { id: "def-phoenix",    branch: "defense",  maxRank: 1, cost: 3, requires: "def-secondwind" },
+  { id: "def-ablative",   branch: "defense",  maxRank: 5, cost: 1, requires: "def-armor" },
+  { id: "def-hardened",   branch: "defense",  maxRank: 5, cost: 1, requires: "def-ablative" },
+  { id: "def-lastditch",  branch: "defense",  maxRank: 3, cost: 2, requires: "def-hardened" },
+  { id: "def-immovable",  branch: "defense",  maxRank: 1, cost: 3, requires: "def-lastditch" },
+  { id: "def-spines",     branch: "defense",  maxRank: 3, cost: 2, requires: "def-reflect" },
+  { id: "def-backlash",   branch: "defense",  maxRank: 3, cost: 2, requires: "def-spines" },
+  { id: "def-nemesis",    branch: "defense",  maxRank: 1, cost: 3, requires: "def-backlash" },
+
+  // Utility (expansion)
+  { id: "ut-hold",        branch: "utility",  maxRank: 5, cost: 1, requires: "ut-cargo" },
+  { id: "ut-broker",      branch: "utility",  maxRank: 5, cost: 1, requires: "ut-trade" },
+  { id: "ut-contraband",  branch: "utility",  maxRank: 3, cost: 2, requires: "ut-broker" },
+  { id: "ut-magnate",     branch: "utility",  maxRank: 1, cost: 3, requires: "ut-contraband" },
+  { id: "ut-vector",      branch: "utility",  maxRank: 5, cost: 1, requires: "ut-thrust" },
+  { id: "ut-slipstream",  branch: "utility",  maxRank: 3, cost: 2, requires: "ut-vector" },
+  { id: "ut-evasion",     branch: "utility",  maxRank: 3, cost: 2, requires: "ut-slipstream" },
+  { id: "ut-phaserunner", branch: "utility",  maxRank: 1, cost: 3, requires: "ut-evasion" },
+  { id: "ut-swarm",       branch: "utility",  maxRank: 5, cost: 1, requires: "ut-drone2" },
+  { id: "ut-repairbay",   branch: "utility",  maxRank: 3, cost: 2, requires: "ut-swarm" },
+  { id: "ut-hivemind",    branch: "utility",  maxRank: 1, cost: 3, requires: "ut-repairbay" },
+  { id: "ut-survey",      branch: "utility",  maxRank: 5, cost: 1, requires: "ut-scan" },
+  { id: "ut-refinery",    branch: "utility",  maxRank: 5, cost: 1, requires: "ut-survey" },
+  { id: "ut-assay",       branch: "utility",  maxRank: 3, cost: 2, requires: "ut-refinery" },
+  { id: "ut-prospector",  branch: "utility",  maxRank: 1, cost: 3, requires: "ut-assay" },
+
+  // Engineering (expansion)
+  { id: "eng-plasma",       branch: "engineering", maxRank: 5, cost: 1, requires: "eng-capacitor" },
+  { id: "eng-fusion",       branch: "engineering", maxRank: 5, cost: 1, requires: "eng-plasma" },
+  { id: "eng-surge",        branch: "engineering", maxRank: 3, cost: 2, requires: "eng-fusion" },
+  { id: "eng-meltdown",     branch: "engineering", maxRank: 1, cost: 3, requires: "eng-surge" },
+  { id: "eng-radiator",     branch: "engineering", maxRank: 5, cost: 1, requires: "eng-coolant" },
+  { id: "eng-cryoflow",     branch: "engineering", maxRank: 5, cost: 1, requires: "eng-radiator" },
+  { id: "eng-heatsink",     branch: "engineering", maxRank: 3, cost: 2, requires: "eng-cryoflow" },
+  { id: "eng-runaway",      branch: "engineering", maxRank: 1, cost: 3, requires: "eng-heatsink" },
+  { id: "eng-regulator",    branch: "engineering", maxRank: 5, cost: 1, requires: "eng-capacitor" },
+  { id: "eng-harmonics",    branch: "engineering", maxRank: 5, cost: 1, requires: "eng-regulator" },
+  { id: "eng-transfer",     branch: "engineering", maxRank: 3, cost: 2, requires: "eng-harmonics" },
+  { id: "eng-resonance",    branch: "engineering", maxRank: 3, cost: 2, requires: "eng-transfer" },
+  { id: "eng-equilibrium",  branch: "engineering", maxRank: 1, cost: 3, requires: "eng-resonance" },
+  { id: "eng-recursion",    branch: "engineering", maxRank: 3, cost: 2, requires: "eng-overdrive" },
+  { id: "eng-eventhorizon", branch: "engineering", maxRank: 1, cost: 3, requires: "eng-singularity" },
+  { id: "eng-zeropoint",    branch: "engineering", maxRank: 1, cost: 3, requires: "eng-eventhorizon" },
 ];
 
 // ── DRONE DEFINITIONS (5) ────────────────────────────────────────────────────

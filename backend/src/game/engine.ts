@@ -137,6 +137,9 @@ export type ServerProjectile = {
   // compensate the client's interpolation delay (the shooter aims at where
   // the enemy is RENDERED, ~2-3 ticks behind the server position).
   freeAim?: boolean;
+  // off-cadence: set at fire time on every 3rd trigger pull so the hit path
+  // can apply the empowered multiplier. Absent/undefined = normal shot.
+  cadenceMul?: number;
 };
 
 // ── SERVER ENTITY TYPES ──────────────────────────────────────────────────
@@ -304,6 +307,35 @@ export type EffectiveStats = {
   cargoMax: number;
 };
 
+// ── TIMED BUFF STACKS ───────────────────────────────────────────────────
+// Server-authoritative, short-lived stat buffs granted by the expansion
+// skills. Stored on the cached playerData (`playerData.buffs`) so computeStats
+// folds them in on the next refresh, and pruned by tickPlayerBuffs().
+//   expiry — absolute ms timestamp (Date.now() based)
+//   mag    — per-stack magnitude (already scaled by skill rank at grant time)
+export type PlayerBuff = {
+  id: "off-coldbore" | "eng-surge" | "eng-heatsink" | "def-nemesis";
+  mag: number;
+  expiry: number;
+  stacks: number;
+};
+
+// TODO — CLIENT-SIDE SKILLS (no server effect implemented on purpose)
+// The following expansion skills are purely visual / UI / client-simulation
+// concerns, or depend on systems that do not exist server-side yet. They are
+// deliberately NOT stubbed here so nobody mistakes a no-op for a real effect:
+//   ut-swarm      — extra drone slot / drone swarm behaviour (client drone sim)
+//   ut-repairbay  — out-of-combat hull repair UI flow
+//   ut-hivemind   — drone coordination bonus (client drone sim)
+//   ut-broker     — market/trade price improvement (trade routes, not engine)
+//   ut-magnate    — market/trade capstone (trade routes, not engine)
+//   ut-assay      — ore-quality readout (mining UI; needs miningBonus)
+//   eng-transfer  — manual shield<->hull transfer, player-triggered ability
+//   off-shrapnel  — secondary shrapnel projectiles (client VFX + spawn pattern)
+//   def-triage    — low-hull healing UI flow
+// ut-refinery and the mining-yield half of ut-prospector are likewise skipped:
+// EffectiveStats has no miningBonus field (see computeStats).
+
 export function computeStats(playerData: any): EffectiveStats {
   const cls = SHIP_CLASSES[playerData.shipClass as ShipClassId];
   if (!cls) {
@@ -370,6 +402,102 @@ export function computeStats(playerData: any): EffectiveStats {
 
   shieldRegen += sk("def-regen") * 2;
 
+  // ── EXPANSION SKILLS (62 new nodes) ────────────────────────────────────
+  // All of these are additive on top of the 30 original nodes above; none of
+  // the original formulas were touched. Unknown ids still read 0 via sk(), so
+  // old savegames are unaffected.
+
+  // Offense — flat / rate lines
+  damage += sk("off-caliber") * 4;
+  critChance += sk("off-steady") * 0.02;
+  fireRate += sk("off-sustain") * 0.04;
+  aoeRadius += sk("off-splash") * 5;
+
+  // Offense — capstones (maxRank 1 each)
+  if (sk("off-headhunter") > 0) fireRate *= 0.75;
+  if (sk("off-barrage") > 0) { fireRate += 0.25; damage *= 0.85; }
+  if (sk("off-saturation") > 0) { aoeRadius *= 1.5; damage *= 0.8; }
+
+  // Defense — flat lines
+  shieldMax += sk("def-lattice") * 20;
+  shieldAbsorb += sk("def-diffuse") * 0.04;
+  shieldRegen += sk("def-coolant") * 2;
+  hullMax += sk("def-ablative") * 25;
+  damageReduction += sk("def-hardened") * 0.02;
+
+  // Defense — capstones
+  if (sk("def-aegis") > 0) { shieldMax *= 1.4; shieldRegen *= 0.5; }
+  if (sk("def-immovable") > 0) { hullMax *= 1.25; damageReduction += 0.08; speed *= 0.8; }
+
+  // Utility
+  cargoMax *= (1 + sk("ut-hold") * 0.12);
+  lootBonus += sk("ut-contraband") * 0.03;
+  cargoMax *= (1 - sk("ut-contraband") * 0.08);
+  speed += sk("ut-vector") * 6;
+  lootBonus += sk("ut-survey") * 0.03;
+  if (sk("ut-phaserunner") > 0) { speed *= 1.25; hullMax *= 0.8; }
+  if (sk("ut-prospector") > 0) cargoMax *= 0.75;
+  // ut-prospector's mining-yield half and ut-refinery: EffectiveStats has no
+  // miningBonus field (engine.ts already reads `stats.miningBonus` at the two
+  // mining sites, but it is not declared and always undefined). Adding the
+  // field would change mining economy, which is out of scope for this task.
+  // → not yet supported; intentionally skipped rather than faked.
+
+  // Engineering — damage
+  damage += sk("eng-plasma") * 3;
+  damage *= (1 + sk("eng-fusion") * 0.06);
+  if (sk("eng-meltdown") > 0) { damage *= 1.35; shieldMax *= 0.8; }
+
+  // Engineering — fire rate
+  fireRate += sk("eng-radiator") * 0.03;
+  fireRate *= (1 + sk("eng-cryoflow") * 0.05);
+  if (sk("eng-runaway") > 0) fireRate *= 1.4;
+
+  // Engineering — sustain / hybrid
+  shieldRegen += sk("eng-regulator") * 1;
+  shieldMax += sk("eng-harmonics") * 10;
+  hullMax += sk("eng-harmonics") * 10;
+  if (sk("eng-eventhorizon") > 0) { damage *= 1.2; fireRate *= 1.15; shieldMax *= 1.2; }
+
+  // eng-recursion: the spec wants the ENGINEERING-derived subtotal amplified.
+  // The engineering contributions are interleaved with the base/other-branch
+  // terms throughout this function (damage/fireRate/shieldMax are single
+  // running accumulators, not per-branch subtotals), so isolating a true
+  // "engineering subtotal" would mean restructuring the whole computation —
+  // too invasive for live combat code. FALLBACK PER SPEC: a modest global
+  // (1 + rank*0.02) on damage + fireRate + shieldMax instead of the
+  // engineering-only (1 + rank*0.05). This is deliberate and NOT the
+  // requested formula.
+  const recursion = sk("eng-recursion");
+  if (recursion > 0) {
+    const rmul = 1 + recursion * 0.02;
+    damage *= rmul;
+    fireRate *= rmul;
+    shieldMax *= rmul;
+  }
+
+  // Timed buff stacks (off-coldbore / eng-surge / eng-heatsink / def-nemesis).
+  // Folded in here so every stat read goes through the same authoritative path.
+  // Expired entries are pruned by tickPlayerBuffs(); reading them again here is
+  // harmless because expiry is re-checked.
+  {
+    const nowMs = Date.now();
+    const buffs: PlayerBuff[] = Array.isArray(playerData.buffs) ? playerData.buffs : [];
+    let buffDamageMul = 1;
+    let buffFireRateAdd = 0;
+    for (const b of buffs) {
+      if (!b || b.expiry <= nowMs) continue;
+      const stacks = Math.max(1, b.stacks ?? 1);
+      if (b.id === "off-coldbore" || b.id === "eng-surge" || b.id === "def-nemesis") {
+        buffDamageMul *= (1 + b.mag * stacks);
+      } else if (b.id === "eng-heatsink") {
+        buffFireRateAdd += b.mag * stacks;
+      }
+    }
+    damage *= buffDamageMul;
+    fireRate += buffFireRateAdd;
+  }
+
   // Drone bonuses
   const drones = playerData.drones ?? [];
   for (const drone of drones) {
@@ -404,12 +532,109 @@ export function computeStats(playerData: any): EffectiveStats {
   shieldMax *= 1 + atv("attr-shd") * 0.015 * atScale;
   speed *= 1 + atv("attr-thr") * 0.005 * atScale;
 
+  // eng-equilibrium (maxRank 1) — FINAL PASS. Converts 20% of the fully
+  // resolved shieldMax into damage, so it must sit after every shieldMax
+  // modifier (skills, drones, faction, attribute points) has been applied.
+  if (sk("eng-equilibrium") > 0) damage += shieldMax * 0.20;
+
+  // cargoMax is floored above but the expansion utility skills multiply it
+  // afterwards; re-floor so the wire value stays an integer.
+  cargoMax = Math.max(1, Math.floor(cargoMax));
+
   return {
     damage, speed, hullMax, shieldMax, shieldRegen,
     fireRate, critChance, damageReduction: Math.min(0.8, damageReduction),
-    shieldAbsorb: 0.5 + shieldAbsorb,
+    shieldAbsorb: Math.min(0.5, shieldAbsorb) + 0.5,
     aoeRadius, lootBonus, cargoMax,
   };
+}
+
+// ── OFFENSIVE MULTIPLIER CHAIN (shared by laser + rocket paths) ──────────
+// Single source of truth for skill-driven outgoing-damage multipliers. The
+// laser (tickProjectiles) and rocket (playerAttackEnemy) paths used to
+// duplicate the off-execute / off-void chain; both now call this.
+//
+// IMPORTANT: the first two terms reproduce the previous behaviour EXACTLY —
+// off-execute and off-void keep their original thresholds and coefficients.
+// Everything after them is new (expansion skills).
+//
+// `attacker` may be undefined when the shooter left the zone; conditions that
+// need attacker hull/shield then simply don't fire.
+export function applyOffensiveMultipliers(
+  playerData: any,
+  enemy: { hull: number; hullMax: number; type: string; isBoss?: boolean },
+  attacker?: { hull: number; hullMax: number; shield: number; shieldMax: number } | null,
+): number {
+  const sk = (id: SkillId) => (playerData?.skills?.[id] ?? 0) as number;
+
+  // — existing behaviour (must stay bit-identical) —
+  const execMul = (enemy.hull / enemy.hullMax < 0.25 && sk("off-execute") > 0)
+    ? (1 + sk("off-execute") * 0.20) : 1;
+  const voidMul = ((enemy.type === "dread" || enemy.type === "voidling") && sk("off-void") > 0)
+    ? (1 + sk("off-void") * 0.08) : 1;
+
+  let mul = execMul * voidMul;
+
+  // — expansion: target-state conditions —
+  // off-firstblood: enemy still at full hull.
+  if (sk("off-firstblood") > 0 && enemy.hull >= enemy.hullMax) {
+    mul *= 1 + sk("off-firstblood") * 0.25;
+  }
+  // off-render: target is a boss.
+  if (sk("off-render") > 0 && enemy.isBoss) {
+    mul *= 1 + sk("off-render") * 0.06;
+  }
+
+  // — expansion: attacker-state conditions —
+  if (attacker && attacker.hullMax > 0) {
+    const hullPct = attacker.hull / attacker.hullMax;
+    // off-attrition: healthy pilot pressing the advantage.
+    if (sk("off-attrition") > 0 && hullPct > 0.70) {
+      mul *= 1 + sk("off-attrition") * 0.04;
+    }
+    // off-apex (maxRank 1): desperation burst below 30% hull.
+    if (sk("off-apex") > 0 && hullPct < 0.30) mul *= 1.35;
+  }
+  if (attacker && attacker.shieldMax > 0) {
+    const shieldPct = attacker.shield / attacker.shieldMax;
+    // eng-resonance: shields holding.
+    if (sk("eng-resonance") > 0 && shieldPct > 0.50) {
+      mul *= 1 + sk("eng-resonance") * 0.04;
+    }
+    // eng-zeropoint (maxRank 1): shields nearly gone.
+    if (sk("eng-zeropoint") > 0 && shieldPct < 0.25) mul *= 1.5;
+  }
+
+  return mul;
+}
+
+// ── BUFF HELPERS ────────────────────────────────────────────────────────
+
+// Grant (or refresh) a timed buff on the cached playerData. Stacking buffs
+// (def-nemesis) accumulate up to maxStacks and refresh their expiry; the
+// others simply refresh.
+export function grantBuff(
+  playerData: any,
+  id: PlayerBuff["id"],
+  mag: number,
+  durationSec: number,
+  maxStacks = 1,
+): void {
+  if (!playerData) return;
+  if (!Array.isArray(playerData.buffs)) playerData.buffs = [];
+  const buffs: PlayerBuff[] = playerData.buffs;
+  const expiry = Date.now() + durationSec * 1000;
+  const existing = buffs.find(b => b.id === id && b.expiry > Date.now());
+  if (existing) {
+    existing.mag = mag;
+    existing.expiry = expiry;
+    existing.stacks = Math.min(maxStacks, (existing.stacks ?? 1) + 1);
+  } else {
+    // Drop any stale entry for this id before pushing a fresh one.
+    const stale = buffs.findIndex(b => b.id === id);
+    if (stale >= 0) buffs.splice(stale, 1);
+    buffs.push({ id, mag, expiry, stacks: 1 });
+  }
 }
 
 function sumEquippedStats(inventory: any[], equipped: any, petDrone?: any): Record<string, number> {
@@ -562,6 +787,16 @@ export class GameEngine {
   zones = new Map<string, ZoneState>();
   playerDataCache = new Map<number, any>();
   playerStatsCache = new Map<number, EffectiveStats>();
+  // Live OnlinePlayer objects seen during the last tick, keyed by playerId.
+  // Lets out-of-tick entry points (playerAttackEnemy) read the attacker's
+  // current hull/shield for the conditional offensive skills without changing
+  // any public method signature.
+  private livePlayers = new Map<number, OnlinePlayer>();
+  // off-cadence shot counters, keyed by playerId. Incremented on every laser
+  // trigger pull; every 3rd shot is empowered.
+  private shotCounters = new Map<number, number>();
+  // def-phoenix cooldown (absolute ms timestamp of the next allowed proc).
+  private phoenixReady = new Map<number, number>();
 
   constructor() {
     for (const zone of Object.values(ZONES)) {
@@ -589,6 +824,9 @@ export class GameEngine {
   removePlayerData(playerId: number): void {
     this.playerDataCache.delete(playerId);
     this.playerStatsCache.delete(playerId);
+    this.livePlayers.delete(playerId);
+    this.shotCounters.delete(playerId);
+    this.phoenixReady.delete(playerId);
   }
 
   refreshPlayerStats(playerId: number): EffectiveStats | undefined {
@@ -618,6 +856,11 @@ export class GameEngine {
         }
         continue;
       }
+
+      // Register the live player objects so out-of-tick entry points can read
+      // current hull/shield, and expire any timed buff stacks.
+      for (const p of players) this.livePlayers.set(p.playerId, p);
+      this.tickPlayerBuffs(players);
 
       // Server-authoritative player movement
       this.tickPlayerMovement(players, dt);
@@ -847,6 +1090,17 @@ export class GameEngine {
         const crit = Math.random() < stats.critChance;
         const laserColor = "#4ee2ff";
 
+        // off-cadence: every 3rd trigger pull deals +50%/rank. The counter is
+        // per trigger pull (not per muzzle), so a multi-shot firing pattern
+        // empowers the whole volley — matching how the skill reads.
+        const cadenceRank = (this.playerDataCache.get(p.playerId)?.skills?.["off-cadence"] ?? 0) as number;
+        let cadenceMul = 1;
+        if (cadenceRank > 0) {
+          const n = (this.shotCounters.get(p.playerId) ?? 0) + 1;
+          this.shotCounters.set(p.playerId, n);
+          if (n % 3 === 0) cadenceMul = 1 + cadenceRank * 0.50;
+        }
+
         // Determine firing pattern from equipped weapon
         const pCache = this.playerDataCache.get(p.playerId);
         let firingPattern = "standard";
@@ -875,6 +1129,7 @@ export class GameEngine {
             weaponKind: "laser", homing: false, homingTargetId: null,
             aoeRadius: stats.aoeRadius, empStun: 0, armorPiercing: false,
             freeAim,
+            cadenceMul,
           };
           zs.projectiles.set(proj.id, proj);
           events.push({
@@ -1050,6 +1305,150 @@ export class GameEngine {
     }
   }
 
+  // ── TIMED BUFF STACKS ───────────────────────────────────────────────────
+
+  // Expires buff entries and refreshes the affected players' cached stats.
+  // Runs once per zone tick, before movement/combat, so the stats used this
+  // tick already reflect any expiry.
+  private tickPlayerBuffs(players: OnlinePlayer[]): void {
+    const now = Date.now();
+    for (const p of players) {
+      const pData = this.playerDataCache.get(p.playerId);
+      if (!pData || !Array.isArray(pData.buffs) || pData.buffs.length === 0) continue;
+      const before = pData.buffs.length;
+      pData.buffs = (pData.buffs as PlayerBuff[]).filter(b => b && b.expiry > now);
+      if (pData.buffs.length !== before) this.refreshPlayerStats(p.playerId);
+    }
+  }
+
+  // ── SKILL HOOKS ─────────────────────────────────────────────────────────
+
+  // Crit landed → off-coldbore (+6%/rank damage, 4s) and eng-heatsink
+  // (+0.08/rank fireRate, 3s). Both are single-stack refresh-on-crit.
+  private onPlayerCrit(playerId: number, pData: any): void {
+    const sk = (id: SkillId) => (pData?.skills?.[id] ?? 0) as number;
+    let dirty = false;
+    if (sk("off-coldbore") > 0) {
+      grantBuff(pData, "off-coldbore", sk("off-coldbore") * 0.06, 4);
+      dirty = true;
+    }
+    if (sk("eng-heatsink") > 0) {
+      grantBuff(pData, "eng-heatsink", sk("eng-heatsink") * 0.08, 3);
+      dirty = true;
+    }
+    if (dirty) this.refreshPlayerStats(playerId);
+  }
+
+  // Enemy killed by this player. Extends the existing kill path with the
+  // on-kill expansion skills.
+  //   def-secondwind — restore sk*4 shield
+  //   off-apex       — refund 15% of max shield
+  //   eng-surge      — +12%/rank damage buff for 5s
+  //   off-chain      — NOT IMPLEMENTED (see comment below)
+  onEnemyKilled(playerId: number, enemy: { pos: { x: number; y: number } } | null): void {
+    const pData = this.playerDataCache.get(playerId);
+    if (!pData) return;
+    const sk = (id: SkillId) => (pData.skills?.[id] ?? 0) as number;
+    const p = this.livePlayers.get(playerId);
+    const stats = this.playerStatsCache.get(playerId);
+
+    if (p && stats) {
+      // def-secondwind: flat shield back on every kill.
+      if (sk("def-secondwind") > 0) {
+        p.shield = Math.min(stats.shieldMax, p.shield + sk("def-secondwind") * 4);
+      }
+      // off-apex: kills refund 15% of max shield.
+      if (sk("off-apex") > 0) {
+        p.shield = Math.min(stats.shieldMax, p.shield + stats.shieldMax * 0.15);
+      }
+    }
+
+    // eng-surge: on-kill damage buff.
+    if (sk("eng-surge") > 0) {
+      grantBuff(pData, "eng-surge", sk("eng-surge") * 0.12, 5);
+      this.refreshPlayerStats(playerId);
+    }
+
+    // off-chain (blast radius 40*rank on kill): SKIPPED. Spawning a real AoE
+    // here would mean re-entering the enemy-death path recursively from inside
+    // the enemy iteration (the kill sites delete from zs.enemies while looping,
+    // and each of the four kill sites builds its own LootDrop inline). Doing it
+    // safely needs the kill/loot path extracted into one reusable function
+    // first — out of scope for this change. Deliberately not stubbed.
+  }
+
+  // Player takes damage. Returns the post-mitigation damage plus any reflect
+  // that should be dealt back to the attacker.
+  //
+  // DR CAP NOTE: computeStats already clamps the passive damageReduction at
+  // 0.8 (`Math.min(0.8, ...)`). The conditional DR from def-overshield /
+  // def-lastditch / def-fortress must not let a stacked build reach 100%
+  // immunity, so it is applied MULTIPLICATIVELY against the post-clamp
+  // survival fraction rather than being summed into the pre-clamp total:
+  //     survival = (1 - clampedDR) * (1 - conditionalDR)
+  // This keeps the 0.8 passive cap intact and makes the conditional layers
+  // asymptotic — full immunity is unreachable no matter how they stack.
+  onPlayerDamaged(
+    playerData: any,
+    incomingDamage: number,
+    state: { hull: number; hullMax: number; shield: number; shieldMax: number; playerId?: number },
+  ): { damage: number; reflect: number } {
+    const sk = (id: SkillId) => (playerData?.skills?.[id] ?? 0) as number;
+
+    // ut-evasion: flat chance to take nothing at all.
+    if (sk("ut-evasion") > 0 && Math.random() < sk("ut-evasion") * 0.03) {
+      return { damage: 0, reflect: 0 };
+    }
+
+    const stats = state.playerId != null ? this.playerStatsCache.get(state.playerId) : undefined;
+    const baseDR = stats ? stats.damageReduction : 0;
+    const hullPct = state.hullMax > 0 ? state.hull / state.hullMax : 1;
+    const shieldPct = state.shieldMax > 0 ? state.shield / state.shieldMax : 0;
+
+    // Conditional DR layer (see DR CAP NOTE above).
+    let condDR = 0;
+    // def-overshield: shields at full.
+    if (sk("def-overshield") > 0 && state.shieldMax > 0 && state.shield >= state.shieldMax) {
+      condDR += sk("def-overshield") * 0.05;
+    }
+    // def-lastditch: hull below 30%.
+    if (sk("def-lastditch") > 0 && hullPct < 0.30) {
+      condDR += sk("def-lastditch") * 0.08;
+    }
+    // def-fortress — PREVIOUSLY DEAD SKILL. Catalogued as "-15%/rank damage
+    // taken while shield > 50%" but read nowhere in the engine until now.
+    if (sk("def-fortress") > 0 && shieldPct > 0.50) {
+      condDR += sk("def-fortress") * 0.15;
+    }
+    condDR = Math.min(0.9, condDR); // per-layer sanity clamp
+
+    const survival = (1 - Math.min(0.8, baseDR)) * (1 - condDR);
+    let dmg = Math.round(incomingDamage * survival);
+    if (dmg < 1) dmg = 1;
+
+    // ── Reflect ──
+    let reflect = 0;
+    // def-spines: passive fraction of the incoming hit sent back.
+    if (sk("def-spines") > 0) reflect += incomingDamage * (sk("def-spines") * 0.08);
+    // def-reflect — PREVIOUSLY DEAD SKILL. Catalogued as "+5%/rank chance to
+    // reflect 30%" but read nowhere in the engine until now.
+    if (sk("def-reflect") > 0 && Math.random() < sk("def-reflect") * 0.05) {
+      reflect += incomingDamage * 0.30;
+    }
+    // def-backlash: amplifies whatever reflect the pilot already has.
+    if (reflect > 0 && sk("def-backlash") > 0) {
+      reflect *= (1 + sk("def-backlash") * 0.30);
+    }
+
+    // def-nemesis: taking a hit builds a stacking damage buff (5 stacks max).
+    if (sk("def-nemesis") > 0 && state.playerId != null) {
+      grantBuff(playerData, "def-nemesis", 0.10, 5, 5);
+      this.refreshPlayerStats(state.playerId);
+    }
+
+    return { damage: dmg, reflect: Math.round(reflect) };
+  }
+
   // ── SHIELD REGEN ────────────────────────────────────────────────────────
 
   private tickPlayerShieldRegen(players: OnlinePlayer[], dt: number): void {
@@ -1108,13 +1507,19 @@ export class GameEngine {
             const comboMul = 1 + (stacks - 1) * 0.10;
 
             const pData = this.playerDataCache.get(proj.fromPlayerId);
-            const sk = (id: SkillId) => (pData?.skills?.[id] ?? 0) as number;
-            const execMul = (e.hull / e.hullMax < 0.25 && sk("off-execute") > 0) ? (1 + sk("off-execute") * 0.20) : 1;
-            const voidMul = ((e.type === "dread" || e.type === "voidling") && sk("off-void") > 0) ? (1 + sk("off-void") * 0.08) : 1;
+            const shooter = players.find(pl => pl.playerId === proj.fromPlayerId) ?? null;
+            const skillMul = applyOffensiveMultipliers(pData, e, shooter);
             const critMul = proj.crit ? 1.5 : 1;
+            // off-cadence: the shot was flagged as an empowered volley when it
+            // was fired (see tickPlayerCombat's shot counter).
+            const cadenceMul = proj.cadenceMul ?? 1;
 
-            let dmg = Math.round(proj.damage * comboMul * critMul * execMul * voidMul);
+            let dmg = Math.round(proj.damage * comboMul * critMul * skillMul * cadenceMul);
             if (dmg < 1) dmg = 1;
+
+            // Crit-triggered buffs (off-coldbore damage, eng-heatsink fireRate).
+            if (proj.crit && pData) this.onPlayerCrit(proj.fromPlayerId, pData);
+
             e.hull -= dmg;
             if (e.isBoss && e.hullMax > 0) { const hpPct = e.hull / e.hullMax; e.bossPhase = hpPct > 0.66 ? 0 : hpPct > 0.33 ? 1 : 2; }
             if (e.aggroTarget !== proj.fromPlayerId && (!e.retargetCd || e.retargetCd <= 0)) {
@@ -1152,6 +1557,7 @@ export class GameEngine {
               const rolledItem = rollEnemyEquipDrop(e, zoneId, proj.fromPlayerId, killerLootBonus);
               if (rolledItem) loot.item = rolledItem;
               events.push({ type: "enemy:die", zone: zoneId, enemyId: e.id, killerId: proj.fromPlayerId, loot, pos: { ...e.pos } });
+              this.onEnemyKilled(proj.fromPlayerId, e);
               zs.enemies.delete(e.id);
               if (e.isBoss) { zs.bossActive = false; zs.bossTimer = randRange(180, 420); }
             } else {
@@ -1178,6 +1584,7 @@ export class GameEngine {
                       const splashItem = rollEnemyEquipDrop(e2, zoneId, proj.fromPlayerId, this.playerStatsCache.get(proj.fromPlayerId)?.lootBonus ?? 0);
                       if (splashItem) loot2.item = splashItem;
                       events.push({ type: "enemy:die", zone: zoneId, enemyId: e2.id, killerId: proj.fromPlayerId, loot: loot2, pos: { ...e2.pos } });
+                      this.onEnemyKilled(proj.fromPlayerId, e2);
                       zs.enemies.delete(e2.id);
                     } else {
                       events.push({ type: "enemy:hit", zone: zoneId, enemyId: e2.id, damage: splashDmg, hp: e2.hull, hpMax: e2.hullMax, crit: false, attackerId: proj.fromPlayerId });
@@ -1215,6 +1622,17 @@ export class GameEngine {
                 const died = this.damagePlayer(victim, proj.damage);
                 events.push({ type: "player:hit", playerId: victim.playerId, damage: proj.damage, zone: zoneId, pos: vpos, killerId: attacker.playerId });
                 if (died) events.push({ type: "player:die", playerId: victim.playerId, zone: zoneId, pos: vpos, killerId: attacker.playerId });
+                // def-spines / def-reflect / def-backlash: pay the reflected
+                // damage back into the attacker. Only meaningful in PvP —
+                // enemy/NPC shooters are handled by the other branches and
+                // have no reflect target.
+                const reflectDmg = this.lastReflect;
+                if (reflectDmg > 0 && !attacker.isDocked) {
+                  const apos = { x: attacker.posX, y: attacker.posY };
+                  const aDied = this.damagePlayer(attacker, reflectDmg);
+                  events.push({ type: "player:hit", playerId: attacker.playerId, damage: reflectDmg, zone: zoneId, pos: apos, killerId: victim.playerId });
+                  if (aDied) events.push({ type: "player:die", playerId: attacker.playerId, zone: zoneId, pos: apos, killerId: victim.playerId });
+                }
                 zs.projectiles.delete(projId);
                 break;
               }
@@ -1263,18 +1681,49 @@ export class GameEngine {
   // Returns true if this hit destroyed the player (hull reached 0). On death
   // the player is respawned server-side (full hull/shield) so they can keep
   // playing; the caller emits player:die so every client sees the explosion.
+  // Reflect damage produced by the most recent damagePlayer() call (def-spines
+  // / def-reflect / def-backlash). Read by the PvP hit site so it can be paid
+  // back to the attacker; NPC/enemy attackers have no hull to reflect into.
+  private lastReflect = 0;
+
   private damagePlayer(p: OnlinePlayer, rawDamage: number): boolean {
     if (p.hull <= 0) return false; // already dead this tick, don't double-kill
+    this.lastReflect = 0;
     const stats = this.playerStatsCache.get(p.playerId) ?? null;
-    const reduction = stats ? stats.damageReduction : 0;
     const absorb = stats ? stats.shieldAbsorb : 0.5;
-    let dmg = Math.round(rawDamage * (1 - Math.min(0.8, reduction)));
-    if (dmg < 1) dmg = 1;
+
+    // Defensive skill hook — applies the passive DR clamp plus the conditional
+    // DR layers (def-overshield / def-lastditch / def-fortress), ut-evasion and
+    // the reflect chain. When the player has none of those skills this returns
+    // exactly the old `round(raw * (1 - min(0.8, DR)))`, so existing builds are
+    // unchanged.
+    const pData = this.playerDataCache.get(p.playerId);
+    const res = this.onPlayerDamaged(pData, rawDamage, {
+      hull: p.hull, hullMax: stats ? stats.hullMax : p.hullMax,
+      shield: p.shield, shieldMax: stats ? stats.shieldMax : p.shieldMax,
+      playerId: p.playerId,
+    });
+    this.lastReflect = res.reflect;
+    let dmg = res.damage;
+    if (dmg <= 0) { p.lastHitTick = Date.now() / 1000; return false; } // ut-evasion dodge
     const shieldDmg = Math.round(dmg * absorb);
     const hullDmg = dmg - shieldDmg;
     p.shield = Math.max(0, p.shield - shieldDmg);
     p.hull = Math.max(0, p.hull - hullDmg);
     p.lastHitTick = Date.now() / 1000;
+
+    // def-phoenix (maxRank 1): one cheat-death every 90s — the lethal hit
+    // instead leaves the pilot at 20% hull.
+    if (p.hull <= 0 && pData && ((pData.skills?.["def-phoenix"] ?? 0) as number) > 0) {
+      const now = Date.now();
+      const readyAt = this.phoenixReady.get(p.playerId) ?? 0;
+      if (now >= readyAt) {
+        this.phoenixReady.set(p.playerId, now + 90_000);
+        p.hull = Math.max(1, Math.round((stats ? stats.hullMax : p.hullMax) * 0.20));
+        return false;
+      }
+    }
+
     if (p.hull <= 0) {
       // Server-authoritative respawn: restore to full at the zone origin,
       // stop firing/moving. Clients play the death explosion from player:die.
@@ -1554,15 +2003,15 @@ export class GameEngine {
     const crit = Math.random() < stats.critChance;
     const critMul = crit ? 1.5 : 1;
 
-    // Execute bonus (below 25% HP)
-    const sk = (id: SkillId) => (pData.skills?.[id] ?? 0) as number;
-    const execMul = (e.hull / e.hullMax < 0.25 && sk("off-execute") > 0) ? (1 + sk("off-execute") * 0.20) : 1;
+    // Skill damage multipliers (off-execute, off-void + expansion nodes).
+    // Shared with the laser path via applyOffensiveMultipliers().
+    const skillMul = applyOffensiveMultipliers(pData, e, this.livePlayers.get(playerId) ?? null);
 
-    // Void rounds bonus (vs dread/voidling)
-    const voidMul = ((e.type === "dread" || e.type === "voidling") && sk("off-void") > 0) ? (1 + sk("off-void") * 0.08) : 1;
-
-    let dmg = Math.round(baseDmg * comboMul * critMul * execMul * voidMul);
+    let dmg = Math.round(baseDmg * comboMul * critMul * skillMul);
     if (dmg < 1) dmg = 1;
+
+    // Crit-triggered buffs (off-coldbore damage, eng-heatsink fireRate).
+    if (crit) this.onPlayerCrit(playerId, pData);
 
     e.hull -= dmg;
     e.aggroTarget = playerId;
@@ -1592,6 +2041,7 @@ export class GameEngine {
         type: "enemy:die", zone, enemyId: e.id,
         killerId: playerId, loot, pos: { ...e.pos },
       });
+      this.onEnemyKilled(playerId, e);
       zs.enemies.delete(e.id);
       if (e.isBoss) {
         zs.bossActive = false;
@@ -1622,6 +2072,7 @@ export class GameEngine {
               const splashItem = rollEnemyEquipDrop(e2, zone, playerId, stats.lootBonus);
               if (splashItem) loot2.item = splashItem;
               events.push({ type: "enemy:die", zone, enemyId: e2.id, killerId: playerId, loot: loot2, pos: { ...e2.pos } });
+              this.onEnemyKilled(playerId, e2);
               zs.enemies.delete(e2.id);
             } else {
               events.push({ type: "enemy:hit", zone, enemyId: e2.id, damage: splashDmg, hp: e2.hull, hpMax: e2.hullMax, crit: false, attackerId: playerId });

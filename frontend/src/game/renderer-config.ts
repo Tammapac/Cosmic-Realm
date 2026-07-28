@@ -127,6 +127,19 @@ function readWorldPbrFlag(): boolean {
 }
 export const ENABLE_WORLD_PBR = readWorldPbrFlag();
 
+// ── New skill-tree UI (?newskills) ──────────────────────────────────────────
+// Gates the redesigned React-Flow skill tree (src/features/skills). OFF by
+// default — the existing SkillTreePanel / Hangar SkillsTab stay the live UI
+// until the new one is finished + verified. Opt-in with ?newskills. Purely
+// presentational: it reuses the same SKILL_NODES catalog, buySkillRank/
+// resetSkills mutations, and skills/skillPoints store fields — no backend or
+// skill-id change.
+function readNewSkillsFlag(): boolean {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).has("newskills");
+}
+export const ENABLE_NEW_SKILLS = readNewSkillsFlag();
+
 // How far above the world plane the ship groups float, in scene units per unit
 // of camera zoom.
 //

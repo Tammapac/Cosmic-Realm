@@ -19,6 +19,11 @@ if (params.has("hud-showcase")) {
   import("./demo/UiPreview").then(({ default: UiPreview }) => {
     root.render(<UiPreview />);
   });
+} else if (params.has("skills-test")) {
+  // Isolated skill-tree harness for the redesigned tree (?newskills UI).
+  import("./demo/SkillsTest").then(({ default: SkillsTest }) => {
+    root.render(<SkillsTest />);
+  });
 } else if (params.has("hud-editor")) {
   import("./editor/HudEditor").then(({ default: HudEditor }) => {
     root.render(<HudEditor />);

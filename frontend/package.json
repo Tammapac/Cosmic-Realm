@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@types/three": "^0.184.0",
+    "@xyflow/react": "^12.11.2",
     "nanoid": "^6.0.0",
     "pixi.js": "^7.4.3",
     "react": "^18.2.0",
