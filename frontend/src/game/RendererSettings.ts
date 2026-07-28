@@ -259,8 +259,20 @@ export function getQualityTier(): QualityTier {
 }
 
 /** The resolved settings object for the active tier. */
+// ?station-pbr forces GTAO on regardless of tier — the world-PBR test wants the
+// hangar's contact-AO look on stations even on medium/low GPUs. Read once.
+const _worldPbr =
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).has("station-pbr");
+
 export function getRendererSettings(): RendererSettings {
-  return PRESETS[getQualityTier()];
+  const s = PRESETS[getQualityTier()];
+  if (_worldPbr && !s.gtao) {
+    // Force GTAO on for the station-PBR test (the hangar preset's blendIntensity 1.5,
+    // radius 0.7). Cloned so the shared preset object is not mutated.
+    return { ...s, gtao: true, gtaoRadius: 0.7, gtaoIntensity: 1.5 };
+  }
+  return s;
 }
 
 /** Force a tier at runtime (persisted). Call `window.__RENDER_TIER("ultra")`. */

@@ -31,10 +31,10 @@
 
 import * as THREE from "three";
 import { getRendererSettings } from "./RendererSettings";
-import { installBrightViewportEnv } from "./three-environment";
+import { installBrightViewportEnv, installStudioEnv } from "./three-environment";
 import { setMaterialAnisotropyMax } from "./space-material";
 import { perfRegisterThree } from "./perf";
-import { PIXELATE_3D, PIXELATE_3D_SCALE, SHARED_3D_SHIP_LIFT } from "./renderer-config";
+import { PIXELATE_3D, PIXELATE_3D_SCALE, SHARED_3D_SHIP_LIFT, ENABLE_WORLD_PBR } from "./renderer-config";
 
 const PIX_SCALE = PIXELATE_3D ? Math.max(1, PIXELATE_3D_SCALE) : 1;
 
@@ -123,11 +123,19 @@ export function ensureWorldLayer(
   perfRegisterThree(cvs.dataset?.perfName ?? "3d-world", renderer.info);
   renderer.shadowMap.enabled = rs.shadowsEnabled;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  // Kept tier-relative, mildly lifted. Most of the "everything is too dark" was
-  // never exposure — it was the environment (see below). Exposure only fine-tunes
-  // on top of a scene that is now correctly lit.
-  renderer.toneMappingExposure = rs.toneMappingExposure * 1.35;
+  if (ENABLE_WORLD_PBR) {
+    // Station-PBR test: match the hangar's calibrated grade — AgX tone mapping at
+    // exposure 1.05 (see reference-hangar-lighting-preset). Softer highlight roll-off
+    // than ACES, which is what gives the hangar its filmic metal look.
+    renderer.toneMapping = THREE.AgXToneMapping;
+    renderer.toneMappingExposure = 1.05;
+  } else {
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    // Kept tier-relative, mildly lifted. Most of the "everything is too dark" was
+    // never exposure — it was the environment (see below). Exposure only fine-tunes
+    // on top of a scene that is now correctly lit.
+    renderer.toneMappingExposure = rs.toneMappingExposure * 1.35;
+  }
 
   const scene = new THREE.Scene();
   // BRIGHT viewport IBL instead of the dark RoomEnvironment/space HDR. This is
@@ -139,7 +147,14 @@ export function ensureWorldLayer(
   // brightness 1.0 (full gradient) · intensity 1.4 pushes the IBL a bit past the
   // gradient's own level so stations and ships read brighter without clipping —
   // the "a bit brighter" the viewport A/B landed on.
-  installBrightViewportEnv(renderer, scene, 1.0, 1.4);
+  if (ENABLE_WORLD_PBR) {
+    // Station-PBR test: the hangar's Space-HDRI studio environment (soft, blurred
+    // reflections) instead of the bright neutral gradient, so hulls/stations reflect
+    // the same way they do in the hangar. Reflection-only (no scene.background).
+    installStudioEnv(renderer, scene, { kind: "hdr", intensity: 0.8 });
+  } else {
+    installBrightViewportEnv(renderer, scene, 1.0, 1.4);
+  }
 
   // Camera geometry comes from the STATION layer, not the ship layer: it has to
   // sit above the tallest station (y ≈ 1400 · zoom, and up to 3750 once ships

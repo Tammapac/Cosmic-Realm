@@ -109,6 +109,20 @@ function readSharedSceneFlag(): boolean {
 
 export const ENABLE_SHARED_3D_SCENE = readSharedSceneFlag();
 
+// ── World PBR look (station-lighting test) ──────────────────────────────────
+// Brings the HANGAR's calibrated look to the shared WORLD renderer: AgX tone
+// mapping (not ACES), the Space-HDRI studio environment for soft reflections,
+// and a real GTAO screen-space AO pass over the whole world scene. OFF by
+// default — opt-in with ?station-pbr — because it re-tones EVERY model for every
+// player and the GTAO composer over hundreds of NPCs is a performance unknown.
+// This is the "test it on the stations first" step: dock / fly near a station
+// with the flag on and judge the look before it goes wider.
+function readWorldPbrFlag(): boolean {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).has("station-pbr");
+}
+export const ENABLE_WORLD_PBR = readWorldPbrFlag();
+
 // How far above the world plane the ship groups float, in scene units per unit
 // of camera zoom.
 //
