@@ -109,17 +109,21 @@ function readSharedSceneFlag(): boolean {
 
 export const ENABLE_SHARED_3D_SCENE = readSharedSceneFlag();
 
-// ── World PBR look (station-lighting test) ──────────────────────────────────
-// Brings the HANGAR's calibrated look to the shared WORLD renderer: AgX tone
-// mapping (not ACES), the Space-HDRI studio environment for soft reflections,
-// and a real GTAO screen-space AO pass over the whole world scene. OFF by
-// default — opt-in with ?station-pbr — because it re-tones EVERY model for every
-// player and the GTAO composer over hundreds of NPCs is a performance unknown.
-// This is the "test it on the stations first" step: dock / fly near a station
-// with the flag on and judge the look before it goes wider.
+// ── World PBR look ──────────────────────────────────────────────────────────
+// The HANGAR's calibrated grade on the shared WORLD renderer, applied to EVERY
+// model — stations, the player ship, enemies, NPCs: AgX tone mapping (not ACES),
+// the Space-HDRI studio environment for soft reflections, and a real GTAO
+// screen-space AO pass over the whole world scene.
+//
+// NOW GLOBAL / default-ON (verified on the stations first via ?station-pbr).
+// ?no-station-pbr is the emergency opt-out back to the old ACES + bright-gradient
+// look — GTAO over many NPCs is the one perf risk, so a client that struggles can
+// disable it in the field.
 function readWorldPbrFlag(): boolean {
   if (typeof window === "undefined") return false;
-  return new URLSearchParams(window.location.search).has("station-pbr");
+  const p = new URLSearchParams(window.location.search);
+  if (p.has("station-pbr")) return true;     // explicit on (kept for symmetry)
+  return !p.has("no-station-pbr");           // default ON; ?no-station-pbr disables
 }
 export const ENABLE_WORLD_PBR = readWorldPbrFlag();
 
