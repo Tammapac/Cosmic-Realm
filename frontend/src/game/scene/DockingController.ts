@@ -838,7 +838,9 @@ export function bootIntoStoredLocation(): boolean {
   }
 
   state.dockedAt = station.id;
-  state.hangarTab = "bounties";
+  // 3D glass hangar opens with NO section selected (only the floating item column);
+  // the 2D panel defaults to its first tab. Mirrors commitDock().
+  state.hangarTab = ENABLE_HANGAR_3D_SCENE ? null : "bounties";
   state.player.vel = { x: 0, y: 0 };
   // Clear any stale move order left over from the fresh-state defaults, so the
   // ship is not carrying an instruction to fly somewhere the moment it undocks.
@@ -874,7 +876,22 @@ export function bootIntoStoredLocation(): boolean {
         console.error("[docking] hangar restore preload failed — 2D fallback", e);
         setActiveHangarScene(null);
       }
+      // forceState() sets the state but SKIPS the HANGAR enter() handler — so with
+      // the 3D hangar we must run its reveal steps by hand here, or the canvas is
+      // never shown, hangarIntroDone stays false, the menu never mounts, and the
+      // player is stranded DOCKED in the world view (the exact bug on reload-while-
+      // docked). No fly-in on restore: just show the parked scene + the menu.
       sceneManager.forceState(GameState.HANGAR);
+      if (activeHangarScene) {
+        try {
+          activeHangarScene.show();
+          activeHangarScene.showParked();
+        } catch (e) {
+          console.error("[docking] hangar restore show failed", e);
+        }
+      }
+      restoreParked = false;
+      state.hangarIntroDone = true; // 2D menu (or glass menu) may mount now
       bump();
     })();
   } else {
