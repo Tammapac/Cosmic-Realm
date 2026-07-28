@@ -177,6 +177,12 @@ const SHIP_3D_MODELS: Record<string, string> = {
 // re-exporting the GLB. Baked into the model at load (see loadModel).
 export const MODEL_YAW_OFFSET: Record<string, number> = {
   // enemy_erix: Math.PI,  // uncomment/adjust if Erix faces the wrong way
+  // silikum's hull is authored nose-DOWN (+Z), the reverse of the -Z convention —
+  // top-down renders show the pointed nose at the bottom, the engine block up — so
+  // it flew backwards/sideways. Half-turn corrects it. (angin/crobium/draug/nabas
+  // render nose-up = correct; maron/knoton/simonit are radially symmetric so a
+  // heading offset is visually moot.)
+  enemy_silikum: Math.PI,
 };
 
 // Models whose AUTHORED texture look must be preserved: no space-metal
@@ -851,15 +857,21 @@ function loadModel(shipClass: string): void {
             (m.emissiveIntensity ?? 1) > 0.3;
 
           if (KEEP_AUTHORED_MODELS.has(shipClass)) {
-            // Authored-look NPC: keep the GLB's own PBR maps/colors untouched
-            // and add an albedo-derived glow so the bright accent areas (red
-            // lines, crystal white) emit light like in the source model.
+            // Authored-look NPC: keep the GLB's own baseColor/normal maps, but the
+            // Tripo exports ship as MATTE (high roughness / low metalness) so they
+            // never catch the environment — they read as flat next to the glossy
+            // ships. Push them toward reflective metal (without discarding the
+            // authored albedo) so they glisten + mirror the studio env like the
+            // rest of the fleet, and keep the albedo-derived glow on the bright
+            // accent areas (red lines, crystal white).
             if (m.map) {
               m.emissiveMap = m.map;
               m.emissive = new THREE.Color(0xffffff);
               m.emissiveIntensity = 0.38;
             }
-            (m as any).envMapIntensity = 1.0;
+            m.metalness = Math.max(m.metalness ?? 0, 0.72);
+            m.roughness = Math.min(m.roughness ?? 1, 0.4);
+            (m as any).envMapIntensity = 1.6;
             m.needsUpdate = true;
             hullMatCount++;
             newList.push(m);
