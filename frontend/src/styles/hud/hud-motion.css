@@ -90,7 +90,13 @@
    das nicht an 64 Aufrufstellen von Hand passieren muss, injiziert
    `installHudBeam()` (src/hooks/useHudBeam.ts) es einmalig per
    MutationObserver in jedes neu gemountete Panel. Die Regel hier gestaltet
-   nur, wie der Beam aussieht. */
+   nur, wie der Beam aussieht.
+
+   WICHTIG: Der Beam gilt nur fuer das AEUSSERE Fenster — nicht fuer
+   `.panel-inset` (verschachtelte Karten) und nicht fuer `.console-sq` (die
+   Innenflaechen der Hangar-Tabs). Sonst blitzt bei jedem Tab-Wechsel jede
+   einzelne Karte einzeln auf statt einmal das ganze Fenster. Die Auswahl
+   trifft useHudBeam.ts, nicht dieser Selektor. */
 .hud-beam {
   position: absolute;
   left: 0;

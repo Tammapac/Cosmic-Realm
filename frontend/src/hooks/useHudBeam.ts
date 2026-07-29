@@ -19,8 +19,21 @@
 // — including popups, hotbar item pickers and Hangar tab switches, which is
 // where the effect was still missing.
 
-/** Panel primitives that should show the beam when they appear. */
-const PANEL_SELECTOR = ".panel, .panel-inset, .console-sq";
+// ONLY the outer window gets the beam.
+//
+// `.panel-inset` is by definition a nested card, and `.console-sq` is the
+// inner plate the Hangar tabs are built from — beaming those made every tab
+// switch and every little card flash on its own, which is not the effect.
+// The beam should read as "this WINDOW just powered up", once, across the
+// whole frame.
+const PANEL_SELECTOR = ".panel";
+
+/** A panel inside another panel is a sub-surface, not a window. */
+const NESTED_WITHIN = ".panel, .panel-inset, .console-sq";
+
+/** Windows below this size are chips/plates, not pop-ups worth announcing. */
+const MIN_BEAM_WIDTH = 220;
+const MIN_BEAM_HEIGHT = 120;
 
 /** Marks panels we've already handled so re-renders don't stack beams. */
 const DONE = "hudBeamDone";
@@ -28,6 +41,14 @@ const DONE = "hudBeamDone";
 function addBeam(el: HTMLElement): void {
   if (el.dataset[DONE]) return;
   el.dataset[DONE] = "1";
+
+  // Skip nested panels: only the outermost frame announces itself.
+  if (el.parentElement?.closest(NESTED_WITHIN)) return;
+
+  // Skip small always-on plates (hotbar shell, minimap, chips). They are not
+  // windows that open, so a boot scan on them is just noise.
+  const r = el.getBoundingClientRect();
+  if (r.width < MIN_BEAM_WIDTH || r.height < MIN_BEAM_HEIGHT) return;
 
   // The beam is absolutely positioned, so the panel must be a containing
   // block. Every primitive already sets position:relative, but a stray
