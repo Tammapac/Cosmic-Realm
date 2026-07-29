@@ -34,7 +34,18 @@ export function InventoryPanel() {
   const panelAnim = useHudPanel(show);
 
   const items = useMemo(() => {
-    const list = [...player.inventory].filter((it) => MODULE_DEFS[it.defId]);
+    // Equipped gear lives on the ship, not in the cargo bay: it is hidden
+    // here so the inventory shows what is actually spare. (Unequipping puts
+    // an item straight back into this list.) `equipped` is read inside the
+    // memo so re-equipping refreshes it.
+    const worn = new Set<string>([
+      ...player.equipped.weapon,
+      ...player.equipped.generator,
+      ...player.equipped.module,
+    ].filter((x): x is string => !!x));
+    const list = [...player.inventory].filter(
+      (it) => MODULE_DEFS[it.defId] && !worn.has(it.instanceId),
+    );
     // best stuff first: rarity desc → ilvl desc → tier desc
     list.sort((a, b) => {
       const r = rarityRank(b) - rarityRank(a);
@@ -44,7 +55,7 @@ export function InventoryPanel() {
       return (MODULE_DEFS[b.defId]?.tier ?? 0) - (MODULE_DEFS[a.defId]?.tier ?? 0);
     });
     return list;
-  }, [player.inventory, tick]);
+  }, [player.inventory, player.equipped, tick]);
 
   // Stay mounted while the close animation plays, not just while `show` is on.
   if (!panelAnim.mounted) return null;

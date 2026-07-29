@@ -57,6 +57,14 @@ const CHASE_LEAD = 150;
 /** Progress at which the framing starts handing over from lead to chase. */
 const CHASE_FROM = 0.45;
 
+/**
+ * Master switch for the approach cinematic. When true the camera is left
+ * completely alone while docking/undocking: no push-in, no lead, no chase —
+ * the player keeps the ordinary top-down flight view and simply watches the
+ * ship fly into the station. Set false to restore the cinematic below.
+ */
+const STATIC_APPROACH_CAMERA = true;
+
 /** Clamped smoothstep — zero slope at both ends, so handovers have no seam. */
 function smoothstep(x: number): number {
   const t = Math.max(0, Math.min(1, x));
@@ -95,8 +103,12 @@ export class DockingCameraController {
     }
     this.baseZoom = state.cameraZoom;
     this.fromZoom = this.baseZoom;
-    const target = this.baseZoom * (this.axis ? ZOOM_IN_DOOR : ZOOM_IN);
-    this.toZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, target));
+    // NO push-in. Per direction: the approach is watched from the normal
+    // flight camera — same zoom, top-down — so the player sees the ship fly
+    // into the station from outside instead of the camera diving at the door.
+    // from === to keeps the whole ramp a no-op without unpicking the rest of
+    // the move (the lead/chase framing below is disabled the same way).
+    this.toZoom = this.baseZoom;
     this.active = true;
   }
 
@@ -139,6 +151,18 @@ export class DockingCameraController {
   apply(u: number): void {
     if (!this.active) return;
     const t = Math.max(0, Math.min(1, u));
+
+    // Per direction: the camera must not move at all during the approach —
+    // it stays exactly where it is in normal flight, top-down, so the player
+    // watches the ship fly into the station from outside. Both the framing
+    // offset (lead + chase) and the zoom ramp are therefore skipped. The
+    // machinery below is kept intact so the shot can be brought back by
+    // deleting this early return, rather than reconstructing it.
+    if (STATIC_APPROACH_CAMERA) {
+      state.cameraOffset.x = 0;
+      state.cameraOffset.y = 0;
+      return;
+    }
 
     // How far the framing has handed over from "show me both" to "ride in
     // behind the ship". Smoothstepped, so the handover is a drift rather than a

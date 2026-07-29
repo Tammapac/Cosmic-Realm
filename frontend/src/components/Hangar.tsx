@@ -923,8 +923,17 @@ function LoadoutTab({ stationId }: { stationId: string }) {
   }, [showShop, shopOffer, player.equipped, player.inventory]);
 
   const SLOT_ORDER: Record<ModuleSlot, number> = { weapon: 0, generator: 1, module: 2 };
+  // Equipped gear is shown in the slot sections above, not repeated in the
+  // inventory list — the list is what is SPARE. Unequipping a slot puts the
+  // item straight back here.
+  const wornIds = new Set<string>([
+    ...player.equipped.weapon,
+    ...player.equipped.generator,
+    ...player.equipped.module,
+  ].filter((x): x is string => !!x));
   const visibleInv = player.inventory
     .filter((it) => {
+      if (wornIds.has(it.instanceId)) return false;
       if (filter === "all") return true;
       return MODULE_DEFS[it.defId]?.slot === filter;
     })
@@ -1157,6 +1166,10 @@ function LoadoutTab({ stationId }: { stationId: string }) {
               visibleInv.map((it) => {
                 const def = MODULE_DEFS[it.defId];
                 if (!def) return null;
+                // Kept as a guard, not a live branch: visibleInv now filters
+                // equipped items out, so this is false for every rendered
+                // cell. Left in place so the fallbacks below stay correct if
+                // that filter is ever relaxed.
                 const isEquipped =
                   player.equipped.weapon.includes(it.instanceId) ||
                   player.equipped.generator.includes(it.instanceId) ||

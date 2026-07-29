@@ -10,6 +10,7 @@
 import { useMemo } from "react";
 import { MODULE_DEFS, type ModuleItem, type ModuleDef } from "../game/types";
 import { isRolledItem, lootItemColor, lootSellPrice } from "../game/loot-ui";
+import { WeaponIcon } from "./hud-ui";
 import { LEGENDARIES, itemDisplayName } from "../../../lib/loot/loot";
 
 /** One comparable stat, already formatted for display. */
@@ -104,7 +105,12 @@ export function ItemTooltip({ item, equipped, action }: ItemTooltipProps) {
     <div className={`itip rarity--${rarity}`} style={{ ["--itip-accent" as string]: color }}>
       <header className="itip-head">
         <div className={`itip-icon rarity--${rarity}`}>
-          <span>{def?.slot === "weapon" ? "⚔" : def?.slot === "generator" ? "◈" : "⬡"}</span>
+          {/* The real item sprite, exactly as the inventory grid draws it.
+              This used to be a hardcoded Unicode glyph per slot type, so
+              every item in the card showed the same placeholder symbol
+              regardless of what it actually was. WeaponIcon falls back to
+              the def's own glyph when an item genuinely has no sprite. */}
+          {def ? <WeaponIcon def={def} size={30} color={color} /> : <span>⬡</span>}
         </div>
         <div className="itip-id">
           <div className="itip-name">{itemDisplayName(item as never, def?.name ?? item.defId)}</div>
