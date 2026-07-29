@@ -8,10 +8,15 @@ import "./styles/hud/hud-skin.css";
 // Window open/close choreography (.hud-open / .hud-close / .hud-stagger),
 // driven by the useHudPanel hook. After hud-skin.css so its animations win.
 import "./styles/hud/hud-motion.css";
+// Injects the boot-scan beam into every panel as it mounts (see the file for
+// why this cannot be pure CSS on this codebase).
+import { installHudBeam } from "./hooks/useHudBeam";
 
 // Isolated HUD dev screen: open with ?hud-showcase in the URL. Does not
 // touch the normal game boot path.
 const params = new URLSearchParams(window.location.search);
+installHudBeam();
+
 const root = createRoot(document.getElementById("root")!);
 if (params.has("hud-showcase")) {
   import("./demo/HudShowcase").then(({ default: HudShowcase }) => {

@@ -70,10 +70,43 @@
 .console-sq {
   animation: hud-panel-in 420ms cubic-bezier(.2, .9, .25, 1) both;
 }
-/* KEIN Boot-Scan über .panel::after — dieses Pseudo-Element ist in
-   hud-skin.css bereits die Eckwinkel-/Kantenebene (verifiziert im Browser);
-   die Scan-Keyframes animieren `top` und würden die Winkel zerstören.
-   Der Scan bleibt daher .hud-open vorbehalten, das ein eigenes ::after hat. */
+
+/* ── Der Beam (Boot-Scan) für JEDES Fenster ───────────────────────────────
+   Bisher hing der helle Streifen ausschliesslich an `.hud-open::after`, und
+   `.hud-open` war nur am Inventar gesetzt — deshalb hatte NUR das Inventar
+   den Beam, obwohl alle anderen Fenster bereits die Panel-Animation hatten.
+
+   Beide Pseudo-Elemente von `.panel` sind belegt (::before = PCB-Aderung,
+   ::after = Eckwinkel/Kante, live geprüft), und `.panel-rim` scheidet als
+   Träger aus: von 64 `.panel`-Verwendungen rendern die wenigsten ein
+   panel-rim-Kind — die 21 im Hangar (inkl. Munitionsauswahl) gar keins.
+
+   Ein zusätzlicher background-Layer scheidet ebenfalls aus: hud-skin.css
+   setzt `background` (Kurzform) auf .panel und wird SPÄTER geladen, also
+   überschreibt es jeden background-image-Layer aus dieser Datei — live
+   nachgemessen.
+
+   Bleibt der Weg, den der Handoff ohnehin vorsah: ein echtes Element. Damit
+   das nicht an 64 Aufrufstellen von Hand passieren muss, injiziert
+   `installHudBeam()` (src/hooks/useHudBeam.ts) es einmalig per
+   MutationObserver in jedes neu gemountete Panel. Die Regel hier gestaltet
+   nur, wie der Beam aussieht. */
+.hud-beam {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -8%;
+  height: 34%;
+  z-index: 9;
+  pointer-events: none;
+  clip-path: inherit;
+  background: linear-gradient(180deg, transparent, rgba(182, 240, 255, .16) 60%, rgba(182, 240, 255, .5));
+  animation: hud-boot-scan 620ms ease-out 1 both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hud-beam { display: none !important; }
+}
+
 /* Beim Schließen darf die Auto-Regel die Ausblend-Animation nicht überfahren. */
 .panel.hud-close,
 .panel-inset.hud-close {
