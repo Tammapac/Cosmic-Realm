@@ -826,7 +826,7 @@ function SlotCell({
   const fits = !!compareWithDef;
   return (
     <div
-      className="sw-slot equip-cell"
+      className={`sw-slot equip-cell${item ? ` rarity--${item.rarity ?? def?.rarity ?? "common"}` : ""}`}
       /* Filled slots get the rich card; empty ones keep a plain hint (there is
          no item to render a card for). */
       title={item && def ? undefined : "Empty slot\nEquip a module from the inventory list"}
@@ -1119,7 +1119,9 @@ function LoadoutTab({ stationId }: { stationId: string }) {
                 return (
                   <div
                     key={def.id}
-                    className="sw-slot equip-cell"
+                    /* rarity--* draws the tier ring + aura, same as the
+                       inventory grid — shop cells were missing it. */
+                    className={`sw-slot equip-cell rarity--${def.rarity}`}
                     style={{
                       width: 48, height: 48,
                       boxShadow: `inset 0 0 0 1px ${RARITY_COLOR[def.rarity]}88${isBestUpgrade ? ", 0 0 8px rgba(255,210,74,0.55)" : ""}`,
@@ -1169,7 +1171,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
                 return (
                   <div
                     key={it.instanceId}
-                    className="sw-slot equip-cell"
+                    className={`sw-slot equip-cell rarity--${it.rarity ?? def.rarity}`}
                     style={{
                       width: 48, height: 48,
                       boxShadow: `inset 0 0 0 1px ${color}88${sellMode ? ", inset 0 0 10px rgba(255,60,80,0.35)" : ""}`,
@@ -1894,7 +1896,7 @@ function DronesTab() {
                       return (
                         <div
                           key={it.instanceId}
-                          className="sw-slot equip-cell"
+                          className={`sw-slot equip-cell rarity--${it.rarity ?? def.rarity}`}
                           {...tip.bind(it, { action: "CLICK TO EQUIP ON DRONE" })}
                           style={{ width: 52, height: 52, boxShadow: `inset 0 0 0 1px ${color}88`, cursor: "pointer" }}
                           onClick={() => { tip.clear(); equipPetSlot(picking, it.instanceId); setPicking(null); }}

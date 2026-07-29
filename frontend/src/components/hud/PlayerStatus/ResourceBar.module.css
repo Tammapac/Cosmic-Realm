@@ -52,9 +52,8 @@
   filter: blur(7px);
   background: linear-gradient(90deg, color-mix(in srgb, var(--rb-color) 70%, white) 0%, var(--rb-color) 100%);
   clip-path: polygon(
-    0 6px, 6px 0, 44.68% 0, 77.97% 10px,
-    100% 10px, 100% 16px, calc(100% - 6px) 22px,
-    6px 22px, 0 16px
+    0 6px, 6px 0, 100% 0,
+    100% 16px, calc(100% - 6px) 22px, 0 22px
   );
 }
 
@@ -67,9 +66,8 @@
   opacity: 0.95;
   background: linear-gradient(90deg, color-mix(in srgb, var(--rb-color) 70%, white) 0%, var(--rb-color) 100%);
   clip-path: polygon(
-    0 6px, 6px 0, 44.68% 0, 77.97% 10px,
-    100% 10px, 100% 16px, calc(100% - 6px) 22px,
-    6px 22px, 0 16px
+    0 6px, 6px 0, 100% 0,
+    100% 16px, calc(100% - 6px) 22px, 0 22px
   );
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
@@ -79,27 +77,24 @@
 .compact .trackGlowBloom,
 .compact .trackGlowEdge {
   clip-path: polygon(
-    0 6px, 6px 0, 44.68% 0, 77.97% 13px,
-    100% 13px, 100% 25px, calc(100% - 6px) 31px,
-    6px 31px, 0 25px
+    0 6px, 6px 0, 100% 0,
+    100% 25px, calc(100% - 6px) 31px, 0 31px
   );
 }
 
 .wrap.mirrored .trackGlowBloom,
 .wrap.mirrored .trackGlowEdge {
   clip-path: polygon(
-    0 10px, 22.03% 10px, 55.32% 0,
-    calc(100% - 6px) 0, 100% 6px, 100% 16px,
-    calc(100% - 6px) 22px, 6px 22px, 0 16px
+    0 0, calc(100% - 6px) 0, 100% 6px,
+    100% 22px, 6px 22px, 0 16px
   );
 }
 
 .wrap.mirrored.compact .trackGlowBloom,
 .wrap.mirrored.compact .trackGlowEdge {
   clip-path: polygon(
-    0 13px, 22.03% 13px, 55.32% 0,
-    calc(100% - 6px) 0, 100% 6px, 100% 25px,
-    calc(100% - 6px) 31px, 6px 31px, 0 25px
+    0 0, calc(100% - 6px) 0, 100% 6px,
+    100% 31px, 6px 31px, 0 25px
   );
 }
 
@@ -130,36 +125,36 @@
   background: rgba(4, 8, 16, 0.85);
   border: 1px solid rgba(0, 0, 0, 0.75);
   overflow: hidden;
+  /* STRAIGHT bar with a 4px corner shear (handoff §3.4). The old silhouette
+     had a diagonal ramp across the top (44.68% 0 -> 77.97% 10px) that made
+     the bar look bent; per feedback the bars are now rectangular and only
+     the two opposite corners are cut. */
   clip-path: polygon(
-    0 4px, 4px 0, 44.68% 0, 77.97% 10px,
-    100% 10px, 100% 12px, calc(100% - 4px) 16px,
-    4px 16px, 0 12px
+    0 4px, 4px 0, 100% 0,
+    100% 12px, calc(100% - 4px) 16px, 0 16px
   );
 }
 
 .compact .track {
   height: 22px;
   clip-path: polygon(
-    0 4px, 4px 0, 44.68% 0, 77.97% 13px,
-    100% 13px, 100% 18px, calc(100% - 4px) 22px,
-    4px 22px, 0 18px
+    0 4px, 4px 0, 100% 0,
+    100% 18px, calc(100% - 4px) 22px, 0 22px
   );
 }
 
 /* Mirrored (Shield, outer edge on the right): same shape, flipped */
 .wrap.mirrored .track {
   clip-path: polygon(
-    0 10px, 22.03% 10px, 55.32% 0,
-    calc(100% - 4px) 0, 100% 4px, 100% 12px,
-    calc(100% - 4px) 16px, 4px 16px, 0 12px
+    0 0, calc(100% - 4px) 0, 100% 4px,
+    100% 16px, 4px 16px, 0 12px
   );
 }
 
 .wrap.mirrored.compact .track {
   clip-path: polygon(
-    0 13px, 22.03% 13px, 55.32% 0,
-    calc(100% - 4px) 0, 100% 4px, 100% 18px,
-    calc(100% - 4px) 22px, 4px 22px, 0 18px
+    0 0, calc(100% - 4px) 0, 100% 4px,
+    100% 22px, 4px 22px, 0 18px
   );
 }
 
@@ -239,34 +234,31 @@
     inset 0 2px 0 rgba(255, 255, 255, 0.35),
     inset 0 -3px 5px rgba(0, 0, 0, 0.45),
     0 0 8px color-mix(in srgb, var(--rb-color) 65%, transparent);
+  /* must match .track exactly — straight, 4px corner shear only */
   clip-path: polygon(
-    0 4px, 4px 0, 44.68% 0, 77.97% 10px,
-    100% 10px, 100% 12px, calc(100% - 4px) 16px,
-    4px 16px, 0 12px
+    0 4px, 4px 0, 100% 0,
+    100% 12px, calc(100% - 4px) 16px, 0 16px
   );
 }
 
 .compact .fill {
   clip-path: polygon(
-    0 4px, 4px 0, 44.68% 0, 77.97% 13px,
-    100% 13px, 100% 18px, calc(100% - 4px) 22px,
-    4px 22px, 0 18px
+    0 4px, 4px 0, 100% 0,
+    100% 18px, calc(100% - 4px) 22px, 0 22px
   );
 }
 
 .wrap.mirrored .fill {
   clip-path: polygon(
-    0 10px, 22.03% 10px, 55.32% 0,
-    calc(100% - 4px) 0, 100% 4px, 100% 12px,
-    calc(100% - 4px) 16px, 4px 16px, 0 12px
+    0 0, calc(100% - 4px) 0, 100% 4px,
+    100% 16px, 4px 16px, 0 12px
   );
 }
 
 .wrap.mirrored.compact .fill {
   clip-path: polygon(
-    0 13px, 22.03% 13px, 55.32% 0,
-    calc(100% - 4px) 0, 100% 4px, 100% 18px,
-    calc(100% - 4px) 22px, 4px 22px, 0 18px
+    0 0, calc(100% - 4px) 0, 100% 4px,
+    100% 22px, 4px 22px, 0 18px
   );
 }
 

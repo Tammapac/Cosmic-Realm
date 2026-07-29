@@ -54,6 +54,28 @@
   animation: hud-boot-scan 620ms ease-out 1 both;
 }
 
+/* ── Automatisch für JEDES Panel ──────────────────────────────────────────
+   Der Handoff verlangte, useHudPanel() an ~12 Fenstern von Hand einzubauen.
+   Das wurde nur am Inventar gemacht, deshalb fehlte die Öffnungs-Animation
+   fast überall (und in jedem Hangar-Tab). Da CSS-Animationen beim Einfügen
+   ins DOM von selbst starten, genügt die Regel am .panel/.panel-inset — jedes
+   Fenster und jeder Tab-Wechsel animiert damit ohne Component-Änderung.
+   .hud-open bleibt für Panels, die zusätzlich eine Schließ-Animation
+   brauchen (dort setzt useHudPanel weiterhin .hud-close). */
+.panel,
+.panel-inset {
+  animation: hud-panel-in 420ms cubic-bezier(.2, .9, .25, 1) both;
+}
+/* KEIN Boot-Scan über .panel::after — dieses Pseudo-Element ist in
+   hud-skin.css bereits die Eckwinkel-/Kantenebene (verifiziert im Browser);
+   die Scan-Keyframes animieren `top` und würden die Winkel zerstören.
+   Der Scan bleibt daher .hud-open vorbehalten, das ein eigenes ::after hat. */
+/* Beim Schließen darf die Auto-Regel die Ausblend-Animation nicht überfahren. */
+.panel.hud-close,
+.panel-inset.hud-close {
+  animation: hud-panel-out 240ms ease-in both;
+}
+
 /* ── Gestaffelte Kinder ───────────────────────────────────────────────── */
 .hud-stagger > * {
   animation: hud-row-in 320ms ease-out both;

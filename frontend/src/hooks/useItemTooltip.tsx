@@ -6,6 +6,7 @@
 // same three pieces — hover state, a rect-to-position calculation, and a fixed
 // layer — so they live here once.
 import { useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { ModuleItem } from "../game/types";
 import { ItemTooltip } from "../components/ItemTooltip";
 
@@ -48,14 +49,26 @@ export function useItemTooltip() {
 
   const clear = () => setHover(null);
 
-  const layer: ReactNode = hover ? (
-    <div
-      className="fixed"
-      style={{ left: hover.x, top: hover.y, zIndex: 90, pointerEvents: "none" }}
-    >
-      <ItemTooltip item={hover.item} equipped={hover.equipped} action={hover.action} />
-    </div>
-  ) : null;
+  // PORTAL, not just position:fixed. The panels that own these slots use
+  // `clip-path` for their chamfered silhouette, and clip-path clips fixed
+  // descendants too — so a card rendered in the tree got cut off at the
+  // panel edge. Escaping to <body> is the only reliable fix.
+  const layer: ReactNode = hover
+    ? createPortal(
+        <div
+          style={{
+            position: "fixed",
+            left: hover.x,
+            top: hover.y,
+            zIndex: 4000,
+            pointerEvents: "none",
+          }}
+        >
+          <ItemTooltip item={hover.item} equipped={hover.equipped} action={hover.action} />
+        </div>,
+        document.body,
+      )
+    : null;
 
   return { bind, clear, layer };
 }

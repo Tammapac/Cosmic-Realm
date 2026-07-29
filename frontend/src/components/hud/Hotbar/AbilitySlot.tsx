@@ -42,6 +42,10 @@ export function AbilitySlot({
   dropdown,
 }: AbilitySlotProps) {
   const [pressed, setPressed] = useState(false);
+  // Cursor-anchored click flash. `id` forces React to remount the element on
+  // every click so the CSS animation restarts even on rapid repeat clicks.
+  const [flash, setFlash] = useState<{ x: number; y: number; id: number } | null>(null);
+  const flashId = useRef(0);
   const [dropdownPos, setDropdownPos] = useState<{ left: number; bottom: number } | null>(null);
   const slotRef = useRef<HTMLDivElement>(null);
   const isLocked = state === "locked";
@@ -106,10 +110,29 @@ export function AbilitySlot({
           e.preventDefault();
           onContextMenu?.();
         }}
-        onMouseDown={() => setPressed(true)}
+        onMouseDown={(e) => {
+          setPressed(true);
+          // Click flash AT the cursor (design handoff): a short bright bloom
+          // centred on where the pointer actually hit, so the slot answers the
+          // click at the point of contact instead of only dimming as a whole.
+          const r = e.currentTarget.getBoundingClientRect();
+          setFlash({
+            x: ((e.clientX - r.left) / r.width) * 100,
+            y: ((e.clientY - r.top) / r.height) * 100,
+            id: flashId.current++,
+          });
+        }}
         onMouseUp={() => setPressed(false)}
         onMouseLeave={() => setPressed(false)}
       >
+        {flash && (
+          <span
+            key={flash.id}
+            className={styles.clickFlash}
+            style={{ left: `${flash.x}%`, top: `${flash.y}%` }}
+            onAnimationEnd={() => setFlash(null)}
+          />
+        )}
         {/* Layer 3: recessed inner face */}
         <span className={`${styles.inner} ${pressed && isInteractive ? styles.pressed : ""}`}>
           <span className={styles.innerNoise} />
