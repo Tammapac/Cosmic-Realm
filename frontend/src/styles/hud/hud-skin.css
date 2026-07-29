@@ -665,6 +665,66 @@ select.ginput {
     inset 0 0 14px rgba(78, 226, 255, 0.18),
     0 0 10px rgba(78, 226, 255, 0.35);
 }
+/* ── Rarity carries the frame (design handoff §3.5) ─────────────────────────
+   Rarity used to live only in the icon tint. Now the slot itself is banded:
+   an inset ring in the rarity colour, and from Epic upward a slow conic aura
+   bleeding out behind the slot, so a legendary drop is readable across the
+   grid without reading a single word.
+
+   Apply as a modifier on any slot: <div class="sw-slot rarity--epic">        */
+.rarity--common    { --rarity: #9fb4d4; }
+.rarity--uncommon  { --rarity: #5cff8a; }
+.rarity--rare      { --rarity: #4ee2ff; }
+.rarity--epic      { --rarity: #b866ff; }
+.rarity--legendary { --rarity: #e8b94d; }
+.rarity--mythic    { --rarity: #ff5c6c; }
+
+[class*="rarity--"] {
+  position: relative;
+}
+/* the band itself — an inset ring following the slot's own chamfer */
+[class*="rarity--"]::after {
+  content: "";
+  position: absolute;
+  inset: 2.5px;
+  z-index: 2;
+  pointer-events: none;
+  clip-path: inherit;
+  box-shadow:
+    inset 0 0 0 1.5px var(--rarity),
+    inset 0 0 12px color-mix(in srgb, var(--rarity) 30%, transparent);
+}
+/* Epic and up get a rotating aura behind the slot. */
+.rarity--epic::before,
+.rarity--legendary::before,
+.rarity--mythic::before {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  z-index: -1;
+  pointer-events: none;
+  background: conic-gradient(
+    from 90deg,
+    transparent 0deg,
+    var(--rarity) 40deg,
+    transparent 90deg,
+    transparent 200deg,
+    color-mix(in srgb, var(--rarity) 55%, white) 240deg,
+    transparent 290deg
+  );
+  filter: blur(6px);
+  opacity: 0.6;
+  animation: rarity-aura-spin 4.2s linear infinite;
+}
+@keyframes rarity-aura-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rarity--epic::before,
+  .rarity--legendary::before,
+  .rarity--mythic::before { animation: none !important; }
+}
+
 .equip-cell {
   background: linear-gradient(180deg, rgba(6, 10, 20, 0.9) 0%, rgba(10, 17, 32, 0.9) 100%);
   border: 1px solid rgba(90, 130, 180, 0.35);

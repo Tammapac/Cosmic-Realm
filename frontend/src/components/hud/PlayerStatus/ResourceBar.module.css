@@ -305,6 +305,61 @@
   animation-duration: 900ms;
 }
 
+/* ── Segmented sci-fi read (design handoff §3.4) ─────────────────────────────
+   The fill is masked into 6px cells with 3px gaps, so the bar reads as a row
+   of charged cells rather than a painted stripe, and it pulses on a slow loop
+   (twice as fast once the resource drops below 40%).
+   NOTE: an earlier pass removed cell hatching as "unwanted noise" — this
+   returns it deliberately per the design handoff, but as a MASK on the fill
+   (cells are cut out of the energy itself) instead of dark stripes painted
+   over it, which is what read as noise before. */
+.fill,
+.fillLow {
+  -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 6px, transparent 6px 9px);
+          mask-image: repeating-linear-gradient(90deg, #000 0 6px, transparent 6px 9px);
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--rb-color) 70%, transparent));
+  animation: rb-barpulse 2.2s ease-in-out infinite;
+}
+.fillLow {
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--rb-low-color) 75%, transparent));
+  animation-duration: 900ms;
+}
+
+@keyframes rb-barpulse {
+  0%, 100% { filter: brightness(1)   drop-shadow(0 0 5px color-mix(in srgb, var(--rb-color) 70%, transparent)); }
+  50%      { filter: brightness(1.4) saturate(1.2) drop-shadow(0 0 8px color-mix(in srgb, var(--rb-color) 85%, transparent)); }
+}
+
+/* Shield regen sweep: a 26%-wide bright wave travels the track every 2.8s,
+   so recharging is legible at a glance without reading numbers. Sits on the
+   TRACK (not inside the pct%-cropped fill) so it sweeps the full width. */
+.regenWave {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 26%;
+  z-index: 3;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--rb-color) 55%, white) 50%,
+    transparent 100%
+  );
+  opacity: 0.55;
+  animation: rb-regenwave 2.8s ease-in-out infinite;
+}
+@keyframes rb-regenwave {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(360%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fill, .fillLow { animation: none !important; }
+  .regenWave { display: none !important; }
+}
+
 .fillLow {
   background:
     linear-gradient(180deg, transparent 0%, transparent 40%, color-mix(in srgb, var(--rb-low-color) 90%, white) 50%, transparent 60%, transparent 100%),

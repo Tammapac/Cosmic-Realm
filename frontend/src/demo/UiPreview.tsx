@@ -118,6 +118,10 @@ export default function UiPreview() {
         <MotionDemo />
       </Section>
 
+      <Section title="Rarity frames — the slot carries the tier">
+        <RarityDemo />
+      </Section>
+
       <Section title="Inventory popup — showcase frame + slots (no login needed)">
         <div className="panel" style={{ width: 320, display: "flex", flexDirection: "column" }}>
           <span className="panel-rim" aria-hidden="true" />
@@ -327,6 +331,42 @@ function MotionDemo() {
         One choreography for every window: the panel rises and settles, a bright
         scan line sweeps through once, and rows fan in behind it. Closing plays
         the exit before the window unmounts.
+      </div>
+    </div>
+  );
+}
+
+/** Rarity frames (design handoff §3.5) — the slot itself carries the tier. */
+function RarityDemo() {
+  const tiers = [
+    { key: "common", label: "Common", g: "◇" },
+    { key: "uncommon", label: "Uncommon", g: "⬡" },
+    { key: "rare", label: "Rare", g: "◈" },
+    { key: "epic", label: "Epic", g: "✦" },
+    { key: "legendary", label: "Legendary", g: "⚔" },
+    { key: "mythic", label: "Mythic", g: "☄" },
+  ];
+  return (
+    <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", gap: 14 }}>
+        {tiers.map((t) => (
+          <div key={t.key} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+            <div
+              className={`sw-slot rarity--${t.key}`}
+              style={{ width: 56, height: 56, display: "grid", placeItems: "center", fontSize: 22 }}
+            >
+              <span style={{ position: "relative", zIndex: 3 }}>{t.g}</span>
+            </div>
+            <span style={{ fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--text-mute)" }}>
+              {t.label}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div style={{ maxWidth: 250, fontSize: 12, lineHeight: 1.5, color: "var(--text-dim)" }}>
+        Six tiers band the slot with an inset ring. From Epic upward a slow
+        conic aura turns behind it, so a rare drop is visible across a full
+        grid without reading anything.
       </div>
     </div>
   );
