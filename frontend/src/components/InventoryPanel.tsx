@@ -81,7 +81,9 @@ export function InventoryPanel() {
     return (
       <div
         key={it.instanceId}
-        className="sw-slot"
+        /* rarity--* bands the slot itself (inset ring + aura on epic and up),
+           so tier is readable across the grid without opening a tooltip. */
+        className={`sw-slot${it.rarity ? ` rarity--${it.rarity}` : ""}`}
         title={lootTipText(it, { action })}
         onClick={() => { setSelected(sel ? null : it.instanceId); }}
         onDoubleClick={() => onEquipToggle(it)}

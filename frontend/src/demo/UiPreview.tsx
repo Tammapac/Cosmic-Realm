@@ -338,13 +338,16 @@ function MotionDemo() {
 
 /** Rarity frames (design handoff §3.5) — the slot itself carries the tier. */
 function RarityDemo() {
+  // The game's real seven tiers (lib/loot/loot.ts RARITY_ORDER) — not the
+  // design mock's six, so this preview matches what actually drops.
   const tiers = [
     { key: "common", label: "Common", g: "◇" },
     { key: "uncommon", label: "Uncommon", g: "⬡" },
     { key: "rare", label: "Rare", g: "◈" },
     { key: "epic", label: "Epic", g: "✦" },
     { key: "legendary", label: "Legendary", g: "⚔" },
-    { key: "mythic", label: "Mythic", g: "☄" },
+    { key: "relic", label: "Relic", g: "☄" },
+    { key: "celestial", label: "Celestial", g: "✷" },
   ];
   return (
     <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
@@ -364,9 +367,10 @@ function RarityDemo() {
         ))}
       </div>
       <div style={{ maxWidth: 250, fontSize: 12, lineHeight: 1.5, color: "var(--text-dim)" }}>
-        Six tiers band the slot with an inset ring. From Epic upward a slow
-        conic aura turns behind it, so a rare drop is visible across a full
-        grid without reading anything.
+        Seven tiers band the slot with an inset ring, using the game's own
+        rarity colours. From Epic upward a conic aura turns behind it —
+        slower and brighter on Celestial — so a rare drop is visible across
+        a full grid without reading anything.
       </div>
     </div>
   );

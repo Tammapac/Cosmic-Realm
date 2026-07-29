@@ -665,19 +665,62 @@ select.ginput {
     inset 0 0 14px rgba(78, 226, 255, 0.18),
     0 0 10px rgba(78, 226, 255, 0.35);
 }
+/* ── Inner rim on windows (design handoff §3.2) ──────────────────────────────
+   A second, thinner frame inset 3px from the titanium edge, so a window reads
+   as a machined plate seated INSIDE a housing rather than a single flat cut.
+   Drawn with the padding+mask-composite trick: a 1px-padded gradient box whose
+   own content area is masked out, leaving only the border ring — which follows
+   the chamfer exactly, something a box-shadow ring cannot do on a clip-path.
+
+   Lives on .panel-rim, NOT on ::after: ::after is already the corner-bracket
+   layer (see above), and hijacking it would delete those brackets. .panel-rim
+   is an element every window already renders and which was globally disabled
+   with display:none — this gives that dead markup its job back.            */
+.panel > .panel-rim,
+.hud-plate > .panel-rim {
+  display: block !important;
+  position: absolute;
+  inset: 3px;
+  z-index: 1;
+  pointer-events: none;
+  padding: 1px;
+  background: linear-gradient(180deg,
+    rgba(240, 250, 255, 0.55) 0%,
+    rgba(150, 190, 225, 0.22) 26%,
+    rgba(60, 90, 130, 0.18) 60%,
+    rgba(120, 200, 255, 0.40) 100%);
+  clip-path: polygon(
+    14px 0, calc(100% - 14px) 0,
+    100% 14px, 100% calc(100% - 14px),
+    calc(100% - 14px) 100%, 14px 100%,
+    0 calc(100% - 14px), 0 14px
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+}
+
 /* ── Rarity carries the frame (design handoff §3.5) ─────────────────────────
    Rarity used to live only in the icon tint. Now the slot itself is banded:
    an inset ring in the rarity colour, and from Epic upward a slow conic aura
    bleeding out behind the slot, so a legendary drop is readable across the
    grid without reading a single word.
 
-   Apply as a modifier on any slot: <div class="sw-slot rarity--epic">        */
-.rarity--common    { --rarity: #9fb4d4; }
+   Apply as a modifier on any slot: <div class="sw-slot rarity--epic">
+
+   Colours are taken from the GAME's own rarity table (lib/loot/loot.ts
+   RARITIES[].color), not from the design mock — the mock listed six tiers
+   ending in "mythic", while the game ships seven (…legendary, relic,
+   celestial) with a pink epic. Using the mock's palette here would have made
+   the frame disagree with the item icon it surrounds.                      */
+.rarity--common    { --rarity: #8aa0c0; }
 .rarity--uncommon  { --rarity: #5cff8a; }
 .rarity--rare      { --rarity: #4ee2ff; }
-.rarity--epic      { --rarity: #b866ff; }
-.rarity--legendary { --rarity: #e8b94d; }
-.rarity--mythic    { --rarity: #ff5c6c; }
+.rarity--epic      { --rarity: #ff5cf0; }
+.rarity--legendary { --rarity: #ffd24a; }
+.rarity--relic     { --rarity: #ff6a3c; }
+.rarity--celestial { --rarity: #9df2ff; }
 
 [class*="rarity--"] {
   position: relative;
@@ -694,10 +737,14 @@ select.ginput {
     inset 0 0 0 1.5px var(--rarity),
     inset 0 0 12px color-mix(in srgb, var(--rarity) 30%, transparent);
 }
-/* Epic and up get a rotating aura behind the slot. */
+/* Epic and up get a rotating aura behind the slot. Mirrors the game's own
+   frame tiers: rare/epic are "lined", legendary/relic "glow", celestial
+   "star" — so the aura starts exactly where the data says the item stops
+   being ordinary. */
 .rarity--epic::before,
 .rarity--legendary::before,
-.rarity--mythic::before {
+.rarity--relic::before,
+.rarity--celestial::before {
   content: "";
   position: absolute;
   inset: -6px;
@@ -719,10 +766,18 @@ select.ginput {
 @keyframes rarity-aura-spin {
   to { transform: rotate(360deg); }
 }
+/* Celestial is the top tier — its aura turns slower and brighter so it reads
+   as something else entirely, not just "one more colour". */
+.rarity--celestial::before {
+  animation-duration: 7s;
+  opacity: 0.75;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .rarity--epic::before,
   .rarity--legendary::before,
-  .rarity--mythic::before { animation: none !important; }
+  .rarity--relic::before,
+  .rarity--celestial::before { animation: none !important; }
 }
 
 .equip-cell {
