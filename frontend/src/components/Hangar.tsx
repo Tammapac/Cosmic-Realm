@@ -14,7 +14,8 @@ import { useDraggable } from "./useDraggable";
 import { WeaponIcon } from "./hud-ui";
 import { effectiveStats } from "../game/loop";
 import { fmtStat } from "../game/fmt";
-import { isRolledItem, lootItemColor, lootItemName, lootSellPrice, lootTipText } from "../game/loot-ui";
+import { isRolledItem, lootItemColor, lootItemName, lootSellPrice } from "../game/loot-ui";
+import { useItemTooltip } from "../hooks/useItemTooltip";
 import { affixLine, resolveAffixStats } from "../../../lib/loot/loot";
 import { buySkillRank, resetSkills } from "../game/store";
 import { useState, useMemo, useEffect, useRef } from "react";
@@ -810,10 +811,12 @@ function moduleTipText(def: ModuleDef, opts?: { action?: string }): string {
 }
 
 function SlotCell({
-  slot, index, instanceId, compareWithDef, onHover,
+  slot, index, instanceId, compareWithDef, onHover, tip,
 }: {
   slot: ModuleSlot; index: number; instanceId: string | null; compareWithDef?: ModuleDef | null;
   onHover?: (info: { slot: ModuleSlot; index: number; def: ModuleDef | null } | null) => void;
+  /** Shared rich-tooltip binder from useItemTooltip (owned by the parent tab). */
+  tip?: ReturnType<typeof useItemTooltip>;
 }) {
   const player = useGame((s) => s.player);
   const item = instanceId ? player.inventory.find((m) => m.instanceId === instanceId) : null;
@@ -824,7 +827,11 @@ function SlotCell({
   return (
     <div
       className="sw-slot equip-cell"
-      title={item && def ? lootTipText(item, { action: "CLICK TO UNEQUIP" }) : "Empty slot\nEquip a module from the inventory list"}
+      /* Filled slots get the rich card; empty ones keep a plain hint (there is
+         no item to render a card for). */
+      title={item && def ? undefined : "Empty slot\nEquip a module from the inventory list"}
+      onPointerEnter={item && tip ? tip.bind(item, { action: "CLICK TO UNEQUIP" }).onPointerEnter : undefined}
+      onPointerLeave={item && tip ? tip.bind(item, { action: "CLICK TO UNEQUIP" }).onPointerLeave : undefined}
       style={{
         boxShadow: def
           ? `inset 0 0 0 1px ${color}88${fits ? ", 0 0 8px rgba(255,210,74,0.5)" : ""}`
@@ -834,7 +841,7 @@ function SlotCell({
       }}
       onMouseEnter={() => onHover?.({ slot, index, def })}
       onMouseLeave={() => onHover?.(null)}
-      onClick={() => { if (def) unequipSlot(slot, index); }}
+      onClick={() => { if (def) { tip?.clear(); unequipSlot(slot, index); } }}
     >
       <span className="equip-num">{index + 1}</span>
       {def ? (
@@ -864,6 +871,9 @@ function LoadoutTab({ stationId }: { stationId: string }) {
   // rich comparison card anchored next to the hovered inventory/shop cell
   const [cardHover, setCardHover] = useState<{ kind: "inv" | "shop"; id: string; x: number; y: number } | null>(null);
   const [hoverEquip, setHoverEquip] = useState<{ slot: ModuleSlot; index: number; def: ModuleDef | null } | null>(null);
+  // Rich card for the EQUIPPED slots (the inventory/shop lists have their own
+  // comparison card below via `cardHover`).
+  const equipTip = useItemTooltip();
   const [hoveredShopDefId, setHoveredShopDefId] = useState<string | null>(null);
   const hoveredShopDef = hoveredShopDefId ? MODULE_DEFS[hoveredShopDefId] ?? null : null;
   const [hoveredInvInstanceId, setHoveredInvInstanceId] = useState<string | null>(null);
@@ -948,7 +958,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
         {!isCollapsed && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, 54px)", gap: 6, padding: "8px 2px 6px" }}>
             {player.equipped[slot].map((id, i) => (
-              <SlotCell key={`${slot}-${i}`} slot={slot} index={i} instanceId={id} compareWithDef={compareDef} onHover={setHoverEquip} />
+              <SlotCell key={`${slot}-${i}`} slot={slot} index={i} instanceId={id} compareWithDef={compareDef} onHover={setHoverEquip} tip={equipTip} />
             ))}
           </div>
         )}
@@ -1241,6 +1251,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
         </div>
       </div>
       {/* rich item comparison card — MMORPG style, anchored beside the cell */}
+      {equipTip.layer}
       {cardHover && (() => {
         let def: ModuleDef | undefined;
         let item: (typeof player.inventory)[number] | null = null;
@@ -1705,6 +1716,7 @@ function DronesTab() {
   const bound = petBoundIds();
   // slot currently open for item selection
   const [picking, setPicking] = useState<PetDroneSlot | null>(null);
+  const tip = useItemTooltip();
 
   // items eligible for a given slot: matching type, not on ship, not already on drone elsewhere
   const eligibleFor = (slot: PetDroneSlot) =>
@@ -1731,6 +1743,7 @@ function DronesTab() {
 
   return (
     <div className="p-4 flex flex-col" style={{ height: "100%", minHeight: 0 }}>
+      {tip.layer}
       <div className="dob-hdr shrink-0 mb-3">
         <span>✦ COMPANION DRONE</span>
         <span className="tabular-nums" style={{ color: "var(--hud-magenta)" }}>◈ {player.bebcell.toLocaleString()} BEBCELL</span>
@@ -1882,9 +1895,9 @@ function DronesTab() {
                         <div
                           key={it.instanceId}
                           className="sw-slot equip-cell"
-                          title={lootTipText(it, { action: "CLICK TO EQUIP ON DRONE" })}
+                          {...tip.bind(it, { action: "CLICK TO EQUIP ON DRONE" })}
                           style={{ width: 52, height: 52, boxShadow: `inset 0 0 0 1px ${color}88`, cursor: "pointer" }}
-                          onClick={() => { equipPetSlot(picking, it.instanceId); setPicking(null); }}
+                          onClick={() => { tip.clear(); equipPetSlot(picking, it.instanceId); setPicking(null); }}
                         >
                           <WeaponIcon def={def} size={32} />
                           <span className="equip-tier" style={{ color }}>T{def.tier}</span>

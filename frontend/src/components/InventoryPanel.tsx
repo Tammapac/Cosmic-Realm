@@ -3,7 +3,7 @@ import { useDraggable } from "./useDraggable";
 import { useGame, state, bump, equipModule, unequipInstance, sellInventoryItem } from "../game/store";
 import { MODULE_DEFS, type ModuleItem } from "../game/types";
 import { isRolledItem, lootItemColor } from "../game/loot-ui";
-import { ItemTooltip } from "./ItemTooltip";
+import { useItemTooltip } from "../hooks/useItemTooltip";
 import { WeaponIcon } from "./hud-ui";
 import { useHudPanel } from "../hooks/useHudPanel";
 import { RARITY_ORDER } from "../../../lib/loot/loot";
@@ -27,8 +27,7 @@ export function InventoryPanel() {
   const player = useGame((s) => s.player);
   const tick = useGame((s) => s.tick);
   const [selected, setSelected] = useState<string | null>(null);
-  // Rich tooltip: which slot is hovered and where to float the card.
-  const [hover, setHover] = useState<{ it: ModuleItem; x: number; y: number } | null>(null);
+  const tip = useItemTooltip();
   const [tab, setTab] = useState<"all" | "weapon" | "generator" | "module">("all");
   const drag = useDraggable("inventory", { resetOnMount: true });
   // Keeps the window mounted through its exit animation (hud-motion.css).
@@ -98,12 +97,8 @@ export function InventoryPanel() {
         /* rarity--* bands the slot itself (inset ring + aura on epic and up),
            so tier is readable across the grid without opening a tooltip. */
         className={`sw-slot${it.rarity ? ` rarity--${it.rarity}` : ""}`}
-        onPointerEnter={(e) => {
-          const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-          setHover({ it, x: r.right + 10, y: r.top });
-        }}
-        onPointerLeave={() => setHover((h) => (h?.it.instanceId === it.instanceId ? null : h))}
-        onClick={() => { setSelected(sel ? null : it.instanceId); setHover(null); }}
+        {...tip.bind(it, { equipped: equippedRival(it), action: hintFor(it) })}
+        onClick={() => { setSelected(sel ? null : it.instanceId); tip.clear(); }}
         onDoubleClick={() => onEquipToggle(it)}
         onContextMenu={(e) => {
           e.preventDefault();
@@ -157,21 +152,7 @@ export function InventoryPanel() {
 
   return (
     <>
-    {/* Rich tooltip floats in viewport space so the panel's overflow:hidden
-        (needed for the scroll area) can't clip it. */}
-    {hover && (
-      <div
-        className="fixed"
-        style={{
-          left: Math.min(hover.x, window.innerWidth - 300),
-          top: Math.min(hover.y, window.innerHeight - 320),
-          zIndex: 90,
-          pointerEvents: "none",
-        }}
-      >
-        <ItemTooltip item={hover.it} equipped={equippedRival(hover.it)} action={hintFor(hover.it)} />
-      </div>
-    )}
+    {tip.layer}
     <div className="fixed z-50" style={{ top: 44, left: "calc(50% + 20px)", width: 400, pointerEvents: "auto", ...drag.style }}>
       <div
         className={`panel ${panelAnim.className}`}
