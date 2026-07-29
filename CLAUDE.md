@@ -160,6 +160,30 @@ ssh -i ~/.ssh/id_ed25519 root@46.224.121.242 "pm2 logs cosmic-realm-backend --li
 
 ## 7. Key files
 
+> ### ⚠ Duplicate component names — read before searching for a HUD component
+>
+> Three HUD components exist **twice** under different paths. A plain search for
+> the name finds the *flat, older* file first, but the game renders the one under
+> `components/hud/`. Any code-reading tool (and any human) will pick the wrong one
+> unless it knows this. Verified 2026-07-29.
+>
+> | Name | ❌ NOT what the game renders | ✅ What the game actually renders |
+> |---|---|---|
+> | TopPanel | `components/TopPanel.tsx` (20 lines, amber `.console-sq` wrapper) | `components/hud/TopPanel/TopPanel.tsx` (+752-line module CSS) |
+> | Hotbar | `components/Hotbar.tsx` (528 lines) | `components/hud/Hotbar/Hotbar.tsx` |
+> | MiniMap | `components/MiniMap.tsx` (398 lines) | `components/hud/Minimap/Minimap.tsx` |
+>
+> Status of the flat files:
+> - `components/TopPanel.tsx` — **still live**: `SocialPanel.tsx` imports it as a
+>   generic console-plate wrapper. Do NOT delete; it is misnamed, not dead.
+> - `components/Hotbar.tsx`, `components/MiniMap.tsx` — imported by nothing
+>   (checked across all `.ts`/`.tsx`); Vite never bundles them. Left in place
+>   deliberately, not yet removed.
+>
+> Related: `index.css` is often mistaken for dead legacy. It is **not** — it is
+> imported by `main.tsx` and its classes are live (`.panel-rim` ×5, `.scanline` ×5,
+> `.console-sq` ×3, `.console-corner` ×2, `.dob-hdr` ×2). Do not strip it.
+
 | What | File |
 |---|---|
 | Game tick, firing, enemy AI, projectile spawn | `frontend/src/game/loop.ts` |
@@ -172,6 +196,9 @@ ssh -i ~/.ssh/id_ed25519 root@46.224.121.242 "pm2 logs cosmic-realm-backend --li
 | Shared client store | `frontend/src/game/store.ts` |
 | All client type defs | `frontend/src/game/types.ts` |
 | React app + socket wiring | `frontend/src/App.tsx` |
+| HUD top panel (the LIVE one — see the duplicate-names box above) | `frontend/src/components/hud/TopPanel/TopPanel.tsx` |
+| HUD hotbar (LIVE) | `frontend/src/components/hud/Hotbar/Hotbar.tsx` |
+| HUD minimap (LIVE) | `frontend/src/components/hud/Minimap/Minimap.tsx` |
 | HUD design tokens | `frontend/src/styles/hud/hud-tokens.css` |
 | HUD skin (`.panel`, `.gbtn`, `.j-row`, tooltip…) | `frontend/src/styles/hud/hud-skin.css` |
 | Shared popup components | `frontend/src/components/hud-ui.tsx` |

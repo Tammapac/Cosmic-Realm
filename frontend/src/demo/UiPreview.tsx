@@ -13,6 +13,7 @@
  */
 import { useState } from "react";
 import { HudWindow, HudDialog, HudButton, HudDivider } from "../components/hud-ui";
+import { useHudPanel } from "../hooks/useHudPanel";
 
 const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
   <section style={{ marginBottom: 28 }}>
@@ -111,6 +112,10 @@ export default function UiPreview() {
         <div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--hud-text-dim)", maxWidth: 280, lineHeight: 1.7 }}>
           The old problem: the window's inner ring drew two horizontal lines across the body wherever text didn't fill it. Fix: the inner accent is now corner brackets (window) and small nested cards use <strong>.panel-inset</strong> — one hairline, content stays clear.
         </div>
+      </Section>
+
+      <Section title="Window motion — open / close choreography (hud-motion.css)">
+        <MotionDemo />
       </Section>
 
       <Section title="Inventory popup — showcase frame + slots (no login needed)">
@@ -266,6 +271,63 @@ export default function UiPreview() {
           </div>
         </HudDialog>
       )}
+    </div>
+  );
+}
+
+/**
+ * Live demo of the window open/close choreography from hud-motion.css,
+ * driven by the same useHudPanel hook the real windows use. Open and close it
+ * to see the panel rise, the boot-scan sweep, and the staggered rows.
+ */
+function MotionDemo() {
+  const [open, setOpen] = useState(false);
+  const { mounted, className } = useHudPanel(open);
+
+  return (
+    <div style={{ display: "flex", gap: 18, alignItems: "flex-start" }}>
+      <button className="gbtn gbtn-gold" onClick={() => setOpen((v) => !v)}>
+        {open ? "Close window" : "Open window"}
+      </button>
+
+      <div style={{ minHeight: 210, minWidth: 300 }}>
+        {mounted && (
+          <div
+            className={`panel ${className}`}
+            style={{
+              width: 300,
+              position: "relative",
+              overflow: "hidden",
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <div className="hud-titleband" style={{ padding: "8px 14px", letterSpacing: "0.3em" }}>
+              <span style={{ flex: 1 }}>Cargo manifest</span>
+              <button
+                className="gbtn gbtn-red"
+                style={{ padding: "1px 8px", fontSize: 10 }}
+                onClick={() => setOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className="hud-stagger" style={{ padding: 12, display: "grid", gap: 6 }}>
+              {["Plasma cell ×24", "Titanium plate ×8", "Nav beacon ×1", "Coolant ×12"].map((row) => (
+                <div key={row} className="panel-inset" style={{ padding: "7px 10px", fontSize: 12 }}>
+                  {row}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ maxWidth: 260, fontSize: 12, lineHeight: 1.5, color: "var(--text-dim)" }}>
+        One choreography for every window: the panel rises and settles, a bright
+        scan line sweeps through once, and rows fan in behind it. Closing plays
+        the exit before the window unmounts.
+      </div>
     </div>
   );
 }

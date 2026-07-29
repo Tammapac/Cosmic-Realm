@@ -4,6 +4,7 @@ import { useGame, state, bump, equipModule, unequipInstance, sellInventoryItem }
 import { MODULE_DEFS, type ModuleItem } from "../game/types";
 import { isRolledItem, lootItemColor, lootTipText } from "../game/loot-ui";
 import { WeaponIcon } from "./hud-ui";
+import { useHudPanel } from "../hooks/useHudPanel";
 import { RARITY_ORDER } from "../../../lib/loot/loot";
 
 const COLS = 5;
@@ -27,6 +28,8 @@ export function InventoryPanel() {
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<"all" | "weapon" | "generator" | "module">("all");
   const drag = useDraggable("inventory", { resetOnMount: true });
+  // Keeps the window mounted through its exit animation (hud-motion.css).
+  const panelAnim = useHudPanel(show);
 
   const items = useMemo(() => {
     const list = [...player.inventory].filter((it) => MODULE_DEFS[it.defId]);
@@ -41,7 +44,8 @@ export function InventoryPanel() {
     return list;
   }, [player.inventory, tick]);
 
-  if (!show) return null;
+  // Stay mounted while the close animation plays, not just while `show` is on.
+  if (!panelAnim.mounted) return null;
 
   const isEquipped = (id: string) =>
     player.equipped.weapon.includes(id) ||
@@ -133,7 +137,11 @@ export function InventoryPanel() {
 
   return (
     <div className="fixed z-50" style={{ top: 44, left: "calc(50% + 20px)", width: 400, pointerEvents: "auto", ...drag.style }}>
-      <div className="panel" style={{ display: "flex", flexDirection: "column", maxHeight: "72vh" }} onContextMenu={(e) => e.preventDefault()}>
+      <div
+        className={`panel ${panelAnim.className}`}
+        style={{ display: "flex", flexDirection: "column", maxHeight: "72vh", position: "relative", overflow: "hidden" }}
+        onContextMenu={(e) => e.preventDefault()}
+      >
         <span className="panel-rim" aria-hidden="true" />
         <div className="hud-titleband" onPointerDown={drag.handleProps.onPointerDown} style={{ letterSpacing: "0.3em", ...drag.handleProps.style }}>
           <span style={{ flex: 1 }}>Inventory · {items.length}</span>

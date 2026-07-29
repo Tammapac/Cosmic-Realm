@@ -5,6 +5,9 @@ import "./index.css";
 // (windows, station/hangar menus, buttons, tooltips, popups). Must load
 // AFTER index.css so identical selectors win by order.
 import "./styles/hud/hud-skin.css";
+// Window open/close choreography (.hud-open / .hud-close / .hud-stagger),
+// driven by the useHudPanel hook. After hud-skin.css so its animations win.
+import "./styles/hud/hud-motion.css";
 
 // Isolated HUD dev screen: open with ?hud-showcase in the URL. Does not
 // touch the normal game boot path.

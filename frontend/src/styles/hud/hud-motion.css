@@ -1,0 +1,112 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   hud-motion.css — EINE Öffnungs-Choreografie für ALLE Fenster, Popups,
+   Dropdowns, Munitionsauswahl, Map, Missionen, Tooltips, Modals.
+
+   Einbau (einmalig):
+     1) in main.tsx / index.css NACH hud-skin.css importieren
+     2) an jedem Panel-Root:  class="panel hud-open"
+        beim Schließen stattdessen:  class="panel hud-close"
+        (React: useHudPanel() unten)
+     3) Kinder, die gestaffelt einfliegen sollen (Slots, Listenzeilen,
+        Missions-Einträge, Munitions-Optionen): class="hud-stagger"
+   ══════════════════════════════════════════════════════════════════════════ */
+
+@keyframes hud-panel-in {
+  0%   { opacity: 0; transform: translateY(10px) scaleY(.86); filter: brightness(2.4) saturate(.4); }
+  22%  { opacity: 1;                                          filter: brightness(1.6); }
+  56%  {             transform: translateY(0) scaleY(1); }
+  100% { opacity: 1; transform: none;                         filter: none; }
+}
+@keyframes hud-panel-out {
+  0%   { opacity: 1; }
+  100% { opacity: 0; transform: translateY(6px) scaleY(.9); filter: brightness(2.2); }
+}
+@keyframes hud-boot-scan {
+  0%   { top: -8%;  opacity: 0; }
+  12%  {            opacity: 1; }
+  100% { top: 106%; opacity: 0; }
+}
+@keyframes hud-row-in {
+  0%   { opacity: 0; transform: translateX(-14px); }
+  100% { opacity: 1; transform: none; }
+}
+
+/* ── Öffnen / Schließen ───────────────────────────────────────────────── */
+.hud-open {
+  animation: hud-panel-in 420ms cubic-bezier(.2, .9, .25, 1) both;
+}
+.hud-close {
+  animation: hud-panel-out 240ms ease-in both;
+  pointer-events: none;
+}
+
+/* Boot-Scan: helle Zeile läuft beim Öffnen einmal durchs Panel.
+   Voraussetzung: das Panel hat position:relative + overflow:hidden. */
+.hud-open::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 34%;
+  z-index: 9;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent, rgba(182, 240, 255, .16) 60%, rgba(182, 240, 255, .5));
+  animation: hud-boot-scan 620ms ease-out 1 both;
+}
+
+/* ── Gestaffelte Kinder ───────────────────────────────────────────────── */
+.hud-stagger > * {
+  animation: hud-row-in 320ms ease-out both;
+}
+.hud-stagger > *:nth-child(1)  { animation-delay:  60ms; }
+.hud-stagger > *:nth-child(2)  { animation-delay: 105ms; }
+.hud-stagger > *:nth-child(3)  { animation-delay: 150ms; }
+.hud-stagger > *:nth-child(4)  { animation-delay: 195ms; }
+.hud-stagger > *:nth-child(5)  { animation-delay: 240ms; }
+.hud-stagger > *:nth-child(6)  { animation-delay: 285ms; }
+.hud-stagger > *:nth-child(7)  { animation-delay: 330ms; }
+.hud-stagger > *:nth-child(8)  { animation-delay: 375ms; }
+.hud-stagger > *:nth-child(9)  { animation-delay: 420ms; }
+.hud-stagger > *:nth-child(10) { animation-delay: 465ms; }
+.hud-stagger > *:nth-child(n + 11) { animation-delay: 500ms; }
+
+/* Kleine Overlays (Dropdown, Munitionsauswahl, Kontextmenü, Tooltip):
+   schneller, ohne Boot-Scan. */
+.hud-open--quick {
+  animation: hud-panel-in 300ms ease-out both;
+}
+.hud-open--quick::after { content: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hud-open, .hud-close, .hud-open--quick, .hud-stagger > * { animation-duration: 1ms; }
+  .hud-open::after { content: none; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   React-Hook — in einer .ts-Datei ablegen (z. B. src/hooks/useHudPanel.ts):
+
+   export function useHudPanel(open: boolean, exitMs = 240) {
+     const [mounted, setMounted] = useState(open);
+     const [closing, setClosing] = useState(false);
+     useEffect(() => {
+       if (open) { setClosing(false); setMounted(true); return; }
+       if (!mounted) return;
+       setClosing(true);
+       const t = setTimeout(() => { setMounted(false); setClosing(false); }, exitMs);
+       return () => clearTimeout(t);
+     }, [open, mounted, exitMs]);
+     return { mounted, className: closing ? 'hud-close' : 'hud-open' };
+   }
+
+   Verwendung in JEDEM Fenster (Inventar, Map, Missionen, Shop, Skills,
+   Settings, Munitionsauswahl, Bestätigungs-Popup …):
+
+     const { mounted, className } = useHudPanel(isOpen);
+     if (!mounted) return null;
+     return (
+       <div className={`panel ${className}`}>
+         <div className="hud-titleband">…</div>
+         <div className="grid hud-stagger">{items.map(…)}</div>
+       </div>
+     );
+   ══════════════════════════════════════════════════════════════════════════ */
