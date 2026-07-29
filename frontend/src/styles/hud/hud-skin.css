@@ -484,7 +484,15 @@
 .gbtn::after {
   content: "";
   position: absolute;
-  inset: 0;
+  /* index.css styles this SAME pseudo-element as the legacy amber corner tick
+     with an explicit width/height:7px + a border. `inset:0` does NOT override
+     an explicit width/height, so the sheen was being painted inside a 7px
+     corner box and was invisible. All four of those declarations have to be
+     neutralised here, not just the position. */
+  inset: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  border: none !important;
   z-index: 0;
   pointer-events: none;
   display: block !important;
