@@ -96,13 +96,18 @@
   /* Bluer, slightly denser navy so EVERY panel reads the same cool blue as the
      Chat/Quests windows even over dark space (the frosted glass still lets the
      background show through, but blue now dominates instead of grey). */
+  /* True frosted glass: the fill is only ~30% opaque and the blur does the
+     rest, so the world reads through the window instead of the panel sitting
+     on top of it as a near-solid slab. Paired with --glass-blur below. */
   --glass-fill-main:
-    linear-gradient(180deg, rgba(210, 228, 250, 0.16) 0%, rgba(200, 225, 255, 0.04) 24%, transparent 50%),
-    repeating-linear-gradient(90deg, rgba(150, 185, 220, 0.06) 0px, rgba(150, 185, 220, 0.06) 1px, transparent 1px, transparent 3px),
-    linear-gradient(180deg, rgba(30, 52, 92, 0.62) 0%, rgba(16, 30, 56, 0.68) 100%);
+    linear-gradient(180deg, rgba(150, 195, 235, 0.18) 0%, transparent 38%),
+    linear-gradient(180deg, rgba(96, 128, 176, 0.30) 0%, rgba(26, 42, 68, 0.30) 100%);
   --glass-fill-inset:
-    linear-gradient(180deg, rgba(210, 228, 250, 0.07) 0%, transparent 40%),
-    linear-gradient(180deg, rgba(30, 52, 92, 0.62) 0%, rgba(16, 30, 56, 0.68) 100%);
+    linear-gradient(180deg, rgba(150, 195, 235, 0.10) 0%, transparent 42%),
+    linear-gradient(180deg, rgba(96, 128, 176, 0.22) 0%, rgba(26, 42, 68, 0.26) 100%);
+  /* One blur recipe for every glass surface. */
+  --glass-blur: blur(18px) saturate(1.35) brightness(1.06);
+  --glass-blur-tip: blur(22px) saturate(1.4);
 
   /* ── Text ── */
   --hud-text-bright: #eaf4ff;

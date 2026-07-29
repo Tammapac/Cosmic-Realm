@@ -79,8 +79,8 @@
   /* One shared glass fill for EVERY window (Chat, Quests, Inventory, HUD
      modules, …) so they all read the same cool blue. */
   background: var(--glass-fill-main) !important;
-  -webkit-backdrop-filter: blur(7px) saturate(1.05) !important;
-  backdrop-filter: blur(7px) saturate(1.05) !important;
+  -webkit-backdrop-filter: var(--glass-blur) !important;
+  backdrop-filter: var(--glass-blur) !important;
   clip-path: polygon(
     var(--panel-cut) 0, calc(100% - var(--panel-cut)) 0,
     100% var(--panel-cut), 100% calc(100% - var(--panel-cut)),
@@ -438,14 +438,25 @@
   ) !important;
   /* Recessed key face — directional bevel + deeper contact AO so it reads as
      a machined button punched into the metal plate, not a flat rectangle. */
+  /* Physical key: the face sits on a plinth (the 0 4px 0 -1px layer), so the
+     button has real height above the plate. Hover lifts it, press drives it
+     into the socket — see the :hover / :active blocks. */
+  transform: translateY(0);
   box-shadow:
-    inset 0 1px 0 rgba(210, 235, 255, 0.16),        /* top lip highlight */
-    inset 1px 0 2px rgba(150, 195, 235, 0.07),      /* left lift         */
-    inset -1px 0 3px rgba(0, 0, 0, 0.35),           /* right shade       */
-    inset 0 4px 9px rgba(0, 0, 0, 0.6),             /* recess contact AO */
+    inset 0 2px 0 rgba(225, 244, 255, 0.34),        /* top lip highlight */
+    inset 0 -3px 0 rgba(0, 0, 0, 0.62),             /* bottom lip shade  */
+    inset 0 5px 11px rgba(0, 0, 0, 0.55),           /* recess contact AO */
+    inset 0 -8px 14px rgba(0, 0, 0, 0.40),          /* floor shade       */
+    0 4px 0 -1px rgba(10, 18, 32, 0.95),            /* PLINTH            */
+    0 7px 14px rgba(0, 0, 0, 0.70),                 /* cast shadow       */
     inset 0 0 0 1.5px color-mix(in srgb, var(--btn-accent) 55%, transparent) !important;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
-  transition: filter var(--hud-t-fast), box-shadow var(--hud-t-fast), color var(--hud-t-fast), background var(--hud-t-fast), transform var(--hud-t-fast);
+  transition:
+    transform 110ms cubic-bezier(0.2, 0.9, 0.25, 1),
+    box-shadow 140ms ease-out,
+    filter 140ms ease-out,
+    color var(--hud-t-fast),
+    background var(--hud-t-fast);
 }
 /* ::before = outer metal frame (layer 1), sitting behind, the brushed
    steel plate the recessed face is punched into. */
@@ -467,7 +478,40 @@
   box-shadow: inset 0 1px 0 rgba(220, 238, 255, 0.55), inset 0 -2px 3px var(--hud-metal-lo);
   display: block !important;
 }
-.gbtn::after { display: none !important; }
+/* ::after = sheen sweep. A soft specular band drifts across the key face so the
+   metal reads as lit rather than printed. Masked to the button's own clip so it
+   never escapes the chamfer. */
+.gbtn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  display: block !important;
+  clip-path: inherit;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    transparent 38%,
+    rgba(220, 244, 255, 0.13) 48%,
+    rgba(220, 244, 255, 0.20) 52%,
+    transparent 62%,
+    transparent 100%
+  );
+  background-size: 260% 100%;
+  background-repeat: no-repeat;
+  animation: gbtn-sheen 2.6s ease-in-out infinite;
+}
+@keyframes gbtn-sheen {
+  0%   { background-position: 140% 0; }
+  55%  { background-position: -40% 0; }
+  100% { background-position: -40% 0; }
+}
+/* the label must sit above the sheen */
+.gbtn > * { position: relative; z-index: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .gbtn::after { animation: none !important; }
+}
 /* gold buttons get their OWN gold metal frame (was inheriting the blue-grey
    plate — the P0 inconsistency). */
 .gbtn-gold::before {
@@ -477,23 +521,33 @@
     linear-gradient(160deg, #b79a52 0%, #7c6428 40%, #2a2110 100%);
   box-shadow: inset 0 1px 0 rgba(255, 238, 200, 0.5), inset 0 -2px 3px var(--hud-metal-lo);
 }
+/* Hover: the key rises off the plate — plinth grows, cast shadow lengthens,
+   the accent ring lights to full and spills inward. */
 .gbtn:hover:not(:disabled) {
   color: #ffffff !important;
+  transform: translateY(-2px);
   box-shadow:
-    inset 0 1px 0 rgba(210, 235, 255, 0.16),
-    inset 0 3px 8px rgba(0, 0, 0, 0.4),
+    inset 0 2px 0 rgba(225, 244, 255, 0.40),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.62),
+    inset 0 5px 11px rgba(0, 0, 0, 0.50),
+    inset 0 -8px 14px rgba(0, 0, 0, 0.38),
     inset 0 0 0 1.5px var(--btn-accent),
-    inset 0 0 16px color-mix(in srgb, var(--btn-accent) 22%, transparent) !important;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 8px var(--btn-glow));
+    inset 0 0 26px color-mix(in srgb, var(--btn-accent) 34%, transparent),
+    0 6px 0 -1px rgba(10, 18, 32, 0.95),            /* taller plinth */
+    0 12px 22px rgba(0, 0, 0, 0.72),
+    0 0 20px color-mix(in srgb, var(--btn-accent) 40%, transparent) !important;
+  filter: drop-shadow(0 0 14px var(--btn-glow));
 }
+/* Press: the key is driven THROUGH the plinth into the socket — plinth and
+   cast shadow vanish, everything goes inset, and the ring flashes hot. */
 .gbtn:active:not(:disabled) {
-  transform: translateY(1px) scale(0.985);
+  transform: translateY(3px) scale(0.982);
   background: linear-gradient(165deg, rgba(8, 13, 24, 0.97) 0%, rgba(4, 6, 11, 0.97) 100%) !important;
-  /* pressed = face sinks: deeper all-round inset shadow, lip highlight gone */
   box-shadow:
-    inset 0 3px 10px rgba(0, 0, 0, 0.8),
-    inset 0 0 0 1.5px color-mix(in srgb, var(--btn-accent) 45%, transparent) !important;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+    inset 0 3px 10px rgba(0, 0, 0, 0.85),
+    inset 0 0 0 1.5px #b6f0ff,
+    inset 0 0 30px color-mix(in srgb, var(--btn-accent) 45%, transparent) !important;
+  filter: brightness(1.35) drop-shadow(0 0 18px var(--btn-glow));
 }
 .gbtn:disabled {
   color: #52657f !important;
@@ -1496,9 +1550,9 @@ select.ginput {
   /* Frosted glass, now on the HUD chamfer silhouette (was a plain 1px-border
      rectangle that fell out of the skin — P0 fix). Directional bevel + cyan
      hairline ring via box-shadow so it matches the windows' machined look. */
-  background: linear-gradient(180deg, rgba(12, 20, 38, 0.55) 0%, rgba(6, 10, 20, 0.58) 100%);
-  -webkit-backdrop-filter: blur(10px) saturate(1.08);
-  backdrop-filter: blur(10px) saturate(1.08);
+  background: linear-gradient(180deg, rgba(30, 48, 80, 0.46) 0%, rgba(10, 18, 32, 0.55) 100%);
+  -webkit-backdrop-filter: var(--glass-blur-tip);
+  backdrop-filter: var(--glass-blur-tip);
   border: none;
   clip-path: polygon(
     7px 0, 100% 0, 100% calc(100% - 7px),
@@ -1526,19 +1580,37 @@ select.ginput {
   text-shadow: 0 0 8px rgba(78, 226, 255, 0.4);
 }
 
-/* ── 11. Scrollbars — HIDDEN (content still scrolls, no visible bar) ──────── */
+/* ── 11. Scrollbars — a lit rail, not a hidden one ───────────────────────────
+   These used to be width:0. A scrollbar is a surface the player looks at
+   constantly, so it carries the same material language as the rest of the
+   console: recessed track, cyan-energy thumb with a top fresnel and a glow. */
 ::-webkit-scrollbar {
-  width: 0;
-  height: 0;
-  background: transparent;
+  width: 9px;
+  height: 9px;
 }
-::-webkit-scrollbar-track,
-::-webkit-scrollbar-thumb,
-::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-track {
+  background: rgba(4, 8, 16, 0.9);
+  box-shadow: inset 0 0 0 1px rgba(78, 226, 255, 0.08);
+}
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--hud-cyan) 0%, #1f6f92 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(220, 245, 255, 0.5),
+    0 0 8px rgba(78, 226, 255, 0.5);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #8af1ff 0%, #2a8bb4 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(235, 250, 255, 0.6),
+    0 0 12px rgba(78, 226, 255, 0.75);
+}
 ::-webkit-scrollbar-corner {
-  background: transparent;
-  border: none;
-  box-shadow: none;
+  background: rgba(4, 8, 16, 0.9);
+}
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--hud-cyan) rgba(4, 8, 16, 0.9);
 }
 
 /* ── 12. Top-right command buttons (map/journal/quests/social/clan/
