@@ -42,6 +42,8 @@ function SkillTreeNodeImpl({ data }: NodeProps) {
       <Handle id="in" type="target" position={Position.Bottom} isConnectable={false} />
       <Handle id="out" type="source" position={Position.Top} isConnectable={false} />
 
+      {/* halo: light escaping the housing into the surrounding plate */}
+      <span className="skn-halo" aria-hidden="true" />
       <div className="skn-collar" aria-hidden="true" />
       <div className="skn-frame" aria-hidden="true" />
       {variant === "keystone" && (
@@ -53,7 +55,11 @@ function SkillTreeNodeImpl({ data }: NodeProps) {
       )}
       <div className="skn-ring" aria-hidden="true" />
       <div className="skn-well" aria-hidden="true">
+        {/* core: the emitter itself, sitting behind the glyph */}
+        <span className="skn-core" />
         <span className="skn-icon">{icon}</span>
+        {/* glass: a curved specular sweep across the cover */}
+        <span className="skn-glass" />
       </div>
 
       {(state === "locked" || state === "blocked-by-choice") && (

@@ -1,88 +1,145 @@
 /* ─────────────────────────────────────────────────────────────────────────
-   Skill edge — a technical energy CONDUIT, not a line.
+   Skill conduit — a machined channel that light travels THROUGH.
 
-   Four stacked SVG strokes per connection:
-     1 .skt-edge-trench  dark recessed channel (widest)
-     2 .skt-edge-casing  metallic housing
-     3 .skt-edge-core    the energy path itself
-     4 .skt-edge-pulse   travelling light impulse (active only)
+   Stack, back to front:
+     1 .skt-edge-trench        recessed cut in the plate (widest, near-black)
+     2 .skt-edge-casing        machined metal walls
+     3 .skt-edge-bloom         BLURRED light spill  ← makes it read as emitted
+     4 .skt-edge-core          the bright filament
+     5 .skt-edge-sheen         hairline specular on the groove's top edge
+     6 .skt-edge-pulse ×2      travelling charge
+
+   The bloom layer is the whole trick: without a blurred pass the conduit is a
+   coloured line, with it the channel appears lit from inside.
    ───────────────────────────────────────────────────────────────────────── */
 
+.skt-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+
 .skt-edge-trench {
-  stroke: #05080f;
-  stroke-width: calc(var(--skill-line-width) + 7px);
+  stroke: #04070d;
+  stroke-width: calc(var(--skill-line-width) + 8px);
   stroke-linecap: round;
   stroke-linejoin: round;
   fill: none;
 }
 .skt-edge-casing {
-  stroke: #1b2942;
-  stroke-width: calc(var(--skill-line-width) + 3px);
+  stroke: #1e2c46;
+  stroke-width: calc(var(--skill-line-width) + 4px);
   stroke-linecap: round;
   stroke-linejoin: round;
   fill: none;
 }
-.skt-edge-core {
+
+/* light spill — wide, soft, no hard edge of its own */
+.skt-edge-bloom {
   stroke: var(--ske-accent, #4ee2ff);
+  stroke-width: calc(var(--skill-line-width) + 1px);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  opacity: 0.85;
+}
+
+.skt-edge-core {
+  stroke: #2a3350;
   stroke-width: var(--skill-line-width);
   stroke-linecap: round;
   stroke-linejoin: round;
   fill: none;
-  transition: stroke 240ms ease, opacity 240ms ease, filter 240ms ease;
-}
-.skt-edge-pulse {
-  stroke: #ffffff;
-  stroke-width: calc(var(--skill-line-width) - 0.5px);
-  stroke-linecap: round;
-  fill: none;
-  opacity: 0.9;
+  transition: stroke 260ms ease, opacity 260ms ease;
 }
 
-/* Junction node drawn where a branch splits. */
-.skt-edge-junction {
-  fill: #16223a;
-  stroke: rgba(140, 180, 225, 0.4);
+/* groove highlight: a thin, low-alpha line offset to the top of the channel so
+   the casing reads as rounded metal catching the room light */
+.skt-edge-sheen {
+  stroke: rgba(190, 225, 255, 0.13);
   stroke-width: 1;
+  stroke-linecap: round;
+  fill: none;
+  transform: translateY(-1.5px);
+  pointer-events: none;
+}
+
+.skt-edge-pulse {
+  stroke: #eaf8ff;
+  stroke-width: calc(var(--skill-line-width) - 0.6px);
+  stroke-linecap: round;
+  fill: none;
+  opacity: 0.95;
+}
+/* the softer wake behind the leading spark */
+.skt-edge-pulse--trail {
+  stroke: var(--ske-accent, #4ee2ff);
+  stroke-width: calc(var(--skill-line-width) - 1.2px);
+  opacity: 0.4;
+}
+
+/* junction: a distributor node where the channel turns */
+.skt-edge-junction {
+  fill: #18253d;
+  stroke: color-mix(in srgb, var(--ske-accent, #4ee2ff) 55%, transparent);
+  stroke-width: 1;
+}
+.skt-edge-junction-glow {
+  fill: color-mix(in srgb, var(--ske-accent, #4ee2ff) 22%, transparent);
+  opacity: 0;
+  transition: opacity 260ms ease;
 }
 
 /* ── States ────────────────────────────────────────────────────────────── */
 
-/* LOCKED — dead conduit, almost no energy */
-.ske--locked .skt-edge-core { stroke: #2a3350; opacity: 0.75; }
-.ske--locked .skt-edge-casing { stroke: #151d2e; }
+/* LOCKED — dead channel. No bloom is rendered at all (see the component), so
+   this is purely machined metal: dark filament, no light. */
+.ske--locked .skt-edge-core { stroke: #253050; opacity: 0.85; }
+.ske--locked .skt-edge-casing { stroke: #172136; }
 
-/* AVAILABLE — faint pulsing charge */
+/* AVAILABLE — the channel is energised but idle: a steady low charge that
+   breathes, signalling "this can be powered" without shouting. */
 .ske--available .skt-edge-core {
-  stroke: color-mix(in srgb, var(--ske-accent, #4ee2ff) 55%, #2a3350);
-  animation: ske-charge 2.4s ease-in-out infinite;
+  stroke: color-mix(in srgb, var(--ske-accent, #4ee2ff) 62%, #223052);
 }
+.ske--available .skt-edge-bloom {
+  opacity: 0.38;
+  animation: ske-idle 3.2s ease-in-out infinite;
+}
+.ske--available .skt-edge-junction-glow { opacity: 0.35; }
 
-/* ACTIVE — clear flow + travelling impulses */
+/* ACTIVE — full current. Bright filament, strong spill, travelling charge. */
 .ske--active .skt-edge-core {
-  stroke: var(--ske-accent, #4ee2ff);
-  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--ske-accent, #4ee2ff) 65%, transparent));
+  stroke: color-mix(in srgb, var(--ske-accent, #4ee2ff) 92%, white);
+}
+.ske--active .skt-edge-bloom { opacity: 0.9; }
+.ske--active .skt-edge-junction-glow { opacity: 0.75; }
+
+/* MASTERED — the branch is complete: the current runs gold over the accent. */
+.ske--maxed-branch .skt-edge-core { stroke: #ffe9b8; }
+.ske--maxed-branch .skt-edge-bloom { stroke: var(--skill-gold, #e8b94d); opacity: 1; }
+.ske--maxed-branch .skt-edge-pulse { stroke: #fff6de; }
+.ske--maxed-branch .skt-edge-pulse--trail { stroke: var(--skill-gold, #e8b94d); }
+.ske--maxed-branch .skt-edge-junction {
+  fill: #2a2214;
+  stroke: color-mix(in srgb, var(--skill-gold) 70%, transparent);
+}
+.ske--maxed-branch .skt-edge-junction-glow {
+  fill: color-mix(in srgb, var(--skill-gold) 26%, transparent);
+  opacity: 0.8;
 }
 
-/* MAXED BRANCH — gold accent over the accent flow */
-.ske--maxed-branch .skt-edge-core {
-  stroke: var(--skill-gold, #e8b94d);
-  filter: drop-shadow(0 0 5px rgba(232, 185, 77, 0.5));
+/* BLOCKED — current severed at the junction. */
+.ske--blocked .skt-edge-core {
+  stroke: #4a2230; opacity: 0.85; stroke-dasharray: 6 7;
 }
-.ske--maxed-branch .skt-edge-pulse { stroke: #fff2d4; }
-
-/* BLOCKED — energy severed, visible break */
-.ske--blocked .skt-edge-core { stroke: #4a2230; opacity: 0.8; stroke-dasharray: 6 7; }
 .ske--blocked .skt-edge-sever {
   stroke: var(--skill-danger, #ff4d5e);
   stroke-width: 2;
 }
 
-@keyframes ske-charge {
-  0%, 100% { opacity: 0.45; }
-  50%      { opacity: 0.95; }
+@keyframes ske-idle {
+  0%, 100% { opacity: 0.22; }
+  50%      { opacity: 0.52; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ske--available .skt-edge-core { animation: none !important; opacity: 0.8; }
+  .ske--available .skt-edge-bloom { animation: none !important; opacity: 0.4; }
   .skt-edge-pulse { display: none !important; }
 }

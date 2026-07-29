@@ -15,6 +15,7 @@ import { SkillTreeNode } from "./SkillTreeNode";
 import { ClusterLabelNode } from "./ClusterLabelNode";
 import { SkillEnergyEdge } from "./SkillEnergyEdge";
 import { SkillTreeBackground } from "./SkillTreeBackground";
+import { SkillTreeDefs } from "./SkillTreeDefs";
 import {
   buildSkillNodes, buildSkillEdges, buildDecorationNodes, layoutPixelBounds,
 } from "../utils/buildSkillGraph";
@@ -88,6 +89,7 @@ function CanvasInner({ layout, player, accent, selectedId, onSelect }: Props) {
 
   return (
     <div className="skt-canvas-wrap">
+      <SkillTreeDefs />
       <SkillTreeBackground accent={accent} />
       <ReactFlow
         nodes={nodes}

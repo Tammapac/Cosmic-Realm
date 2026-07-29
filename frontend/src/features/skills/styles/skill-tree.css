@@ -180,7 +180,19 @@
     rgba(10, 16, 30, 0.34));
   box-shadow:
     inset 0 1px 0 rgba(220, 240, 255, 0.14),
-    0 4px 16px rgba(0, 0, 0, 0.45);
+    inset 0 0 22px color-mix(in srgb, var(--tab-accent) 14%, transparent),
+    0 4px 16px rgba(0, 0, 0, 0.45),
+    0 0 18px color-mix(in srgb, var(--tab-accent) 16%, transparent);
+}
+/* powered bay: light bleeding from behind the housing, matching the node halo */
+.skt-bay--on::after {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 46px;
+  background: radial-gradient(ellipse at 0% 50%,
+    color-mix(in srgb, var(--tab-accent) 26%, transparent), transparent 72%);
+  pointer-events: none;
 }
 /* live bay: bright tick on the spine side */
 .skt-bay--on::before {
@@ -315,15 +327,29 @@
   background:
     linear-gradient(180deg, rgba(10, 16, 32, 0.72) 0%, rgba(6, 10, 20, 0.8) 55%, rgba(4, 7, 14, 0.86) 100%);
 }
-/* 3 · very subtle hex / circuit grid */
+/* 3 · circuit substrate — a fine grid with a coarser panel seam every 4th line,
+   so the plate reads as fabricated in sections rather than as graph paper */
 .skt-bg-grid {
   position: absolute; inset: -20%;
-  opacity: 0.5;
+  opacity: 0.62;
   background-image:
-    repeating-linear-gradient(90deg, rgba(90, 140, 190, 0.06) 0 1px, transparent 1px 68px),
-    repeating-linear-gradient(0deg,  rgba(90, 140, 190, 0.045) 0 1px, transparent 1px 68px);
-  -webkit-mask-image: radial-gradient(ellipse at 50% 55%, #000 30%, transparent 82%);
-          mask-image: radial-gradient(ellipse at 50% 55%, #000 30%, transparent 82%);
+    /* panel seams */
+    repeating-linear-gradient(90deg, rgba(105, 155, 205, 0.075) 0 1px, transparent 1px 272px),
+    repeating-linear-gradient(0deg,  rgba(105, 155, 205, 0.06)  0 1px, transparent 1px 272px),
+    /* fine grid */
+    repeating-linear-gradient(90deg, rgba(90, 140, 190, 0.045) 0 1px, transparent 1px 68px),
+    repeating-linear-gradient(0deg,  rgba(90, 140, 190, 0.035) 0 1px, transparent 1px 68px);
+  -webkit-mask-image: radial-gradient(ellipse at 50% 55%, #000 34%, transparent 88%);
+          mask-image: radial-gradient(ellipse at 50% 55%, #000 34%, transparent 88%);
+}
+/* 3b · horizontal scan bands — very low alpha, gives the glass surface a CRT
+   presence without touching legibility */
+.skt-bg-scan {
+  position: absolute; inset: 0;
+  opacity: 0.5;
+  background: repeating-linear-gradient(180deg,
+    rgba(150, 200, 240, 0.022) 0 1px, transparent 1px 3px);
+  pointer-events: none;
 }
 /* 4 · local hologram field behind the trunk */
 .skt-bg-holo {
@@ -366,19 +392,24 @@
 }
 .skt-cluster-text {
   font-family: var(--font-display, var(--hud-font));
-  font-size: 10px;
-  letter-spacing: 0.24em;
+  font-size: 11px;
+  letter-spacing: 0.3em;
   text-transform: uppercase;
   white-space: nowrap;
-  color: var(--cl-color);
-  opacity: 0.72;
-  text-shadow: 0 0 10px color-mix(in srgb, var(--cl-color) 35%, transparent);
+  /* etched into the plate rather than glowing: a bright face over a dark
+     inset shadow. Reads as engraved metal, which keeps the only real light on
+     the board coming from the conduits and emitters. */
+  color: color-mix(in srgb, var(--cl-color) 62%, #e8f3ff);
+  opacity: 0.9;
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.9),
+    0 0 14px color-mix(in srgb, var(--cl-color) 30%, transparent);
 }
 
 /* ── Detail console ────────────────────────────────────────────────────── */
 .skd {
   flex-shrink: 0;
-  width: 296px;
+  width: 272px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -536,23 +567,53 @@
 }
 .skd-cost-val--short { color: var(--skill-danger); }
 
+/* Commit control — an armed switch, not a marketing button. Dark housing with
+   an illuminated edge, so it reads as instrumentation and doesn't outshine the
+   tree it belongs to. */
 .skd-learn {
+  position: relative;
   flex: 1;
   padding: 11px 14px;
   cursor: pointer;
   font-family: var(--font-display, var(--hud-font));
-  font-size: 12px;
-  letter-spacing: 0.16em;
+  font-size: 11px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: #04121a;
-  background: linear-gradient(180deg,
-    color-mix(in srgb, var(--skd-accent, #4ee2ff) 92%, white),
-    var(--skd-accent, #4ee2ff));
-  border: 1px solid color-mix(in srgb, var(--skd-accent, #4ee2ff) 60%, white);
-  box-shadow: 0 0 16px color-mix(in srgb, var(--skd-accent, #4ee2ff) 35%, transparent);
-  transition: filter 140ms ease, transform 140ms ease;
+  color: color-mix(in srgb, var(--skd-accent, #4ee2ff) 30%, #eaf6ff);
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--skd-accent, #4ee2ff) 20%, rgba(16, 26, 44, 0.95)),
+      rgba(8, 13, 24, 0.95));
+  border: 1px solid color-mix(in srgb, var(--skd-accent, #4ee2ff) 62%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(220, 240, 255, 0.16),
+    inset 0 -10px 18px rgba(0, 0, 0, 0.5),
+    0 0 12px color-mix(in srgb, var(--skd-accent, #4ee2ff) 22%, transparent);
+  transition: color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+  overflow: hidden;
 }
-.skd-learn:hover:not(:disabled) { filter: brightness(1.12); transform: translateY(-1px); }
+/* charged underline that fills on hover — the "arming" cue */
+.skd-learn::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 2px;
+  background: var(--skd-accent, #4ee2ff);
+  box-shadow: 0 0 10px var(--skd-accent, #4ee2ff);
+  transform: scaleX(0.2);
+  transform-origin: left;
+  transition: transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.skd-learn:hover:not(:disabled) {
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 rgba(220, 240, 255, 0.2),
+    inset 0 -10px 18px rgba(0, 0, 0, 0.5),
+    0 0 20px color-mix(in srgb, var(--skd-accent, #4ee2ff) 40%, transparent);
+}
+.skd-learn:hover:not(:disabled)::after { transform: scaleX(1); }
+.skd-learn:disabled::after { display: none; }
 .skd-learn:disabled {
   cursor: not-allowed;
   color: var(--text-mute, #7f8ea6);
@@ -583,7 +644,7 @@
   .skd:not(.skd--empty) {
     position: absolute;
     top: 10px; right: 10px; bottom: 10px;
-    width: 290px;
+    width: 272px;
     z-index: 5;
     border: 1px solid var(--hud-border);
     background: linear-gradient(180deg, rgba(10, 17, 32, 0.94), rgba(5, 9, 18, 0.96));

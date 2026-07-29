@@ -9,6 +9,7 @@ function SkillTreeBackgroundImpl({ accent }: { accent: string }) {
       <div className="skt-bg-grid" />
       <div className="skt-bg-holo" />
       <div className="skt-bg-haze" />
+      <div className="skt-bg-scan" />
       <div className="skt-bg-vignette" />
     </div>
   );

@@ -59,16 +59,62 @@
   transition: border-color 200ms ease, box-shadow 200ms ease;
 }
 
-/* ── Layer 3 · icon well ───────────────────────────────────────────────── */
+/* ── Layer 3 · icon well (the housing interior) ────────────────────────── */
 .skn-well {
   position: absolute;
   inset: 10px;
   display: grid;
   place-items: center;
+  overflow: hidden;
   background: radial-gradient(circle at 50% 35%, rgba(20, 34, 58, 0.95), rgba(4, 7, 14, 0.98));
   box-shadow: var(--mat-ao);
 }
+
+/* ── Emitter · the light source INSIDE the housing ─────────────────────── */
+/* A soft radial bloom behind the glyph. Scaling this (not a border colour) is
+   what sells "powered": the component lights up from within, and the housing
+   simply lets some of it out. */
+.skn-core {
+  position: absolute;
+  inset: -18%;
+  background: radial-gradient(circle at 50% 52%,
+    color-mix(in srgb, var(--skn-accent, #4ee2ff) 85%, white) 0%,
+    color-mix(in srgb, var(--skn-accent, #4ee2ff) 45%, transparent) 34%,
+    transparent 68%);
+  opacity: 0;
+  transform: scale(0.55);
+  transition: opacity 320ms ease, transform 320ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  pointer-events: none;
+}
+
+/* ── Glass · specular sweep across the cover ───────────────────────────── */
+.skn-glass {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(157deg,
+    rgba(226, 244, 255, 0.20) 0%,
+    rgba(226, 244, 255, 0.07) 26%,
+    transparent 46%,
+    transparent 100%);
+  pointer-events: none;
+}
+
+/* ── Halo · light escaping into the surrounding plate ──────────────────── */
+.skn-halo {
+  position: absolute;
+  inset: -34%;
+  border-radius: 50%;
+  background: radial-gradient(circle,
+    color-mix(in srgb, var(--skn-accent, #4ee2ff) 30%, transparent) 0%,
+    transparent 62%);
+  opacity: 0;
+  transition: opacity 340ms ease;
+  pointer-events: none;
+  z-index: -1;
+}
+
 .skn-icon {
+  position: relative;
   font-size: calc(var(--skn-size, 62px) * 0.34);
   line-height: 1;
   color: var(--text-bright, #dce8f7);
@@ -204,10 +250,10 @@
 
 /* ═══ STATES ════════════════════════════════════════════════════════════ */
 
-/* LOCKED — desaturated and cool, but still clearly READABLE. It was previously
-   dimmed so far (brightness .62 on an already dark plate) that locked nodes
-   vanished into the backdrop and the tree looked half-empty. */
-.skn--locked { filter: saturate(0.35) brightness(0.95); }
+/* LOCKED — unpowered hardware: fully machined and readable, but colourless, so
+   the only chroma on the board belongs to things you can act on. Readability
+   comes from the metal (frame, bevel, icon), NOT from brightness. */
+.skn--locked { filter: saturate(0.12) brightness(0.88); }
 .skn--locked .skn-frame {
   background: linear-gradient(180deg, #35465f 0%, #1b2740 55%, #0d1424 100%);
   border-color: rgba(130, 165, 205, 0.4);
@@ -215,33 +261,68 @@
 .skn--locked .skn-ring { border-color: rgba(120, 140, 175, 0.55); }
 .skn--locked .skn-icon { color: #9fb0c8; opacity: 0.85; }
 
-/* AVAILABLE — cyan-ish rim + slow breathing pulse */
+/* AVAILABLE — standby power: the emitter is warm but idling, breathing slowly.
+   This is the state that should draw the eye to "you can spend a point here". */
+.skn--available .skn-core { opacity: 0.55; transform: scale(0.9); animation: skn-idle 3s ease-in-out infinite; }
+.skn--available .skn-halo { opacity: 0.45; }
 .skn--available .skn-ring {
-  border-color: color-mix(in srgb, var(--skn-accent, #4ee2ff) 70%, transparent);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--skn-accent, #4ee2ff) 35%, transparent);
-  animation: skn-breathe 2.6s ease-in-out infinite;
+  border-color: color-mix(in srgb, var(--skn-accent, #4ee2ff) 85%, transparent);
+  box-shadow: 0 0 13px color-mix(in srgb, var(--skn-accent, #4ee2ff) 42%, transparent);
 }
-.skn--available .skn-icon { color: #eaf4ff; }
+.skn--available .skn-frame {
+  border-color: color-mix(in srgb, var(--skn-accent, #4ee2ff) 38%, rgba(120, 160, 210, 0.35));
+}
+.skn--available .skn-icon { color: #f2f9ff; }
+/* an outward tick marking a spendable node — the one place the board asks for
+   input, so it gets a small piece of deliberate motion */
+.skn--available::before {
+  content: "";
+  position: absolute;
+  inset: -7px;
+  border: 1px solid color-mix(in srgb, var(--skn-accent, #4ee2ff) 55%, transparent);
+  opacity: 0;
+  animation: skn-ping 2.8s ease-out infinite;
+  pointer-events: none;
+}
 
-/* UNLOCKED — fully lit, steady ring */
+/* UNLOCKED — powered. Emitter at full output, halo spilling onto the plate. */
+.skn--unlocked .skn-core { opacity: 0.92; transform: scale(1); }
+.skn--unlocked .skn-halo { opacity: 0.6; }
 .skn--unlocked .skn-ring {
   border-color: var(--skn-accent, #4ee2ff);
   box-shadow:
-    0 0 12px color-mix(in srgb, var(--skn-accent, #4ee2ff) 50%, transparent),
-    inset 0 0 10px color-mix(in srgb, var(--skn-accent, #4ee2ff) 22%, transparent);
+    0 0 14px color-mix(in srgb, var(--skn-accent, #4ee2ff) 52%, transparent),
+    inset 0 0 12px color-mix(in srgb, var(--skn-accent, #4ee2ff) 26%, transparent);
+}
+.skn--unlocked .skn-frame {
+  border-color: color-mix(in srgb, var(--skn-accent, #4ee2ff) 45%, rgba(120, 160, 210, 0.35));
 }
 .skn--unlocked .skn-icon {
   color: #fff;
-  text-shadow: 0 0 10px color-mix(in srgb, var(--skn-accent, #4ee2ff) 60%, transparent);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--skn-accent, #4ee2ff) 65%, transparent);
 }
 
-/* MAXED — gold+accent double rim, complete circuit, no gaudy blinking */
-.skn--maxed .skn-frame { border-color: rgba(232, 185, 77, 0.62); }
+/* MASTERED — the component is sealed and running gold. Brighter, but steady:
+   a finished thing doesn't blink for attention. */
+.skn--maxed .skn-core {
+  opacity: 1;
+  transform: scale(1.06);
+  background: radial-gradient(circle at 50% 52%,
+    #fff4d8 0%,
+    color-mix(in srgb, var(--skill-gold) 60%, transparent) 32%,
+    transparent 68%);
+}
+.skn--maxed .skn-halo {
+  opacity: 0.7;
+  background: radial-gradient(circle,
+    color-mix(in srgb, var(--skill-gold) 34%, transparent) 0%, transparent 62%);
+}
+.skn--maxed .skn-frame { border-color: rgba(232, 185, 77, 0.68); }
 .skn--maxed .skn-ring {
   border-color: var(--skill-gold);
   box-shadow:
-    0 0 14px rgba(232, 185, 77, 0.45),
-    inset 0 0 12px color-mix(in srgb, var(--skn-accent, #4ee2ff) 25%, transparent);
+    0 0 16px rgba(232, 185, 77, 0.5),
+    inset 0 0 12px rgba(232, 185, 77, 0.28);
 }
 .skn--maxed .skn-icon { color: #fff6de; text-shadow: 0 0 12px rgba(232, 185, 77, 0.6); }
 .skn--maxed .skn-pip--on { background: var(--skill-gold); box-shadow: 0 0 5px var(--skill-gold); }
@@ -270,9 +351,16 @@
 /* Purchase pulse — one-shot ring impulse fired on rank-up. */
 .skn--justbought .skn-ring { animation: skn-impulse 620ms ease-out 1; }
 
-@keyframes skn-breathe {
-  0%, 100% { box-shadow: 0 0 8px color-mix(in srgb, var(--skn-accent, #4ee2ff) 28%, transparent); }
-  50%      { box-shadow: 0 0 16px color-mix(in srgb, var(--skn-accent, #4ee2ff) 55%, transparent); }
+/* standby flicker of the emitter — opacity only, so it composites cheaply */
+@keyframes skn-idle {
+  0%, 100% { opacity: 0.38; }
+  50%      { opacity: 0.68; }
+}
+/* a slow outward tick on spendable nodes */
+@keyframes skn-ping {
+  0%   { opacity: 0.55; transform: scale(0.96); }
+  70%  { opacity: 0;    transform: scale(1.16); }
+  100% { opacity: 0;    transform: scale(1.16); }
 }
 @keyframes skn-impulse {
   0%   { transform: scale(1);    box-shadow: 0 0 0 0 color-mix(in srgb, var(--skn-accent, #4ee2ff) 80%, transparent); }
@@ -280,9 +368,15 @@
   100% { transform: scale(1);    box-shadow: 0 0 0 0 color-mix(in srgb, var(--skn-accent, #4ee2ff) 0%, transparent); }
 }
 
+/* HOVER — the housing lifts and the emitter surges slightly. */
+.skn:hover .skn-core { transform: scale(1.08); }
+.skn--locked:hover .skn-core { opacity: 0.18; }
+.skn:hover .skn-halo { opacity: 0.5; }
+
 @media (prefers-reduced-motion: reduce) {
-  .skn, .skn-icon, .skn-ring { transition: none !important; }
-  .skn--available .skn-ring,
+  .skn, .skn-icon, .skn-ring, .skn-core, .skn-halo { transition: none !important; }
+  .skn--available .skn-core,
+  .skn--available::before,
   .skn--justbought .skn-ring,
   .skn--unlocked .skn-collar,
   .skn--maxed .skn-collar { animation: none !important; }
