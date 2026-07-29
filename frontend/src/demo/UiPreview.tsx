@@ -14,6 +14,8 @@
 import { useState } from "react";
 import { HudWindow, HudDialog, HudButton, HudDivider } from "../components/hud-ui";
 import { useHudPanel } from "../hooks/useHudPanel";
+import { ItemTooltip } from "../components/ItemTooltip";
+import { MODULE_DEFS } from "../game/types";
 
 const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
   <section style={{ marginBottom: 28 }}>
@@ -120,6 +122,10 @@ export default function UiPreview() {
 
       <Section title="Rarity frames — the slot carries the tier">
         <RarityDemo />
+      </Section>
+
+      <Section title="Rich item tooltip — stat deltas against equipped">
+        <TooltipDemo />
       </Section>
 
       <Section title="Inventory popup — showcase frame + slots (no login needed)">
@@ -371,6 +377,56 @@ function RarityDemo() {
         rarity colours. From Epic upward a conic aura turns behind it —
         slower and brighter on Celestial — so a rare drop is visible across
         a full grid without reading anything.
+      </div>
+    </div>
+  );
+}
+
+/** Rich item tooltip (§3.6) — same data as the old title="" string, but
+ *  structured, rarity-framed, and comparable against what's equipped. */
+function TooltipDemo() {
+  const ids = Object.keys(MODULE_DEFS);
+  const weaponId = ids.find((k) => MODULE_DEFS[k]?.slot === "weapon") ?? ids[0];
+  const otherWeapon =
+    ids.find((k) => MODULE_DEFS[k]?.slot === "weapon" && k !== weaponId) ?? weaponId;
+
+  // A rolled legendary-ish drop and a plainer equipped item to compare against.
+  const drop: any = {
+    instanceId: "demo-1",
+    defId: weaponId,
+    rarity: "legendary",
+    ilvl: 42,
+    affixes: [
+      { stat: "damage", value: 14 },
+      { stat: "critChance", value: 0.06 },
+    ],
+  };
+  const worn: any = {
+    instanceId: "demo-2",
+    defId: otherWeapon,
+    rarity: "rare",
+    ilvl: 31,
+    affixes: [{ stat: "damage", value: 6 }],
+  };
+
+  return (
+    <div style={{ display: "flex", gap: 22, alignItems: "flex-start", flexWrap: "wrap" }}>
+      <div>
+        <div style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-mute)", marginBottom: 8 }}>
+          Compared against equipped
+        </div>
+        <ItemTooltip item={drop} equipped={worn} action="DBL-CLICK TO EQUIP" />
+      </div>
+      <div>
+        <div style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-mute)", marginBottom: 8 }}>
+          Nothing equipped
+        </div>
+        <ItemTooltip item={worn} action="DBL-CLICK TO EQUIP" />
+      </div>
+      <div style={{ maxWidth: 230, fontSize: 12, lineHeight: 1.5, color: "var(--text-dim)" }}>
+        Stat rows carry a ▲/▼ delta against the item in that slot, so "is this
+        an upgrade?" is answerable without opening anything. Green is better,
+        red is worse.
       </div>
     </div>
   );
