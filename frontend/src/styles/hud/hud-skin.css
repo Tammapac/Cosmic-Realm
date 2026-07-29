@@ -478,10 +478,22 @@
   box-shadow: inset 0 1px 0 rgba(220, 238, 255, 0.55), inset 0 -2px 3px var(--hud-metal-lo);
   display: block !important;
 }
-/* ::after = sheen sweep. A soft specular band drifts across the key face so the
-   metal reads as lit rather than printed. Masked to the button's own clip so it
-   never escapes the chamfer. */
-.gbtn::after {
+/* ::after = sheen sweep. OPT-IN, not global: the sweep marks a button as a
+   COMMITTING action (Buy, Sell, Accept, Decline, Confirm, Equip) so the eye is
+   drawn to the decision. Putting it on every .gbtn made the whole HUD shimmer
+   and the cue meaningless — mission tier switches (T1/T2), tabs, filters and
+   close buttons must stay quiet. Add `gbtn--key` to opt a button in.
+   Disabled/inactive buttons never sheen, even when opted in — see below.
+
+   The selector rides the design system's EXISTING semantics rather than
+   inventing a parallel one: gbtn-gold is already documented as
+   "primary/confirm" (Buy, Accept, Confirm, Enter) and gbtn-red as "danger"
+   (Sell, Decline, Delete). Plain .gbtn stays secondary and quiet, which is
+   exactly the T1/T2 mission switches, tabs and close buttons. `gbtn--key`
+   remains available to opt in a committing button that is neither colour. */
+.gbtn-gold::after,
+.gbtn-red::after,
+.gbtn--key::after {
   content: "";
   position: absolute;
   /* index.css styles this SAME pseudo-element as the legacy amber corner tick
@@ -520,10 +532,27 @@
   55%  { background-position: -40% 0; }
   100% { background-position: -40% 0; }
 }
+/* An inactive button must not advertise itself. Covers the real disabled
+   attribute, aria-disabled, and the project's own dimming classes. */
+.gbtn:disabled::after,
+.gbtn[aria-disabled="true"]::after,
+.gbtn.is-disabled::after,
+.gbtn.gbtn-disabled::after,
+/* Close/dismiss buttons are red for danger-colour reasons but commit nothing,
+   so they must stay quiet. Matched by their title rather than by editing 13
+   call sites; `gbtn--quiet` is the explicit escape hatch. */
+.gbtn-red[title*="Close" i]::after,
+.gbtn-red[title*="Schließen" i]::after,
+.gbtn--quiet::after {
+  content: none !important;
+  animation: none !important;
+}
 /* the label must sit above the sheen */
 .gbtn > * { position: relative; z-index: 1; }
 @media (prefers-reduced-motion: reduce) {
-  .gbtn::after { animation: none !important; }
+  .gbtn-gold::after,
+  .gbtn-red::after,
+  .gbtn--key::after { animation: none !important; }
 }
 /* gold buttons get their OWN gold metal frame (was inheriting the blue-grey
    plate — the P0 inconsistency). */

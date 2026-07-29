@@ -168,7 +168,7 @@ function JournalWindow() {
       <div className="panel" style={{ width: 880, height: 540, maxWidth: "96vw", maxHeight: "92vh", display: "flex", flexDirection: "column", ...drag.style }}>
         <div className="hud-titleband" onPointerDown={drag.handleProps.onPointerDown} style={{ fontSize: 14, letterSpacing: "0.35em", padding: "8px 14px", ...drag.handleProps.style }}>
           <span style={{ flex: 1 }}>Journal</span>
-          <button className="gbtn gbtn-red" style={{ padding: "2px 10px", fontSize: 11 }} onClick={close}>✕</button>
+          <button className="gbtn gbtn-red gbtn--quiet" style={{ padding: "2px 10px", fontSize: 11 }} onClick={close}>✕</button>
         </div>
         <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
           {/* quest index — natural scrolling replaces the art's baked arrows */}

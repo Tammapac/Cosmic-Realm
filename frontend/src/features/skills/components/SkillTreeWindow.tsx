@@ -92,7 +92,7 @@ export function SkillTreeWindow() {
             <button type="button" className="gbtn" onClick={() => resetSkills()}>
               Respec · 2000cr
             </button>
-            <button type="button" className="gbtn gbtn-red" onClick={close}>✕</button>
+            <button type="button" className="gbtn gbtn-red gbtn--quiet" onClick={close}>✕</button>
           </div>
         </header>
 

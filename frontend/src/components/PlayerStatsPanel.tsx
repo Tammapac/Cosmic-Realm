@@ -96,7 +96,7 @@ export function PlayerStatsPanel() {
             above the fat gold frame; the slim ring frame carries it inline) */}
         <div className="hud-titleband" onPointerDown={drag.handleProps.onPointerDown} style={{ margin: "-6px -6px 8px", letterSpacing: "0.32em", ...drag.handleProps.style }}>
           <span style={{ flex: 1 }}>Pilot Dossier</span>
-          <button className="gbtn gbtn-red" style={{ padding: "1px 8px", fontSize: 10 }} onClick={close}>✕</button>
+          <button className="gbtn gbtn-red gbtn--quiet" style={{ padding: "1px 8px", fontSize: 10 }} onClick={close}>✕</button>
         </div>
 
         {/* identity strip */}

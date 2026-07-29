@@ -110,7 +110,7 @@ export function AdminPanel({ onClose }: { onClose: () => void }) {
               ))}
             </div>
           </div>
-          <button onClick={onClose} className="gbtn gbtn-red" style={{ padding: "2px 10px", fontSize: 10 }}>ESC</button>
+          <button onClick={onClose} className="gbtn gbtn-red gbtn--quiet" style={{ padding: "2px 10px", fontSize: 10 }}>ESC</button>
         </div>
 
         <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>

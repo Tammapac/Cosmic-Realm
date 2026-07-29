@@ -63,7 +63,11 @@
    .hud-open bleibt für Panels, die zusätzlich eine Schließ-Animation
    brauchen (dort setzt useHudPanel weiterhin .hud-close). */
 .panel,
-.panel-inset {
+.panel-inset,
+/* .console-sq is the OTHER window/plate primitive — the whole station menu
+   (Hangar tabs, ammo popup body, drone panels) is built from it, which is why
+   those surfaces had no animation while .panel windows did. */
+.console-sq {
   animation: hud-panel-in 420ms cubic-bezier(.2, .9, .25, 1) both;
 }
 /* KEIN Boot-Scan über .panel::after — dieses Pseudo-Element ist in

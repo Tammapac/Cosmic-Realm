@@ -133,7 +133,7 @@ export default function UiPreview() {
           <span className="panel-rim" aria-hidden="true" />
           <div className="hud-titleband" style={{ padding: "8px 14px", letterSpacing: "0.3em" }}>
             <span style={{ flex: 1 }}>Inventory · 12</span>
-            <button className="gbtn gbtn-red" style={{ padding: "1px 8px", fontSize: 10 }}>✕</button>
+            <button className="gbtn gbtn-red gbtn--quiet" style={{ padding: "1px 8px", fontSize: 10 }}>✕</button>
           </div>
           {/* category tabs */}
           <div style={{ display: "flex", borderBottom: "1px solid var(--hud-border-dim)" }}>
@@ -198,7 +198,7 @@ export default function UiPreview() {
         <HudButton variant="primary">Primary / Confirm</HudButton>
         <HudButton variant="danger">Danger</HudButton>
         <HudButton variant="secondary" disabled>Disabled</HudButton>
-        <button className="gbtn gbtn-red" style={{ padding: "1px 8px", fontSize: 10 }}>✕</button>
+        <button className="gbtn gbtn-red gbtn--quiet" style={{ padding: "1px 8px", fontSize: 10 }}>✕</button>
       </Section>
 
       <Section title="Mission list rows (.j-row — all states)">
@@ -315,7 +315,7 @@ function MotionDemo() {
             <div className="hud-titleband" style={{ padding: "8px 14px", letterSpacing: "0.3em" }}>
               <span style={{ flex: 1 }}>Cargo manifest</span>
               <button
-                className="gbtn gbtn-red"
+                className="gbtn gbtn-red gbtn--quiet"
                 style={{ padding: "1px 8px", fontSize: 10 }}
                 onClick={() => setOpen(false)}
               >

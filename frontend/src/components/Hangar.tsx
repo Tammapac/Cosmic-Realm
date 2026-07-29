@@ -1290,18 +1290,29 @@ function LoadoutTab({ stationId }: { stationId: string }) {
         const diffs = computeStatDiff(eqStats, cand);
         const CARD_W = 288;
         const left = Math.max(8, cardHover.x - CARD_W - 14 > 8 ? cardHover.x - CARD_W - 14 : cardHover.x + 62);
-        const top = Math.max(8, Math.min(cardHover.y - 20, window.innerHeight - 380));
+        // 380 was a guess at the card height; a tall card (many affixes + a
+        // full comparison block) still ran off the bottom. Reserve enough for
+        // the tallest variant and clamp to the viewport.
+        const top = Math.max(8, Math.min(cardHover.y - 20, window.innerHeight - 430));
         const isEquippedNow = item != null && (
           player.equipped.weapon.includes(item.instanceId) ||
           player.equipped.generator.includes(item.instanceId) ||
           player.equipped.module.includes(item.instanceId));
-        return (
+        // PORTAL to <body>. This card used position:fixed inside the tab
+        // content, but the panel above it uses clip-path for its chamfered
+        // silhouette — and clip-path clips fixed descendants too, so the card
+        // was being cut off at the panel edge. Same fix as useItemTooltip.
+        // The `itip` class gives it the SAME frame/glass as the inventory
+        // tooltip, so loadout and inventory finally look alike.
+        return createPortal(
           <div
-            className="console-sq"
-            style={{ position: "fixed", left, top, width: CARD_W, zIndex: 90, pointerEvents: "none", padding: "10px 12px" }}
+            className={`itip rarity--${item?.rarity ?? def.rarity}`}
+            style={{
+              position: "fixed", left, top, width: CARD_W, zIndex: 4000,
+              pointerEvents: "none", padding: "10px 12px",
+              ["--itip-accent" as string]: nameColor,
+            }}
           >
-            <div className="console-corner tl" /><div className="console-corner tr" />
-            <div className="console-corner bl" /><div className="console-corner br" />
             <div className="flex items-center gap-2 min-w-0">
               <div className="shrink-0 flex items-center justify-center"
                 style={{ width: 30, height: 30, background: `${def.color}22`, border: `1px solid ${def.color}` }}>
@@ -1366,7 +1377,8 @@ function LoadoutTab({ stationId }: { stationId: string }) {
                 </>
               )}
             </div>
-          </div>
+          </div>,
+          document.body,
         );
       })()}
       {showAmmoPopup && (
@@ -1386,7 +1398,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
           <div className="panel" style={{ maxWidth: 640, width: "90vw", maxHeight: "80vh", overflowY: "auto", padding: 0 }}>
             <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b" style={{ borderColor: "var(--border-soft)" }}>
               <div className="text-cyan tracking-widest text-sm font-bold">AMMO MANAGEMENT</div>
-              <button className="gbtn gbtn-red" style={{ padding: "2px 8px", fontSize: 13 }} onClick={() => setShowAmmoPopup(false)}>✕ Close</button>
+              <button className="gbtn gbtn-red gbtn--quiet" style={{ padding: "2px 8px", fontSize: 13 }} onClick={() => setShowAmmoPopup(false)}>✕ Close</button>
             </div>
             <AmmoTab />
           </div>
@@ -1404,7 +1416,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
           <div className="panel" style={{ maxWidth: 560, width: "90vw", maxHeight: "80vh", overflowY: "auto", padding: 0 }}>
             <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b" style={{ borderColor: "var(--border-soft)" }}>
               <div className="text-cyan tracking-widest text-sm font-bold">CONSUMABLES SHOP</div>
-              <button className="gbtn gbtn-red" style={{ padding: "2px 8px", fontSize: 13 }} onClick={() => setShowConsumablesPopup(false)}>✕ Close</button>
+              <button className="gbtn gbtn-red gbtn--quiet" style={{ padding: "2px 8px", fontSize: 13 }} onClick={() => setShowConsumablesPopup(false)}>✕ Close</button>
             </div>
             <ConsumablesShop />
           </div>
@@ -1874,7 +1886,7 @@ function DronesTab() {
             <div className="panel" style={{ maxWidth: 520, width: "90vw", maxHeight: "78vh", overflowY: "auto", padding: 0 }}>
               <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b" style={{ borderColor: "var(--border-soft)" }}>
                 <div className="text-cyan tracking-widest text-sm font-bold">EQUIP · {meta.label.toUpperCase()} SLOT</div>
-                <button className="gbtn gbtn-red" style={{ padding: "2px 8px", fontSize: 13 }} onClick={() => setPicking(null)}>✕ Close</button>
+                <button className="gbtn gbtn-red gbtn--quiet" style={{ padding: "2px 8px", fontSize: 13 }} onClick={() => setPicking(null)}>✕ Close</button>
               </div>
               <div className="p-3">
                 {pet.equipped[picking] && (
