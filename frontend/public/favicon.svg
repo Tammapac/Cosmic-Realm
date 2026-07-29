@@ -1,3 +1,68 @@
-<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="180" height="180" rx="36" fill="#FF3C00"/>
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Cosmic Realm mark, derived from the key art. The full artwork (nebula,
+       fleet, wordmark) is unreadable at the 16-32 px a favicon is actually
+       drawn at, so only the load-bearing elements survive: the arched ring,
+       the CR monogram, and the cyan core flare. Colours are the HUD's own
+       tokens (cyan #4ee2ff, titanium ramp, navy plate). -->
+  <defs>
+    <linearGradient id="cr-plate" x1="256" y1="16" x2="256" y2="496" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1d2b44"/>
+      <stop offset="0.55" stop-color="#0d1626"/>
+      <stop offset="1" stop-color="#060a14"/>
+    </linearGradient>
+    <linearGradient id="cr-steel" x1="150" y1="150" x2="380" y2="400" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f2f8ff"/>
+      <stop offset="0.34" stop-color="#c3d5ea"/>
+      <stop offset="0.66" stop-color="#8098b5"/>
+      <stop offset="1" stop-color="#44607f"/>
+    </linearGradient>
+    <linearGradient id="cr-ring" x1="256" y1="70" x2="256" y2="330" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3b5372"/>
+      <stop offset="0.5" stop-color="#22344f"/>
+      <stop offset="1" stop-color="#101b2c"/>
+    </linearGradient>
+    <radialGradient id="cr-core" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.26" stop-color="#8af1ff"/>
+      <stop offset="0.60" stop-color="#4ee2ff" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#4ee2ff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- chamfered plate: the HUD's own 8-point window silhouette -->
+  <path d="M104 16 H408 L496 104 V408 L408 496 H104 L16 408 V104 Z" fill="url(#cr-plate)"/>
+  <path d="M104 16 H408 L496 104 V408 L408 496 H104 L16 408 V104 Z"
+        fill="none" stroke="#4ee2ff" stroke-opacity="0.55" stroke-width="9"/>
+
+  <!-- outer arch ring -->
+  <path d="M256 84 A162 162 0 0 1 418 246 V296 H372 V246 A116 116 0 0 0 140 246 V296 H94 V246 A162 162 0 0 1 256 84 Z"
+        fill="url(#cr-ring)" stroke="#5d7796" stroke-width="5"/>
+  <!-- cyan conduit along the inner edge of the arch -->
+  <path d="M256 122 A134 134 0 0 1 390 256" fill="none" stroke="#4ee2ff" stroke-width="12"
+        stroke-linecap="round" opacity="0.95"/>
+  <path d="M122 256 A134 134 0 0 1 182 145" fill="none" stroke="#4ee2ff" stroke-width="12"
+        stroke-linecap="round" opacity="0.55"/>
+
+  <!-- core flare behind the monogram -->
+  <circle cx="268" cy="268" r="128" fill="url(#cr-core)"/>
+
+  <!-- C and R sit SIDE BY SIDE with a real gap. An earlier version nested the
+       R's bowl inside the C's ring; at favicon sizes the two merged into an
+       unreadable blob. -->
+  <!-- C — open ring on the left, mouth facing right -->
+  <path d="M262 232 A64 64 0 1 0 262 328 L262 368 A104 104 0 1 1 262 192 Z"
+        fill="url(#cr-steel)" stroke="#0a1220" stroke-width="10" stroke-linejoin="round"/>
+
+  <!-- R — stem, bowl, angled leg -->
+  <path d="M306 196 H370 A51 51 0 0 1 370 298 H356 L438 364 H392 L356 286 H344 V364 H306 Z
+           M344 232 V262 H366 A15 15 0 0 0 366 232 Z"
+        fill="url(#cr-steel)" stroke="#0a1220" stroke-width="10" stroke-linejoin="round"
+        fill-rule="evenodd"/>
+
+  <!-- spark at the crown of the arch (on the letters it read as a hole) -->
+  <circle cx="256" cy="112" r="22" fill="#4ee2ff" opacity="0.35"/>
+  <circle cx="256" cy="112" r="10" fill="#eaffff"/>
+
+  <!-- lower chevron from the key art -->
+  <path d="M256 442 L290 416 H222 Z" fill="#4ee2ff" opacity="0.85"/>
 </svg>
