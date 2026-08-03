@@ -1,0 +1,34 @@
+{
+  "part-corner": {
+    "w": 96,
+    "h": 96
+  },
+  "part-edge-h": {
+    "w": 32,
+    "h": 96
+  },
+  "part-edge-v": {
+    "w": 96,
+    "h": 32
+  },
+  "part-seg-h": {
+    "w": 140,
+    "h": 40
+  },
+  "part-seg-v": {
+    "w": 40,
+    "h": 140
+  },
+  "_meta": {
+    "corner": 96,
+    "edgeThickness": 32,
+    "segH": [
+      140,
+      40
+    ],
+    "segV": [
+      40,
+      140
+    ]
+  }
+}

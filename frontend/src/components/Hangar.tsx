@@ -1,10 +1,11 @@
 import { sendDockRepair, sendDockLeave } from "../net/socket";
-import { state, bump, useGame, pushNotification, pushFloater, save, stationPrice, priceDirection, priceHistory, addCargo, removeCargo, cargoUsed, cargoCapacity, claimMission, rerollDaily, rerollMissionBoard, bumpMission, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, rocketAmmoMax, getAmmoWeaponIds, ensureAmmoInitialized, setAutoRestock, setAutoRepairHull, setAutoShieldRecharge, getActiveAmmoType, switchAmmoType, purchaseAmmoAmount, getAmmoCount, ROCKET_AMMO_COST_PER, rocketMissileMax, getActiveRocketAmmoType, switchRocketAmmoType, purchaseRocketAmmo, getRocketAmmoCount, startRefineJob, collectRefineJob, upgradeFactory, petDroneSlots, upgradePetDrone, equipPetSlot, unequipPetSlot, petBoundIds } from "../game/store";
+import { state, bump, useGame, pushNotification, pushFloater, save, stationPrice, priceDirection, priceHistory, addCargo, removeCargo, cargoUsed, cargoCapacity, claimMission, rerollDaily, rerollMissionBoard, bumpMission, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, rocketAmmoMax, getAmmoWeaponIds, ensureAmmoInitialized, setAutoRestock, setAutoRepairHull, setAutoShieldRecharge, getActiveAmmoType, switchAmmoType, purchaseAmmoAmount, getAmmoCount, ROCKET_AMMO_COST_PER, rocketMissileMax, getActiveRocketAmmoType, switchRocketAmmoType, purchaseRocketAmmo, getRocketAmmoCount, startRefineJob, collectRefineJob, upgradeFactory, petDroneSlots, upgradePetDrone, equipPetSlot, unequipPetSlot, petBoundIds, purchaseDroneAmmoAmount } from "../game/store";
 import {
   ActiveQuest, CONSUMABLE_DEFS, ConsumableId, DAILY_DUNGEON_BONUS, DRONE_DEFS, DroneKind, DroneMode, DUNGEONS, DungeonId, FACTIONS, MODULE_DEFS, ModuleDef, ModuleSlot, ModuleStats, RARITY_COLOR,
   Quest, QUEST_POOL, MISSION_BOARD_POOL, MissionCategory, RESOURCES, ResourceId, ROCKET_AMMO_TYPE_DEFS, RocketAmmoType, ROCKET_MISSILE_TYPE_DEFS, RocketMissileType, ROCKET_MISSILE_TYPE_ORDER, SHIP_CLASSES, SKILL_NODES, SkillNode, STATIONS, ShipClassId, SkillBranch,
   SkillId, ZONES, getDailyFeaturedDungeon, REFINE_RECIPES, FACTORY_SPEED_BONUS, FACTORY_UPGRADE_COSTS,
   PET_DRONE_UPGRADE_COST, PET_DRONE_SLOT_ORDER, PetDroneSlot, petDroneSlotCount,
+  droneModelForLevel, DRONE_AMMO_COST_PER,
 } from "../game/types";
 import type { HangarTab } from "../game/store";
 import { ENABLE_NEW_DOCKING_FLOW, ENABLE_HANGAR_3D_SCENE } from "../game/renderer-config";
@@ -78,6 +79,9 @@ function loadShipModel(path: string): Promise<THREE.Group> {
 type PreviewEntry = {
   scene: THREE.Scene; camera: THREE.PerspectiveCamera; model: THREE.Group | null;
   ctx: CanvasRenderingContext2D; size: number;
+  /** When true, the shared tick loop does NOT auto-spin the model — a
+   *  pointer-drag handler (see DronePreview) owns model.rotation instead. */
+  manualRotate?: boolean;
 };
 const _previews = new Set<PreviewEntry>();
 let _previewRAF = 0;
@@ -88,7 +92,7 @@ function ensurePreviewLoop() {
     const { renderer, canvas } = getSharedGL();
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     for (const p of _previews) {
-      if (p.model) p.model.rotation.y += 0.004;
+      if (p.model && !p.manualRotate) p.model.rotation.y += 0.004;
       const px = Math.round(p.size * dpr);
       if (canvas.width !== px || canvas.height !== px) renderer.setSize(px, px, false);
       renderer.render(p.scene, p.camera);
@@ -148,6 +152,105 @@ function ShipPreview({ shipId, color, size = 96 }: { shipId: string; color: stri
   }, [shipId, size]);
 
   return <canvas ref={canvasRef} width={size} height={size} style={{ display: "block", width: size, height: size }} />;
+}
+
+// ── Pet drone preview: same shared-renderer pool as ShipPreview, but the
+// player DRAGS to rotate it instead of watching it auto-spin — this is the
+// hangar's "inspect the thing I'm about to upgrade" view, not a passive
+// showcase. Swaps model on level up (DRONE_3D_MODELS keyed by level).
+function DronePreview({ level, size = 180 }: { level: number; size?: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const dragState = useRef<{ dragging: boolean; lastX: number; lastY: number }>({ dragging: false, lastX: 0, lastY: 0 });
+  const entryRef = useRef<PreviewEntry | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const modelPath = droneModelForLevel(Math.max(1, level) as any);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 1000);
+    camera.position.set(0, 1.2, 4.2);
+    camera.lookAt(0, 0, 0);
+    scene.add(new THREE.AmbientLight(0xffffff, 1.3));
+    const dir = new THREE.DirectionalLight(0xffffff, 2.2);
+    dir.position.set(2, 4, 3); scene.add(dir);
+    const fill = new THREE.DirectionalLight(0x4ee2ff, 0.7);
+    fill.position.set(-3, -1, -2); scene.add(fill);
+
+    const entry: PreviewEntry = { scene, camera, model: null, ctx, size, manualRotate: true };
+    entryRef.current = entry;
+    let disposed = false;
+
+    loadShipModel(modelPath).then((template) => {
+      if (disposed) return;
+      const inner = template.clone(true);
+      const box = new THREE.Box3().setFromObject(inner);
+      const center = box.getCenter(new THREE.Vector3());
+      const sizeVec = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(sizeVec.x, sizeVec.y, sizeVec.z, 0.001);
+      const scale = 2.6 / maxDim;
+      inner.scale.setScalar(scale);
+      inner.position.sub(center.multiplyScalar(scale));
+      // Rotation must pivot around the model's visual centre, not its own
+      // local origin — otherwise dragging swings the mesh through a wide arc
+      // instead of spinning in place (looks like the camera orbiting it). A
+      // wrapper group holds the already-centred inner model; ONLY the
+      // wrapper's rotation is touched by the drag handler.
+      const pivot = new THREE.Group();
+      pivot.add(inner);
+      // start at a flattering 3/4 angle rather than dead-on
+      pivot.rotation.y = 0.5;
+      pivot.rotation.x = -0.15;
+      scene.add(pivot);
+      entry.model = pivot;
+    }).catch(() => { /* leave blank on load failure */ });
+
+    _previews.add(entry);
+    ensurePreviewLoop();
+
+    return () => {
+      disposed = true;
+      _previews.delete(entry);
+      entryRef.current = null;
+    };
+  }, [level, size]);
+
+  const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    dragState.current = { dragging: true, lastX: e.clientX, lastY: e.clientY };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const ds = dragState.current;
+    if (!ds.dragging) return;
+    const dx = e.clientX - ds.lastX;
+    const dy = e.clientY - ds.lastY;
+    ds.lastX = e.clientX; ds.lastY = e.clientY;
+    const model = entryRef.current?.model;
+    if (model) {
+      model.rotation.y += dx * 0.012;
+      model.rotation.x = Math.max(-0.9, Math.min(0.9, model.rotation.x + dy * 0.012));
+    }
+  };
+  const onPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    dragState.current.dragging = false;
+    try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* already released */ }
+  };
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={size}
+      height={size}
+      style={{ display: "block", width: size, height: size, cursor: "grab", touchAction: "none" }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerLeave={onPointerUp}
+    />
+  );
 }
 
 let _pendingRiftConfirm: string | null = null;
@@ -1738,7 +1841,7 @@ function DronesTab() {
   const player = useGame((s) => s.player);
   const pet = player.petDrone;
   const slots = petDroneSlots();
-  const nextCost = pet.level < 3 ? PET_DRONE_UPGRADE_COST[(pet.level + 1) as 1 | 2 | 3] : null;
+  const nextCost = pet.level < 6 ? PET_DRONE_UPGRADE_COST[(pet.level + 1) as 1 | 2 | 3 | 4 | 5 | 6] : null;
   const canUpgrade = nextCost != null && player.bebcell >= nextCost;
   const bound = petBoundIds();
   // slot currently open for item selection
@@ -1781,7 +1884,11 @@ function DronesTab() {
         <div className="pet-stage">
           <div className="pet-stage__ring" />
           <div className="pet-stage__drone" style={{ opacity: pet.level > 0 ? 1 : 0.4 }}>
-            <div className="pet-stage__glyph">✦</div>
+            {pet.level > 0 ? (
+              <DronePreview level={pet.level} size={180} />
+            ) : (
+              <div className="pet-stage__glyph">✦</div>
+            )}
             <div className="pet-stage__lvl">LV {pet.level}</div>
           </div>
 
@@ -1798,7 +1905,7 @@ function DronesTab() {
                 style={unlocked ? { ["--slot-color" as any]: meta.color } : undefined}
                 disabled={!unlocked}
                 title={
-                  !unlocked ? `Locked — upgrade drone to Lv ${i + 1}`
+                  !unlocked ? `Locked — upgrade drone to Lv ${(i + 1) * 2}`
                   : def ? `${def.name} · click to change / right-click to remove`
                   : `Empty ${meta.label} slot — click to equip (${meta.accepts})`
                 }
@@ -1828,7 +1935,7 @@ function DronesTab() {
             <div className="console-corner bl" /><div className="console-corner br" />
             <div className="dob-hdr" style={{ margin: "-12px -12px 12px" }}><span>▼ DRONE STATUS</span></div>
             <div className="flex flex-col gap-2">
-              <Stat label="LEVEL" v={`${pet.level} / 3`} />
+              <Stat label="LEVEL" v={`${pet.level} / 6`} />
               <Stat label="SLOTS" v={`${slots} / 3`} />
               <Stat label="HULL" v={Math.round(pet.hpMax)} />
             </div>
@@ -1845,10 +1952,25 @@ function DronesTab() {
             ) : (
               <>
                 <div className="text-[12px] mb-2" style={{ color: "var(--hud-text-dim)", lineHeight: 1.5 }}>
-                  Upgrade to <b style={{ color: "var(--hud-cyan)" }}>Lv {pet.level + 1}</b> to unlock the{" "}
-                  <b style={{ color: PET_SLOT_META[PET_DRONE_SLOT_ORDER[pet.level]].color }}>
-                    {PET_SLOT_META[PET_DRONE_SLOT_ORDER[pet.level]].label}
-                  </b>{" "}slot.
+                  {(() => {
+                    // A slot unlocks only every OTHER level (2/4/6) — index into
+                    // PET_DRONE_SLOT_ORDER by slot COUNT, not by raw level.
+                    const willUnlock = petDroneSlotCount(pet.level + 1) > petDroneSlotCount(pet.level);
+                    const nextSlot = PET_DRONE_SLOT_ORDER[petDroneSlotCount(pet.level)];
+                    return (
+                      <>
+                        Upgrade to <b style={{ color: "var(--hud-cyan)" }}>Lv {pet.level + 1}</b>
+                        {willUnlock ? (
+                          <>
+                            {" "}to unlock the{" "}
+                            <b style={{ color: PET_SLOT_META[nextSlot].color }}>{PET_SLOT_META[nextSlot].label}</b>{" "}slot.
+                          </>
+                        ) : (
+                          <>. Strengthens the drone; the next slot unlocks at Lv {pet.level + 2}.</>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
                 <div className="pet-cost">
                   <span className="k">COST</span>
@@ -1879,6 +2001,44 @@ function DronesTab() {
               </>
             )}
           </div>
+
+          {pet.level > 0 && pet.equipped.weapon && (
+            <div className="console-sq mt-3" style={{ padding: 12 }}>
+              <div className="console-corner tl" /><div className="console-corner tr" />
+              <div className="console-corner bl" /><div className="console-corner br" />
+              <div className="dob-hdr" style={{ margin: "-12px -12px 12px" }}><span>▼ DRONE AMMO</span></div>
+              <div className="text-[11px] mb-2" style={{ color: "var(--hud-text-dim)", lineHeight: 1.5 }}>
+                A separate, weaker supply from your own laser/rocket ammo — buying one never refills the other.
+              </div>
+              <div className="pet-cost">
+                <span className="k">ROUNDS</span>
+                <span className="v tabular-nums">{player.droneAmmo ?? 0} / {player.droneAmmoMax ?? 0}</span>
+              </div>
+              <div className="bar mt-2 mb-3">
+                <div className="bar-fill" style={{
+                  width: `${Math.min(100, ((player.droneAmmo ?? 0) / Math.max(1, player.droneAmmoMax ?? 1)) * 100)}%`,
+                  background: "linear-gradient(90deg, #1f6f92, #4ee2ff)",
+                  boxShadow: "0 0 6px rgba(78,226,255,0.5)",
+                }} />
+              </div>
+              {(() => {
+                const missing = Math.max(0, (player.droneAmmoMax ?? 0) - (player.droneAmmo ?? 0));
+                const buyQty = Math.min(missing, 100);
+                const cost = buyQty * DRONE_AMMO_COST_PER;
+                return (
+                  <button
+                    className="gbtn w-full"
+                    style={{ padding: "6px 0", fontSize: 11, letterSpacing: "0.08em" }}
+                    disabled={missing <= 0 || player.credits < cost}
+                    onClick={() => purchaseDroneAmmoAmount(buyQty)}
+                    title={`${buyQty} rounds · ${DRONE_AMMO_COST_PER}cr each`}
+                  >
+                    {missing <= 0 ? "AMMO FULL" : `BUY ${buyQty} · -${cost.toLocaleString()}cr`}
+                  </button>
+                );
+              })()}
+            </div>
+          )}
 
           <div className="text-mute text-[11px] mt-3 italic" style={{ lineHeight: 1.5 }}>
             <b style={{ color: "var(--hud-magenta)" }}>Bebcell</b> drops only from bosses. The drone fights

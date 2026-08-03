@@ -11,8 +11,11 @@ import {
   Drone,
   PetDrone,
   PetDroneSlot,
+  PetDroneLevel,
   newPetDrone,
   petDroneSlotCount,
+  droneAmmoMaxForLevel,
+  DRONE_AMMO_COST_PER,
   PET_DRONE_UPGRADE_COST,
   PET_DRONE_SLOT_ORDER,
   DAILY_DUNGEON_BONUS,
@@ -273,6 +276,8 @@ function makeInitialPlayer(): Player {
     activeAmmoType: "x1" as RocketAmmoType,
     rocketAmmo: { cl1: 100, cl2: 0, bm3: 0, drock: 0 },
     activeRocketAmmoType: "cl1" as RocketMissileType,
+    droneAmmo: 100,
+    droneAmmoMax: droneAmmoMaxForLevel(0),
     autoRestock: false,
     autoRepairHull: false,
     autoShieldRecharge: false,
@@ -716,6 +721,8 @@ function _buildSavePayload(): Partial<Player> {
     activeAmmoType: p.activeAmmoType,
     rocketAmmo: p.rocketAmmo,
     activeRocketAmmoType: p.activeRocketAmmoType,
+    droneAmmo: p.droneAmmo,
+    droneAmmoMax: p.droneAmmoMax,
     autoRestock: p.autoRestock,
     autoRepairHull: p.autoRepairHull,
     autoShieldRecharge: p.autoShieldRecharge,
@@ -1140,24 +1147,27 @@ export function petDroneSlots(): number {
 /** Bebcell needed to reach the next level, or null when already maxed. */
 export function petDroneNextCost(): number | null {
   const lvl = state.player.petDrone.level;
-  if (lvl >= 3) return null;
-  return PET_DRONE_UPGRADE_COST[(lvl + 1) as 1 | 2 | 3];
+  if (lvl >= 6) return null;
+  return PET_DRONE_UPGRADE_COST[(lvl + 1) as 1 | 2 | 3 | 4 | 5 | 6];
 }
 
-/** Spend Bebcell to raise the pet drone one level (unlocking one slot). */
+/** Spend Bebcell to raise the pet drone one level. A new slot unlocks only
+ *  every OTHER level (2/4/6) — see petDroneSlotCount. */
 export function upgradePetDrone(): void {
   const pet = state.player.petDrone;
-  if (pet.level >= 3) { pushNotification("Drone already at max level", "bad"); return; }
-  const cost = PET_DRONE_UPGRADE_COST[(pet.level + 1) as 1 | 2 | 3];
+  if (pet.level >= 6) { pushNotification("Drone already at max level", "bad"); return; }
+  const cost = PET_DRONE_UPGRADE_COST[(pet.level + 1) as 1 | 2 | 3 | 4 | 5 | 6];
   if (state.player.bebcell < cost) {
     pushNotification(`Need ${cost} Bebcell (have ${state.player.bebcell})`, "bad");
     return;
   }
+  const slotsBefore = petDroneSlotCount(pet.level);
   state.player.bebcell -= cost;
-  pet.level = (pet.level + 1) as 0 | 1 | 2 | 3;
+  pet.level = (pet.level + 1) as PetDroneLevel;
   pet.hpMax = 400 + pet.level * 200;
   pet.hp = pet.hpMax;
-  pushNotification(`Drone upgraded to Lv ${pet.level} · +1 slot`, "good");
+  const gainedSlot = petDroneSlotCount(pet.level) > slotsBefore;
+  pushNotification(`Drone upgraded to Lv ${pet.level}${gainedSlot ? " · +1 slot" : ""}`, "good");
   save(); bump();
 }
 
@@ -1251,6 +1261,11 @@ export function ensureAmmoInitialized(): void {
     p.rocketAmmo[t] = Math.min(p.rocketAmmo[t], rMax);
   }
   if (!p.activeRocketAmmoType || !["cl1","cl2","bm3","drock"].includes(p.activeRocketAmmoType)) p.activeRocketAmmoType = "cl1";
+  // Drone ammo — a separate pool from the above, sized off drone level rather
+  // than equipped modules. Repaired here too, for saves predating this field.
+  p.droneAmmoMax = droneAmmoMaxForLevel(p.petDrone?.level ?? 0);
+  if (typeof p.droneAmmo !== "number") p.droneAmmo = Math.min(100, p.droneAmmoMax);
+  p.droneAmmo = Math.max(0, Math.min(p.droneAmmo, p.droneAmmoMax));
 }
 
 export function restockAmmo(): void {
@@ -1297,6 +1312,30 @@ export function purchaseAmmoAmount(type: RocketAmmoType, amount: number): void {
   p.ammo[type] = cur + canBuy;
   bumpMission("spend-credits", cost);
   pushNotification(`Bought ${canBuy} ${def.shortName} · -${cost}cr`, "good");
+  save(); bump();
+}
+
+/** Buy rounds for the drone's separate, weaker ammo pool. Cheaper per round
+ *  than any player laser/rocket tier, but its own pool — buying player ammo
+ *  never refills this, and vice versa. */
+export function purchaseDroneAmmoAmount(amount: number): void {
+  const p = state.player;
+  ensureAmmoInitialized();
+  const cur = p.droneAmmo ?? 0;
+  const canBuy = Math.min(amount, p.droneAmmoMax - cur);
+  if (canBuy <= 0) {
+    pushNotification("Drone ammo already full", "info");
+    return;
+  }
+  const cost = canBuy * DRONE_AMMO_COST_PER;
+  if (p.credits < cost) {
+    pushNotification(`Need ${cost}cr for ${canBuy} drone rounds`, "bad");
+    return;
+  }
+  p.credits -= cost;
+  p.droneAmmo = cur + canBuy;
+  bumpMission("spend-credits", cost);
+  pushNotification(`Bought ${canBuy} drone rounds · -${cost}cr`, "good");
   save(); bump();
 }
 

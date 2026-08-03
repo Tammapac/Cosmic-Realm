@@ -109,6 +109,7 @@ export function setupSocket(io: Server) {
       rocketAmmoType: "cl1",
       laserFireCd: 0,
       rocketFireCd: 0,
+      droneFireCd: 0,
       miningTargetId: null,
       lastHitTick: 0,
       shieldRegen: stats.shieldRegen,

@@ -256,15 +256,19 @@ export type Drone = {
 };
 
 // ── PET DRONE ───────────────────────────────────────────────────────────────
-// Every pilot has ONE companion drone. It levels 0→3 by spending Bebcell (a
-// boss-only upgrade material); each level unlocks one equipment slot. Slots hold
-// the SAME laser/module items as the ship (bound to the drone while equipped).
-//   Lvl 0: no slots        Lvl 1: 1 slot (weapon)
-//   Lvl 2: 2 slots (+ module)   Lvl 3: 3 slots (+ free)
+// Every pilot has ONE companion drone. It levels 0→6 by spending Bebcell (a
+// rare boss-only upgrade material, dropped far less often than normal loot).
+// A new model is loaded per level (see DRONE_3D_MODELS) — the drone visibly
+// grows more elaborate as it levels. Slots unlock every OTHER level, not every
+// level: slot 1 at lvl 2, slot 2 at lvl 4, slot 3 at lvl 6. Slots hold the SAME
+// laser/module items as the ship (bound to the drone while equipped).
+//   Lvl 0-1: no slots   Lvl 2-3: 1 slot (weapon)
+//   Lvl 4-5: 2 slots (+ module)   Lvl 6: 3 slots (+ free)
 export type PetDroneSlot = "weapon" | "module" | "extra";
+export type PetDroneLevel = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 export type PetDrone = {
-  level: 0 | 1 | 2 | 3;
+  level: PetDroneLevel;
   mode: DroneMode;
   hp: number;
   hpMax: number;
@@ -274,17 +278,37 @@ export type PetDrone = {
   equipped: { weapon: string | null; module: string | null; extra: string | null };
 };
 
-/** Bebcell cost to reach each level (index = target level). Deliberately steep. */
-export const PET_DRONE_UPGRADE_COST: Record<1 | 2 | 3, number> = { 1: 50, 2: 150, 3: 400 };
-/** How many equipment slots are active at a given pet-drone level. */
+/** Bebcell cost to reach each level (index = target level). Steep — Bebcell is
+ *  a rare boss drop, much scarcer than normal currency. */
+export const PET_DRONE_UPGRADE_COST: Record<1 | 2 | 3 | 4 | 5 | 6, number> = {
+  1: 30, 2: 80, 3: 180, 4: 350, 5: 650, 6: 1100,
+};
+/** How many equipment slots are active at a given pet-drone level. A slot
+ *  unlocks every OTHER level (2/4/6), not every level. */
 export function petDroneSlotCount(level: number): number {
-  return Math.max(0, Math.min(3, level));
+  return Math.max(0, Math.min(3, Math.floor(level / 2)));
 }
-/** Which slot each level unlocks, in order. */
+/** Which slot each unlock unlocks, in order. */
 export const PET_DRONE_SLOT_ORDER: PetDroneSlot[] = ["weapon", "module", "extra"];
 export function newPetDrone(): PetDrone {
   return { level: 0, mode: "orbit", hp: 400, hpMax: 400, orbitPhase: 0, fireCd: 0,
     equipped: { weapon: null, module: null, extra: null } };
+}
+
+/** GLB model per drone level. Level 0 (freshly acquired, no upgrades yet)
+ *  reuses the level-1 model — there is no "level 0" asset, and a bare drone
+ *  still needs to render as something before its first upgrade. */
+export const DRONE_3D_MODELS: Record<Exclude<PetDroneLevel, 0>, string> = {
+  1: "/models/drones/pet-drone-lv1.glb",
+  2: "/models/drones/pet-drone-lv2.glb",
+  3: "/models/drones/pet-drone-lv3.glb",
+  4: "/models/drones/pet-drone-lv4.glb",
+  5: "/models/drones/pet-drone-lv5.glb",
+  6: "/models/drones/pet-drone-lv6.glb",
+};
+/** Resolve the model path for any level, including 0 (falls back to lv1). */
+export function droneModelForLevel(level: PetDroneLevel): string {
+  return DRONE_3D_MODELS[level === 0 ? 1 : level];
 }
 
 export type HonorRank = {
@@ -378,6 +402,8 @@ export type Player = {
   activeAmmoType: RocketAmmoType;        // active laser ammo type
   rocketAmmo: Record<RocketMissileType, number>; // rocket ammo pool per type
   activeRocketAmmoType: RocketMissileType;       // active rocket ammo type
+  droneAmmo: number;              // separate, weaker ammo pool for the pet drone's weapon
+  droneAmmoMax: number;
   autoRestock: boolean;
   autoRepairHull: boolean;
   autoShieldRecharge: boolean;
@@ -763,6 +789,21 @@ export const ROCKET_AMMO_TYPE_DEFS: Record<RocketAmmoType, RocketAmmoTypeDef> = 
 };
 
 export const LASER_AMMO_TYPE_ORDER: RocketAmmoType[] = ["x1", "x2", "x3", "x4"];
+
+// ── DRONE AMMO ────────────────────────────────────────────────────────────
+// A separate, weaker pool from the player's own laser/rocket ammo. Fires
+// whatever weapon is equipped in the drone's weapon slot (laser OR rocket —
+// the drone has one slot), but always draws from this pool, not the ship's
+// ammo. Cheaper per round than even the weakest player tier (x1), but the
+// drone's own 0.6x damage multiplier (loop.ts/engine.ts) already weakens the
+// shot further — this pool is about SUPPLY, not a second damage penalty.
+export const DRONE_AMMO_COST_PER = 3;
+export const DRONE_AMMO_BASE_MAX = 500;
+/** droneAmmoMax bonus is NOT module-driven (unlike rocketAmmoMax) — capacity
+ *  scales with drone level instead, since the drone itself is the "module". */
+export function droneAmmoMaxForLevel(level: number): number {
+  return DRONE_AMMO_BASE_MAX + level * 150;
+}
 
 export type RocketMissileType = "cl1" | "cl2" | "bm3" | "drock";
 

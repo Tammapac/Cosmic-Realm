@@ -56,6 +56,11 @@ if (params.has("hud-showcase")) {
   import("./demo/DepthTest").then(({ default: DepthTest }) => {
     root.render(<DepthTest />);
   });
+} else if (params.has("pixi-ui-test")) {
+  // Isolated native-PixiJS UI harness (no login): open with ?pixi-ui-test.
+  import("./demo/PixiUiTest").then(({ default: PixiUiTest }) => {
+    root.render(<PixiUiTest />);
+  });
 } else if (params.has("hangar-test")) {
   // Isolated 3D hangar scene + docking cinematic harness: open with ?hangar-test.
   import("./demo/HangarTest").then(({ default: HangarTest }) => {

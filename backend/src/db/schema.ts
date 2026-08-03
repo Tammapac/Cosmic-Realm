@@ -68,6 +68,8 @@ export const players = pgTable(
     ammo: jsonb("ammo").notNull().default({}),
     rocketAmmoType: jsonb("rocket_ammo_type").notNull().default({}),
     ammoByType: jsonb("ammo_by_type").notNull().default({}),
+    droneAmmo: integer("drone_ammo").notNull().default(100),
+    droneAmmoMax: integer("drone_ammo_max").notNull().default(500),
     autoRestock: boolean("auto_restock").notNull().default(false),
     autoRepairHull: boolean("auto_repair_hull").notNull().default(false),
     autoShieldRecharge: boolean("auto_shield_recharge").notNull().default(false),

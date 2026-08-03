@@ -57,6 +57,15 @@ export type OnlinePlayer = {
   rocketAmmoType: string;
   laserFireCd: number;
   rocketFireCd: number;
+  // Server-side cooldown for the pet drone's own weapon fire, independent of
+  // the player's own laserFireCd/rocketFireCd. The drone fires only while the
+  // player is firing (isLaserFiring/isRocketFiring) AND has a weapon equipped
+  // in petDrone.equipped.weapon; see tickPlayerCombat's drone block. The
+  // drone's muzzle position is computed server-side from p.posX/posY/angle
+  // with the SAME formation formula the client uses for its visual (loop.ts
+  // updatePetDrone) — no separate anchor field needed, since it is a pure
+  // function of state the server already owns.
+  droneFireCd: number;
   shieldRegen: number;
   afterburnUntil: number;
   lastHitTick: number;

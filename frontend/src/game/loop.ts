@@ -740,12 +740,10 @@ function updatePetDrone(p: import("./types").Player, dt: number): void {
   const anyPet = pet as any;
   anyPet.orbitPhase = (pet.orbitPhase ?? 0) + dt * 1.5;
 
-  // formation anchor: one ship-length behind, gentle bob
+  // formation anchor: fixed one ship-length behind, no bob/rotation.
   const behind = p.angle + Math.PI;
-  const bob = Math.sin(anyPet.orbitPhase) * 8;
-  const perp = behind + Math.PI / 2;
-  const targetX = p.pos.x + Math.cos(behind) * 62 + Math.cos(perp) * bob;
-  const targetY = p.pos.y + Math.sin(behind) * 62 + Math.sin(perp) * bob;
+  const targetX = p.pos.x + Math.cos(behind) * 62;
+  const targetY = p.pos.y + Math.sin(behind) * 62;
   const lerp = Math.min(1, dt * 5);
   anyPet.anchorX = anyPet.anchorX != null ? anyPet.anchorX + (targetX - anyPet.anchorX) * lerp : targetX;
   anyPet.anchorY = anyPet.anchorY != null ? anyPet.anchorY + (targetY - anyPet.anchorY) * lerp : targetY;
@@ -769,10 +767,18 @@ function updatePetDrone(p: import("./types").Player, dt: number): void {
   pet.fireCd -= dt;
   const overcharged = (state.dronePodBoostUntil ?? 0) > performance.now();
   const rof = (wdef.stats.fireRate ?? 1) * (overcharged ? 2 : 1);
-  if (pet.fireCd <= 0 && nearest && (state.isLaserFiring || state.isRocketFiring)) {
+  // Gate on the drone's own ammo pool — separate from the player's laser/
+  // rocket ammo, and weaker. The server independently spawns the real,
+  // damage-dealing shot (engine.ts tickPlayerCombat's drone block); this
+  // local spawn is the same as the player's own — instant visual feedback
+  // that the server's next snapshot reconciles. Ammo itself is tracked
+  // client-side only (matching how player ammo already works: the server
+  // never checks it, see loop.ts's own laser/rocket fire blocks).
+  if (pet.fireCd <= 0 && nearest && (state.isLaserFiring || state.isRocketFiring) && p.droneAmmo > 0) {
     const dang = Math.atan2(nearest.pos.y - anyPet.anchorY, nearest.pos.x - anyPet.anchorX);
     const dmg = Math.round((wdef.stats.damage ?? 8) * 0.6); // drone fires at 60% of the weapon's ship damage
     fireProjectile("drone", anyPet.anchorX, anyPet.anchorY, dang, dmg, wdef.color ?? "#4ee2ff", 2, { targetId: nearest.id, weaponKind: wdef.weaponKind });
+    p.droneAmmo = Math.max(0, p.droneAmmo - 1);
     pet.fireCd = 1 / Math.max(0.3, rof);
   }
 }

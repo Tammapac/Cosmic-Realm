@@ -14,6 +14,7 @@ import { initHardpointEditor, toggleHardpointEditor, isEditorActive } from "./de
 import { DIRECTIONS_32 } from "./debug/hardpointTypes";
 import { init3DLayer, has3DModel, is3DReady, updateShip3D, setCameraZoom, beginFrame, markActive, endFrame, render3DLayer, getShipHardpointPositions, getShipMuzzleWorldPositionsAt, updateEngineGlow, updateNebulaBackground, removeShip3D, preload3DModels, getLoadingProgress, debugEnumerateAllMuzzles, setSelectedShipIds } from "./three-ship-layer";
 import { setStationCameraZoom, beginStationFrame, updateStationOnly, endStationFrame, renderStation3DLayer, removeStation3D, initStation3DLayer } from "./three-station-layer";
+import { initDrone3DLayer, setDroneCameraZoom, beginDroneFrame, updateDroneOnly, endDroneFrame, renderDrone3DLayer, removeDrone3D } from "./three-drone-layer";
 // Second, independent instance of the ship layer (separate module via query
 // suffix): renders ENEMY ships — with the same outline + bloom pipeline — to
 // an offscreen canvas composited as a Pixi sprite BELOW names/health bars/
@@ -100,6 +101,9 @@ let debugMuzzleLabels: PIXI.Container | null = null;
 let stationSprite: PIXI.Sprite | null = null;
 let stationTexture: PIXI.Texture | null = null;
 let stationBaseTexture: PIXI.BaseTexture | null = null;
+let droneSprite3D: PIXI.Sprite | null = null;
+let droneTexture3D: PIXI.Texture | null = null;
+let droneBaseTexture3D: PIXI.BaseTexture | null = null;
 
 // ── Enemy 3D call routing ───────────────────────────────────────────────────
 // The enemy models used to come from a SECOND copy of the ship layer, loaded
@@ -1757,6 +1761,23 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
 
   } // ── end legacy three-renderer layout ─────────────────────────────────
 
+  // Pet drone 3D pass: own tiny transparent Three.js layer, composited as a
+  // Pixi sprite just above playerLayer (drone floats near/behind the ship,
+  // drawn above ship hulls, below projectiles/effects). See three-drone-layer.ts.
+  // Independent of ENABLE_SHARED_3D_SCENE — it never touches the ship/station
+  // scene or renderer, shared or legacy, so it boots the same way either path.
+  {
+    const droneCanvas3D = initDrone3DLayer(app.screen.width, app.screen.height);
+    droneBaseTexture3D = new PIXI.BaseTexture(droneCanvas3D, {
+      scaleMode: PIXI.SCALE_MODES.LINEAR,
+      alphaMode: PIXI.ALPHA_MODES.UNPACK,
+    });
+    droneTexture3D = new PIXI.Texture(droneBaseTexture3D);
+    droneSprite3D = new PIXI.Sprite(droneTexture3D);
+    droneSprite3D.anchor.set(0.5, 0.5);
+    worldLayer.addChildAt(droneSprite3D, worldLayer.getChildIndex(playerLayer) + 1);
+  }
+
   // Initialize hardpoint editor (F9 to toggle)
   initHardpointEditor(app, state.player?.shipClass || "skimmer");
 
@@ -1797,6 +1818,11 @@ function updateHudSafe(dt: number) {
 
 export function destroyPixiRenderer(): void {
   if (!app) return;
+
+  // Explicitly unmount the native HUD first. app.destroy() cascades the scene
+  // graph, but the native UI may hold external listeners (window/pointer) that
+  // only unmountHud() removes — so it must run before the app goes away.
+  if (_hudApi) { try { _hudApi.unmountHud(); } catch (e) { /* non-fatal */ } _hudApi = null; }
 
   // Tear down the enemy 3D pass (sprite + texture + its ship-layer instance)
   if (enemyShipSprite) {
@@ -1978,8 +2004,10 @@ export function pixiRender(): void {
   // ── 3D Layer frame start ──
   setCameraZoom(zoom);
   setStationCameraZoom(zoom);
+  setDroneCameraZoom(zoom);
   beginFrame();
   beginStationFrame();
+  beginDroneFrame();
   // Legacy layout only: the second ship-layer instance has its own zoom and its
   // own per-frame liveness set. In the shared layout enemies go through the
   // same beginFrame()/endFrame() as every other ship.
@@ -2056,11 +2084,14 @@ export function pixiRender(): void {
   // ── 3D Layer cleanup + render ──
   endFrame();
   endStationFrame();
+  endDroneFrame();
   if (!ENABLE_SHARED_3D_SCENE) endEnemyFrame();
   // updateNebulaBackground(cam.x, cam.y); — disabled, using sprite layers
   renderStation3DLayer();
+  renderDrone3DLayer();
   // Push updated Three.js station pixels into the Pixi sprite texture
   if (stationBaseTexture) stationBaseTexture.update();
+  if (droneBaseTexture3D) droneBaseTexture3D.update();
   // Keep the sprite matched to the Pixi viewport size
   if (stationSprite && stationSprite.width !== app!.screen.width) {
     stationSprite.width = app!.screen.width;
@@ -2104,6 +2135,11 @@ export function pixiRender(): void {
     enemyShipSprite.height = h / zoom;
   }
   if (!ENABLE_SHARED_3D_SCENE) render3DLayer();
+  if (droneSprite3D) {
+    droneSprite3D.position.set(cam.x, cam.y);
+    droneSprite3D.width = w / zoom;
+    droneSprite3D.height = h / zoom;
+  }
 
   // ── Starblast VFX systems tick ──────────────────────────────────────
   // Laserticles' shader/lifetime math is in Starblast's native 60Hz-tick
@@ -4231,21 +4267,18 @@ function syncDebugMuzzleMarkers(): void {
 function syncDrones(): void {
   const activeIds = new Set<string>();
 
-  // Local player pet drone — single companion, key: "player:pet"
+  // Local player pet drone — single companion, key: "player:pet". Rendered
+  // as a real GLB model via three-drone-layer.ts (per-level, matching the
+  // Hangar preview) instead of the flat Pixi glow-dot other players still use.
+  // Independent of ENABLE_SHARED_3D_SCENE — three-drone-layer.ts is its own
+  // renderer/scene, unaffected by which path the ship/station layer takes.
   {
     const pet = state.player.petDrone as any;
     if (pet && pet.level > 0 && pet.anchorX != null) {
       const key = "player:pet";
       activeIds.add(key);
-      let g = droneSprites.get(key);
-      if (!g) {
-        g = new PIXI.Graphics();
-        playerLayer.addChild(g);
-        droneSprites.set(key, g);
-      }
-      g.visible = true;
-      g.position.set(pet.anchorX, pet.anchorY);
-      drawDroneSprite(g, "pet", 0);
+      const cam = state.player.pos;
+      updateDroneOnly(key, pet.level, pet.anchorX, pet.anchorY, cam.x, cam.y, state.player.angle);
     }
   }
 

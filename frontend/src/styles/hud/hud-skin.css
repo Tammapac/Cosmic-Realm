@@ -1551,7 +1551,7 @@ select.ginput {
 }
 .pet-stage__drone {
   position: relative; z-index: 2; display: grid; place-items: center;
-  width: 120px; height: 120px;
+  width: 180px; height: 180px;
 }
 .pet-stage__glyph {
   font-size: 72px; line-height: 1; color: var(--hud-cyan);

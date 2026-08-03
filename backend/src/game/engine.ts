@@ -235,7 +235,7 @@ export type GameEvent =
   | { type: "npc:die"; zone: string; npcId: string }
   | { type: "player:hit"; playerId: number; damage: number; zone: string; pos: Vec2; killerId: number | null }
   | { type: "player:die"; playerId: number; zone: string; pos: Vec2; killerId: number | null }
-  | { type: "projectile:spawn"; zone: string; fromPlayerId: number; x: number; y: number; vx: number; vy: number; damage: number; color: string; size: number; crit: boolean; weaponKind: "laser" | "rocket" | "energy" | "plasma"; homing: boolean; ammoType?: string; ttl: number; hardpointIndex?: number; hardpointRing?: "muzzle" | "weapon"; shipClass?: string; targetId?: string };
+  | { type: "projectile:spawn"; zone: string; fromPlayerId: number; x: number; y: number; vx: number; vy: number; damage: number; color: string; size: number; crit: boolean; weaponKind: "laser" | "rocket" | "energy" | "plasma"; homing: boolean; ammoType?: string; ttl: number; hardpointIndex?: number; hardpointRing?: "muzzle" | "weapon" | "drone"; shipClass?: string; targetId?: string; fromDrone?: boolean };
 
 export type ClientEnemy = {
   id: string;
@@ -1265,6 +1265,103 @@ export class GameEngine {
 
         const rCd = 1.5 / (stats.fireRate * 0.5);
         p.rocketFireCd = rCd;
+      }
+
+      // ── PET DRONE WEAPON FIRE ──────────────────────────────────────────
+      // Previously 100% client-cosmetic: the client spawned a local-only
+      // projectile (fireProjectile("drone", ...)) with no server counterpart,
+      // so its hits were overwritten by the next authoritative enemy-hp
+      // snapshot and dealt zero real damage. This block makes it real: same
+      // trust model as the player's own laser/rocket fire above — server
+      // decides, spawns the authoritative projectile, client only predicts.
+      //
+      // One weapon slot on the drone (types.ts PetDroneSlot): whatever is
+      // equipped there fires — laser or rocket, matching its own weaponKind
+      // (no dual-fire; see the design decision this mirrors client-side).
+      // Fires only while the player is actively firing (isLaserFiring /
+      // isRocketFiring) — the drone is an extension of the player's trigger,
+      // not an independent auto-turret.
+      p.droneFireCd -= dt;
+      const petDrone = pData.petDrone;
+      const droneWeaponId: string | null = petDrone?.level > 0 ? petDrone?.equipped?.weapon ?? null : null;
+      if (droneWeaponId && p.droneFireCd <= 0 && (p.isLaserFiring || p.isRocketFiring)) {
+        const droneItem = pData.inventory?.find((m: any) => m.instanceId === droneWeaponId);
+        const droneDef = droneItem ? MODULE_DEFS[droneItem.defId] : null;
+        if (droneDef && (droneDef.weaponKind === "laser" || droneDef.weaponKind === "rocket")) {
+          // Anchor: same formation formula as the client's visual (loop.ts
+          // updatePetDrone) — fixed one ship-length behind, no bob/rotation —
+          // computed here from state the server already owns (p.angle/posX/posY),
+          // so no extra client-reported field is needed or trusted.
+          const behind = p.angle + Math.PI;
+          const anchorX = p.posX + Math.cos(behind) * 62;
+          const anchorY = p.posY + Math.sin(behind) * 62;
+          const droneTarget = target; // same lock/free-aim resolution as the player
+          if (droneTarget || freeAim) {
+            const droneAng = freeAim
+              ? freeAimAng(anchorX, anchorY, 400)
+              : angleFromTo({ x: anchorX, y: anchorY }, droneTarget!.pos);
+            // Own weapon's own base damage (its `stats.damage`), NOT the
+            // player's effectiveStats — the drone fires ITS gun, not a copy
+            // of the ship's. 0.6x is the existing drone-is-weaker convention
+            // (matches the client's old cosmetic-only multiplier).
+            const baseDmg = (droneDef.stats?.damage ?? 8) * 0.6;
+            const crit = Math.random() < (stats.critChance * 0.5); // drones crit less often
+            if (droneDef.weaponKind === "laser") {
+              const ammoDef = ROCKET_AMMO_TYPE_DEFS["x1" as RocketAmmoType]; // drone ammo is always weakest-tier equivalent
+              const dmg = Math.round(baseDmg * (ammoDef?.damageMul ?? 1));
+              const spd = 420;
+              const proj: ServerProjectile = {
+                id: eid("proj"), zone: zoneId, fromPlayerId: p.playerId,
+                fromEnemyId: null, fromNpcId: null,
+                pos: { x: anchorX, y: anchorY },
+                vel: { x: Math.cos(droneAng) * spd, y: Math.sin(droneAng) * spd },
+                damage: dmg, ttl: freeAim ? Math.min(1.5, 440 / spd) : 1.5,
+                color: "#8af1ff", size: 3, crit,
+                weaponKind: "laser", homing: false, homingTargetId: null,
+                aoeRadius: 0, empStun: 0, armorPiercing: false, freeAim,
+              };
+              zs.projectiles.set(proj.id, proj);
+              events.push({
+                type: "projectile:spawn", zone: zoneId, fromPlayerId: p.playerId,
+                x: proj.pos.x, y: proj.pos.y, vx: proj.vel.x, vy: proj.vel.y,
+                damage: proj.damage, color: proj.color, size: proj.size,
+                crit: proj.crit, weaponKind: "laser", homing: proj.homing,
+                ttl: proj.ttl, hardpointIndex: 0, hardpointRing: "drone",
+                shipClass: p.shipClass, targetId: freeAim ? assistEnemy?.id : (droneTarget as any)?.id,
+                fromDrone: true,
+              });
+              p.droneFireCd = Math.max(0.4, 1.1 / stats.fireRate);
+            } else {
+              // rocket
+              const missileDef = ROCKET_MISSILE_TYPE_DEFS["cl1" as RocketMissileType];
+              const dmg = Math.round(baseDmg * (missileDef?.damageMul ?? 1) * 2.5);
+              const spd = 260;
+              const rocketHoming = freeAim ? assistEnemy != null : true;
+              const proj: ServerProjectile = {
+                id: eid("proj"), zone: zoneId, fromPlayerId: p.playerId,
+                fromEnemyId: null, fromNpcId: null,
+                pos: { x: anchorX, y: anchorY },
+                vel: { x: Math.cos(droneAng) * spd, y: Math.sin(droneAng) * spd },
+                damage: dmg, ttl: rocketHoming ? 4.0 : 1.7,
+                color: "#ff8a4e", size: 4, crit,
+                weaponKind: "rocket", homing: rocketHoming,
+                homingTargetId: freeAim ? (assistEnemy?.id ?? null) : ((droneTarget as any)?.id ?? null),
+                aoeRadius: 0, empStun: 0, armorPiercing: false, freeAim,
+              };
+              zs.projectiles.set(proj.id, proj);
+              events.push({
+                type: "projectile:spawn", zone: zoneId, fromPlayerId: p.playerId,
+                x: proj.pos.x, y: proj.pos.y, vx: proj.vel.x, vy: proj.vel.y,
+                damage: proj.damage, color: proj.color, size: proj.size,
+                crit: proj.crit, weaponKind: "rocket", homing: proj.homing,
+                ttl: proj.ttl, hardpointIndex: 0, hardpointRing: "drone",
+                shipClass: p.shipClass, targetId: proj.homingTargetId ?? undefined,
+                fromDrone: true,
+              });
+              p.droneFireCd = Math.max(0.8, 1.8 / stats.fireRate);
+            }
+          }
+        }
       }
     }
   }

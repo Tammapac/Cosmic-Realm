@@ -1,0 +1,13 @@
+{
+  "frame": {
+    "base": "textures/frame-base.png",
+    "emissive": "emissive/frame-glow.png",
+    "size": 320,
+    "nineSlice": {
+      "left": 54,
+      "top": 54,
+      "right": 54,
+      "bottom": 54
+    }
+  }
+}

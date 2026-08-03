@@ -140,6 +140,20 @@ function readNewSkillsFlag(): boolean {
 }
 export const ENABLE_NEW_SKILLS = readNewSkillsFlag();
 
+// ── Native PixiJS UI layer (?pixi-ui) ───────────────────────────────────────
+// Gates the native, renderer-drawn HUD (src/game/hud/*) that replaces the
+// React/CSS combat HUD with PixiJS-drawn armor plates, energy shaders and
+// stateful components. OFF by default: the React HUD stays live until the
+// native slice reaches parity and is verified. Opt-in with ?pixi-ui. When on,
+// the native combat HUD mounts into uiLayer and the React combat elements
+// (TopPanel/Hotbar/resource bars) are suppressed; everything else stays React
+// until later slices. Reads the same `state` singleton — no gameplay change.
+function readPixiUiFlag(): boolean {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).has("pixi-ui");
+}
+export const ENABLE_PIXI_UI = readPixiUiFlag();
+
 // How far above the world plane the ship groups float, in scene units per unit
 // of camera zoom.
 //
