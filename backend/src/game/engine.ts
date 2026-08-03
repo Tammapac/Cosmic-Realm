@@ -12,6 +12,7 @@ import {
 import type { OnlinePlayer } from "../socket/state.js";
 import { MOVEMENT } from "../../../lib/game-constants.js";
 import { rollEnemyEquipDrop } from "./lootService.js";
+import { creditCurrency } from "./currency.js";
 import { resolveAffixStats, type ItemInstance } from "../../../lib/loot/loot.js";
 import { shipHitTestSwept, enemyModelKey, enemySizeScale, PLAYER_SIZE_SCALE } from "../../../lib/hitbox.js";
 
@@ -797,6 +798,18 @@ export class GameEngine {
   private shotCounters = new Map<number, number>();
   // def-phoenix cooldown (absolute ms timestamp of the next allowed proc).
   private phoenixReady = new Map<number, number>();
+
+  // Fire-and-forget bebcell credit for a boss-kill payout. tick() is
+  // synchronous (30Hz loop — must never await a DB round trip), so this
+  // kicks the DB write off in the background and only logs on failure; the
+  // event already sent to the client for the floater/UI is cosmetic only,
+  // the DB row from creditCurrency() is what actually persists the balance.
+  private creditBossBebcell(playerId: number | null | undefined, amount: number | undefined): void {
+    if (!playerId || !amount || amount <= 0) return;
+    creditCurrency(playerId, "bebcell", amount).catch((err) => {
+      console.error(`[currency] failed to credit ${amount} bebcell to player ${playerId}:`, err);
+    });
+  }
 
   constructor() {
     for (const zone of Object.values(ZONES)) {
@@ -1650,6 +1663,7 @@ export class GameEngine {
               // amount (scales with zone tier) so upgrades take many boss kills.
               if (e.isBoss) {
                 loot.bebcell = Math.max(1, Math.round((2 + Math.floor(Math.random() * 3)) * (1 + (zoneDef.enemyTier - 1) * 0.5)));
+                this.creditBossBebcell(proj.fromPlayerId, loot.bebcell);
               }
               const rolledItem = rollEnemyEquipDrop(e, zoneId, proj.fromPlayerId, killerLootBonus);
               if (rolledItem) loot.item = rolledItem;
@@ -2131,6 +2145,7 @@ export class GameEngine {
       // Bebcell — boss-only pet-drone upgrade material (scales with zone tier).
       if (e.isBoss) {
         loot.bebcell = Math.max(1, Math.round((2 + Math.floor(Math.random() * 3)) * tierMult));
+        this.creditBossBebcell(playerId, loot.bebcell);
       }
       const rolledItem = rollEnemyEquipDrop(e, zone, playerId, stats.lootBonus);
       if (rolledItem) loot.item = rolledItem;

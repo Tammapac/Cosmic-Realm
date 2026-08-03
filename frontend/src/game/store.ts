@@ -63,7 +63,7 @@ import {
 } from "./types";
 import { sfx } from "./sound";
 import { lootSellPrice } from "./loot-ui";
-import { sendWarp, sendStatsUpdate, sendDockRepair, sendDockLeave, sendInstanceEnter, sendInstanceLeave } from "../net/socket";
+import { sendWarp, sendStatsUpdate, sendDockRepair, sendDockLeave, sendInstanceEnter, sendInstanceLeave, sendDroneUpgrade } from "../net/socket";
 
 export type HangarTab =
   | "bounties" | "loadout" | "ships" | "drones" | "market" | "ammo" | "cargo" | "repair" | "skills" | "missions" | "dungeons" | "refinery"
@@ -263,6 +263,7 @@ function makeInitialPlayer(): Player {
     party: [],
     petDrone: newPetDrone(),
     bebcell: 0,
+    premium: false,
     faction: null,
     skills: {},
     skillPoints: 0,
@@ -700,7 +701,9 @@ function _buildSavePayload(): Partial<Player> {
     exp: p.exp,
     credits: p.credits,
     honor: p.honor,
-    mcoins: p.mcoins,
+    // mcoins/bebcell deliberately omitted — server-authoritative, ignored by
+    // /save even if present; see currency.ts and the reconciliation in
+    // _scheduleDeferredSave's fetch().then() below.
     cargo: p.cargo,
     zone: p.zone,
     ownedShips: p.ownedShips,
@@ -708,7 +711,6 @@ function _buildSavePayload(): Partial<Player> {
     completedQuests: p.completedQuests,
     clan: p.clan,
     petDrone: p.petDrone,
-    bebcell: p.bebcell,
     faction: p.faction,
     skills: p.skills,
     skillPoints: p.skillPoints,
@@ -751,7 +753,19 @@ function _scheduleDeferredSave(toSave: Partial<Player>, pos: { x: number; y: num
             Authorization: `Bearer ${localStorage.getItem("cosmic-token")}`,
           },
           body: JSON.stringify({ ...toSave, pos }),
-        }).catch(() => {});
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((res) => {
+            // Reconcile the server-authoritative currency balances. Read
+            // from state.player fresh (not the `toSave` snapshot) since time
+            // has passed since this save was queued and another credit
+            // (e.g. a boss kill) may have landed in between — only overwrite
+            // with what the server just confirmed, never go backwards from
+            // a stale snapshot.
+            if (res && typeof res.bebcell === "number") state.player.bebcell = res.bebcell;
+            if (res && typeof res.mcoins === "number") state.player.mcoins = res.mcoins;
+          })
+          .catch(() => {});
       }
     } catch { /* ignore */ }
   };
@@ -770,16 +784,17 @@ export function save(): void {
     const p = state.player;
     const toSave = _buildSavePayload();
     // sendStatsUpdate is a lightweight socket emit — fine on the hot path.
+    // mcoins/bebcell are server-authoritative (backend/src/game/currency.ts)
+    // and deliberately NOT sent here — the server ignores them even if sent,
+    // but omitting them documents that this client can no longer set them.
     sendStatsUpdate({
       level: p.level,
       shipClass: p.shipClass,
       honor: p.honor,
-      mcoins: p.mcoins,
       inventory: p.inventory,
       equipped: p.equipped,
       skills: p.skills,
       petDrone: p.petDrone,
-      bebcell: p.bebcell,
       faction: p.faction ?? undefined,
     });
     // The heavy JSON.stringify + localStorage.setItem + fetch happens during
@@ -823,6 +838,8 @@ export function loadServerPlayer(data: any): void {
   if (data.credits != null && !isNaN(data.credits)) p.credits = data.credits;
   if (data.honor != null) p.honor = data.honor;
   if (typeof data.mcoins === "number") p.mcoins = data.mcoins;
+  if (typeof data.premium === "boolean") p.premium = data.premium;
+  if (typeof data.premiumUntil === "number") p.premiumUntil = data.premiumUntil;
   if (data.hull != null) p.hull = data.hull;
   if (data.shield != null) p.shield = data.shield;
   if (data.zone) p.zone = data.zone;
@@ -1152,20 +1169,37 @@ export function petDroneNextCost(): number | null {
 }
 
 /** Spend Bebcell to raise the pet drone one level. A new slot unlocks only
- *  every OTHER level (2/4/6) — see petDroneSlotCount. */
-export function upgradePetDrone(): void {
+ *  every OTHER level (2/4/6) — see petDroneSlotCount. Server-authoritative:
+ *  this only REQUESTS the upgrade over the socket (sendDroneUpgrade); the
+ *  server re-checks the level/cost against its own DB row and spends
+ *  bebcell atomically there. Nothing here mutates state.player.bebcell or
+ *  .petDrone.level directly — those come back in the server's response and
+ *  are applied only on success, so a stale/forged client can't grant itself
+ *  levels it didn't pay for. */
+export async function upgradePetDrone(): Promise<void> {
   const pet = state.player.petDrone;
   if (pet.level >= 6) { pushNotification("Drone already at max level", "bad"); return; }
+  // Optimistic pre-check only — purely to avoid a pointless round trip when
+  // the balance is obviously insufficient; the server re-validates for real.
   const cost = PET_DRONE_UPGRADE_COST[(pet.level + 1) as 1 | 2 | 3 | 4 | 5 | 6];
   if (state.player.bebcell < cost) {
     pushNotification(`Need ${cost} Bebcell (have ${state.player.bebcell})`, "bad");
     return;
   }
   const slotsBefore = petDroneSlotCount(pet.level);
-  state.player.bebcell -= cost;
-  pet.level = (pet.level + 1) as PetDroneLevel;
-  pet.hpMax = 400 + pet.level * 200;
-  pet.hp = pet.hpMax;
+  const res = await sendDroneUpgrade();
+  if (!res.ok) {
+    if (typeof res.bebcell === "number") state.player.bebcell = res.bebcell;
+    pushNotification(res.error ?? "Upgrade failed", "bad");
+    bump();
+    return;
+  }
+  if (typeof res.bebcell === "number") state.player.bebcell = res.bebcell;
+  if (res.petDrone) {
+    pet.level = res.petDrone.level as PetDroneLevel;
+    pet.hpMax = res.petDrone.hpMax;
+    pet.hp = res.petDrone.hp;
+  }
   const gainedSlot = petDroneSlotCount(pet.level) > slotsBefore;
   pushNotification(`Drone upgraded to Lv ${pet.level}${gainedSlot ? " · +1 slot" : ""}`, "good");
   save(); bump();

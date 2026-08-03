@@ -2962,9 +2962,12 @@ export function onEnemyDie(data: EnemyDieEvent): void {
   pushFloater({ text: `+${loot.exp} XP`, color: "#ff5cf0", x: pos.x - 15, y: pos.y - 30, scale: 0.9 });
   pushFloater({ text: `+${loot.credits} CR`, color: "#ffd24a", x: pos.x + 15, y: pos.y - 16, scale: 0.9 });
   if (loot.honor > 0) pushFloater({ text: `+${loot.honor} H`, color: "#c8a0ff", x: pos.x, y: pos.y - 2, scale: 0.8 });
-  // Bebcell — boss-only pet-drone upgrade material, granted instantly like a currency.
+  // Bebcell — boss-only pet-drone upgrade material. Server-authoritative: the
+  // server already credited this via creditCurrency() (engine.ts) when it
+  // rolled the drop. The floater here is cosmetic feedback only — the real
+  // balance is NOT applied client-side anymore (was a dupe/inflate vector);
+  // it syncs in from the server on the next save response / reconnect.
   if ((loot as any).bebcell && (loot as any).bebcell > 0) {
-    p.bebcell = (p.bebcell ?? 0) + (loot as any).bebcell;
     pushFloater({ text: `+${(loot as any).bebcell} BEBCELL`, color: "#b866ff", x: pos.x, y: pos.y - 46, scale: 1.1, bold: true, ttl: 2.6 });
   }
 

@@ -564,6 +564,20 @@ export function sendDockRepair(hull: number, shield: number) {
   socket?.emit("dock:repair", { hull, shield });
 }
 
+/** Server-authoritative pet-drone level-up request. The server validates the
+ *  bebcell cost against its own balance/table and replies with the actual
+ *  resulting petDrone + bebcell — the caller must apply THOSE, not assume the
+ *  request succeeded just because it was sent. Resolves to an error result
+ *  (never rejects) if the socket is disconnected or the server says no. */
+export function sendDroneUpgrade(): Promise<{ ok: boolean; error?: string; petDrone?: any; bebcell?: number }> {
+  return new Promise((resolve) => {
+    if (!socket) { resolve({ ok: false, error: "Not connected" }); return; }
+    socket.emit("drone:upgrade", {}, (res: { ok: boolean; error?: string; petDrone?: any; bebcell?: number }) => {
+      resolve(res ?? { ok: false, error: "No response" });
+    });
+  });
+}
+
 export function sendInstanceEnter(dungeonId: string) {
   socket?.emit("instance:enter", { dungeonId });
 }

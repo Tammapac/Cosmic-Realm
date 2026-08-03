@@ -826,16 +826,17 @@ export class HangarScene {
         blendIntensity: number;
         updateGtaoMaterial?: (o: Record<string, number>) => void;
       };
-      g.blendIntensity = 1.5; // stronger so objects get a real CONTACT shadow at
-                              //   their base — before, crates/barrels/ship read as
-                              //   floating (no grounding shade where they meet the deck)
+      g.blendIntensity = 1.9; // pushed further — the ship's own contact ring at the
+                              //   hull/pad seam was reading as barely-there against
+                              //   the bright pad surface, still looking like it hovers
       g.updateGtaoMaterial?.({
-        radius: 0.7,          // reaches the floor at each object's foot for a clear
-                              //   contact darkening, still tight enough for seams
+        radius: 0.55,         // tighter than before: a pointed dark seam right at each
+                              //   foot/hull-edge reads as real ground contact; too wide
+                              //   a radius just dims the whole pad instead of the seam
         distanceExponent: 1,
         thickness: 1,
-        scale: 1.5,          // occlusion strength
-        distanceFallOff: 0.5,
+        scale: 2.2,          // stronger occlusion right at the contact line
+        distanceFallOff: 0.4,
       });
       finalComposer.addPass(gtao);
       this.gtaoPass = gtao;
@@ -1365,7 +1366,11 @@ export class HangarScene {
       if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; }
     });
     this.shipRecenter.copy(center).multiplyScalar(-scale);
-    this.shipLift = (size.y * scale) / 2 + 0.05;
+    // Tiny epsilon (not a visible gap) purely to avoid same-plane z-fighting
+    // between the hull's belly and the pad mesh — 0.05 read as a floating
+    // ship at this room scale; the AO contact shadow below carries the rest
+    // of the "resting weight" look.
+    this.shipLift = (size.y * scale) / 2 + 0.01;
     // Orientation model (verified in-scene): the model's nose is its +X axis, which
     // maps to world +Z at ship yaw -π/2, and to world -Z at yaw +π/2.
     // Intro choreography: the ship flies in NOSE-FIRST toward the -Z wall, lands,

@@ -1,3 +1,5 @@
+import { PET_DRONE_UPGRADE_COST as SHARED_PET_DRONE_UPGRADE_COST } from "../../../lib/game-constants";
+
 export type Vec2 = { x: number; y: number };
 
 export type ZoneId =
@@ -279,10 +281,9 @@ export type PetDrone = {
 };
 
 /** Bebcell cost to reach each level (index = target level). Steep — Bebcell is
- *  a rare boss drop, much scarcer than normal currency. */
-export const PET_DRONE_UPGRADE_COST: Record<1 | 2 | 3 | 4 | 5 | 6, number> = {
-  1: 30, 2: 80, 3: 180, 4: 350, 5: 650, 6: 1100,
-};
+ *  a rare boss drop, much scarcer than normal currency. Re-exported from the
+ *  shared lib so client display and server validation can never drift. */
+export const PET_DRONE_UPGRADE_COST = SHARED_PET_DRONE_UPGRADE_COST;
 /** How many equipment slots are active at a given pet-drone level. A slot
  *  unlocks every OTHER level (2/4/6), not every level. */
 export function petDroneSlotCount(level: number): number {
@@ -387,6 +388,12 @@ export type Player = {
   party: string[];
   petDrone: PetDrone;   // single upgradable companion drone (replaces the old drone array)
   bebcell: number;      // boss-only material for upgrading the pet drone
+  // Premium account status — gates cargo drone, expedited jump, and bonus
+  // skill-point purchases in the Pixi HUD panels (see hud/sections/cargoActions.ts
+  // hasPremium()). Either field is sufficient; premiumUntil takes precedence
+  // for time-boxed grants. Both optional: absent/false/expired = no premium.
+  premium?: boolean;
+  premiumUntil?: number;
   // Phase 2 additions
   faction: FactionId | null;
   skills: Partial<Record<SkillId, number>>;  // skillId → ranks

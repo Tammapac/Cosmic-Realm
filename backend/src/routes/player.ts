@@ -45,6 +45,12 @@ router.post("/save", async (req, res) => {
         )
       : data.equipped;
 
+    // bebcell/mcoins are server-authoritative currencies (mcoins is real-money)
+    // and are deliberately NOT written from the client body here — see
+    // backend/src/game/currency.ts. Whatever the client sent for these fields
+    // is ignored; the DB value (mutated only via creditCurrency/spendCurrency,
+    // or by an admin editing the DB directly) is the sole source of truth and
+    // is echoed back in the response below so the client stays in sync.
     await db
       .update(schema.players)
       .set({
@@ -53,7 +59,6 @@ router.post("/save", async (req, res) => {
         exp: data.exp,
         credits: data.credits,
         honor: data.honor,
-        mcoins: data.mcoins ?? 0,
         hull: sanitizeFloat(data.hull),
         shield: sanitizeFloat(data.shield),
         zone: data.zone,
@@ -68,7 +73,6 @@ router.post("/save", async (req, res) => {
         cargo: data.cargo,
         drones: data.drones,
         petDrone: data.petDrone,
-        bebcell: data.bebcell,
         consumables: data.consumables,
         hotbar: data.hotbar,
         ammo: data.ammo,
@@ -101,7 +105,16 @@ router.post("/save", async (req, res) => {
       })
       .where(eq(schema.leaderboard.playerId, playerId));
 
-    res.json({ ok: true });
+    // Echo the server-authoritative currency balances back so the client can
+    // reconcile its display — this is the only path that keeps it in sync
+    // now that bebcell/mcoins are never accepted from the save body.
+    const [current] = await db
+      .select({ bebcell: schema.players.bebcell, mcoins: schema.players.mcoins })
+      .from(schema.players)
+      .where(eq(schema.players.id, playerId))
+      .limit(1);
+
+    res.json({ ok: true, bebcell: current?.bebcell ?? 0, mcoins: current?.mcoins ?? 0 });
   } catch (err) {
     console.error("Save error:", err);
     res.status(500).json({ error: "Save failed" });

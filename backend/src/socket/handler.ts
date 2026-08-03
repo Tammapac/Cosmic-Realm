@@ -16,7 +16,8 @@ import {
 } from "./state.js";
 import { GameEngine, computeStats, type GameEvent } from "../game/engine.js";
 import { sanitizeInventory } from "../game/lootService.js";
-import { MOVEMENT } from "../../../lib/game-constants.js";
+import { spendCurrency } from "../game/currency.js";
+import { MOVEMENT, PET_DRONE_UPGRADE_COST } from "../../../lib/game-constants.js";
 
 const CULL_RADIUS = 2000;
 const FIXED_DT = 1 / MOVEMENT.SERVER_TICK_RATE;
@@ -345,7 +346,7 @@ export function setupSocket(io: Server) {
       hull: number; shield: number; level: number;
       shipClass: string; honor: number;
       inventory?: any[]; equipped?: any; skills?: any;
-      drones?: any[]; faction?: string; petDrone?: any; bebcell?: number;
+      drones?: any[]; faction?: string; petDrone?: any;
     }) => {
       const p = getPlayer(user.playerId);
       if (!p) return;
@@ -370,8 +371,21 @@ export function setupSocket(io: Server) {
         if (data.equipped) cached.equipped = data.equipped;
         if (data.skills) cached.skills = data.skills;
         if (data.drones) cached.drones = data.drones;
-        if (data.petDrone) { cached.petDrone = data.petDrone; engine.refreshPlayerStats(user.playerId); }
-        if (typeof data.bebcell === "number") cached.bebcell = data.bebcell;
+        // petDrone.level/hp/hpMax are server-authoritative (set only by
+        // drone:upgrade above) — never accept them from the client here, or
+        // a forged stats:update payload could grant free levels by writing
+        // straight into the combat cache. Only equipped/mode (loadout
+        // choices, not progression) pass through.
+        if (data.petDrone && cached.petDrone) {
+          cached.petDrone = {
+            ...cached.petDrone,
+            equipped: data.petDrone.equipped ?? cached.petDrone.equipped,
+            mode: data.petDrone.mode ?? cached.petDrone.mode,
+          };
+          engine.refreshPlayerStats(user.playerId);
+        }
+        // bebcell is server-authoritative (currency.ts) — never accept it
+        // from the client; the DB row is the only source of truth.
         if (data.faction) cached.faction = data.faction;
         if (data.level) cached.level = data.level;
       }
@@ -394,6 +408,64 @@ export function setupSocket(io: Server) {
       }
     });
 
+
+    // ── PET DRONE UPGRADE (server-authoritative bebcell spend) ───────
+    // Replaces the old client-side `state.player.bebcell -= cost` in
+    // store.ts's upgradePetDrone(). The client now only REQUESTS an
+    // upgrade; the server reads the player's current level + bebcell
+    // balance straight from the DB, validates the cost against the
+    // shared PET_DRONE_UPGRADE_COST table (never a client-sent cost),
+    // and atomically spends + levels up in one transaction so a crash
+    // mid-upgrade can never charge bebcell without granting the level
+    // (or vice versa).
+    socket.on("drone:upgrade", async (_data: unknown, cb?: (res: { ok: boolean; error?: string; petDrone?: any; bebcell?: number }) => void) => {
+      try {
+        const result = await db.transaction(async (tx) => {
+          const [row] = await tx
+            .select({ petDrone: schema.players.petDrone, bebcell: schema.players.bebcell })
+            .from(schema.players)
+            .where(eq(schema.players.id, user.playerId))
+            .limit(1);
+          if (!row) return { ok: false as const, error: "Player not found" };
+
+          const pet = (row.petDrone ?? {}) as any;
+          const level = Number(pet.level ?? 0);
+          if (level >= 6) return { ok: false as const, error: "Drone already at max level" };
+          const nextLevel = level + 1;
+          const cost = PET_DRONE_UPGRADE_COST[nextLevel as 1 | 2 | 3 | 4 | 5 | 6];
+
+          const newBebcell = await spendCurrency(user.playerId, "bebcell", cost, tx);
+          if (newBebcell === null) {
+            return { ok: false as const, error: `Need ${cost} Bebcell (have ${row.bebcell})`, bebcell: row.bebcell };
+          }
+
+          const newPet = {
+            ...pet,
+            level: nextLevel,
+            hpMax: 400 + nextLevel * 200,
+            hp: 400 + nextLevel * 200,
+          };
+          await tx
+            .update(schema.players)
+            .set({ petDrone: newPet })
+            .where(eq(schema.players.id, user.playerId));
+
+          return { ok: true as const, petDrone: newPet, bebcell: newBebcell };
+        });
+
+        if (result.ok) {
+          // Keep the in-tick cache + live OnlinePlayer state consistent so
+          // combat (server-side drone fire in engine.ts) sees the new level
+          // immediately, without waiting for the next stats:update round trip.
+          const cached = engine.playerDataCache.get(user.playerId);
+          if (cached) { cached.petDrone = result.petDrone; engine.refreshPlayerStats(user.playerId); }
+        }
+        cb?.(result);
+      } catch (err) {
+        console.error("[drone:upgrade] error:", err);
+        cb?.({ ok: false, error: "Upgrade failed" });
+      }
+    });
 
     // ── ADMIN PANEL ─────────────────────────────────────────────────
     const ADMIN_PLAYER_ID = 3;
