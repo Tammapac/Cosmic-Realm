@@ -15,6 +15,8 @@ import { rollEnemyEquipDrop } from "./lootService.js";
 import { creditCurrency } from "./currency.js";
 import { resolveAffixStats, type ItemInstance } from "../../../lib/loot/loot.js";
 import { shipHitTestSwept, enemyModelKey, enemySizeScale, PLAYER_SIZE_SCALE } from "../../../lib/hitbox.js";
+import { clanResearchMultipliers } from "./clanData.js";
+import { leaderboardBuffMultipliers } from "./leaderboardData.js";
 
 // Silhouette hit test for a projectile's travel this tick vs an enemy hull;
 // falls back to the legacy circle when a hull is missing.
@@ -52,6 +54,22 @@ const STATION_SAFE_RADIUS = 1500;
 // exclusion, so cross-faction combat is possible across the open zone and only
 // the immediate docking area (where players are often idle) is protected.
 const PVP_SAFE_RADIUS = 500;
+
+// ── FRIENDLY-FIRE HONOR PENALTY ──────────────────────────────────────────
+// Honor lost for killing a pilot of your OWN faction. Repeat offenders sink
+// toward OUTLAW_HONOR, at which point they are branded an Outlaw: attackable
+// by everyone, own faction included.
+//
+// 1000 per kill against a -10000 floor = 10 betrayals from a standing start.
+// The penalty moved with the threshold: at the old 4000 it would now take
+// only 3 kills, which turns a couple of heated moments into a permanent
+// brand. Deliberate treachery should get you there; a stray shot should not.
+const FRIENDLY_KILL_HONOR_PENALTY = 1000;
+// Honor at or below which a pilot is an Outlaw. MUST stay in sync with
+// OUTLAW_HONOR in frontend/src/game/types.ts — the server enforces who may be
+// shot, the client only decides which badge to draw, and the two disagreeing
+// would show a pilot as safe while the server lets everyone shoot them.
+export const OUTLAW_HONOR = -10000;
 
 const STATIONS_BY_ZONE: Record<string, Vec2[]> = {};
 for (const st of STATIONS) {
@@ -175,6 +193,13 @@ export type ServerEnemy = {
   spawnPos: Vec2;
   stunUntil: number;
   combo: Map<number, { stacks: number; ttl: number }>;
+  /** Current patrol waypoint. DarkOrbit NPCs drift between a few points near
+   *  their spawn — they do not re-roll a heading every second. Null until the
+   *  first one is picked. */
+  patrolTarget?: Vec2 | null;
+  /** Seconds to sit still once a waypoint is reached, before picking the next.
+   *  The pauses are what make idle NPCs read as calm rather than skittish. */
+  patrolPause?: number;
   // bullet-hell pattern state
   spiralAng?: number;
   volleyCount?: number;
@@ -224,7 +249,7 @@ export type LootDrop = {
 // Events emitted by the engine for the socket handler to broadcast
 export type GameEvent =
   | { type: "enemy:spawn"; zone: string; enemy: ClientEnemy }
-  | { type: "enemy:die"; zone: string; enemyId: string; killerId: number; loot: LootDrop; pos: Vec2 }
+  | { type: "enemy:die"; zone: string; enemyId: string; enemyType: string; killerId: number; loot: LootDrop; pos: Vec2 }
   | { type: "enemy:hit"; zone: string; enemyId: string; damage: number; hp: number; hpMax: number; crit: boolean; attackerId: number }
   | { type: "enemy:attack"; zone: string; enemyId: string; enemyType: string; targetId: number; damage: number; pos: Vec2; targetPos: Vec2 }
   | { type: "player:damage"; playerId: number; damage: number; shieldDmg: number; hullDmg: number }
@@ -236,6 +261,7 @@ export type GameEvent =
   | { type: "npc:die"; zone: string; npcId: string }
   | { type: "player:hit"; playerId: number; damage: number; zone: string; pos: Vec2; killerId: number | null }
   | { type: "player:die"; playerId: number; zone: string; pos: Vec2; killerId: number | null }
+  | { type: "player:honor"; playerId: number; honor: number; zone: string }
   | { type: "projectile:spawn"; zone: string; fromPlayerId: number; x: number; y: number; vx: number; vy: number; damage: number; color: string; size: number; crit: boolean; weaponKind: "laser" | "rocket" | "energy" | "plasma"; homing: boolean; ammoType?: string; ttl: number; hardpointIndex?: number; hardpointRing?: "muzzle" | "weapon" | "drone"; shipClass?: string; targetId?: string; fromDrone?: boolean };
 
 export type ClientEnemy = {
@@ -538,6 +564,19 @@ export function computeStats(playerData: any): EffectiveStats {
   // modifier (skills, drones, faction, attribute points) has been applied.
   if (sk("eng-equilibrium") > 0) damage += shieldMax * 0.20;
 
+  // Clan Hall research — cached on playerData by socket/handler.ts whenever
+  // the player's clan or its research changes (see engine.refreshClanCache).
+  // null/undefined (no clan, or clan lookup not yet warm) means no bonus.
+  // Matches the Kit's 6 CL_RES projects exactly: Reinforced Plating (hull%),
+  // Focused Emitters (damage%), Drive Calibration (speed%), Hold Expansion
+  // (flat cargo units), Salvage Rights (credits% off kill/loot sell value),
+  // Banner of Honor (honor% — applied at the loot/kill event call sites).
+  const clanMul = clanResearchMultipliers(playerData.clanResearch ?? null);
+  hullMax *= clanMul.hullMul;
+  damage *= clanMul.damageMul;
+  speed *= clanMul.speedMul;
+  cargoMax += clanMul.cargoFlatBonus;
+
   // cargoMax is floored above but the expansion utility skills multiply it
   // afterwards; re-floor so the wire value stays an integer.
   cargoMax = Math.max(1, Math.floor(cargoMax));
@@ -783,6 +822,17 @@ function pickLoot(enemyType: string): { resourceId: ResourceId; qty: number } {
   }
   return { resourceId: pool[0].resourceId, qty: pool[0].qty };
 }
+
+// Module-level registry for the single live GameEngine instance (there is
+// only ever one, created in socket/handler.ts's setupSocket). Lets HTTP
+// routes (routes/clan.ts) reach into playerDataCache to refresh an online
+// player's cached clanResearch after a donate/fund/join/leave — those
+// requests arrive over Express, outside the socket handler's closure, and
+// this is the smallest bridge between the two without threading the engine
+// instance through every route module.
+let liveEngine: GameEngine | null = null;
+export function registerEngine(engine: GameEngine): void { liveEngine = engine; }
+export function getEngine(): GameEngine | null { return liveEngine; }
 
 export class GameEngine {
   zones = new Map<string, ZoneState>();
@@ -1652,10 +1702,12 @@ export class GameEngine {
                 bonusResource = { resourceId: bonusRes, qty: Math.ceil((1 + Math.floor(Math.random() * 2)) * (1 + (zoneDef.enemyTier - 1) * 0.3)) };
               }
               const killerLootBonus = proj.fromPlayerId != null ? (this.playerStatsCache.get(proj.fromPlayerId)?.lootBonus ?? 0) : 0;
+              const clanMul1 = clanResearchMultipliers(pData?.clanResearch ?? null);
+              const lbMul1 = leaderboardBuffMultipliers(pData?.leaderboardAllTimeBuff ?? null);
               const loot: LootDrop = {
-                credits: Math.round(e.credits * tierMult) + Math.round(killerLootBonus * 2),
-                exp: Math.round(e.exp * tierMult * (e.isBoss ? 2 : 1)),
-                honor: e.honor,
+                credits: Math.round((Math.round(e.credits * tierMult) + Math.round(killerLootBonus * 2)) * clanMul1.salvageMul * lbMul1.creditsMul),
+                exp: Math.round(e.exp * tierMult * (e.isBoss ? 2 : 1) * lbMul1.xpMul),
+                honor: Math.round(e.honor * clanMul1.honorMul),
                 resource: dropResource,
                 bonusResource,
               };
@@ -1667,7 +1719,7 @@ export class GameEngine {
               }
               const rolledItem = rollEnemyEquipDrop(e, zoneId, proj.fromPlayerId, killerLootBonus);
               if (rolledItem) loot.item = rolledItem;
-              events.push({ type: "enemy:die", zone: zoneId, enemyId: e.id, killerId: proj.fromPlayerId, loot, pos: { ...e.pos } });
+              events.push({ type: "enemy:die", zone: zoneId, enemyId: e.id, enemyType: e.type, killerId: proj.fromPlayerId, loot, pos: { ...e.pos } });
               this.onEnemyKilled(proj.fromPlayerId, e);
               zs.enemies.delete(e.id);
               if (e.isBoss) { zs.bossActive = false; zs.bossTimer = randRange(180, 420); }
@@ -1686,15 +1738,17 @@ export class GameEngine {
                   if (dist(e.pos, e2.pos) < splashRange) {
                     e2.hull -= splashDmg;
                     if (e2.hull <= 0) {
+                      const splashClanMul = clanResearchMultipliers(this.playerDataCache.get(proj.fromPlayerId)?.clanResearch ?? null);
+                      const splashLbMul = leaderboardBuffMultipliers(this.playerDataCache.get(proj.fromPlayerId)?.leaderboardAllTimeBuff ?? null);
                       const loot2: LootDrop = {
-                        credits: Math.round(e2.credits * this.getZoneTierMult(zoneId)),
-                        exp: Math.round(e2.exp * this.getZoneTierMult(zoneId)),
-                        honor: e2.honor,
+                        credits: Math.round(e2.credits * this.getZoneTierMult(zoneId) * splashClanMul.salvageMul * splashLbMul.creditsMul),
+                        exp: Math.round(e2.exp * this.getZoneTierMult(zoneId) * splashLbMul.xpMul),
+                        honor: Math.round(e2.honor * splashClanMul.honorMul),
                         resource: e2.loot ? { ...e2.loot } : undefined,
                       };
                       const splashItem = rollEnemyEquipDrop(e2, zoneId, proj.fromPlayerId, this.playerStatsCache.get(proj.fromPlayerId)?.lootBonus ?? 0);
                       if (splashItem) loot2.item = splashItem;
-                      events.push({ type: "enemy:die", zone: zoneId, enemyId: e2.id, killerId: proj.fromPlayerId, loot: loot2, pos: { ...e2.pos } });
+                      events.push({ type: "enemy:die", zone: zoneId, enemyId: e2.id, enemyType: e2.type, killerId: proj.fromPlayerId, loot: loot2, pos: { ...e2.pos } });
                       this.onEnemyKilled(proj.fromPlayerId, e2);
                       zs.enemies.delete(e2.id);
                     } else {
@@ -1726,13 +1780,32 @@ export class GameEngine {
               if (victim.isDocked) continue;                       // docked = safe
               const diffFaction = !!attacker.faction && !!victim.faction && victim.faction !== attacker.faction;
               const optInDuel = attacker.pvpTargetId != null && attacker.pvpTargetId === String(victim.playerId);
-              if (!diffFaction && !optInDuel) continue;            // allied & not a chosen duel
+              // An Outlaw has betrayed their own faction often enough to be
+              // fair game for everybody — no faction check, no duel opt-in.
+              const victimOutlawed = victim.honor <= OUTLAW_HONOR;
+              if (!diffFaction && !optInDuel && !victimOutlawed) continue; // allied & not a chosen duel
               if (isInStationSafeZone(zoneId, { x: victim.posX, y: victim.posY }, -(STATION_SAFE_RADIUS - PVP_SAFE_RADIUS))) continue; // small station core only
               if (projHitsPlayer(proj, victim, dt)) {
                 const vpos = { x: victim.posX, y: victim.posY };
                 const died = this.damagePlayer(victim, proj.damage);
                 events.push({ type: "player:hit", playerId: victim.playerId, damage: proj.damage, zone: zoneId, pos: vpos, killerId: attacker.playerId });
-                if (died) events.push({ type: "player:die", playerId: victim.playerId, zone: zoneId, pos: vpos, killerId: attacker.playerId });
+                if (died) {
+                  events.push({ type: "player:die", playerId: victim.playerId, zone: zoneId, pos: vpos, killerId: attacker.playerId });
+                  // Killing your OWN faction costs honor. Sink far enough and
+                  // the pilot is branded an Outlaw (honor <= OUTLAW_HONOR),
+                  // which makes them attackable by everyone — see rankFor()
+                  // and isOutlaw() in the client's types.ts, which read the
+                  // same honor number the server owns here. Different-faction
+                  // kills are normal warfare and cost nothing.
+                  // Hunting an Outlaw is sanctioned, so it is exempt: without
+                  // this, anyone who answered the "attackable by everyone"
+                  // invitation would themselves be punished for it.
+                  const sameFaction = !!attacker.faction && attacker.faction === victim.faction;
+                  if (sameFaction && !victimOutlawed) {
+                    attacker.honor -= FRIENDLY_KILL_HONOR_PENALTY;
+                    events.push({ type: "player:honor", playerId: attacker.playerId, honor: attacker.honor, zone: zoneId });
+                  }
+                }
                 // def-spines / def-reflect / def-backlash: pay the reflected
                 // damage back into the attacker. Only meaningful in PvP —
                 // enemy/NPC shooters are handled by the other branches and
@@ -1760,7 +1833,7 @@ export class GameEngine {
                 credits: Math.round(e.credits * this.getZoneTierMult(zoneId)),
                 exp: 0, honor: 0,
               };
-              events.push({ type: "enemy:die", zone: zoneId, enemyId: e.id, killerId: 0, loot, pos: { ...e.pos } });
+              events.push({ type: "enemy:die", zone: zoneId, enemyId: e.id, enemyType: e.type, killerId: 0, loot, pos: { ...e.pos } });
               zs.enemies.delete(e.id);
               if (e.isBoss) { zs.bossActive = false; zs.bossTimer = randRange(180, 420); }
             } else {
@@ -2136,10 +2209,12 @@ export class GameEngine {
         const bonusRes2 = bonusDrops2[Math.floor(Math.random() * bonusDrops2.length)];
         dropResource2 = { resourceId: bonusRes2, qty: 1 + Math.floor(Math.random() * 2) };
       }
+      const clanMul2 = clanResearchMultipliers(pData.clanResearch ?? null);
+      const lbMul2 = leaderboardBuffMultipliers(pData.leaderboardAllTimeBuff ?? null);
       const loot: LootDrop = {
-        credits: Math.round(e.credits * tierMult) + Math.round(stats.lootBonus * 2),
-        exp: Math.round(e.exp * tierMult * (e.isBoss ? 2 : 1)),
-        honor: e.honor,
+        credits: Math.round((Math.round(e.credits * tierMult) + Math.round(stats.lootBonus * 2)) * clanMul2.salvageMul * lbMul2.creditsMul),
+        exp: Math.round(e.exp * tierMult * (e.isBoss ? 2 : 1) * lbMul2.xpMul),
+        honor: Math.round(e.honor * clanMul2.honorMul),
         resource: dropResource2,
       };
       // Bebcell — boss-only pet-drone upgrade material (scales with zone tier).
@@ -2150,7 +2225,7 @@ export class GameEngine {
       const rolledItem = rollEnemyEquipDrop(e, zone, playerId, stats.lootBonus);
       if (rolledItem) loot.item = rolledItem;
       events.push({
-        type: "enemy:die", zone, enemyId: e.id,
+        type: "enemy:die", zone, enemyId: e.id, enemyType: e.type,
         killerId: playerId, loot, pos: { ...e.pos },
       });
       this.onEnemyKilled(playerId, e);
@@ -2175,15 +2250,17 @@ export class GameEngine {
           if (dist(e.pos, e2.pos) < splashRange) {
             e2.hull -= splashDmg;
             if (e2.hull <= 0) {
+              const splashClanMul = clanResearchMultipliers(pData.clanResearch ?? null);
+              const splashLbMul2 = leaderboardBuffMultipliers(pData.leaderboardAllTimeBuff ?? null);
               const loot2: LootDrop = {
-                credits: Math.round(e2.credits * this.getZoneTierMult(zone)),
-                exp: Math.round(e2.exp * this.getZoneTierMult(zone)),
-                honor: e2.honor,
+                credits: Math.round(e2.credits * this.getZoneTierMult(zone) * splashClanMul.salvageMul * splashLbMul2.creditsMul),
+                exp: Math.round(e2.exp * this.getZoneTierMult(zone) * splashLbMul2.xpMul),
+                honor: Math.round(e2.honor * splashClanMul.honorMul),
                 resource: e2.loot ? { ...e2.loot } : undefined,
               };
               const splashItem = rollEnemyEquipDrop(e2, zone, playerId, stats.lootBonus);
               if (splashItem) loot2.item = splashItem;
-              events.push({ type: "enemy:die", zone, enemyId: e2.id, killerId: playerId, loot: loot2, pos: { ...e2.pos } });
+              events.push({ type: "enemy:die", zone, enemyId: e2.id, enemyType: e2.type, killerId: playerId, loot: loot2, pos: { ...e2.pos } });
               this.onEnemyKilled(playerId, e2);
               zs.enemies.delete(e2.id);
             } else {
@@ -2590,43 +2667,71 @@ export class GameEngine {
         const standOff = e.behavior === "ranged" ? 340 : (e.isBoss ? 300 : 220);
         const hseed = ((e.id.charCodeAt(e.id.length - 1) * 31 + e.id.charCodeAt(e.id.length - 2)) % 100) / 100;
         const side = (hseed - 0.5) * 2; // -1..1
-        const dirAng = angleFromTo(tPos, e.pos); // player → enemy: stay on own side
-        const spreadAng = dirAng + side * 0.55;
+        // Approach bearing FIXED per enemy, not recomputed from the live
+        // positions each tick.
+        //
+        // This is what produced the orbiting. `angleFromTo(tPos, e.pos)` is the
+        // player→enemy bearing RIGHT NOW, so the hold point was pinned to
+        // wherever the enemy currently stood; the moment the player moved, the
+        // hold point swung around them and the enemy chased a target that kept
+        // sliding sideways — which traces a circle. Deriving the bearing from
+        // the enemy id instead makes each attacker claim one fixed side of the
+        // player and hold it, so a pack fans out and stays put (DarkOrbit: the
+        // NPCs park around you and shoot, they do not strafe).
+        const spreadAng = hseed * Math.PI * 2 + side * 0.55;
         const holdPos = {
           x: tPos.x + Math.cos(spreadAng) * standOff,
           y: tPos.y + Math.sin(spreadAng) * standOff,
         };
         const dHold = dist(e.pos, holdPos);
 
+        // One steering model for all three cases instead of three blocks that
+        // each slammed e.vel to a new vector. Snapping the velocity made an
+        // enemy flip direction between ticks whenever it crossed a threshold
+        // (keep-out ↔ chase ↔ station-keeping), which is a large part of the
+        // twitchy read. Here the DESIRED velocity is chosen per case and the
+        // actual velocity eases toward it, so transitions are continuous.
+        let desiredVx: number;
+        let desiredVy: number;
+        let faceAng: number;
+
         if (d < standOff * 0.55) {
           // Hard keep-out: too close (player charged in) — back straight off
           const away = angleFromTo(tPos, e.pos);
-          e.angle = angleFromTo(e.pos, tPos); // still face the player
-          e.vel.x = Math.cos(away) * e.speed;
-          e.vel.y = Math.sin(away) * e.speed;
-          e.pos.x += e.vel.x * dt;
-          e.pos.y += e.vel.y * dt;
+          faceAng = angleFromTo(e.pos, tPos); // still face the player
+          desiredVx = Math.cos(away) * e.speed;
+          desiredVy = Math.sin(away) * e.speed;
         } else if (dHold > 80) {
           // Chase burst: noticeably faster than cruise, extra boost when far
           const chaseMul = dHold > 600 ? 1.9 : 1.45;
           const ang = angleFromTo(e.pos, holdPos);
-          e.angle = ang; // nose along the intercept path while repositioning
-          e.vel.x = Math.cos(ang) * e.speed * chaseMul;
-          e.vel.y = Math.sin(ang) * e.speed * chaseMul;
-          e.pos.x += e.vel.x * dt;
-          e.pos.y += e.vel.y * dt;
+          faceAng = ang; // nose along the intercept path while repositioning
+          desiredVx = Math.cos(ang) * e.speed * chaseMul;
+          desiredVy = Math.sin(ang) * e.speed * chaseMul;
         } else {
           // Station-keeping at range: face the player, keep firing
-          e.angle = angleFromTo(e.pos, tPos);
+          faceAng = angleFromTo(e.pos, tPos);
           let vx = (holdPos.x - e.pos.x) * 2.4;
           let vy = (holdPos.y - e.pos.y) * 2.4;
           const vmag = Math.sqrt(vx * vx + vy * vy);
           if (vmag > e.speed) { vx = (vx / vmag) * e.speed; vy = (vy / vmag) * e.speed; }
-          e.vel.x = vx;
-          e.vel.y = vy;
-          e.pos.x += vx * dt;
-          e.pos.y += vy * dt;
+          desiredVx = vx;
+          desiredVy = vy;
         }
+
+        // Ease velocity + heading rather than assigning them. 6.0/s reaches the
+        // target in ~1/6s — responsive enough to still feel aggressive, slow
+        // enough that no frame shows a hard direction flip.
+        const accelK = Math.min(1, dt * 6.0);
+        e.vel.x += (desiredVx - e.vel.x) * accelK;
+        e.vel.y += (desiredVy - e.vel.y) * accelK;
+        let dFace = faceAng - e.angle;
+        while (dFace > Math.PI) dFace -= Math.PI * 2;
+        while (dFace < -Math.PI) dFace += Math.PI * 2;
+        const COMBAT_TURN = 4.5; // rad/s — quicker than patrol, still not instant
+        e.angle += clamp(dFace, -COMBAT_TURN * dt, COMBAT_TURN * dt);
+        e.pos.x += e.vel.x * dt;
+        e.pos.y += e.vel.y * dt;
 
         // Fire at target — also while chasing/repositioning (extended range),
         // not only once parked at the hold point.
@@ -2861,27 +2966,60 @@ export class GameEngine {
           }
         }
       } else {
-        // Idle: patrol around spawn area actively
-        const dFromSpawn = dist(e.pos, e.spawnPos);
-        if (dFromSpawn > 500) {
-          // Too far from spawn - head back
-          const ang = angleFromTo(e.pos, e.spawnPos);
-          e.vel.x = Math.cos(ang) * e.speed * 0.5;
-          e.vel.y = Math.sin(ang) * e.speed * 0.5;
-          e.angle = ang;
+        // Idle: DarkOrbit-style drift — pick a point, cruise to it in a straight
+        // line, pause, pick the next. NPCs there read as patrolling, not fleeing.
+        //
+        // Replaces a re-roll of the heading on `Math.random() < 0.03` EVERY tick
+        // (~1x/second at 30Hz) at a random speed, which is what made them look
+        // panicked: no NPC ever held a course long enough to look deliberate.
+        // That block also advanced e.pos twice per tick (once inside the branch,
+        // once after it), so idle NPCs moved at double the intended speed.
+        const PATROL_RADIUS = 420;   // how far a waypoint may sit from spawn
+        const ARRIVE_EPS = 45;       // "close enough" to count as arrived
+        const CRUISE = 0.34;         // fraction of full speed while patrolling
+
+        if (e.patrolPause && e.patrolPause > 0) {
+          // Parked at a waypoint: bleed off velocity instead of stopping dead,
+          // so the ship coasts to a halt.
+          e.patrolPause -= dt;
+          e.vel.x *= 0.90;
+          e.vel.y *= 0.90;
         } else {
-          // Active patrol: fly in a direction, change often
-          e.pos.x += e.vel.x * dt;
-          e.pos.y += e.vel.y * dt;
-          const spdSq = e.vel.x * e.vel.x + e.vel.y * e.vel.y;
-          if (spdSq < e.speed * e.speed * 0.04 || Math.random() < 0.03) {
-            const ang = Math.random() * Math.PI * 2;
-            const patrolSpd = e.speed * (0.3 + Math.random() * 0.3);
-            e.vel.x = Math.cos(ang) * patrolSpd;
-            e.vel.y = Math.sin(ang) * patrolSpd;
-            e.angle = ang;
+          const tooFar = dist(e.pos, e.spawnPos) > PATROL_RADIUS * 1.6;
+          if (!e.patrolTarget || tooFar) {
+            // New waypoint inside the patrol radius around spawn. Drifting too
+            // far (knockback, a chase that broke off) just aims the next one
+            // back home rather than teleporting or hard-turning.
+            const a = Math.random() * Math.PI * 2;
+            const r = tooFar ? 0 : Math.sqrt(Math.random()) * PATROL_RADIUS;
+            e.patrolTarget = {
+              x: e.spawnPos.x + Math.cos(a) * r,
+              y: e.spawnPos.y + Math.sin(a) * r,
+            };
+          }
+
+          const tgt = e.patrolTarget;
+          if (dist(e.pos, tgt) <= ARRIVE_EPS) {
+            e.patrolTarget = null;
+            e.patrolPause = randRange(1.2, 3.0);  // hold station a beat
+          } else {
+            // Steer gradually toward the waypoint. Turning the HEADING rather
+            // than snapping the velocity vector is what removes the twitch:
+            // a real ship banks into a course change.
+            const want = angleFromTo(e.pos, tgt);
+            let da = want - e.angle;
+            while (da > Math.PI) da -= Math.PI * 2;
+            while (da < -Math.PI) da += Math.PI * 2;
+            const MAX_TURN = 1.6;                  // rad/s
+            e.angle += clamp(da, -MAX_TURN * dt, MAX_TURN * dt);
+            // Accelerate along the nose, capped at cruise speed — no instant
+            // direction changes, so the path stays smooth.
+            const cruiseSpd = e.speed * CRUISE;
+            e.vel.x += (Math.cos(e.angle) * cruiseSpd - e.vel.x) * Math.min(1, dt * 2.2);
+            e.vel.y += (Math.sin(e.angle) * cruiseSpd - e.vel.y) * Math.min(1, dt * 2.2);
           }
         }
+
         e.pos.x += e.vel.x * dt;
         e.pos.y += e.vel.y * dt;
       }

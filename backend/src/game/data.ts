@@ -1231,50 +1231,90 @@ export function pickAsteroidYield(zone: string): ResourceId {
   return pool[pool.length - 1].resourceId;
 }
 
-// ── QUEST POOL (30) ──────────────────────────────────────────────────────────
-
+// ── QUEST POOL ────────────────────────────────────────────────────────────
+// Kept in sync with frontend/src/game/types.ts QUEST_POOL by id+zone+killType.
+// The client owns quest *assignment*; this copy exists ONLY so the server can
+// validate a player's stored activeQuests against reality on load (see
+// validateActiveQuests below) and strip/repair anything that no longer
+// matches a live pool entry — e.g. an id whose kill zone changed, or an id
+// that was removed from the pool entirely (stale save data).
 export const QUEST_POOL: {
   id: string;
   zone: ZoneId;
+  targetZone?: ZoneId;
   killType: EnemyType;
   killCount: number;
   rewardCredits: number;
   rewardExp: number;
   rewardHonor: number;
 }[] = [
-  { id: "q-alpha-scouts",         zone: "alpha",     killType: "scout",     killCount: 5,  rewardCredits: 350,     rewardExp: 80,     rewardHonor: 5 },
-  { id: "q-alpha-raiders",        zone: "alpha",     killType: "raider",    killCount: 3,  rewardCredits: 600,     rewardExp: 140,    rewardHonor: 10 },
-  { id: "q-nebula-raiders",       zone: "nebula",    killType: "raider",    killCount: 6,  rewardCredits: 1400,    rewardExp: 320,    rewardHonor: 18 },
-  { id: "q-nebula-destroyers",    zone: "nebula",    killType: "destroyer", killCount: 3,  rewardCredits: 2400,    rewardExp: 600,    rewardHonor: 30 },
-  { id: "q-crimson-destroyers",   zone: "crimson",   killType: "destroyer", killCount: 5,  rewardCredits: 4000,    rewardExp: 1100,   rewardHonor: 50 },
-  { id: "q-crimson-dread",        zone: "crimson",   killType: "dread",     killCount: 1,  rewardCredits: 6000,    rewardExp: 1800,   rewardHonor: 100 },
-  { id: "q-void-voidlings",       zone: "void",      killType: "voidling",  killCount: 6,  rewardCredits: 9000,    rewardExp: 2600,   rewardHonor: 140 },
-  { id: "q-void-dread",           zone: "void",      killType: "dread",     killCount: 2,  rewardCredits: 18000,   rewardExp: 5000,   rewardHonor: 280 },
-  { id: "q-forge-destroyers",     zone: "forge",     killType: "destroyer", killCount: 8,  rewardCredits: 32000,   rewardExp: 9500,   rewardHonor: 500 },
-  { id: "q-forge-voidlings",      zone: "forge",     killType: "voidling",  killCount: 5,  rewardCredits: 55000,   rewardExp: 16000,  rewardHonor: 850 },
-  { id: "q-corona-voidlings",     zone: "corona",    killType: "voidling",  killCount: 7,  rewardCredits: 90000,   rewardExp: 26000,  rewardHonor: 1400 },
-  { id: "q-corona-dread",         zone: "corona",    killType: "dread",     killCount: 2,  rewardCredits: 150000,  rewardExp: 44000,  rewardHonor: 2300 },
-  { id: "q-fracture-voidlings",   zone: "fracture",  killType: "voidling",  killCount: 9,  rewardCredits: 240000,  rewardExp: 70000,  rewardHonor: 3800 },
-  { id: "q-fracture-dread",       zone: "fracture",  killType: "dread",     killCount: 3,  rewardCredits: 400000,  rewardExp: 115000, rewardHonor: 6000 },
-  { id: "q-abyss-dread",          zone: "abyss",     killType: "dread",     killCount: 4,  rewardCredits: 650000,  rewardExp: 190000, rewardHonor: 10000 },
-  { id: "q-abyss-apex",           zone: "abyss",     killType: "dread",     killCount: 6,  rewardCredits: 1100000, rewardExp: 320000, rewardHonor: 17000 },
-  // Mars deep zones
-  { id: "q-marsdepth-voidlings",  zone: "marsdepth", killType: "voidling",  killCount: 6,  rewardCredits: 9500,    rewardExp: 2800,   rewardHonor: 150 },
-  { id: "q-marsdepth-dread",      zone: "marsdepth", killType: "dread",     killCount: 2,  rewardCredits: 19000,   rewardExp: 5500,   rewardHonor: 300 },
-  { id: "q-maelstrom-dread",      zone: "maelstrom", killType: "dread",     killCount: 4,  rewardCredits: 34000,   rewardExp: 10000,  rewardHonor: 550 },
-  { id: "q-maelstrom-apex",       zone: "maelstrom", killType: "dread",     killCount: 6,  rewardCredits: 58000,   rewardExp: 17000,  rewardHonor: 920 },
-  // Venus zones
-  { id: "q-venus1-scouts",        zone: "venus1",    killType: "scout",     killCount: 5,  rewardCredits: 380,     rewardExp: 90,     rewardHonor: 6 },
-  { id: "q-venus1-raiders",       zone: "venus1",    killType: "raider",    killCount: 3,  rewardCredits: 650,     rewardExp: 150,    rewardHonor: 11 },
-  { id: "q-venus2-raiders",       zone: "venus2",    killType: "raider",    killCount: 6,  rewardCredits: 1500,    rewardExp: 340,    rewardHonor: 19 },
-  { id: "q-venus2-destroyers",    zone: "venus2",    killType: "destroyer", killCount: 3,  rewardCredits: 2600,    rewardExp: 650,    rewardHonor: 32 },
-  { id: "q-venus3-destroyers",    zone: "venus3",    killType: "destroyer", killCount: 5,  rewardCredits: 4200,    rewardExp: 1200,   rewardHonor: 55 },
-  { id: "q-venus3-dread",         zone: "venus3",    killType: "dread",     killCount: 1,  rewardCredits: 6500,    rewardExp: 1900,   rewardHonor: 110 },
-  { id: "q-venus4-voidlings",     zone: "venus4",    killType: "voidling",  killCount: 6,  rewardCredits: 9500,    rewardExp: 2800,   rewardHonor: 150 },
-  { id: "q-venus4-dread",         zone: "venus4",    killType: "dread",     killCount: 2,  rewardCredits: 19000,   rewardExp: 5500,   rewardHonor: 300 },
-  { id: "q-venus5-dread",         zone: "venus5",    killType: "dread",     killCount: 4,  rewardCredits: 34000,   rewardExp: 10000,  rewardHonor: 550 },
-  { id: "q-venus5-apex",          zone: "venus5",    killType: "dread",     killCount: 6,  rewardCredits: 58000,   rewardExp: 17000,  rewardHonor: 920 },
+  { id: "q-t1-scouts",        zone: "alpha",     killType: "scout",     killCount: 5, rewardCredits: 150,   rewardExp: 40,    rewardHonor: 2 },
+  { id: "q-t1-raiders",       zone: "alpha",     killType: "raider",    killCount: 3, rewardCredits: 250,   rewardExp: 60,    rewardHonor: 4 },
+  { id: "q-t1-scouts2",       zone: "corona",    killType: "scout",     killCount: 8, rewardCredits: 200,   rewardExp: 50,    rewardHonor: 3 },
+  { id: "q-t1-raiders2",      zone: "venus1",    killType: "raider",    killCount: 4, rewardCredits: 300,   rewardExp: 70,    rewardHonor: 5 },
+
+  { id: "q-t2-raiders",       zone: "nebula",    killType: "raider",    killCount: 6, rewardCredits: 500,   rewardExp: 120,   rewardHonor: 8 },
+  { id: "q-t2-destroyers",    zone: "nebula",    killType: "destroyer", killCount: 3, rewardCredits: 800,   rewardExp: 200,   rewardHonor: 12 },
+  { id: "q-t2-raiders2",      zone: "fracture",  killType: "raider",    killCount: 8, rewardCredits: 600,   rewardExp: 150,   rewardHonor: 10 },
+  { id: "q-t2-destroyers2",   zone: "venus2",    killType: "destroyer", killCount: 4, rewardCredits: 900,   rewardExp: 220,   rewardHonor: 14 },
+
+  { id: "q-t3-destroyers",    zone: "crimson",   killType: "destroyer", killCount: 5, rewardCredits: 1200,  rewardExp: 350,   rewardHonor: 18 },
+  { id: "q-t3-sentinels",     zone: "crimson",   killType: "sentinel",  killCount: 4, rewardCredits: 1500,  rewardExp: 400,   rewardHonor: 22 },
+  { id: "q-t3-dread",         zone: "crimson",   killType: "dread",     killCount: 1, rewardCredits: 2000,  rewardExp: 500,   rewardHonor: 30 },
+  { id: "q-t3-sentinels2",    zone: "abyss",     killType: "sentinel",  killCount: 5, rewardCredits: 1800,  rewardExp: 450,   rewardHonor: 25 },
+  { id: "q-t3-destroyers2",   zone: "venus3",    killType: "destroyer", killCount: 6, rewardCredits: 1400,  rewardExp: 380,   rewardHonor: 20 },
+
+  { id: "q-t4-wraiths",       zone: "void",      killType: "wraith",    killCount: 5, rewardCredits: 3000,  rewardExp: 800,   rewardHonor: 40 },
+  { id: "q-t4-sentinels",     zone: "void",      killType: "sentinel",  killCount: 6, rewardCredits: 3500,  rewardExp: 900,   rewardHonor: 45 },
+  { id: "q-t4-dread",         zone: "void",      killType: "dread",     killCount: 2, rewardCredits: 5000,  rewardExp: 1200,  rewardHonor: 60 },
+  { id: "q-t4-wraiths2",      zone: "marsdepth", killType: "wraith",    killCount: 6, rewardCredits: 3500,  rewardExp: 850,   rewardHonor: 42 },
+  { id: "q-t4-sentinels2",    zone: "venus4",    killType: "sentinel",  killCount: 7, rewardCredits: 4000,  rewardExp: 1000,  rewardHonor: 50 },
+
+  { id: "q-t5-titans",        zone: "forge",     killType: "titan",     killCount: 3, rewardCredits: 8000,  rewardExp: 2000,  rewardHonor: 100 },
+  { id: "q-t5-wraiths",       zone: "forge",     killType: "wraith",    killCount: 6, rewardCredits: 6000,  rewardExp: 1500,  rewardHonor: 75 },
+  { id: "q-t5-dread",         zone: "forge",     killType: "dread",     killCount: 3, rewardCredits: 10000, rewardExp: 2500,  rewardHonor: 120 },
+  { id: "q-t5-titans2",       zone: "maelstrom", killType: "titan",     killCount: 4, rewardCredits: 9000,  rewardExp: 2200,  rewardHonor: 110 },
+  { id: "q-t5-wraiths2",      zone: "venus5",    killType: "wraith",    killCount: 8, rewardCredits: 7000,  rewardExp: 1800,  rewardHonor: 85 },
+
+  { id: "q-t6-titans",        zone: "danger1",   killType: "titan",     killCount: 4, rewardCredits: 12000, rewardExp: 3000,  rewardHonor: 150 },
+  { id: "q-t6-overlords",     zone: "danger3",   killType: "overlord",  killCount: 2, rewardCredits: 18000, rewardExp: 5000,  rewardHonor: 250 },
+  { id: "q-t7-overlords",     zone: "danger4",   killType: "overlord",  killCount: 3, rewardCredits: 25000, rewardExp: 8000,  rewardHonor: 400 },
+  { id: "q-t8-titans",        zone: "danger5",   killType: "titan",     killCount: 5, rewardCredits: 30000, rewardExp: 10000, rewardHonor: 500 },
+  { id: "q-t8-overlords",     zone: "danger5",   killType: "overlord",  killCount: 4, rewardCredits: 40000, rewardExp: 15000, rewardHonor: 800 },
+
+  // Legacy ids kept alive with a repaired targetZone rather than deleted —
+  // players who already accepted these before the pool changed keep a
+  // completable quest instead of losing progress/rewards outright.
+  { id: "q-corona-voidlings", zone: "corona", targetZone: "abyss",   killType: "voidling", killCount: 7, rewardCredits: 90000,  rewardExp: 26000, rewardHonor: 1400 },
+  { id: "q-corona-dread",     zone: "corona", targetZone: "crimson", killType: "dread",    killCount: 2, rewardCredits: 150000, rewardExp: 44000, rewardHonor: 2300 },
 ];
+
+const QUEST_POOL_BY_ID = new Map(QUEST_POOL.map((q) => [q.id, q]));
+
+// Strips quest ids no longer in QUEST_POOL and repairs zone/killType/targetZone
+// on any surviving quest to match the live pool entry — self-heals stale save
+// data (removed/changed quests) on every load instead of needing a one-off
+// manual DB patch. `progress`/`completed` on the stored quest are preserved.
+export function validateActiveQuests(activeQuests: unknown): any[] {
+  if (!Array.isArray(activeQuests)) return [];
+  const result: any[] = [];
+  for (const q of activeQuests) {
+    if (!q || typeof q !== "object" || typeof q.id !== "string") continue;
+    const def = QUEST_POOL_BY_ID.get(q.id);
+    if (!def) continue; // orphaned id — quest no longer exists, drop it
+    result.push({
+      ...q,
+      zone: def.zone,
+      killType: def.killType,
+      killCount: def.killCount,
+      rewardCredits: def.rewardCredits,
+      rewardExp: def.rewardExp,
+      rewardHonor: def.rewardHonor,
+      targetZone: def.targetZone,
+    });
+  }
+  return result;
+}
 
 // ── DAILY MISSION POOL (8) ───────────────────────────────────────────────────
 

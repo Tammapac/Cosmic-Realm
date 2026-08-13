@@ -33,7 +33,7 @@ export class CosmicWindow extends UiComponent {
     this.base = makeNineSlice(FRAME.base, FRAME.slice);
     this.glow = makeNineSlice(FRAME.emissive, FRAME.slice);
     this.glow.tint = this.opts.accent;
-    this.glow.blendMode = PIXI.BLEND_MODES.ADD;   // energy adds over metal
+    this.glow.blendMode = "add";   // energy adds over metal
 
     this.content = new PIXI.Container();
 

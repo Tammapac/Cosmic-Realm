@@ -5,13 +5,50 @@
 //
 // Applied to the panel BODY graphic only, masked by that graphic's alpha, so it
 // never bleeds past the chamfered silhouette.
+// v8 rewrite: Filter takes a GlProgram + a `resources` UniformGroup map, not
+// (vertex, fragment, uniforms). filterArea (v7) has no v8 equivalent — the
+// nearest replacement is uInputSize.xy (the filter's own render-target size
+// in pixels), which is what this shader actually wanted (pixel-space coords
+// for the streak/grain patterns). migrateFragmentFromV7toV8 handles the
+// texture2D/varying/gl_FragColor → texture/in/finalColor GLSL1→ES3 rewrite;
+// see ship-lighting-filter.ts for the fuller explanation of why that's
+// needed (GlProgram always compiles as `#version 300 es`).
 import * as PIXI from "pixi.js";
+import { migrateFragmentFromV7toV8 } from "pixi.js";
 
-const frag = `
+const FILTER_VERTEX = `
+in vec2 aPosition;
+out vec2 vTextureCoord;
+
+uniform vec4 uInputSize;
+uniform vec4 uOutputFrame;
+uniform vec4 uOutputTexture;
+
+vec4 filterVertexPosition(void)
+{
+    vec2 position = aPosition * uOutputFrame.zw + uOutputFrame.xy;
+    position.x = position.x * (2.0 / uOutputTexture.x) - 1.0;
+    position.y = position.y * (2.0 * uOutputTexture.z / uOutputTexture.y) - uOutputTexture.z;
+    return vec4(position, 0.0, 1.0);
+}
+
+vec2 filterTextureCoord(void)
+{
+    return aPosition * (uOutputFrame.zw * uInputSize.zw);
+}
+
+void main(void)
+{
+    gl_Position = filterVertexPosition();
+    vTextureCoord = filterTextureCoord();
+}
+`;
+
+const rawFrag = `
 precision mediump float;
 varying vec2 vTextureCoord;
 uniform sampler2D uSampler;
-uniform vec4 filterArea;
+uniform highp vec4 inputSize;
 uniform float uTime;
 uniform vec3 uTint;      // base metal tint (navy)
 
@@ -22,7 +59,7 @@ void main(void){
     vec4 base = texture2D(uSampler, vTextureCoord);
     if (base.a < 0.01){ gl_FragColor = base; return; }
 
-    vec2 px = vTextureCoord * filterArea.xy;
+    vec2 px = vTextureCoord / inputSize.zw;
 
     // 1. top-down light gradient — brighter, more contrast top→bottom
     float grad = 1.0 - vTextureCoord.y;
@@ -47,11 +84,24 @@ void main(void){
 `;
 
 export class PanelMaterialFilter extends PIXI.Filter {
+  private _u: PIXI.UniformGroup<any>;
+
   constructor(tint = 0x16233a) {
     const r = ((tint >> 16) & 0xff) / 255;
     const g = ((tint >> 8) & 0xff) / 255;
     const b = (tint & 0xff) / 255;
-    super(undefined, frag, { uTime: 0, uTint: [r, g, b] });
+
+    const glProgram = new PIXI.GlProgram({
+      vertex: FILTER_VERTEX,
+      fragment: migrateFragmentFromV7toV8(rawFrag),
+      name: "panel-material-filter",
+    });
+    const materialUniforms = new PIXI.UniformGroup({
+      uTime: { value: 0, type: "f32" },
+      uTint: { value: [r, g, b], type: "vec3<f32>" },
+    });
+    super({ glProgram, resources: { materialUniforms } });
+    this._u = materialUniforms;
   }
-  advance(dt: number): void { this.uniforms.uTime += dt; }
+  advance(dt: number): void { this._u.uniforms.uTime = (this._u.uniforms.uTime as number) + dt; }
 }

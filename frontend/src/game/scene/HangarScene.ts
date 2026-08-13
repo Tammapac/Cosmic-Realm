@@ -46,11 +46,16 @@ function smoothstep(x: number): number {
  *  it (in addition to layer 0) so only they contribute glow. */
 const BLOOM_LAYER = 1;
 
-/** Max emissiveIntensity for the emissive fixtures. Raised to 5 so the wall
- *  Screens, ceiling lamp panels and deck strips read as WHOLE glowing faces
- *  (the user wanted them to light up as full surfaces, not tiny points) while the
- *  hue still survives (8+ clips to white). */
-const EMISSIVE_CAP = 5.0;
+/** Max emissiveIntensity for the emissive fixtures. 2.2 so the wall Screens,
+ *  ceiling lamp panels and deck strips read as WHOLE glowing faces (the user
+ *  wanted them to light up as full surfaces, not tiny points) while the hue
+ *  still survives (8+ clips to white) and they stay clearly below blown out.
+ *
+ *  Do NOT raise this to make the room brighter. It was tried at 7 alongside a
+ *  stronger bloom and the emissive strips blew out into a white fog that ate
+ *  the whole hall. The fixtures are area-shaped and additive, so intensity here
+ *  compounds with the bloom pass instead of just making them "a bit brighter". */
+const EMISSIVE_CAP = 2.2;
 
 /** envMapIntensity for glossy (roughness-mapped) surfaces, so reflections read. */
 const GLOSSY_ENV_INTENSITY = 2.5;
@@ -467,6 +472,26 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
     if (!mesh.isMesh || !mesh.material) return;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    // shadowSide = BackSide on every caster. 229 of the 233 materials in this
+    // GLB are DoubleSide, and for a DoubleSide material three defaults
+    // shadowSide to null → it renders BOTH faces into the shadow map. Front and
+    // back faces of thin geometry (railings, stair treads, container walls) then
+    // sit within a shadow-map texel of each other and the depth test cancels
+    // them out, so those objects cast almost nothing. Forcing BackSide writes
+    // only the far face — the standard fix, and what makes thin props cast at
+    // all. It also lets the bias hold: with front faces excluded, the shadow of
+    // the ship's own hull no longer fights its underside.
+    // ...but ONLY for DoubleSide materials. A mesh that is already FrontSide is
+    // a closed solid (the barrels are explicitly set FrontSide below), and
+    // forcing BackSide shadows on one makes it write its own far wall into the
+    // shadow map — so it shadows its own front face and goes dark while its
+    // neighbours stay lit. Leaving shadowSide null on those keeps three's
+    // default, which is correct for solids.
+    const matsForShadow = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const mm of matsForShadow) {
+      const m = mm as THREE.Material | undefined;
+      if (m && m.side === THREE.DoubleSide) m.shadowSide = THREE.BackSide;
+    }
     // Barrel bodies (Barrel_0..3, not the _lid/_ring children which share the
     // scene-wide SS_Hull_DarkMetal): (1) FrontSide — they're closed cylinders, no
     // need to render inner faces; (2) lift the dark AO wedges baked into their base
@@ -480,6 +505,11 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
         const clone = src.clone();
         clone.name = "Barrel3_SciFiPanel19";
         clone.side = THREE.FrontSide;
+        // Undo the blanket shadowSide=BackSide set above: that runs before this
+        // block, while the material is still DoubleSide. A closed cylinder that
+        // writes its BACK wall into the shadow map shadows its own front face
+        // and turns black. null = three's default, correct for a solid.
+        clone.shadowSide = null;
         clone.map = barrel3BaseTex;
         if (barrel3NormalTex) { clone.normalMap = barrel3NormalTex; clone.normalScale.set(1, 1); }
         clone.needsUpdate = true;
@@ -489,6 +519,10 @@ function validateModel(root: THREE.Object3D, label: string, hideLights = false):
         for (const mm of bm) {
           const m = mm as THREE.MeshStandardMaterial;
           m.side = THREE.FrontSide;
+          // Same reason as the Barrel_3 clone above: clear the blanket
+          // shadowSide=BackSide, which was applied while this was still
+          // DoubleSide and would make the barrel shadow its own front face.
+          m.shadowSide = null;
           // Reference barrel base-colour + normal (Barrel_1 / Scifi Panels 14). Keep
           // this material's own roughness/metal/envI. Clean texture, so no lift.
           if (barrelBaseTex) {
@@ -666,6 +700,12 @@ export class HangarScene {
   private smokeFired = false;
   /** Handle for a running combat-demo interval, so it can be stopped. */
   private demoTimer = 0;
+  /** Black stand-in used to OCCLUDE the bloom pass — see renderComposed(). */
+  private bloomOccludeMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+  /** Saved real materials while the occlusion swap is in effect. */
+  private stashedMats = new Map<THREE.Object3D, THREE.Material | THREE.Material[]>();
+  /** Layers mask holding just BLOOM_LAYER, to test "is this mesh emissive?". */
+  private bloomLayerMask = new THREE.Layers();
 
   // ── Post-processing ───────────────────────────────────────────────────────
   private composer: EffectComposer | null = null;
@@ -673,12 +713,17 @@ export class HangarScene {
   private bloomPass: UnrealBloomPass | null = null;
   private gtaoPass: GTAOPass | null = null;
   private fxaaPass: ShaderPass | null = null;
-  // Selective emissive bloom is OFF by default. Even layer-isolated + at low
-  // strength, on THIS deck — long emissive guide-strips + many bright fixture
-  // highlights — the bloom smears into a scene-wide milky wash (verified by A/B).
-  // Opt-in via ?bloom for A/B only.
+  // Selective emissive bloom is now ON by default: the fixtures are supposed to
+  // visibly shine, which is only possible if their glow spills past the mesh.
+  //
+  // It used to be off because it washed the deck out — but that A/B ran at
+  // exposure 1.05 with envIntensity 0.8, where the whole room was already near
+  // the bloom threshold, so everything bloomed and the result went milky. At the
+  // darker 0.85 / 0.35 grade only the emissive faces clear the threshold, which
+  // is exactly the selective effect that was wanted. `?nobloom` disables it.
   static bloomOn =
-    typeof window !== "undefined" && new URLSearchParams(window.location.search).has("bloom");
+    typeof window === "undefined" ||
+    !new URLSearchParams(window.location.search).has("nobloom");
   // Real screen-space AO (GTAO / ground-truth ambient occlusion) — ON by default;
   // this replaces the old fake blob contact shadows. ?noao disables for A/B.
   static ssaoOn =
@@ -718,17 +763,49 @@ export class HangarScene {
   // env reflects only faintly, so surfaces read soft/dark, not mirror-bright.
   // Lower intensity keeps reflections subtle/soft rather than crisp.
   static envKind: EnvKind = "hdr";
-  static envIntensity = 0.8;
+  /** Global scale on the ~54 shadowless fixture PointLights (see buildStripLights).
+   *
+   *  THE control over how strongly cast shadows read. Measured in the running
+   *  scene: at full strength the shadowless fixtures sum to ~148 intensity
+   *  against ~26 for the three lights that cast, so they wash out any shadow
+   *  from every direction at once.
+   *
+   *  0.07 puts total fill below the casters (measured 2.6x at 0.18, 4.3x at
+   *  0.35, 8.3x unscaled). The fixtures still tint the deck and hull — they are
+   *  the room's look — but they no longer out-light the key inside its own
+   *  shadow, which is what kept the shadows looking washed out.
+   *
+   *  Trimmed from 0.10 when envIntensity went back up to 0.30 for the barrels'
+   *  gloss: that restores some ambient fill, so this compensates to hold the
+   *  shadow contrast. Reflections come from the env, shading from these — which
+   *  is why they are the right pair of dials to trade against each other. */
+  static stripLightScale = 0.07;
+
+  // 0.30. The IBL does two jobs at once and they pull in opposite directions:
+  //   • ambient fill — flattens the room and lifts the key's shadows
+  //   • the ONLY source of environment reflection — i.e. gloss/specular
+  // Pushed to 0.08 for the shadow work, which killed the second job: the
+  // barrels (roughness 0.28-0.34, envMapIntensity 1.7-1.8 — the glossiest
+  // surfaces in the room) lost their sheen entirely, because effective
+  // reflection is envMapIntensity * this, so 1.8 * 0.08 = 0.14.
+  //
+  // 0.30 restores a visible highlight (1.8 * 0.30 = 0.54) while staying far
+  // below the original 0.8. The shadow contrast that 0.08 was buying is
+  // recovered through stripLightScale + key intensity instead, which darken the
+  // shade WITHOUT touching reflections.
+  static envIntensity = 0.30;
 
   // ── Tone-mapping A/B config (Phase D) ─────────────────────────────────────
   // Blender 4.x's Material Preview uses the AgX view transform, so AgX is the
   // strongest candidate for matching it; ACESFilmic (the old default) and
   // Khronos Neutral are the alternatives. Static so the harness can compare.
   static toneMapping: THREE.ToneMapping = THREE.AgXToneMapping;
-  // AgX (as in Blender). Exposure 1.05 (per spec): the local light rig — not a
-  // raised exposure — carries the brightness. Do NOT push exposure up to
-  // compensate for lamp reach; fix the rig instead.
-  static toneExposure = 1.05;
+  // AgX (as in Blender). Exposure 0.45: the local light rig — not a raised
+  // exposure — carries the brightness. Do NOT push exposure up to compensate
+  // for lamp reach; fix the rig instead. Pulled well below the original 1.05 so
+  // the room sits darker and the emissive fixtures out-shine their surroundings
+  // instead of competing with an already bright deck.
+  static toneExposure = 0.62;
   /** Live setter used by the harness to switch tone mapping without a rebuild. */
   setToneMapping(mode: THREE.ToneMapping, exposure: number): void {
     this.renderer.toneMapping = mode;
@@ -767,6 +844,7 @@ export class HangarScene {
     const h = canvas.clientHeight || window.innerHeight;
     this.camera = new THREE.PerspectiveCamera(50, w / h, 0.01, 200);
 
+    this.bloomLayerMask.set(BLOOM_LAYER);
     this.buildLights();
     this.combat = new CombatLights(this.scene);
     this.smoke = new LandingSmoke(this.scene);
@@ -803,7 +881,18 @@ export class HangarScene {
       bloomComposer.setPixelRatio(pr);
       bloomComposer.setSize(w, h);
       bloomComposer.addPass(new RenderPass(this.scene, this.camera));
-      const bloom = new UnrealBloomPass(size, 0.07, 0.2, 0.0);
+      // strength 0.12, radius 0.2, threshold 1.25.
+      //
+      // The bloom target only ever contains lit emissive meshes (renderComposed
+      // blacks out everything else), so the wash does NOT come from the room
+      // bleeding in — it comes from THIS deck's fixtures being long,
+      // continuous strips. Their glow overlaps with itself along the whole run,
+      // and the composite is additive, so strength stacks far faster here than
+      // the number suggests: 0.55/0.45 turned the hall into fog.
+      //
+      // Kept low and tight, and thresholded ABOVE 1.0 so only genuinely
+      // over-bright emissive pixels (not merely lit deck plating) contribute.
+      const bloom = new UnrealBloomPass(size, 0.12, 0.2, 1.25);
       bloomComposer.addPass(bloom);
       this.bloomPass = bloom;
       this.bloomComposer = bloomComposer;
@@ -879,10 +968,26 @@ export class HangarScene {
       return;
     }
     if (this.bloomComposer) {
-      // bloom: render emissive-only layer to the bloom target, then composite.
-      this.camera.layers.set(BLOOM_LAYER);
+      // Bloom target: emissive meshes lit, everything else BLACK — not hidden.
+      //
+      // Hiding them (camera.layers.set(BLOOM_LAYER)) is the usual selective-bloom
+      // trick, but it means the bloom pass sees no geometry in front of a strip
+      // light, so the glow of a strip that is physically BEHIND the railing/stairs
+      // /containers still lands on those pixels. The composite is additive, so it
+      // reads as light shining straight through solid metal.
+      //
+      // Swapping the occluders to a black MeshBasicMaterial instead keeps them in
+      // the depth buffer and contributes 0 to the additive blend — so they mask
+      // the glow exactly where they cover it, and stay invisible otherwise.
+      this.scene.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (!mesh.isMesh || mesh.layers.test(this.bloomLayerMask)) return;
+        this.stashedMats.set(mesh, mesh.material);
+        mesh.material = this.bloomOccludeMat;
+      });
       this.bloomComposer.render();
-      this.camera.layers.enableAll();
+      this.stashedMats.forEach((mat, o) => ((o as THREE.Mesh).material = mat));
+      this.stashedMats.clear();
     }
     this.composer.render();
   }
@@ -937,7 +1042,7 @@ export class HangarScene {
     // Blender's radiometric watts; these divisors were picked so the key reads as
     // the dominant light without clipping (calibrated against the reference).
     const AREA_K = 1 / 220; // RectAreaLight intensity per Blender watt
-    const SPOT_K = 1 / 55;  // SpotLight intensity per Blender watt
+    const SPOT_K = 1 / 38;  // SpotLight intensity per Blender watt
 
     const addArea = (
       name: string, bx: number, by: number, bz: number,
@@ -977,38 +1082,68 @@ export class HangarScene {
       s.name = name;
       if (shadow) {
         s.castShadow = true;
-        s.shadow.mapSize.set(2048, 2048);
+        // 4096 to match the directional key: at 2048 the spot shadow of the
+        // railings was visibly blockier than the key's, which gave away that two
+        // different lights were casting.
+        s.shadow.mapSize.set(4096, 4096);
         s.shadow.camera.near = 0.5;
         s.shadow.camera.far = 30;
-        s.shadow.bias = -0.0002;
-        s.shadow.normalBias = 0.02;
+        // Same retune as the directional key, for the same reason (BackSide
+        // shadow rendering needs far less bias).
+        s.shadow.bias = -0.0001;
+        s.shadow.normalBias = 0.006;
+        s.shadow.radius = 1.4;
       }
       this.scene.add(s);
       this.scene.add(s.target);
     };
+    // Both spots cast now. Spot2 used to be shadowless to save a shadow map,
+    // which was invisible while the bright IBL filled its shade in anyway; at
+    // envIntensity 0.35 an uncast spot is obvious, because it lights the ship
+    // through the stairs and containers.
     addSpot("Spot1", -3, 3, 5.5,  0.52, -0.347, -0.78, 400, 45, 0.4, 0.8, 0.9, 1.0, true);
-    addSpot("Spot2",  3, -1, 5.5, -0.52,  0.347, -0.78, 400, 45, 0.4, 0.8, 0.9, 1.0, false);
+    addSpot("Spot2",  3, -1, 5.5, -0.52,  0.347, -0.78, 400, 45, 0.4, 0.8, 0.9, 1.0, true);
 
     // ONE shadow-casting directional key so the ship, stairs + crates throw real
     // cast shadows on the deck (RectAreaLights can't cast shadows). The frustum is
     // widened to ±10 so it covers the WHOLE room (stairs + side containers were
     // outside the old ±5 box and cast nothing). Aimed from high front-right.
-    const shadowKey = new THREE.DirectionalLight(0xdfe8ff, 3.6);
-    shadowKey.position.set(3, 12, -2);
+    // 5.5: with the fills pulled right down the lit side would otherwise sink
+    // with them. Raising the KEY instead of the fills widens the gap between lit
+    // and shadowed — which is what actually reads as "darker shadows", rather
+    // than making the whole room darker.
+    const shadowKey = new THREE.DirectionalLight(0xdfe8ff, 8.0);
+    // Shadow length is pure trigonometry: horizontal-distance / height. Two
+    // failure modes bracket this:
+    //   • (3, 12, -2), ratio ~0.3 — near-vertical, shadow hides in the footprint
+    //   • (11, 4.5, 6), ratio ~2.8 — measured: the ship's shadow landed 2.14
+    //     units away at (-1.81, -2.15), i.e. off behind the ship, so the deck
+    //     directly under the hull stayed bare and it looked pasted on.
+    // (5, 8, 3), ratio ~0.7, is the middle: long enough to read as a cast
+    // shadow, short enough that it still touches the ship's own footprint.
+    shadowKey.position.set(5, 8, 3);
     shadowKey.target.position.set(0, 0, -1); // ~pad centre
     shadowKey.castShadow = true;
     shadowKey.shadow.mapSize.set(4096, 4096);
     const scam = shadowKey.shadow.camera;
-    // Tighter frustum → more shadow-map texels per unit → sharper, more defined
-    // cast shadows (a clear single KEY shadow for realistic lighting).
-    scam.left = -8; scam.right = 8; scam.top = 8; scam.bottom = -8;
-    scam.near = 1; scam.far = 40;
+    // Frustum has to cover the shadow, not just the caster. The raking key
+    // throws shadows several metres past the props, and anything outside this
+    // box is simply not in the shadow map — it stops mid-cast, which reads as a
+    // shadow that "isn't long enough". ±14 covers the full raked length; 4096
+    // texels over 28 units is still ~146/unit, so the edge stays defined.
+    scam.left = -14; scam.right = 14; scam.top = 14; scam.bottom = -14;
+    scam.near = 0.5; scam.far = 60;
     scam.updateProjectionMatrix();
     // Low normalBias so the cast shadow hugs the object's base (0.04 Peter-panned it
     // away → objects looked like they floated). radius 1 keeps the edge crisp.
-    shadowKey.shadow.bias = -0.0002;
-    shadowKey.shadow.normalBias = 0.012;
-    shadowKey.shadow.radius = 2; // slight softening so it isn't razor-hard aliased
+    // Bias retuned for shadowSide=BackSide (see validateModel). Writing only the
+    // FAR face already removes the self-shadow acne that bias normally fights,
+    // so both values can drop back towards zero — and they have to, because a
+    // large normalBias with back-face shadows pushes the contact point away and
+    // reopens the "object floats above its own shadow" gap.
+    shadowKey.shadow.bias = -0.0001;
+    shadowKey.shadow.normalBias = 0.006;
+    shadowKey.shadow.radius = 1.4; // crisper: a soft edge read as "barely there"
     this.scene.add(shadowKey);
     this.scene.add(shadowKey.target);
     this.keyLight = shadowKey;
@@ -1021,9 +1156,15 @@ export class HangarScene {
     //   • giBounce — a dim WARM directional pointing UP from under the deck, so the
     //     undersides of the ship/crates catch a floor-bounce tint (what Cycles GI
     //     gives for free). Tuned low so it never plats the forms.
-    const giHemi = new THREE.HemisphereLight(0x9fb8ff, 0x40381f, 0.25);
+    // Both fills cut hard (0.25 → 0.05, 0.35 → 0.07). They are shadowless by
+    // design, so every unit of fill lands INSIDE the key's shadow too and lifts
+    // it — fill intensity is what sets the shadow FLOOR, and no amount of extra
+    // key strength can darken a shadow that fill is re-lighting. This is the
+    // dominant control over "how dark do shadows go". Kept just above zero so
+    // the shade kills detail-free black.
+    const giHemi = new THREE.HemisphereLight(0x9fb8ff, 0x40381f, 0.05);
     this.scene.add(giHemi);
-    const giBounce = new THREE.DirectionalLight(0xffe8d0, 0.35);
+    const giBounce = new THREE.DirectionalLight(0xffe8d0, 0.07);
     giBounce.position.set(0, -3, 0);
     giBounce.target.position.set(0, 2, 0);
     this.scene.add(giBounce);
@@ -1101,7 +1242,7 @@ export class HangarScene {
       pts: THREE.Vector3[], hex: number, intensity: number, range: number, lift = 0.15,
     ) => {
       for (const p of pts) {
-        const l = new THREE.PointLight(hex, intensity, range, 2.0);
+        const l = new THREE.PointLight(hex, intensity * HangarScene.stripLightScale, range, 2.0);
         l.position.copy(p);
         l.position.y += lift;
         l.castShadow = false;
@@ -1110,6 +1251,19 @@ export class HangarScene {
       }
     };
 
+    // NOTE ON SHADOWS — read before raising any intensity below.
+    //
+    // These strip lights are, in total, the dominant light source in the room:
+    // 54 point lights summing to ~148 intensity, versus ~26 for the three lights
+    // that actually cast shadows. None of them casts (54 shadow cubemaps is not
+    // affordable), so every one of them lights straight INTO the key's shadow
+    // from a different direction and erases it.
+    //
+    // That is why turning giHemi/giBounce/envIntensity down barely changed the
+    // shadows: those add up to well under 1, against ~148 here. If cast shadows
+    // need to read more strongly, the lever is the SCALE of this group, not the
+    // ambient fills. Hence the factor below.
+    //
     // Colours calibrated to the emissive per spec #13:
     //   cyan strips/rails → cool cyan; ring → same but softer+wider; panels →
     //   cool-white-cyan. amber pad/valves → yellow-amber; wall stripes → orange.
@@ -1128,7 +1282,10 @@ export class HangarScene {
     RectAreaLightUniformsLib.init();
     for (const w of wallStripeMeshes) {
       const len = Math.max(w.size.x, w.size.z);
-      const ra = new THREE.RectAreaLight(0xffb05e, 6, len, 0.6);
+      // 2.5 (was 6): shadowless area lights aimed straight into the room, so
+      // like the strips they fill the key's shadow. Still enough to read as a
+      // lit wall bar.
+      const ra = new THREE.RectAreaLight(0xffb05e, 2.5, len, 0.6);
       const inboardX = Math.sign(pad.x - w.c.x) || 0;
       ra.position.set(w.c.x + inboardX * 0.15, w.c.y, w.c.z);
       ra.lookAt(pad.x, w.c.y, w.c.z); // face into the room toward the containers
@@ -1166,7 +1323,10 @@ export class HangarScene {
       const dir = new THREE.Vector3(cc.x - pad.x, 0, cc.z - pad.z);
       const gap = dir.length() || 1;
       dir.normalize();
-      const l = new THREE.PointLight(0xbfeeff, 3.2, 16, 1.4);
+      // Scaled with the rest of the shadowless fixture rig: these 6 sit right at
+      // the pad and lit the ship's underside from every side, which flattened
+      // exactly the area the key's shadow is supposed to fall on.
+      const l = new THREE.PointLight(0xbfeeff, 3.2 * HangarScene.stripLightScale, 16, 1.4);
       l.position.set(
         pad.x + dir.x * Math.min(3.6, gap * 0.55),
         cc.y + 0.3,
@@ -1214,7 +1374,8 @@ export class HangarScene {
       const b = screens[i + 1] ?? a;
       const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2, cz = (a.z + b.z) / 2;
       const toward = Math.sign(pad.z - cz) || -1; // toward the pad
-      const ra = new THREE.RectAreaLight(0xd8f8ff, 6, 3.0, 0.8);
+      // 2.5 (was 6), same reason as wallStripeArea above.
+      const ra = new THREE.RectAreaLight(0xd8f8ff, 2.5, 3.0, 0.8);
       ra.position.set(cx, cy, cz + toward * 0.5); // just in front of the panels
       ra.lookAt(pad.x, cy, pad.z);                 // aim into the room, never at the wall
       ra.name = "wallArea";
@@ -1350,16 +1511,56 @@ export class HangarScene {
     this.shipClass = shipClass;
     const ship = shipTemplate.clone(true);
     validateModel(ship, "ship");
+    // Ship hulls read as matte plastic without this. Measured on the parked
+    // model: the packed metalRough texture's BLUE channel (metalness) averages
+    // 0.01, so metalness = base(1.0) * 0.01 ≈ 0 — a dielectric, which barely
+    // reflects the environment no matter how high envMapIntensity goes. The
+    // GREEN channel (roughness) is a healthy ~0.63, so only the metal channel
+    // is broken; it is an export artefact, not an authored look.
+    //
+    // Dropping metalnessMap lets the material's own metalness apply, so the
+    // hull picks up the hangar's reflections like the crates and barrels do.
+    // Roughness keeps using its map — that detail is real and worth keeping.
+    ship.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.material) return;
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const mm of mats) {
+        const m = mm as THREE.MeshStandardMaterial;
+        if (!m?.isMeshStandardMaterial || !m.metalnessMap) continue;
+        m.metalnessMap = null;
+        m.metalness = 0.85;   // brushed hull metal, not a chrome mirror
+        m.needsUpdate = true;
+      }
+    });
     const box = new THREE.Box3().setFromObject(ship);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
-    // Normalise by the HORIZONTAL footprint (max of length/width), NOT maxDim: a
-    // tall dorsal fin/antenna would otherwise inflate maxDim and shrink the ship's
-    // apparent size, which is why the Skimmer looked bigger than the Apex. Then
-    // scale to the per-class target span so class sizes are consistent + ordered
-    // (Skimmer < Apex < Leviathan …).
-    const footprint = Math.max(size.x, size.z) || 1;
-    const scale = hangarSpan(shipClass) / footprint;
+    // Normalise by the horizontal footprint, but blended with the ship's overall
+    // BULK so height counts too.
+    //
+    // Fitting the footprint alone (the previous behaviour) put every class on
+    // its exact target span — measured: skimmer 2.40 … sovereign 5.00, perfectly
+    // ordered — yet the apparent sizes still were not, because a tall hull at the
+    // same span reads much bigger. Measured bounding volumes showed it plainly:
+    //   specter  span 3.0, height 1.40 → vol 12.4
+    //   apex     span 3.6, height 1.02 → vol  9.8
+    //   eclipse  span 3.8, height 0.93 → vol 11.7
+    // so the *smaller* class outbulked two larger ones.
+    //
+    // The cube root of the bounding volume IS the size measure — it is the edge
+    // length of a cube with the same bulk, so it rises with height as well as
+    // with span, which is exactly how the eye judges "how big is that ship".
+    // A 65/35 blend with the footprint was tried first and still left four
+    // ordering inversions (specter over phalanx, colossus under titan); pure
+    // bulk removes them. Fins and antennae cannot dominate the way they would a
+    // raw maxDim, because they only stretch ONE axis of the volume.
+    //
+    // x1.55 converts the cube-root value back to roughly the span numbers the
+    // SHIP_HANGAR_SPAN table is written in, so those entries keep their meaning
+    // (skimmer 2.4 … sovereign 5.0) and stay the dial to tune per class.
+    const bulk = Math.cbrt(Math.max(size.x * size.y * size.z, 1e-6)) || 1;
+    const scale = hangarSpan(shipClass) / (bulk * 1.55);
     ship.scale.setScalar(scale);
     ship.traverse((o) => {
       const m = o as THREE.Mesh;
@@ -1400,13 +1601,18 @@ export class HangarScene {
     const size = box.getSize(new THREE.Vector3());
     const span = Math.max(size.x, size.z) || 2;
 
-    const key = new THREE.PointLight(0xdfe8ff, 5.0, span * 5, 2.0); // cool key
+    // Deliberately weak (5.0 → 1.2, 3.0 → 0.7). These two sit right on the ship
+    // and cast no shadow, so they lit the hull from two sides AND poured light
+    // into the very patch of deck the ship's own cast shadow lands on — the
+    // single biggest reason the ship appeared to have no shadow. Enough is left
+    // to keep the hull from going flat on its unlit side.
+    const key = new THREE.PointLight(0xdfe8ff, 1.2, span * 5, 2.0); // cool key
     key.position.set(c.x - span * 0.7, c.y + span * 1.4, c.z - span * 0.9);
     key.castShadow = false;
     key.name = "shipFill";
     this.scene.add(key);
 
-    const fill = new THREE.PointLight(0xfff0dc, 3.0, span * 5, 2.0); // warm fill
+    const fill = new THREE.PointLight(0xfff0dc, 0.7, span * 5, 2.0); // warm fill
     fill.position.set(c.x + span * 1.0, c.y + span * 0.8, c.z + span * 0.6);
     fill.castShadow = false;
     fill.name = "shipFill";

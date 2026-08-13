@@ -53,3 +53,4 @@ backend/.env
 *.backup
 .env
 .env.local
+.claude/

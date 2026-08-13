@@ -105,7 +105,7 @@ export function HudWindow({
       >
         <span style={{ flex: 1, minWidth: 0 }} className="truncate">{title}</span>
         {onClose && (
-          <button className="gbtn gbtn-red" style={{ padding: "1px 8px", fontSize: 10 }} onClick={onClose} title="Close">
+          <button className="gbtn gbtn-red" style={{ padding: "1px 8px", fontSize: 11.8 }} onClick={onClose} title="Close">
             ✕
           </button>
         )}
@@ -173,7 +173,7 @@ export function HudButton({
 }) {
   const cls = variant === "primary" ? "gbtn gbtn-gold" : variant === "danger" ? "gbtn gbtn-red" : "gbtn";
   return (
-    <button {...props} className={`${cls} ${className}`} style={{ padding: "6px 18px", fontSize: 11, ...style }}>
+    <button {...props} className={`${cls} ${className}`} style={{ padding: "6px 18px", fontSize: 13, ...style }}>
       {children}
     </button>
   );

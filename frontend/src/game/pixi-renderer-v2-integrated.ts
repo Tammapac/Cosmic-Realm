@@ -39,7 +39,7 @@ import { effectiveStats, getDebugSpawnBuffer } from "./loop";
 import {
   Enemy, Projectile, Particle, Floater, NpcShip, OtherPlayer, Asteroid, RESOURCES,
   CargoBox, Drone, DRONE_DEFS, ZONES, STATIONS, PORTALS, DUNGEONS, SHIP_CLASSES,
-  MAP_RADIUS, FACTIONS, ShipClassId, rankFor, Station,
+  MAP_RADIUS, FACTIONS, ShipClassId, rankFor, rankIcon, rankIconSrcSet, rankBoxPx, type HonorRank, Station,
   ZoneId, SHIP_SIZE_SCALE, WeaponKind,
 } from "./types";
 import {
@@ -100,10 +100,10 @@ let debugMuzzleLabels: PIXI.Container | null = null;
 
 let stationSprite: PIXI.Sprite | null = null;
 let stationTexture: PIXI.Texture | null = null;
-let stationBaseTexture: PIXI.BaseTexture | null = null;
+let stationBaseTexture: PIXI.CanvasSource | null = null;
 let droneSprite3D: PIXI.Sprite | null = null;
 let droneTexture3D: PIXI.Texture | null = null;
-let droneBaseTexture3D: PIXI.BaseTexture | null = null;
+let droneBaseTexture3D: PIXI.CanvasSource | null = null;
 
 // ── Enemy 3D call routing ───────────────────────────────────────────────────
 // The enemy models used to come from a SECOND copy of the ship layer, loaded
@@ -138,7 +138,7 @@ let lastObservedCameraShake = 0;
 let enemyShipCanvas: HTMLCanvasElement | null = null;
 let enemyShipSprite: PIXI.Sprite | null = null;
 let enemyShipTexture: PIXI.Texture | null = null;
-let enemyShipBaseTexture: PIXI.BaseTexture | null = null;
+let enemyShipBaseTexture: PIXI.CanvasSource | null = null;
 
 let effectManager: EffectManager | null = null;
 let lastRenderTime = 0;
@@ -652,7 +652,8 @@ function loadShipSprites(id: string): void {
     img.crossOrigin = "anonymous";
     const idx = i;
     img.onload = () => {
-      frames[idx] = PIXI.Texture.from(img, { scaleMode: PIXI.SCALE_MODES.NEAREST });
+      frames[idx] = PIXI.Texture.from(img);
+      ((frames[idx] as PIXI.Texture).source).scaleMode = "nearest";
       loaded++;
       if (loaded === cfg.frames) {
         rotationFrameTextures.set(id, frames as PIXI.Texture[]);
@@ -746,7 +747,8 @@ function getDirectionalTex(shipClass: ShipClassId, scale: number, angle: number,
   ctx.globalAlpha = 1.0;
   ctx.drawImage(src, 0, 0, iw, ih, 0, 0, drawSz, drawSz);
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
+  tex = PIXI.Texture.from(c2);
+  ((tex as PIXI.Texture).source).scaleMode = "nearest";
   texCache.set(key, tex);
   return { tex, isDirectional: true };
 }
@@ -758,7 +760,8 @@ function preloadShipSprites(): void {
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
-      const tex = PIXI.Texture.from(img, { scaleMode: PIXI.SCALE_MODES.NEAREST });
+      const tex = PIXI.Texture.from(img);
+      ((tex as PIXI.Texture).source).scaleMode = "nearest";
       shipSpriteTextures.set(id, tex);
       shipSpriteLoading.delete(id);
       texCache.forEach((_, k) => { if (k.startsWith(`ship-${id}-`)) texCache.delete(k); });
@@ -784,9 +787,15 @@ function bakeTexture(
   bakeCanvas.height = height;
   bakeCtx.clearRect(0, 0, width, height);
   drawFn(bakeCtx, width, height);
-  const tex = PIXI.Texture.from(bakeCanvas, { scaleMode: PIXI.SCALE_MODES.NEAREST });
-  // Must clone since we reuse bakeCanvas
-  const clone = tex.clone();
+  // v8 Texture has no .clone() that copies pixels; since bakeCanvas is reused
+  // by every caller, copy the pixels into a fresh canvas so this texture's
+  // source stays independent instead of aliasing the shared scratch canvas.
+  const copyCanvas = document.createElement("canvas");
+  copyCanvas.width = width;
+  copyCanvas.height = height;
+  copyCanvas.getContext("2d")!.drawImage(bakeCanvas, 0, 0);
+  const clone = PIXI.Texture.from(copyCanvas);
+  (clone.source as PIXI.TextureSource).scaleMode = "nearest";
   return clone;
 }
 
@@ -841,7 +850,8 @@ function getShipTex(shipClass: ShipClassId, scale: number): PIXI.Texture {
     ctx.globalAlpha = 1.0;
     ctx.drawImage(src, minX, minY, cw, ch, dx, dy, drawW, drawH);
 
-    tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
+    tex = PIXI.Texture.from(c2);
+    ((tex as PIXI.Texture).source).scaleMode = "nearest";
     texCache.set(key, tex);
     return tex;
   }
@@ -861,7 +871,8 @@ function getShipTex(shipClass: ShipClassId, scale: number): PIXI.Texture {
   const dk = shadeHex(c, -0.45);
   drawShipPixels(ctx, shipClass, c, a, hi, dk, finalScale);
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
+  tex = PIXI.Texture.from(c2);
+  ((tex as PIXI.Texture).source).scaleMode = "nearest";
   texCache.set(key, tex);
   return tex;
 }
@@ -925,7 +936,8 @@ function getEnemyTex(e: Enemy): PIXI.Texture {
   }
   ctx.putImageData(img, 0, 0);
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
+  tex = PIXI.Texture.from(c2);
+  ((tex as PIXI.Texture).source).scaleMode = "nearest";
   texCache.set(key, tex);
   return tex;
 }
@@ -957,7 +969,8 @@ function getCircleTex(radius: number): PIXI.Texture {
   ctx.arc(sz / 2, sz / 2, radius, 0, Math.PI * 2);
   ctx.fill();
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
+  tex = PIXI.Texture.from(c2);
+  ((tex as PIXI.Texture).source).scaleMode = "nearest";
   texCache.set(key, tex);
   return tex;
 }
@@ -983,7 +996,8 @@ function getNebulaTex(radius: number): PIXI.Texture {
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.fill();
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
+  tex = PIXI.Texture.from(c2);
+  ((tex as PIXI.Texture).source).scaleMode = "nearest";
   texCache.set(key, tex);
   return tex;
 }
@@ -1007,7 +1021,8 @@ function getGlowTex(radius: number): PIXI.Texture {
   ctx.arc(sz / 2, sz / 2, radius, 0, Math.PI * 2);
   ctx.fill();
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
+  tex = PIXI.Texture.from(c2);
+  ((tex as PIXI.Texture).source).scaleMode = "nearest";
   texCache.set(key, tex);
   return tex;
 }
@@ -1034,7 +1049,8 @@ function getFireballTex(radius: number, color: string): PIXI.Texture {
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.fill();
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
+  tex = PIXI.Texture.from(c2);
+  ((tex as PIXI.Texture).source).scaleMode = "nearest";
   texCache.set(key, tex);
   return tex;
 }
@@ -1059,7 +1075,8 @@ function getSmokeTex(radius: number): PIXI.Texture {
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.fill();
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
+  tex = PIXI.Texture.from(c2);
+  ((tex as PIXI.Texture).source).scaleMode = "nearest";
   texCache.set(key, tex);
   return tex;
 }
@@ -1097,7 +1114,8 @@ function getEmberTex(radius: number, color: string): PIXI.Texture {
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.fill();
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
+  tex = PIXI.Texture.from(c2);
+  ((tex as PIXI.Texture).source).scaleMode = "nearest";
   texCache.set(key, tex);
   return tex;
 }
@@ -1122,7 +1140,8 @@ function getFlashTex(radius: number, color: string): PIXI.Texture {
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.fill();
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
+  tex = PIXI.Texture.from(c2);
+  ((tex as PIXI.Texture).source).scaleMode = "nearest";
   texCache.set(key, tex);
   return tex;
 }
@@ -1158,7 +1177,8 @@ function getLaserBoltTex(length: number): PIXI.Texture {
   ctx.ellipse(cx, cy, hw * 0.5, hh * 0.4, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
+  tex = PIXI.Texture.from(c2);
+  ((tex as PIXI.Texture).source).scaleMode = "nearest";
   texCache.set(key, tex);
   return tex;
 }
@@ -1296,7 +1316,7 @@ function getFxFrames(name: string, colorHex: string): PIXI.Texture[] | null {
   c.width = img.naturalWidth; c.height = img.naturalHeight;
   const ctx = c.getContext("2d")!;
   ctx.drawImage(img, 0, 0);
-  const col = PIXI.utils.string2hex(colorHex);
+  const col = new PIXI.Color(colorHex).toNumber();
   const cr = (col >> 16) & 255, cg = (col >> 8) & 255, cb = col & 255;
   const id = ctx.getImageData(0, 0, c.width, c.height);
   const d = id.data;
@@ -1310,11 +1330,11 @@ function getFxFrames(name: string, colorHex: string): PIXI.Texture[] | null {
     d[i + 2] = Math.min(255, cb * inten + (255 - cb * inten) * w2);
   }
   ctx.putImageData(id, 0, 0);
-  const base = PIXI.BaseTexture.from(c);
-  base.scaleMode = PIXI.SCALE_MODES.NEAREST;
+  const baseTex = PIXI.Texture.from(c);
+  baseTex.source.scaleMode = "nearest";
   const frames: PIXI.Texture[] = [];
   for (let i = 0; i < def.frames; i++) {
-    frames.push(new PIXI.Texture(base, new PIXI.Rectangle(i * def.fw, 0, def.fw, def.fh)));
+    frames.push(new PIXI.Texture({ source: baseTex.source, frame: new PIXI.Rectangle(i * def.fw, 0, def.fw, def.fh) }));
   }
   _fxColored.set(key, frames);
   return frames;
@@ -1327,7 +1347,7 @@ function spawnFxImpact(x: number, y: number, colorHex: string, size: number): vo
   const a = new PIXI.AnimatedSprite(frames);
   a.anchor.set(0.5);
   a.position.set(x, y);
-  a.blendMode = PIXI.BLEND_MODES.ADD;
+  a.blendMode = "add";
   a.loop = false;
   a.animationSpeed = FX_DEFS.hit.speed;
   const s = Math.max(0.9, (size * FX_DEFS.hit.mult) / FX_DEFS.hit.fh);
@@ -1378,7 +1398,8 @@ function getRocketTex(): PIXI.Texture {
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 10, h);
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
+  tex = PIXI.Texture.from(c2);
+  ((tex as PIXI.Texture).source).scaleMode = "nearest";
   texCache.set(key, tex);
   return tex;
 }
@@ -1406,7 +1427,8 @@ function getTrailTex(radius: number): PIXI.Texture {
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.fill();
 
-  tex = PIXI.Texture.from(c2, { scaleMode: PIXI.SCALE_MODES.NEAREST });
+  tex = PIXI.Texture.from(c2);
+  ((tex as PIXI.Texture).source).scaleMode = "nearest";
   texCache.set(key, tex);
   return tex;
 }
@@ -1538,7 +1560,9 @@ function escapeHtml(s: string): string {
 function shipLabelHtml(
   sx: number, syTop: number, name: string,
   faction: { color: string; tag: string } | null,
-  rank: { index: number; name: string },
+  // The full HonorRank, not a structural subset: rankIcon() needs the `icon`
+  // field, and both callers already pass a real rankFor() result.
+  rank: HonorRank,
   hullPct: number | null,
   extra: string,
   hostile = false,
@@ -1557,9 +1581,38 @@ function shipLabelHtml(
     : faction
       ? `<span style="flex:none;width:8px;height:8px;border-radius:50%;background:${faction.color};box-shadow:0 0 4px ${faction.color};" title="${faction.tag}"></span>`
       : "";
-  // Fixed landscape badge box so every rank insignia renders at a readable,
-  // consistent size directly right of the name.
-  const rankImg = `<img src="/assets/ui/ranks/rank_${String(rank.index + 1).padStart(2, "0")}.png" style="flex:none;height:16px;width:28px;object-fit:contain;filter:drop-shadow(0 1px 2px #000) drop-shadow(0 0 3px rgba(0,0,0,0.8));" title="${rank.name}"/>`;
+  // Fixed badge box so every rank insignia renders at a readable, consistent
+  // size directly right of the name.
+  //
+  // Height-driven, width:auto — NOT a fixed square. The art files are now
+  // cropped tight to each badge and keep their natural aspect (a wide chevron
+  // is 246x130, a compact shield 246x246). Pinning both axes to 32 would make
+  // `contain` letterbox the wide ones back down to ~17px of visible art, which
+  // is the exact "too small to read" problem this is fixing. Fixing HEIGHT and
+  // letting width follow gives every rank the full 32px of vertical art, and
+  // the nameplate has horizontal room to spare.
+  //
+  // srcset gives HiDPI screens the @2x master. The source badges are only
+  // 66-140px in the sheet, so a single oversized file wins nothing — each
+  // density gets art sharpened for exactly the size it is drawn at.
+  // image-rendering stays default (smooth); `pixelated` would alias these
+  // anti-aliased metal edges badly.
+  //
+  // The filename comes from rankIcon(), never from `index + 1`: Outlaw is
+  // index 0 but uses the LAST badge on the sheet, so the arithmetic form is
+  // now simply wrong.
+  //
+  // Sized by equal AREA, not by a shared box — see rankBoxPx() in types.ts.
+  // Badge art is cropped tight and the shapes differ a lot (0.58 to 2.11), so
+  // one box size made the wider badges paint visibly less ink than the near
+  // square ones at the same nominal size. Two target areas: the entry ranks
+  // (index 1-6, Basic Space Pilot .. Chief Sergeant) stay deliberately quieter
+  // than the star and wreath insignia above them, per user request. Index 0 is
+  // Outlaw — a penalty state rather than a progression step, so it keeps the
+  // full size and stays conspicuous.
+  const isEntryRank = rank.index >= 1 && rank.index <= 6;
+  const rankBox = rankBoxPx(rank, isEntryRank ? 400 : 930);
+  const rankImg = `<img src="${rankIcon(rank)}" srcset="${rankIconSrcSet(rank)}" style="flex:none;width:${rankBox}px;height:${rankBox}px;object-fit:contain;filter:drop-shadow(0 1px 2px #000) drop-shadow(0 0 3px rgba(0,0,0,0.8));" title="${rank.name}"/>`;
   const bar = hullPct != null
     ? `<div style="width:46px;height:3px;background:rgba(0,0,0,0.55);margin:0 auto 3px;"><div style="width:${Math.round(hullPct * 100)}%;height:100%;background:#44ff66;"></div></div>`
     : "";
@@ -1569,24 +1622,27 @@ function shipLabelHtml(
   </div>`;
 }
 
-export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLDivElement): void {
+export async function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLDivElement): Promise<void> {
   if (labelOverlay) _labelOverlay = labelOverlay;
   preloadShipSprites();
   preloadRotationSprites();
   preload3DModels(state.player?.shipClass || undefined);
-  // Round pixels for sharp rendering (no global NEAREST - text needs LINEAR)
-  PIXI.settings.ROUND_PIXELS = true;
 
-  app = new PIXI.Application({
+  // v8: Application() takes no constructor options — must await init() (it
+  // probes for WebGPU asynchronously). roundPixels moves from the removed
+  // global PIXI.settings onto this same options object.
+  app = new PIXI.Application();
+  await app.init({
     resizeTo: container,
     backgroundColor: 0x020414,
     backgroundAlpha: 0,
     antialias: false,
     resolution: Math.min(window.devicePixelRatio || 1, 2),
     autoDensity: true,
+    roundPixels: true, // sharp rendering (no global NEAREST - text needs LINEAR)
   });
 
-  const view = app.view as HTMLCanvasElement;
+  const view = app.canvas as HTMLCanvasElement;
   container.appendChild(view);
 
   // Perf: time the ACTUAL Pixi GL render (runs on Pixi's internal ticker,
@@ -1709,11 +1765,8 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
     initStation3DLayer(app.screen.width, app.screen.height);
 
     enemyShipCanvas = world3DCanvas;
-    enemyShipBaseTexture = new PIXI.BaseTexture(world3DCanvas, {
-      scaleMode: PIXI.SCALE_MODES.LINEAR,
-      alphaMode: PIXI.ALPHA_MODES.UNPACK,
-    });
-    enemyShipTexture = new PIXI.Texture(enemyShipBaseTexture);
+    enemyShipBaseTexture = new PIXI.CanvasSource({ resource: world3DCanvas, scaleMode: "linear" });
+    enemyShipTexture = new PIXI.Texture({ source: enemyShipBaseTexture });
     enemyShipSprite = new PIXI.Sprite(enemyShipTexture);
     enemyShipSprite.anchor.set(0.5, 0.5);
     worldLayer.addChildAt(enemyShipSprite, worldLayer.getChildIndex(enemyLayer));
@@ -1725,11 +1778,10 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
   // insert a Pixi sprite between bgLayer and worldLayer so the station renders
   // above the bg parallax but below enemies/player/projectiles/effects.
   const stationCanvas = initStation3DLayer(app.screen.width, app.screen.height);
-  stationBaseTexture = new PIXI.BaseTexture(stationCanvas, {
-    scaleMode: PIXI.SCALE_MODES.LINEAR, // crisp full-res 3D pass — no pixelated composite
-    alphaMode: PIXI.ALPHA_MODES.UNPACK, // Three.js emits straight alpha; Pixi premultiplies on upload
-  });
-  stationTexture = new PIXI.Texture(stationBaseTexture);
+  // crisp full-res 3D pass — no pixelated composite. v7's alphaMode:UNPACK
+  // has no v8 equivalent — v8's CanvasSource always uploads unpremultiplied.
+  stationBaseTexture = new PIXI.CanvasSource({ resource: stationCanvas, scaleMode: "linear" });
+  stationTexture = new PIXI.Texture({ source: stationBaseTexture });
   stationSprite = new PIXI.Sprite(stationTexture);
   stationSprite.width = app.screen.width;
   stationSprite.height = app.screen.height;
@@ -1750,11 +1802,8 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
   enemyShipCanvas.height = window.innerHeight;
   enemyShipCanvas.dataset.perfName = "3d-enemies"; // perf overlay label
   initEnemy3DLayer(enemyShipCanvas);
-  enemyShipBaseTexture = new PIXI.BaseTexture(enemyShipCanvas, {
-    scaleMode: PIXI.SCALE_MODES.LINEAR, // crisp full-res 3D pass — no pixelated composite
-    alphaMode: PIXI.ALPHA_MODES.UNPACK,
-  });
-  enemyShipTexture = new PIXI.Texture(enemyShipBaseTexture);
+  enemyShipBaseTexture = new PIXI.CanvasSource({ resource: enemyShipCanvas, scaleMode: "linear" });
+  enemyShipTexture = new PIXI.Texture({ source: enemyShipBaseTexture });
   enemyShipSprite = new PIXI.Sprite(enemyShipTexture);
   enemyShipSprite.anchor.set(0.5, 0.5);
   worldLayer.addChildAt(enemyShipSprite, worldLayer.getChildIndex(enemyLayer));
@@ -1768,11 +1817,8 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
   // scene or renderer, shared or legacy, so it boots the same way either path.
   {
     const droneCanvas3D = initDrone3DLayer(app.screen.width, app.screen.height);
-    droneBaseTexture3D = new PIXI.BaseTexture(droneCanvas3D, {
-      scaleMode: PIXI.SCALE_MODES.LINEAR,
-      alphaMode: PIXI.ALPHA_MODES.UNPACK,
-    });
-    droneTexture3D = new PIXI.Texture(droneBaseTexture3D);
+    droneBaseTexture3D = new PIXI.CanvasSource({ resource: droneCanvas3D, scaleMode: "linear" });
+    droneTexture3D = new PIXI.Texture({ source: droneBaseTexture3D });
     droneSprite3D = new PIXI.Sprite(droneTexture3D);
     droneSprite3D.anchor.set(0.5, 0.5);
     worldLayer.addChildAt(droneSprite3D, worldLayer.getChildIndex(playerLayer) + 1);
@@ -1789,13 +1835,12 @@ export function initPixiRenderer(container: HTMLDivElement, labelOverlay?: HTMLD
 
   // Debug overlay
   if (DEBUG_OVERLAY) {
-    debugText = new PIXI.Text("", {
+    debugText = new PIXI.Text({ text: "", style: {
       fontFamily: "Courier New",
       fontSize: 12,
       fill: "#00ff00",
-      stroke: "#000000",
-      strokeThickness: 2,
-    });
+      stroke: { color: "#000000", width: 2 },
+    } });
     debugText.position.set(10, 10);
     uiLayer.addChild(debugText);
   }
@@ -1901,12 +1946,11 @@ export function destroyPixiRenderer(): void {
   lastObservedCameraShake = 0;
   starblastShake.x = starblastShake.y = starblastShake.vx = starblastShake.vy = starblastShake.r = starblastShake.vr = 0;
 
-  // Destroy gradient sprite
-  if (bgGradientSprite) {
-    bgGradientSprite.destroy(true);
-    bgGradientSprite = null;
-  }
-  bgGradientZone = "";
+  // The gradient-background cleanup that used to live here referenced
+  // bgGradientSprite / bgGradientZone. Both were removed with the gradient
+  // background itself, but this teardown was left behind, so destroy() threw
+  // "bgGradientSprite is not defined" and took the whole GameCanvas down with
+  // it. Nothing allocates a gradient sprite any more — there is nothing to free.
 
   // Destroy textures
   for (const [, tex] of texCache) {
@@ -2125,7 +2169,7 @@ export function pixiRender(): void {
   else renderEnemy3DLayer();
   if (enemyShipBaseTexture && enemyShipCanvas) {
     if (enemyShipBaseTexture.width !== enemyShipCanvas.width || enemyShipBaseTexture.height !== enemyShipCanvas.height) {
-      enemyShipBaseTexture.setRealSize(enemyShipCanvas.width, enemyShipCanvas.height);
+      enemyShipBaseTexture.resize(enemyShipCanvas.width, enemyShipCanvas.height);
     }
     enemyShipBaseTexture.update();
   }
@@ -2425,15 +2469,14 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
       const healthBar = new PIXI.Graphics();
       container.addChild(healthBar);
 
-      const nameText = new PIXI.Text(e.name || "", {
+      const nameText = new PIXI.Text({ text: e.name || "", style: {
         fontFamily: '"Kenney Future Narrow", "Courier New", monospace',
         fontSize: 16,
         fill: "#ff3344",
         fontWeight: "bold",
-        stroke: "#000000",
-        strokeThickness: 2,
+        stroke: { color: "#000000", width: 2 },
         letterSpacing: 1,
-      });
+      } });
       nameText.resolution = 4;
       nameText.anchor.set(0.5, 1);
       container.addChild(nameText);
@@ -2445,8 +2488,8 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
       const coreGlowSize = e.isBoss ? 20 : 8 + e.size * 0.3;
       const coreGlow = new PIXI.Sprite(getGlowTex(Math.ceil(coreGlowSize)));
       coreGlow.anchor.set(0.5);
-      coreGlow.blendMode = PIXI.BLEND_MODES.ADD;
-      coreGlow.tint = PIXI.utils.string2hex(e.color);
+      coreGlow.blendMode = "add";
+      coreGlow.tint = new PIXI.Color(e.color).toNumber();
       coreGlow.alpha = 0.3;
       container.addChildAt(coreGlow, 0);
       data.coreGlow = coreGlow;
@@ -2467,7 +2510,7 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
     } else if (data.texKey !== currentTexKey) {
       data.body.texture = getEnemyTex(e);
       data.texKey = currentTexKey;
-      if (data.coreGlow) data.coreGlow.tint = PIXI.utils.string2hex(e.color);
+      if (data.coreGlow) data.coreGlow.tint = new PIXI.Color(e.color).toNumber();
     }
 
     // Update position & rotation
@@ -2485,17 +2528,28 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
     if (enemyUse3D) {
       data.body.visible = false;
       if (data.coreGlow) data.coreGlow.visible = false;
+      // The weapon glow belongs to the 2D sprite too: it draws two hardcoded
+      // dots at ±wOff*0.4 meant to sit on the old top-down sprite's gun mounts.
+      // Body and core glow were already hidden behind a 3D model, but this one
+      // was not — so it kept painting two bright points over the GLB, at
+      // positions that mean nothing on the 3D mesh. Clear it as well, or the
+      // leftovers of the legacy renderer show through.
+      if (data.weaponGlow) { data.weaponGlow.visible = false; data.weaponGlow.clear(); }
       enemyUpdateShip3D("enemy:" + e.id, enemyModelKey, e.pos.x, e.pos.y, e.angle, e.size / 15.2, cam.x, cam.y, e.vel?.x, e.vel?.y);
       enemyMarkActive("enemy:" + e.id);
     } else {
-      data.body.visible = true;
-      if (data.coreGlow) data.coreGlow.visible = true;
+      // Same rule as the player ship: if this enemy HAS a 3D model that is just
+      // not loaded yet, stay hidden rather than flashing the legacy sprite for
+      // the download window. Only genuinely model-less enemies draw in 2D.
+      const hasModel = !!enemyModelKey && enemyHas3D(enemyModelKey);
+      data.body.visible = !hasModel;
+      if (data.coreGlow) data.coreGlow.visible = !hasModel;
     }
 
     if (perfHide.glows) {
       if (data.coreGlow) data.coreGlow.visible = false;
       if (data.weaponGlow) { data.weaponGlow.visible = false; data.weaponGlow.clear(); }
-    } else if (data.weaponGlow) data.weaponGlow.visible = true;
+    } else if (data.weaponGlow && !enemyUse3D) data.weaponGlow.visible = true;
     if (perfHide.bodies) data.body.visible = false;
 
     // Animate alien core glow
@@ -2506,10 +2560,12 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
       data.coreGlow.scale.set(scale);
     }
 
-    // Animate weapon glow — throttled to every 4th frame (see _enemyGlowFrameCounter)
-    if (data.weaponGlow && drawWeaponGlowThisFrame && !perfHide.glows) {
+    // Animate weapon glow — throttled to every 4th frame (see _enemyGlowFrameCounter).
+    // Skipped entirely on 3D enemies: the dot positions below are authored for
+    // the flat sprite, so on a GLB they float over the mesh at meaningless spots.
+    if (data.weaponGlow && drawWeaponGlowThisFrame && !perfHide.glows && !enemyUse3D) {
       data.weaponGlow.clear();
-      const wColor = PIXI.utils.string2hex(e.color);
+      const wColor = new PIXI.Color(e.color).toNumber();
       const wPulse = 0.4 + 0.4 * Math.sin(state.tick * 5 + e.pos.x * 0.01);
       const wOff = e.size * 0.6;
       data.weaponGlow.beginFill(0xffffff, wPulse * 0.6);
@@ -2526,7 +2582,7 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
     if (data.bossAura && e.isBoss) {
       data.bossAura.clear();
       const auraPulse = 0.3 + 0.2 * Math.sin(state.tick * 2);
-      data.bossAura.lineStyle(2, PIXI.utils.string2hex(e.color), auraPulse);
+      data.bossAura.lineStyle(2, new PIXI.Color(e.color).toNumber(), auraPulse);
       data.bossAura.drawCircle(0, 0, e.size + 8 + Math.sin(state.tick * 1.5) * 3);
       data.bossAura.lineStyle(1, 0xffffff, auraPulse * 0.3);
       data.bossAura.drawCircle(0, 0, e.size + 14 + Math.sin(state.tick * 2.5) * 2);
@@ -2536,11 +2592,11 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
     if (e.hitFlash && e.hitFlash > 0) {
       const intensity = Math.min(1, e.hitFlash * 3);
       data.body.alpha = 1;
-      data.body.tint = PIXI.utils.rgb2hex([
+      data.body.tint = new PIXI.Color([
         1,
         0.7 + intensity * 0.3,
         0.7 + intensity * 0.3,
-      ]);
+      ]).toNumber();
       // Micro-shake on hit
       data.container.position.set(
         e.pos.x + (Math.random() - 0.5) * intensity * 3,
@@ -2560,8 +2616,11 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
     }
 
     // Health bar
-    data.healthBar.visible = !perfHide.bars;
-    if (!perfHide.bars) {
+    // Bosses carry the world-anchored DOM boss bar (components/BossBar.tsx)
+    // instead of the mini bar + pixi name text — suppress both here so the
+    // overhead plate is the single source of boss identity/health.
+    data.healthBar.visible = !perfHide.bars && !e.isBoss;
+    if (!perfHide.bars && !e.isBoss) {
     const barW = e.isBoss ? 64 : 28;
     const pct = Math.max(0, Math.min(1, e.hull / e.hullMax));
     data.healthBar.clear();
@@ -2589,9 +2648,8 @@ function syncEnemies(cam: { x: number; y: number }, halfW: number, halfH: number
       : e.size + 10;
     data.nameText.scale.set(1 / zoomN);
     if (e.isBoss) {
-      data.nameText.text = `◆ ${(e.name || "DREADNOUGHT").toUpperCase()} ◆`;
-      data.nameText.style.fill = "#ff8a4e";
-      data.nameText.position.set(0, -(rWorldN + 14 / zoomN));
+      // name comes from the DOM boss bar plate now
+      data.nameText.text = "";
     } else if (e.name) {
       data.nameText.text = e.name;
       data.nameText.position.set(0, -(rWorldN + 10 / zoomN));
@@ -2665,7 +2723,7 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
         // the active ammo type; remote/renderOnly shots resolve it from the
         // sender's synced ammoType in loop.ts) — it drives glow/trail/tip so
         // every ammo type keeps its distinct color on every client.
-        const ammoColor = PIXI.utils.string2hex(pr.color);
+        const ammoColor = new PIXI.Color(pr.color).toNumber();
         const isNew = laserSystem.ensure(pr.id, preset, pr.pos.x, pr.pos.y, angle, Math.max(0.75, Math.min(1.8, pr.size / 4.5)), ammoColor);
         // Mark the bolt as drawn so the game tick may now let collision remove
         // it — remote/renderOnly shots are held alive in loop.ts until this
@@ -2694,7 +2752,7 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
         const def = FX_DEFS[fxName];
         const anim = new PIXI.AnimatedSprite(fxFrames);
         anim.anchor.set(0.5);
-        anim.blendMode = PIXI.BLEND_MODES.ADD;
+        anim.blendMode = "add";
         anim.animationSpeed = def.speed;
         anim.gotoAndPlay(Math.floor(Math.random() * def.frames));
         anim.scale.set(Math.max(0.5, (pr.size * def.mult) / def.fh));
@@ -2719,8 +2777,8 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
       }
       const sprite = new PIXI.Sprite(tex);
       sprite.anchor.set(0.5);
-      sprite.blendMode = isRocket ? PIXI.BLEND_MODES.NORMAL : PIXI.BLEND_MODES.ADD;
-      sprite.tint = PIXI.utils.string2hex(pr.color);
+      sprite.blendMode = isRocket ? "normal" : "add";
+      sprite.tint = new PIXI.Color(pr.color).toNumber();
       if (kind === "orb" || kind === "spinner" || kind === "flash") {
         sprite.scale.set(baseScale);
       } else if (!isRocket) {
@@ -2746,7 +2804,7 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
       if (effectManager && pr.fromPlayer && pr.ttl > 1.2) {
         const angle = Math.atan2(pr.vel.y, pr.vel.x);
         const weaponType = pr.weaponKind === "rocket" ? "rocket" : "laser";
-        const color = PIXI.utils.string2hex(pr.color);
+        const color = new PIXI.Color(pr.color).toNumber();
         if (weaponType === "rocket") {
           effectManager.spawnRocketLaunch(pr.pos.x, pr.pos.y, angle);
         } else {
@@ -2796,7 +2854,7 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
       const interval = isRocket ? PROJ_TRAIL_INTERVAL_ROCKET_MS : PROJ_TRAIL_INTERVAL_LASER_MS;
       if (nowMs - last >= interval) {
         const weaponType = isRocket ? "rocket" : "laser";
-        effectManager.spawnProjectileTrail(pr.pos.x, pr.pos.y, PIXI.utils.string2hex(pr.color), weaponType);
+        effectManager.spawnProjectileTrail(pr.pos.x, pr.pos.y, new PIXI.Color(pr.color).toNumber(), weaponType);
         _lastProjTrailAt.set(pr.id, nowMs);
       }
       // Occasional light smoke wisp for rockets — also throttled
@@ -2815,12 +2873,12 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
   // At 60fps, a 2-frame refresh (~33ms) is imperceptible for a soft glow.
   if (!projectileGlowGraphics) {
     projectileGlowGraphics = new PIXI.Graphics();
-    projectileGlowGraphics.blendMode = PIXI.BLEND_MODES.ADD;
+    projectileGlowGraphics.blendMode = "add";
     projectileLayer.addChildAt(projectileGlowGraphics, 0);
   }
   if (!projectileBehindGlowGraphics) {
     projectileBehindGlowGraphics = new PIXI.Graphics();
-    projectileBehindGlowGraphics.blendMode = PIXI.BLEND_MODES.ADD;
+    projectileBehindGlowGraphics.blendMode = "add";
     projectileBehindLayer.addChildAt(projectileBehindGlowGraphics, 0);
   }
   _projGlowFrameParity = (_projGlowFrameParity + 1) & 1;
@@ -2829,7 +2887,7 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
     projectileBehindGlowGraphics.clear();
     for (const pr of state.projectiles) {
       if (Math.abs(pr.pos.x - cam.x) > halfW + 30 || Math.abs(pr.pos.y - cam.y) > halfH + 30) continue;
-      const color = PIXI.utils.string2hex(pr.color);
+      const color = new PIXI.Color(pr.color).toNumber();
       const isRocket = pr.weaponKind === "rocket";
       if (isRocket) continue;
       // True lasers get zero legacy glow — the LaserSystem's own layered
@@ -2919,7 +2977,7 @@ function syncProjectiles(cam: { x: number; y: number }, halfW: number, halfH: nu
       prevProjectileData.set(pr.id, {
         x: pr.pos.x,
         y: pr.pos.y,
-        color: PIXI.utils.string2hex(pr.color),
+        color: new PIXI.Color(pr.color).toNumber(),
         weaponKind: pr.weaponKind === "rocket" ? "rocket" : (FX_KIND_MAP[pr.weaponKind] ? pr.weaponKind : "laser"),
         angle: Math.atan2(pr.vel.y, pr.vel.x),
         fromPlayer: pr.fromPlayer,
@@ -2975,7 +3033,7 @@ function syncTrailParticles(cam: { x: number; y: number }, halfW: number, halfH:
       const tex = getTrailTex(r);
       const sprite = new PIXI.Sprite(tex);
       sprite.anchor.set(0.5);
-      sprite.blendMode = PIXI.BLEND_MODES.ADD;
+      sprite.blendMode = "add";
       trailLayer.addChild(sprite);
       data = { sprite };
       particleSprites.set(pa.id, data);
@@ -2986,7 +3044,7 @@ function syncTrailParticles(cam: { x: number; y: number }, halfW: number, halfH:
     const r = Math.max(8, Math.ceil(pa.size * 3));
     data.sprite.visible = true;
     data.sprite.position.set(pa.pos.x, pa.pos.y);
-    data.sprite.tint = PIXI.utils.string2hex(pa.color);
+    data.sprite.tint = new PIXI.Color(pa.color).toNumber();
 
     // Engine particles: bright core with animated flicker
     if (pa.kind === "engine") {
@@ -3035,7 +3093,7 @@ function syncEffectParticles(cam: { x: number; y: number }, halfW: number, halfH
       const sprite = new PIXI.Sprite(tex);
       sprite.anchor.set(0.5);
       if (pa.kind !== "debris" && pa.kind !== "smoke") {
-        sprite.blendMode = PIXI.BLEND_MODES.ADD;
+        sprite.blendMode = "add";
       }
       effectsLayer.addChild(sprite);
       data = { sprite };
@@ -3049,7 +3107,7 @@ function syncEffectParticles(cam: { x: number; y: number }, halfW: number, halfH
     if (pa.kind === "ring") {
       const t = 1 - a;
       const r = Math.max(4, Math.ceil(pa.size));
-      data.sprite.tint = PIXI.utils.string2hex(pa.color);
+      data.sprite.tint = new PIXI.Color(pa.color).toNumber();
       data.sprite.alpha = a * 0.9;
       data.sprite.scale.set(t * pa.size / r);
     } else if (pa.kind === "flash") {
@@ -3064,7 +3122,7 @@ function syncEffectParticles(cam: { x: number; y: number }, halfW: number, halfH
       data.sprite.scale.set(pa.size * (0.3 + t * 0.85) / r);
     } else if (pa.kind === "spark") {
       const r = Math.max(4, Math.ceil(pa.size));
-      data.sprite.tint = PIXI.utils.string2hex(pa.color);
+      data.sprite.tint = new PIXI.Color(pa.color).toNumber();
       data.sprite.alpha = a * 0.9;
       data.sprite.scale.set(a * pa.size / r);
     } else if (pa.kind === "debris") {
@@ -3086,7 +3144,7 @@ function syncEffectParticles(cam: { x: number; y: number }, halfW: number, halfH
       dg.drawCircle(0, 0, s * 1.5);
       dg.endFill();
       // Jagged polygon body
-      const color = PIXI.utils.string2hex(pa.color);
+      const color = new PIXI.Color(pa.color).toNumber();
       dg.beginFill(color, a);
       dg.moveTo(-s * 0.8, -s * 0.3);
       dg.lineTo(-s * 0.2, -s * 0.7);
@@ -3108,7 +3166,7 @@ function syncEffectParticles(cam: { x: number; y: number }, halfW: number, halfH
     } else if (pa.kind === "smoke") {
       const t = 1 - a;
       const r = Math.max(10, Math.ceil(pa.size) * 3);
-      data.sprite.tint = PIXI.utils.string2hex(pa.color);
+      data.sprite.tint = new PIXI.Color(pa.color).toNumber();
       data.sprite.alpha = a * 0.55;
       data.sprite.scale.set(pa.size * (0.5 + t * 1.2) / r);
     } else if (pa.kind === "ember") {
@@ -3117,7 +3175,7 @@ function syncEffectParticles(cam: { x: number; y: number }, halfW: number, halfH
       data.sprite.scale.set((0.4 + a * 0.6) * pa.size * 2.0 / (r * 2));
     } else {
       const r = Math.max(4, Math.ceil(pa.size));
-      data.sprite.tint = PIXI.utils.string2hex(pa.color);
+      data.sprite.tint = new PIXI.Color(pa.color).toNumber();
       data.sprite.alpha = a;
       data.sprite.scale.set(a * pa.size / r);
     }
@@ -3205,7 +3263,12 @@ function syncPlayer(): void {
     updateShip3D("player", p.shipClass, p.pos.x, p.pos.y, p.angle, sizeScale, cam.x, cam.y, p.vel.x, p.vel.y);
     markActive("player");
   } else if (playerVisual) {
-    playerVisual.container.visible = true;
+    // Show the 2D ship only when this class has NO 3D model at all. While a GLB
+    // is still downloading, has3DModel() is already true but is3DReady() is not
+    // — and the old branch showed the legacy sprite for exactly that window,
+    // which is the flash of the old ship PNG on load. Hiding instead means the
+    // ship pops in when its model is ready rather than swapping art mid-flight.
+    playerVisual.container.visible = !has3DModel(p.shipClass);
   }
 
   // Update visual layers
@@ -3249,7 +3312,7 @@ function syncPlayer(): void {
   const localFactionColorStr = p.faction
     ? (FACTIONS[p.faction as keyof typeof FACTIONS]?.color ?? "#4ee2ff")
     : "#4ee2ff";
-  const localThrustColor = PIXI.utils.string2hex(localFactionColorStr);
+  const localThrustColor = new PIXI.Color(localFactionColorStr).toNumber();
 
   // EffectManager thruster trail particles from hardpoints (GLB first, then editor data fallback)
   if (speed > 0.5 && effectManager) {
@@ -3379,7 +3442,7 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
       // Subtle body glow underlay
       const otherGlow = new PIXI.Sprite(getGlowTex(14));
       otherGlow.anchor.set(0.5);
-      otherGlow.blendMode = PIXI.BLEND_MODES.ADD;
+      otherGlow.blendMode = "add";
       otherGlow.alpha = 0.06;
       otherGlow.name = "bodyGlow";
       container.addChild(otherGlow);
@@ -3391,7 +3454,7 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
       // Name/faction/rank + hull bar are DOM overlay labels now (constant
       // screen size, above the 3D canvases) — no Pixi text/bars attached.
       const bars = new PIXI.Graphics(); // kept for the shared sprite type
-      const nameText = new PIXI.Text("", {});
+      const nameText = new PIXI.Text({ text: "" });
 
       playerLayer.addChild(container);
       data = { container, body, nameText, bars };
@@ -3461,7 +3524,7 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
     // Animate body glow with faction color
     const otherGlow = data.container.getChildByName("bodyGlow") as PIXI.Sprite;
     if (otherGlow) {
-      otherGlow.tint = PIXI.utils.string2hex(factionColor);
+      otherGlow.tint = new PIXI.Color(factionColor).toNumber();
       otherGlow.alpha = 0.05 + 0.03 * Math.sin(state.tick * 2);
     }
 
@@ -3490,7 +3553,7 @@ function syncOtherPlayers(cam: { x: number; y: number }, halfW: number, halfH: n
     // glow sticks at its last opacity when the ship stops.
     if (effectManager) {
       const spd = Math.sqrt(o.vel.x * o.vel.x + o.vel.y * o.vel.y);
-      const thrustColor = PIXI.utils.string2hex(factionColor);
+      const thrustColor = new PIXI.Color(factionColor).toNumber();
 
       if (spd > 0.5) {
         // Tilt-corrected analytic hardpoints (same math as the projectile
@@ -3569,20 +3632,19 @@ function syncNpcs(cam: { x: number; y: number }, halfW: number, halfH: number): 
       const tex = getShipTex("vanguard", npc.size / 12);
       const body = new PIXI.Sprite(tex);
       body.anchor.set(0.5);
-      body.tint = PIXI.utils.string2hex(npc.color);
+      body.tint = new PIXI.Color(npc.color).toNumber();
       container.addChild(body);
 
       const bars = new PIXI.Graphics();
       container.addChild(bars);
 
-      const nameText = new PIXI.Text(npc.name, {
+      const nameText = new PIXI.Text({ text: npc.name, style: {
         fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
         fontSize: 10,
         fill: npc.color,
         fontWeight: "bold",
-        stroke: "#000000",
-        strokeThickness: 1,
-      });
+        stroke: { color: "#000000", width: 1 },
+      } });
       nameText.resolution = 4;
       nameText.anchor.set(0.5, 0);
       container.addChild(nameText);
@@ -3613,7 +3675,7 @@ function syncNpcs(cam: { x: number; y: number }, halfW: number, halfH: number): 
     if (effectManager && npc.vel) {
       const spd = Math.sqrt(npc.vel.x * npc.vel.x + npc.vel.y * npc.vel.y);
       if (spd > 0.3) {
-        effectManager.spawnThrusterTrail(npc.pos.x, npc.pos.y, npc.angle, spd, PIXI.utils.string2hex(npc.color), 0.65);
+        effectManager.spawnThrusterTrail(npc.pos.x, npc.pos.y, npc.angle, spd, new PIXI.Color(npc.color).toNumber(), 0.65);
       }
     }
   }
@@ -3654,7 +3716,7 @@ function syncAsteroids(cam: { x: number; y: number }, halfW: number, halfH: numb
       glow.anchor.set(0.5);
       glow.alpha = 0.15;
       glow.tint = 0xddccaa;
-      glow.blendMode = PIXI.BLEND_MODES.ADD;
+      glow.blendMode = "add";
       container.addChild(glow);
       container.glowSprite = glow;
       // Main asteroid
@@ -3763,14 +3825,13 @@ function syncFloaters(cam: { x: number; y: number }, halfW: number, halfH: numbe
 
     let text = floaterTexts.get(f.id);
     if (!text) {
-      text = new PIXI.Text(f.text, {
+      text = new PIXI.Text({ text: f.text, style: {
         fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
         fontSize: f.bold ? 15 : 12,
         fill: f.color,
         fontWeight: f.bold ? "bold" : "normal",
-        stroke: "#000000",
-        strokeThickness: f.bold ? 1.5 : 1,
-      });
+        stroke: { color: "#000000", width: f.bold ? 1.5 : 1 },
+      } });
       text.resolution = 4;
       text.anchor.set(0.5);
       floaterLayer.addChild(text);
@@ -4023,7 +4084,7 @@ function syncCargoBoxes(cam: { x: number; y: number }, halfW: number, halfH: num
     g.clear();
     g.position.set(cb.pos.x, cb.pos.y);
 
-    const color = PIXI.utils.string2hex(cb.color);
+    const color = new PIXI.Color(cb.color).toNumber();
     const t = state.tick;
     const bob = Math.sin(t * 3 + cb.pos.x * 0.01) * 2;
 
@@ -4089,14 +4150,13 @@ function syncDungeonRifts(): void {
       cont = new PIXI.Container();
       cont.position.set(d.pos.x, d.pos.y);
 
-      const label = new PIXI.Text(d.name, {
+      const label = new PIXI.Text({ text: d.name, style: {
         fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
         fontSize: 10,
         fill: d.color,
         fontWeight: "bold",
-        stroke: "#000000",
-        strokeThickness: 1,
-      });
+        stroke: { color: "#000000", width: 1 },
+      } });
       label.resolution = 4;
       label.anchor.set(0.5, 0);
       label.position.set(0, 22);
@@ -4114,7 +4174,7 @@ function syncDungeonRifts(): void {
     const ring = cont.getChildAt(0) as PIXI.Graphics;
     ring.clear();
     const active = state.dungeon?.id === d.id;
-    const color = PIXI.utils.string2hex(d.color);
+    const color = new PIXI.Color(d.color).toNumber();
     const pulse = 0.6 + 0.3 * Math.sin(state.tick * 4);
     // Outer energy ring
     ring.lineStyle(1, color, pulse * 0.3);
@@ -4162,7 +4222,7 @@ const droneSprites = new Map<string, PIXI.Graphics>();
 
 function drawDroneSprite(g: PIXI.Graphics, kind: string, indexHash: number): void {
   const def = (DRONE_DEFS as any)[kind];
-  const color = def ? PIXI.utils.string2hex(def.color) : 0x4ee2ff;
+  const color = def ? new PIXI.Color(def.color).toNumber() : 0x4ee2ff;
   const t = state.tick;
   const dPulse = 0.7 + 0.3 * Math.sin(t * 4 + indexHash * 2);
   g.clear();
@@ -4250,13 +4310,12 @@ function syncDebugMuzzleMarkers(): void {
     const labelText = m
       ? `${s.entityId} ${s.ring}[${s.index}] ${m.nodeName} Δ=${delta.toFixed(1)} yaw=${angleDeg}°`
       : `${s.entityId} ${s.ring}[${s.index}] (${s.source}) no-hp-match`;
-    const label = new PIXI.Text(labelText, {
+    const label = new PIXI.Text({ text: labelText, style: {
       fontFamily: "monospace",
       fontSize: 8,
       fill: 0xffff00,
-      stroke: 0x000000,
-      strokeThickness: 2,
-    });
+      stroke: { color: 0x000000, width: 2 },
+    } });
     label.resolution = 4;
     label.position.set(s.spawnX + 4, s.spawnY + 4);
     label.alpha = alpha;

@@ -25,11 +25,11 @@ export function FactionPicker() {
         <div className="text-center mb-5">
           <div
             className="font-bold tracking-widest glow-cyan"
-            style={{ color: "var(--accent-cyan)", fontSize: 13, letterSpacing: "0.3em" }}
+            style={{ color: "var(--accent-cyan)", fontSize: 15.3, letterSpacing: "0.3em" }}
           >
             CHOOSE YOUR FACTION
           </div>
-          <div style={{ color: "var(--text-mute)", fontSize: 11, marginTop: 4 }}>
+          <div style={{ color: "var(--text-mute)", fontSize: 13, marginTop: 4 }}>
             Your faction determines your home sector and passive bonuses
           </div>
         </div>
@@ -65,7 +65,7 @@ export function FactionPicker() {
                     background: `${f.color}22`,
                     border: `1px solid ${f.color}`,
                     color: f.color,
-                    fontSize: 15,
+                    fontSize: 17.7,
                     boxShadow: `inset 0 0 8px ${f.color}22`,
                   }}
                 >
@@ -74,11 +74,11 @@ export function FactionPicker() {
                 <div className="min-w-0">
                   <div
                     className="font-bold tracking-widest truncate"
-                    style={{ color: f.color, fontSize: 11 }}
+                    style={{ color: f.color, fontSize: 13 }}
                   >
                     {f.name.toUpperCase()}
                   </div>
-                  <div style={{ color: "var(--text-mute)", fontSize: 9, letterSpacing: "0.15em" }}>
+                  <div style={{ color: "var(--text-mute)", fontSize: 10.6, letterSpacing: "0.15em" }}>
                     [{f.tag}]
                   </div>
                 </div>
@@ -86,7 +86,7 @@ export function FactionPicker() {
 
               {/* Description */}
               <div
-                style={{ color: "var(--text-dim)", fontSize: 10, marginBottom: 6, lineHeight: 1.4 }}
+                style={{ color: "var(--text-dim)", fontSize: 11.8, marginBottom: 6, lineHeight: 1.4 }}
               >
                 {f.description}
               </div>
@@ -94,7 +94,7 @@ export function FactionPicker() {
               {/* Motto */}
               <div
                 className="italic"
-                style={{ color: f.color + "cc", fontSize: 9, marginBottom: 8 }}
+                style={{ color: f.color + "cc", fontSize: 10.6, marginBottom: 8 }}
               >
                 "{f.motto}"
               </div>
@@ -109,27 +109,27 @@ export function FactionPicker() {
                 }}
               >
                 {f.bonus.damage      && (
-                  <div style={{ color: "var(--accent-red)", fontSize: 10 }}>
+                  <div style={{ color: "var(--accent-red)", fontSize: 11.8 }}>
                     +{Math.round(f.bonus.damage * 100)}% weapon damage
                   </div>
                 )}
                 {f.bonus.speed       && (
-                  <div style={{ color: "var(--accent-cyan)", fontSize: 10 }}>
+                  <div style={{ color: "var(--accent-cyan)", fontSize: 11.8 }}>
                     +{Math.round(f.bonus.speed * 100)}% ship speed
                   </div>
                 )}
                 {f.bonus.shieldRegen && (
-                  <div style={{ color: "var(--accent-cyan)", fontSize: 10 }}>
+                  <div style={{ color: "var(--accent-cyan)", fontSize: 11.8 }}>
                     ×{f.bonus.shieldRegen.toFixed(1)} shield regen
                   </div>
                 )}
                 {f.bonus.lootBonus   && (
-                  <div style={{ color: "var(--accent-green)", fontSize: 10 }}>
+                  <div style={{ color: "var(--accent-green)", fontSize: 11.8 }}>
                     +{f.bonus.lootBonus} bonus loot / kill
                   </div>
                 )}
                 {f.bonus.tradeDiscount && (
-                  <div style={{ color: "var(--accent-amber)", fontSize: 10 }}>
+                  <div style={{ color: "var(--accent-amber)", fontSize: 11.8 }}>
                     −{Math.round(f.bonus.tradeDiscount * 100)}% market prices
                   </div>
                 )}
@@ -151,7 +151,7 @@ export function FactionPicker() {
                 </div>
                 <div
                   className="font-bold truncate"
-                  style={{ color: f.color, fontSize: 10 }}
+                  style={{ color: f.color, fontSize: 11.8 }}
                 >
                   {f.startZone === "alpha"
                     ? "1-1 Alpha Sector"

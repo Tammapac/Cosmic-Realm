@@ -260,10 +260,20 @@ export function installStudioEnv(
           // upward face something to reflect, so lids look as glossy as sides. This
           // touches ONLY the reflection map — the scene has no visible background, so
           // nothing on-screen changes except reflections. (Env-only, no per-face mats.)
-          brightenOverheadPole(hdr);
+          // Overhead glow scaled by `intensity`. This callback lands ~1s after
+          // the scene is already on screen, and it REPLACES the procedural
+          // studio env — so whatever brightness difference exists between the
+          // two shows up as a visible jump at that moment ("looks right, then
+          // springs back"). The fixed peak of 2.4 was calibrated when this rig
+          // ran at intensity 0.8; at the current 0.08 the studio env is ten
+          // times dimmer than the HDR that replaces it, which is the jump.
+          // Scaling the pole with the same factor keeps both envs in step.
+          brightenOverheadPole(hdr, 2.4 * intensity);
           const env = pmrem.fromEquirectangular(hdr).texture;
           const old = scene.environment;
           scene.environment = env;
+          // Re-assert intensity on the swap, exactly as loadEnvironment() does.
+          (scene as any).environmentIntensity = intensity;
           hdr.dispose();
           if (old && old !== env) old.dispose();
         } catch { /* keep the studio on any error */ }

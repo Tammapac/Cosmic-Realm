@@ -103,19 +103,19 @@ export class HealthShieldBar extends UiComponent {
       : { base: 0x7a2a0f, mid: 0xff6a3c, hot: 0xffd6bf };
     this.drawDepthBar(this.hullG, 0, hy, W * hullPct, BAR_H, green.base, green.mid, green.hot);
     // frame
-    this.hullG.lineStyle({ width: 1.5, color: 0x2fe06a, alpha: 0.55 });
+    this.hullG.lineStyle(1.5, 0x2fe06a, 0.55 );
     this.hullG.drawPolygon(this.barPoly(0, hy, W, BAR_H));
     // outer glow line
-    this.hullG.lineStyle({ width: 1, color: 0x2fe06a, alpha: 0.25 });
+    this.hullG.lineStyle(1, 0x2fe06a, 0.25 );
     this.hullG.drawPolygon(this.barPoly(-1.5, hy - 1.5, W + 3, BAR_H + 3));
 
     // ── shield bar (BLUE) — frame here, filtered fill separately ──
     const sy = hy + BAR_H + GAP;
     this.shieldFrameG.clear();
     this.shieldFrameG.beginFill(0x04101c, 0.95); this.shieldFrameG.drawPolygon(this.barPoly(0, sy, W, BAR_H)); this.shieldFrameG.endFill();
-    this.shieldFrameG.lineStyle({ width: 1.5, color: 0x3aa0ff, alpha: 0.6 });
+    this.shieldFrameG.lineStyle(1.5, 0x3aa0ff, 0.6 );
     this.shieldFrameG.drawPolygon(this.barPoly(0, sy, W, BAR_H));
-    this.shieldFrameG.lineStyle({ width: 1, color: 0x3aa0ff, alpha: 0.28 });
+    this.shieldFrameG.lineStyle(1, 0x3aa0ff, 0.28 );
     this.shieldFrameG.drawPolygon(this.barPoly(-1.5, sy - 1.5, W + 3, BAR_H + 3));
 
     this.shieldFillG.clear();
@@ -124,10 +124,10 @@ export class HealthShieldBar extends UiComponent {
     // ── fire-cooldown ring, to the right ──
     const cx = W + 20 + RING_R, cy = sy - GAP;
     this.ringG.clear();
-    this.ringG.lineStyle({ width: 5, color: 0x0a1420, alpha: 0.9 });
+    this.ringG.lineStyle(5, 0x0a1420, 0.9 );
     this.ringG.drawCircle(cx, cy, RING_R);
     const ready = this.v.fireReady;
-    this.ringG.lineStyle({ width: 4, color: ready >= 1 ? COLOR.cyan : COLOR.steel2, alpha: 0.95 });
+    this.ringG.lineStyle(4, ready >= 1 ? COLOR.cyan : COLOR.steel2, 0.95 );
     this.ringG.arc(cx, cy, RING_R, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * ready);
     if (ready >= 1) {
       this.ringG.lineStyle(0);

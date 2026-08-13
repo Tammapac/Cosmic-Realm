@@ -100,7 +100,8 @@ function makeTex(key: string, size: number, drawFn: (ctx: CanvasRenderingContext
   c.height = size;
   const ctx = c.getContext("2d")!;
   drawFn(ctx, size / 2, size / 2, size / 2 - 2);
-  tex = PIXI.Texture.from(c, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  tex = PIXI.Texture.from(c);
+  (tex.source as PIXI.TextureSource).scaleMode = "linear";
   fxTexCache.set(key, tex);
   return tex;
 }
@@ -177,7 +178,8 @@ function makeTex2(key: string, w: number, h: number, drawFn: (ctx: CanvasRenderi
   c.width = w; c.height = h;
   const ctx = c.getContext("2d")!;
   drawFn(ctx);
-  tex = PIXI.Texture.from(c, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  tex = PIXI.Texture.from(c);
+  (tex.source as PIXI.TextureSource).scaleMode = "linear";
   fxTexCache.set(key, tex);
   return tex;
 }
@@ -394,13 +396,13 @@ export class EffectManager {
       const img = new Image();
       img.src = src;
       img.onload = () => {
-        const baseTex = PIXI.BaseTexture.from(img);
+        const baseTex = PIXI.Texture.from(img);
         const cols = 8, rows = 6, fw = 256, fh = 256;
         const textures: PIXI.Texture[] = [];
         for (let r = 0; r < rows; r++) {
           for (let c = 0; c < cols; c++) {
             textures.push(
-              new PIXI.Texture(baseTex, new PIXI.Rectangle(c * fw, r * fh, fw, fh))
+              new PIXI.Texture({ source: baseTex.source, frame: new PIXI.Rectangle(c * fw, r * fh, fw, fh) })
             );
           }
         }
@@ -428,7 +430,7 @@ export class EffectManager {
         p.active = true;
         p.sprite.visible = true;
         p.sprite.texture = tex;
-        p.sprite.blendMode = blendAdd ? PIXI.BLEND_MODES.ADD : PIXI.BLEND_MODES.NORMAL;
+        p.sprite.blendMode = blendAdd ? "add" : "normal";
         p.sprite.anchor.set(0.5); // default; callers override via p.anchorX
         p.kind = kind;
         p.blendAdd = blendAdd;
@@ -439,7 +441,7 @@ export class EffectManager {
     }
     const sprite = new PIXI.Sprite(tex);
     sprite.anchor.set(0.5);
-    sprite.blendMode = blendAdd ? PIXI.BLEND_MODES.ADD : PIXI.BLEND_MODES.NORMAL;
+    sprite.blendMode = blendAdd ? "add" : "normal";
     layer.addChild(sprite);
     const p: PooledParticle = {
       active: true, sprite, x: 0, y: 0, vx: 0, vy: 0,
@@ -1460,7 +1462,7 @@ export class EffectManager {
     anim.alpha = 0.7 + Math.random() * 0.3;
 
     // Additive blending for fire look
-    anim.blendMode = PIXI.BLEND_MODES.ADD;
+    anim.blendMode = "add";
 
     // Random flip
     if (Math.random() > 0.5) anim.scale.x *= -1;

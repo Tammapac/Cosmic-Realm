@@ -160,7 +160,7 @@ export class HotbarSection implements HudSection {
     this.hullFillG = new PIXI.Graphics();
     this.container.addChild(this.shieldRingG, this.shieldFillG, this.hullRingG, this.hullFillG);
 
-    const mk = (color: number, size: number) => new PIXI.Text("", { fontFamily: "var(--font-display), sans-serif", fontSize: size, fontWeight: "bold", fill: color, dropShadow: true, dropShadowColor: 0x000000, dropShadowBlur: 3, dropShadowDistance: 1 });
+    const mk = (color: number, size: number) => new PIXI.Text({ text: "", style: { fontFamily: "var(--font-display), sans-serif", fontSize: size, fontWeight: "bold", fill: color, dropShadow: { color: 0x000000, blur: 3, distance: 1 } } });
     this.shieldText = mk(C.cyan, 22); this.shieldText.anchor.set(0.5);
     this.shieldLabel = mk(C.cyan, 10); this.shieldLabel.anchor.set(0.5); this.shieldLabel.text = "SHIELD";
     this.hullText = mk(C.red, 22); this.hullText.anchor.set(0.5);

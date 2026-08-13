@@ -181,6 +181,26 @@ export const SHARED_3D_SHIP_LIFT = 1500;
 // thing that swaps that blackout for the real hangar. Deletable in isolation.
 export const ENABLE_HANGAR_3D_SCENE = readHangarFlag();
 
+// ── Migrated Hangar panels (?newhangar) ────────────────────────────────────
+// Gates the S-02…S-08 panels ported from the design export
+// (design_handoff_hangar_panels_strict_export) in components/hangar/*, in place
+// of the existing tab bodies in components/Hangar.tsx.
+//
+// OFF by default and opt-in per browser, the same mechanism as ?shared-scene:
+// the ported panels are visually complete but were never seen running (the
+// verification loop could not be closed in the session that migrated them), and
+// the tabs they replace are working UI. Turn them on with
+//
+//     http://localhost:5173/?newhangar
+//
+// One flag for the whole set so a single URL swaps every panel, and so removing
+// the experiment is deleting one branch per tab rather than hunting flags.
+function readNewHangarFlag(): boolean {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).has("newhangar");
+}
+export const ENABLE_NEW_HANGAR_PANELS = readNewHangarFlag();
+
 // Three.js Nebula Background Configuration
 export const ENABLE_THREE_NEBULA_SHADER = false;
 export const THREE_NEBULA_RENDER_SCALE = 0.5;    // Internal resolution (0.5 = half-res for performance)

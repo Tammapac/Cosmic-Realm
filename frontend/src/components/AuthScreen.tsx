@@ -17,7 +17,7 @@ function Field({
 }) {
   return (
     <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-      <span style={{ fontSize: 11, letterSpacing: "0.22em", color: "var(--hud-cyan)", textShadow: "0 0 6px rgba(78,226,255,0.4)" }}>
+      <span style={{ fontSize: 13, letterSpacing: "0.22em", color: "var(--hud-cyan)", textShadow: "0 0 6px rgba(78,226,255,0.4)" }}>
         {label}
       </span>
       <input
@@ -26,7 +26,7 @@ function Field({
         autoComplete={autoComplete}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        style={{ fontSize: 14, padding: "9px 12px", letterSpacing: "0.06em", fontFamily: "var(--font-display)" }}
+        style={{ fontSize: 16.5, padding: "9px 12px", letterSpacing: "0.06em", fontFamily: "var(--font-display)" }}
       />
     </label>
   );
@@ -84,7 +84,7 @@ export default function AuthScreen({ onAuth }: Props) {
     border: "none",
     borderBottom: active ? "2px solid var(--hud-cyan)" : "2px solid transparent",
     fontFamily: "var(--font-display)",
-    fontSize: 12,
+    fontSize: 14.2,
     fontWeight: active ? 700 : 400,
     letterSpacing: "0.24em",
     color: active ? "var(--hud-cyan)" : "var(--hud-text-dim)",
@@ -153,7 +153,7 @@ export default function AuthScreen({ onAuth }: Props) {
         style={{ width: "min(420px, 92vw)", display: "flex", flexDirection: "column", position: "relative", zIndex: 1, marginBottom: "8vh" }}
       >
         <span className="auth-sheen" />
-        <div className="hud-titleband" style={{ fontSize: 15, letterSpacing: "0.4em", padding: "10px 14px", justifyContent: "center", position: "relative", zIndex: 4 }}>
+        <div className="hud-titleband" style={{ fontSize: 17.7, letterSpacing: "0.4em", padding: "10px 14px", justifyContent: "center", position: "relative", zIndex: 4 }}>
           Cosmic Realm
         </div>
 
@@ -185,7 +185,7 @@ export default function AuthScreen({ onAuth }: Props) {
         {/* status line */}
         <div
           style={{
-            textAlign: "center", fontSize: 11, letterSpacing: "0.12em", minHeight: 18,
+            textAlign: "center", fontSize: 13, letterSpacing: "0.12em", minHeight: 18,
             padding: "2px 16px",
             color: error ? "var(--hud-hp)" : "var(--hud-text-dim)",
             textShadow: error ? "0 0 8px rgba(255,77,94,0.4)" : "none",
@@ -198,7 +198,7 @@ export default function AuthScreen({ onAuth }: Props) {
 
         {/* action */}
         <div style={{ display: "flex", justifyContent: "center", padding: "10px 16px 18px" }}>
-          <HudButton type="submit" variant="primary" disabled={loading} style={{ padding: "10px 44px", fontSize: 13, letterSpacing: "0.22em" }}>
+          <HudButton type="submit" variant="primary" disabled={loading} style={{ padding: "10px 44px", fontSize: 15.3, letterSpacing: "0.22em" }}>
             {mode === "login" ? "▶ LAUNCH" : "▶ REGISTRATE"}
           </HudButton>
         </div>
@@ -207,7 +207,7 @@ export default function AuthScreen({ onAuth }: Props) {
       {/* copyright — bottom-left corner */}
       <div style={{
         position: "absolute", left: 16, bottom: 12, zIndex: 1,
-        fontFamily: "var(--font-display)", fontSize: 11, letterSpacing: "0.14em",
+        fontFamily: "var(--font-display)", fontSize: 13, letterSpacing: "0.14em",
         color: "rgba(200,225,255,0.65)", textShadow: "0 1px 3px #000",
         userSelect: "none", pointerEvents: "none",
       }}>

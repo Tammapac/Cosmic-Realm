@@ -183,6 +183,28 @@ const PRESETS: Record<QualityTier, RendererSettings> = {
   },
 };
 
+// Raw unmasked GPU renderer string, cached by detectTier()'s probe below for
+// the Settings panel's SYSTEM readout — browsers expose no VRAM figure
+// (WebGL has no such API, unlike device memory/cores), so the GPU model
+// name is the honest substitute.
+//
+// On Windows/Chrome this comes back ANGLE-wrapped, e.g. "ANGLE (NVIDIA,
+// NVIDIA GeForce RTX 4070 Ti (0x00002782) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+// — far too long for a SYSTEM row. Pull just the model out of the middle
+// segment; falls back to the raw string on unfamiliar formats (mac/Linux
+// drivers report bare names with no ANGLE wrapper at all).
+function shortenGpuName(raw: string): string {
+  const angle = raw.match(/^ANGLE \([^,]+,\s*([^(]+)/i);
+  if (angle) return angle[1].trim();
+  return raw;
+}
+
+let _gpuName: string | null = null;
+export function getGpuName(): string | null {
+  if (_gpuName === null) getQualityTier(); // triggers detectTier() on first call
+  return _gpuName;
+}
+
 // ── GPU / hardware auto-detection ────────────────────────────────────────────
 // Best-effort tier guess from the unmasked GPU string + memory + cores + DPR.
 // Deliberately conservative: unknown hardware lands on "medium".
@@ -197,6 +219,8 @@ function detectTier(): QualityTier {
     let gpu = "";
     const dbg = gl.getExtension("WEBGL_debug_renderer_info");
     if (dbg) gpu = String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || "").toLowerCase();
+    const rawGpuName = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || "") : "";
+    _gpuName = rawGpuName ? shortenGpuName(rawGpuName) : null;
 
     const mem = (navigator as any).deviceMemory ?? 4;       // GB, may be undefined
     const cores = navigator.hardwareConcurrency ?? 4;

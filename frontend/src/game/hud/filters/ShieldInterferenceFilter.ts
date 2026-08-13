@@ -6,9 +6,42 @@
 // It samples the sprite it is applied to and adds diagonal energy bands + a
 // subtle horizontal ripple that scroll over time, masked to the sprite's own
 // alpha so it never bleeds past the fill.
+// v8 rewrite: Filter takes a GlProgram + a `resources` UniformGroup map, not
+// (vertex, fragment, uniforms) — see ship-lighting-filter.ts for the fuller
+// explanation (same migrateFragmentFromV7toV8 + standard filter-quad vertex
+// shader pattern; this filter's fragment shader itself is unchanged).
 import * as PIXI from "pixi.js";
+import { migrateFragmentFromV7toV8 } from "pixi.js";
 
-const frag = `
+const FILTER_VERTEX = `
+in vec2 aPosition;
+out vec2 vTextureCoord;
+
+uniform vec4 uInputSize;
+uniform vec4 uOutputFrame;
+uniform vec4 uOutputTexture;
+
+vec4 filterVertexPosition(void)
+{
+    vec2 position = aPosition * uOutputFrame.zw + uOutputFrame.xy;
+    position.x = position.x * (2.0 / uOutputTexture.x) - 1.0;
+    position.y = position.y * (2.0 * uOutputTexture.z / uOutputTexture.y) - uOutputTexture.z;
+    return vec4(position, 0.0, 1.0);
+}
+
+vec2 filterTextureCoord(void)
+{
+    return aPosition * (uOutputFrame.zw * uInputSize.zw);
+}
+
+void main(void)
+{
+    gl_Position = filterVertexPosition();
+    vTextureCoord = filterTextureCoord();
+}
+`;
+
+const rawFrag = `
 precision mediump float;
 varying vec2 vTextureCoord;
 uniform sampler2D uSampler;
@@ -36,23 +69,33 @@ void main(void) {
 `;
 
 export class ShieldInterferenceFilter extends PIXI.Filter {
+  private _u: PIXI.UniformGroup<any>;
+
   constructor(energy = 0x4ee2ff, intensity = 0.6) {
     const r = ((energy >> 16) & 0xff) / 255;
     const g = ((energy >> 8) & 0xff) / 255;
     const b = (energy & 0xff) / 255;
-    super(undefined, frag, {
-      uTime: 0,
-      uIntensity: intensity,
-      uEnergy: [r, g, b],
+
+    const glProgram = new PIXI.GlProgram({
+      vertex: FILTER_VERTEX,
+      fragment: migrateFragmentFromV7toV8(rawFrag),
+      name: "shield-interference-filter",
     });
+    const shieldUniforms = new PIXI.UniformGroup({
+      uTime: { value: 0, type: "f32" },
+      uIntensity: { value: intensity, type: "f32" },
+      uEnergy: { value: [r, g, b], type: "vec3<f32>" },
+    });
+    super({ glProgram, resources: { shieldUniforms } });
+    this._u = shieldUniforms;
   }
 
   /** Advance the animation. Call each frame with dt in seconds. */
   advance(dt: number): void {
-    this.uniforms.uTime += dt;
+    this._u.uniforms.uTime = (this._u.uniforms.uTime as number) + dt;
   }
 
   set intensity(v: number) {
-    this.uniforms.uIntensity = v;
+    this._u.uniforms.uIntensity = v;
   }
 }

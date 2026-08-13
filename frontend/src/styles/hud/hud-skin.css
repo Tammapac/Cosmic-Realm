@@ -1107,6 +1107,29 @@ select.ginput {
   min-width: min(760px, 68vw);
 }
 
+/* Migrated design-export hangar panels (?newhangar).
+   These are self-contained overlays with their own 1340px frame, header and
+   close control, so they do NOT go in .hangar-glass-drawer — that box is
+   760px wide with overflow:hidden and would clip them. Instead they are
+   centred over the hangar scene at their authored size and scaled down when
+   the viewport is too small, so the full frame is always visible rather than
+   cut off. 1340px is the panels' own width (BOUNTY_PANEL_W, MARKET_PANEL_W …);
+   the +48px is breathing room so the outer glow is not flush to the edge. */
+.hangar-migrated-panel {
+  /* Authored width of the panel inside. Most are 1340px; Loadout is 1680px and
+     sets --panel-w itself. Scaling against a hardcoded 1340 made the wider
+     panel overflow the viewport on the right. Both dimensions are constrained
+     so a tall panel scales down too instead of running off the bottom. */
+  --panel-w: 1340;
+  --panel-h: 900;
+  transform: scale(min(
+    1,
+    calc((100vw - 48px) / var(--panel-w)),
+    calc((100vh - 48px) / var(--panel-h))
+  ));
+  transform-origin: center center;
+}
+
 /* central ship stage — the docked ship is the focal point */
 .hangar-stage {
   position: relative;

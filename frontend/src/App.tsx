@@ -6,7 +6,7 @@ import { render } from "./game/render";
 import { initPixiRenderer, destroyPixiRenderer, pixiRender } from "./game/pixi-renderer-v2-integrated";
 import { init3DLayer, destroy3DLayer, getLoadingProgress, initStationLayer, renderStationLayer, destroyStationLayer } from "./game/three-ship-layer";
 import { destroyStation3DLayer } from "./game/three-station-layer";
-import { activeRenderer, ENABLE_NEW_DOCKING_FLOW, ENABLE_SHARED_3D_SCENE, ENABLE_HANGAR_3D_SCENE, ENABLE_NEW_SKILLS } from "./game/renderer-config";
+import { activeRenderer, ENABLE_NEW_DOCKING_FLOW, ENABLE_SHARED_3D_SCENE, ENABLE_HANGAR_3D_SCENE } from "./game/renderer-config";
 import { isControlLocked } from "./game/scene/docking-gate";
 import { requestDock, dockPoint, requestUndock, forceUndock } from "./game/scene/DockingController";
 import { WorldTargetHud, LogoutFlow } from "./components/TopBar";
@@ -16,20 +16,27 @@ import "./styles/hud/hud-animations.css";
 import "./styles/hud/hud-theme.css";
 import "./styles/hud/hud-materials.css";
 import { Hangar } from "./components/Hangar";
-import { SocialPanel, ClanPanel, GalaxyMap } from "./components/SocialPanel";
-import { ZoneMapOverlay } from "./components/ZoneMapOverlay";
+import { HangarDockOverlayHost } from "./components/hangar/HangarDockOverlayHost";
+import { TargetLockPanel } from "./components/TargetLockPanel";
+import { SocialPanel } from "./components/SocialPanel";
+import { ClanDirectoryPanel } from "./components/ClanDirectoryPanel";
+import { ClanHallPanel } from "./components/ClanHallPanel";
+import { ExchangePanel } from "./components/ExchangePanel";
+import { LeaderboardPanel } from "./components/LeaderboardPanel";
+import { GalaxyMapPanel } from "./components/GalaxyMapPanel";
+import { ZoneMapPanel } from "./components/ZoneMapPanel";
 import { FactionPicker } from "./components/FactionPicker";
 import { IdleRewardModal } from "./components/IdleRewardModal";
 import { EventBanners } from "./components/EventBanners";
 import { GameTooltip } from "./components/GameTooltip";
 import { InventoryPanel } from "./components/InventoryPanel";
-import { SkillTreePanel } from "./components/SkillTreePanel";
-import { SkillTreeWindowGate } from "./features/skills/components/SkillTreeWindow";
+import { SkillsPanel } from "./components/SkillsPanel";
+import { CargoPanel } from "./components/CargoPanel";
 import { PlayerStatsPanel } from "./components/PlayerStatsPanel";
 import { BossBar } from "./components/BossBar";
 import { QuestTracker } from "./components/QuestTracker";
 import SettingsMenu from "./components/SettingsMenu";
-import { AdminPanel } from "./components/AdminPanel";
+import { AdminConsole } from "./components/admin/AdminConsole";
 import { DUNGEONS, STATIONS, PORTALS, ZONES, MODULE_DEFS, RESOURCES, SHIP_CLASSES, ENEMY_DEFS, SHIP_SIZE_SCALE, type EnemyType, type DungeonId } from "./game/types";
 import { travelToZone, state as gameState } from "./game/store";
 import { enemyModelKey, enemySizeScale, shipHullRadius } from "../../lib/hitbox";
@@ -46,7 +53,7 @@ import {
   onAsteroidMine, onAsteroidDestroy, onAsteroidRespawn,
   onServerZoneEnemies, onServerZoneAsteroids, onServerZoneNpcs,
   onNpcSpawn, onNpcDie,
-  onWelcome, onDelta, onSnapshot, onPlayerHitFromServer, onPlayerHitRemoteFromServer, onPlayerDieFromServer,
+  onWelcome, onDelta, onSnapshot, onPlayerHitFromServer, onPlayerHitRemoteFromServer, onPlayerDieFromServer, onPlayerHonorFromServer,
   onProjectileSpawnFromServer,
 } from "./game/loop";
 
@@ -69,35 +76,48 @@ function GameCanvas() {
       // PixiJS renderer
       const container = pixiContainerRef.current;
       if (!container) return;
-      initPixiRenderer(container, labelOverlayRef.current ?? undefined);
 
-      // Station 3D layer is now bootstrapped inside initPixiRenderer as an
-      // offscreen canvas wrapped as a Pixi sprite; no DOM canvas here.
-
-      // Ships Three.js canvas at z=2 (above Pixi).
-      //
-      // With the shared 3D scene, ships are no longer a separate canvas at all:
-      // initPixiRenderer boots the one world renderer on an offscreen canvas
-      // and composites it as a sprite inside worldLayer, so this DOM canvas
-      // stays empty and must NOT be initialized (init3DLayer is idempotent —
-      // whichever canvas gets there first is the one the renderer draws to).
-      const threeCanvas = threeCanvasRef.current;
-      if (threeCanvas && !ENABLE_SHARED_3D_SCENE) {
-        init3DLayer(threeCanvas);
-        console.log("[App] Three.js ship canvas initialized");
-      }
-
-      initPerf();
+      // v8's Application.init() is async (it probes for WebGPU support), so
+      // the whole boot sequence below only starts once it resolves. `cancelled`
+      // guards against a fast unmount (e.g. React StrictMode's mount→unmount→
+      // remount in dev) landing after init() finishes but before this effect's
+      // own cleanup ran — without it we'd start a RAF loop for an app that's
+      // already been told to tear down.
+      let cancelled = false;
       let raf = 0;
-      const draw = () => {
-        perfBegin("render");
-        try { pixiRender(); } catch (err) { console.error("[PIXI] Render error:", err); }
-        perfEnd("render");
-        perfFrame();
+      (async () => {
+        await initPixiRenderer(container, labelOverlayRef.current ?? undefined);
+        if (cancelled) { destroy3DLayer(); destroyStation3DLayer(); destroyPixiRenderer(); return; }
+
+        // Station 3D layer is now bootstrapped inside initPixiRenderer as an
+        // offscreen canvas wrapped as a Pixi sprite; no DOM canvas here.
+
+        // Ships Three.js canvas at z=2 (above Pixi).
+        //
+        // With the shared 3D scene, ships are no longer a separate canvas at all:
+        // initPixiRenderer boots the one world renderer on an offscreen canvas
+        // and composites it as a sprite inside worldLayer, so this DOM canvas
+        // stays empty and must NOT be initialized (init3DLayer is idempotent —
+        // whichever canvas gets there first is the one the renderer draws to).
+        const threeCanvas = threeCanvasRef.current;
+        if (threeCanvas && !ENABLE_SHARED_3D_SCENE) {
+          init3DLayer(threeCanvas);
+          console.log("[App] Three.js ship canvas initialized");
+        }
+
+        initPerf();
+        const draw = () => {
+          perfBegin("render");
+          try { pixiRender(); } catch (err) { console.error("[PIXI] Render error:", err); }
+          perfEnd("render");
+          perfFrame();
+          raf = requestAnimationFrame(draw);
+        };
         raf = requestAnimationFrame(draw);
-      };
-      raf = requestAnimationFrame(draw);
+      })();
+
       return () => {
+        cancelled = true;
         cancelAnimationFrame(raf);
         destroy3DLayer();
         destroyStation3DLayer();
@@ -780,17 +800,6 @@ function DockPrompt() {
 }
 
 
-function Title() {
-  return (
-    <div className="absolute bottom-3 left-3 z-30 pointer-events-none">
-      <div className="text-cyan glow-cyan text-[10px] tracking-[0.3em]">COSMIC REALM</div>
-      <div className="text-mute text-[9px] tracking-widest">
-        v 2.0 · CLICK to move · MINIMAP click warps · SPACE docks · SHOOT asteroids to mine
-      </div>
-    </div>
-  );
-}
-
 function DockingSummary() {
   const summary = useGame((s) => s.dockingSummary);
 
@@ -857,77 +866,6 @@ function DockingSummary() {
     </div>
   );
 }
-
-function CargoOverlay() {
-  const showCargo = useGame((s) => s.showCargo);
-  const player = useGame((s) => s.player);
-  if (!showCargo) return null;
-
-  const used = player.cargo.reduce((a: number, c: any) => a + c.qty, 0);
-  const cls = SHIP_CLASSES[player.shipClass];
-  const maxCargo = cls.cargoMax;
-
-  return (
-    <div
-      className="fixed z-50"
-      style={{ top: 92, right: 20, width: 360, pointerEvents: "auto" }}
-    >
-      <div className="panel panel-framed" style={{ position: "relative", maxHeight: "calc(100vh - 180px)", display: "flex", flexDirection: "column", boxShadow: "0 8px 30px rgba(0,0,0,0.75)" }}>
-        {/* title in the window's amber glass band */}
-        <div
-          style={{
-            position: "absolute", top: -37, left: "10%", right: "10%", height: 28,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontFamily: "var(--font-display)", fontSize: 14, fontWeight: 800,
-            letterSpacing: "0.28em", color: "#3a2000",
-            textShadow: "0 1px 0 rgba(255,255,255,0.25)", userSelect: "none",
-          }}
-        >
-          CARGO HOLD
-        </div>
-        <button
-          className="gbtn gbtn-red"
-          title="Close (J)"
-          style={{ position: "absolute", top: -38, right: -14, padding: "2px 8px", fontSize: 11 }}
-          onClick={() => { state.showCargo = false; bump(); }}
-        >
-          ✕
-        </button>
-        <div className="flex items-center justify-between px-2 pb-2 border-b" style={{ borderColor: "var(--border-soft)" }}>
-          <div className="text-mute text-[12px] tracking-widest">{used}/{maxCargo} UNITS</div>
-          <div className="text-amber font-bold text-[14px]">{player.cargo.reduce((s: number, c: any) => s + ((RESOURCES as any)[c.resourceId]?.basePrice ?? 0) * c.qty, 0).toLocaleString()}cr</div>
-        </div>
-        <div style={{ flex: 1, overflowY: "auto", padding: 8 }}>
-          {player.cargo.length === 0 ? (
-            <div className="text-mute text-sm italic text-center py-6">
-              Cargo bay empty
-            </div>
-          ) : player.cargo.map((c: any) => {
-            const r = (RESOURCES as any)[c.resourceId];
-            if (!r) return null;
-            return (
-              <div key={c.resourceId} className="flex items-center gap-2 px-2 py-1.5 hover:bg-white/5 border-b" style={{ borderColor: "var(--border-soft)" }}>
-                <div
-                  className="flex items-center justify-center flex-shrink-0"
-                  style={{ width: 28, height: 28, background: r.color + "22", border: "1px solid " + r.color, color: r.color, fontSize: 14 }}
-                >{r.glyph}</div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-bright text-[12px] font-bold truncate">{r.name}</div>
-                </div>
-                <div className="text-cyan text-[13px] font-bold tabular-nums">x{c.qty}</div>
-                <div className="text-amber text-[12px] tabular-nums" style={{ minWidth: 50, textAlign: "right" }}>{(c.qty * r.basePrice).toLocaleString()}cr</div>
-              </div>
-            );
-          })}
-        </div>
-        <div className="px-3 py-2 border-t text-mute text-[11px] tracking-widest" style={{ borderColor: "var(--border-soft)" }}>
-          {used > 0 ? "DOCK TO SELL" : "MINE OR TRADE"}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 
 function LoadingScreen({ onReady }: { onReady: () => void }) {
   const [progress, setProgress] = useState(0);
@@ -1123,6 +1061,7 @@ function GameApp() {
       onPlayerHit: (data) => onPlayerHitFromServer(data),
       onPlayerHitRemote: (data) => onPlayerHitRemoteFromServer(data),
       onPlayerDie: (data) => onPlayerDieFromServer(data),
+      onPlayerHonor: (data) => onPlayerHonorFromServer(data),
       onAsteroidMine: (data) => onAsteroidMine(data),
       onAsteroidDestroy: (data) => onAsteroidDestroy(data),
       onAsteroidRespawn: (asteroid: ServerAsteroid) => onAsteroidRespawn(asteroid),
@@ -1310,35 +1249,24 @@ function GameApp() {
             runDockingServices(stats.hullMax, stats.shieldMax);
           }
         }
-      } else if (e.key === "m" || e.key === "M") {
-        state.showFullZoneMap = !state.showFullZoneMap; bump();
       } else if (e.key === "+" || e.key === "=") {
         state.minimapScale = Math.min(3, state.minimapScale + 0.25); bump();
       } else if (e.key === "-" || e.key === "_") {
         state.minimapScale = Math.max(0.5, state.minimapScale - 0.25); bump();
-      } else if (e.key === "c" || e.key === "C") {
-        state.showClan = !state.showClan; bump();
-      } else if (e.key === "h" || e.key === "H") {
-        state.showSocial = !state.showSocial; bump();
-      } else if (e.key === "j" || e.key === "J") {
-        state.showCargo = !state.showCargo; bump();
-      } else if (e.key === "i" || e.key === "I") {
-        state.showInventory = !state.showInventory; bump();
+      } else if (e.key === "m" || e.key === "M") {
+        if (!state.dockedAt) { state.showZoneMap = !state.showZoneMap; bump(); }
       } else if (e.key === "Escape") {
         if (state.showSettings) {
           state.showSettings = false;
-        } else if (state.showMap || state.showClan || state.showAmmoSelector || state.showRocketAmmoSelector || state.showFullZoneMap || state.showInventory || state.showSkillTree || state.showPlayerStats) {
+        } else if (state.showZoneMap) {
+          state.showZoneMap = false;
+        } else if (state.showMap || state.showAmmoSelector || state.showRocketAmmoSelector) {
           state.showMap = false;
-          state.showClan = false;
           state.showAmmoSelector = false;
           state.showRocketAmmoSelector = false;
-          state.showFullZoneMap = false;
-          state.showInventory = false;
-          state.showSkillTree = false;
-          state.showPlayerStats = false;
-        } else {
-          state.showSettings = true;
         }
+        // Inventory/Cargo/Skills/Dossier/ZoneMap/Clan/Social/Settings now live in
+        // the Cosmic Kit PixiJS panelHost (I C K P J N M G O L, its own Esc).
         bump();
       } else if (e.key === "Tab") {
         e.preventDefault();
@@ -1430,7 +1358,6 @@ function GameApp() {
   // With the 3D hangar, hold the 2D menu until the fly-in intro finishes. With it
   // off, dockedAt alone drives the menu (unchanged behaviour).
   const showHangarMenu = docked && (!ENABLE_HANGAR_3D_SCENE || hangarIntroDone);
-  const showSocial = useGame((s) => s.showSocial);
   const showAdmin = useGame((s) => s.showAdmin);
   const showSettings = useGame((s) => s.showSettings);
 
@@ -1447,10 +1374,23 @@ function GameApp() {
   const [assetsReady, setAssetsReady] = useState(false);
   const handleAssetsReady = useRef(() => setAssetsReady(true)).current;
 
+
   return (
     <div className="relative w-full h-full overflow-hidden" style={{ background: "#02040c" }}>
       {!assetsReady && <LoadingScreen onReady={handleAssetsReady} />}
       <GameCanvas />
+      {/* World-anchored boss HP plates — same layer family as the canvas'
+          own labels (CLAUDE.md canvas layering: Pixi z0, ship z1, labels
+          z2), rendered here BEFORE the zIndex:10 HUD wrapper below so no
+          fixed-position HUD panel (Hotbar's HULL/SHIELD readout, chat,
+          etc.) can ever render underneath a boss bar that happens to drift
+          over it on screen. Previously mounted inside the HUD wrapper,
+          where its own zIndex:5 read as a sibling z-index INSIDE that
+          wrapper's stacking context instead of actually sitting above the
+          world — it won the fixed-panel HUD elements just by DOM order,
+          which is what let a boss bar visibly cut through the Hotbar's
+          vitals track. */}
+      <BossBar />
       <div style={{
         // Only apply the scale transform when actually scaling (<1). At 1:1 a
         // `transform` still creates a containing block that DISABLES the
@@ -1465,24 +1405,49 @@ function GameApp() {
       <div style={{ pointerEvents: "auto" }}>
       <GameHud />
       <WorldTargetHud />
+      <TargetLockPanel />
       <LogoutFlow />
       <Notifications />
       <RiftConfirmDialog />
       <DungeonHud />
       <QuestTracker />
-      {showSocial && <SocialPanel />}
-      <ClanPanel />
-      <GalaxyMap />
-      <ZoneMapOverlay />
+      {/* The React panels below ARE the current Cosmic Kit port (added on this
+          branch, PrintPortal open/close animation, ClanTabBar for the
+          directory<->hall tabs). The older PixiJS kit2 windows in
+          game/hud/kit2/windows-legacy are what they replace — kit2's hotkeys
+          are disabled in kitHost2 so a keypress opens one window, not two. */}
+      {/* Mounted unconditionally, like every other panel here: each one reads
+          its own store flag and keeps itself on screen via mounted/closing
+          until PrintPortal's close animation finishes (onPortalClosed).
+          Gating this one on `showSocial` destroyed it the instant the flag
+          flipped, so the close animation never played and the open animation
+          started on a cold component (first paint also ran getSocial() and
+          built the whole list) — that was the stutter. */}
+      <SocialPanel />
+      <ClanDirectoryPanel />
+      <ClanHallPanel />
+      <ExchangePanel />
+      <LeaderboardPanel />
+      <GalaxyMapPanel />
+      <ZoneMapPanel />
       <EventBanners />
       <GameTooltip />
-      <Title />
       {showHangarMenu && docked && <Hangar stationId={docked} />}
+      {/* S-01 Hangar Dock Overlay — the migrated design handoff, layered over the
+          3D hangar scene. Only mounted with the 3D scene active; the 2D hangar
+          keeps its own chrome. Tab clicks set state.hangarTab, so the existing
+          Hangar panel renders the section contents underneath. */}
+      {docked && ENABLE_HANGAR_3D_SCENE && <HangarDockOverlayHost />}
       {/* Fail-safe undock: if we're docked in the 3D hangar but the menu hasn't
           appeared yet (intro still running, or a stalled preload left us with no
           menu at all), give the player a standalone escape hatch so they can never
-          be trapped DOCKED. Hidden once the real menu (with its own undock) is up. */}
-      {docked && ENABLE_HANGAR_3D_SCENE && !showHangarMenu && (
+          be trapped DOCKED. Hidden once the real menu (with its own undock) is up.
+          The S-01 overlay carries its own UNDOCK control and mounts whenever we
+          are docked with the 3D scene on, so this corner button would duplicate
+          it — that stray ✕ UNDOCK in the top-right is what it was. It stays in
+          the tree for the 2D path (no overlay there) rather than being deleted,
+          so the "never trapped docked" guarantee survives. */}
+      {docked && !ENABLE_HANGAR_3D_SCENE && !showHangarMenu && (
         <button
           onClick={() => { try { requestUndock(); } catch { forceUndock("failsafe button"); } }}
           style={{
@@ -1509,20 +1474,16 @@ function GameApp() {
       >
         <DockPrompt />
       </div>
-      <CargoOverlay />
+      <CargoPanel />
       <InventoryPanel />
-      {/* ?newskills swaps the legacy panel for the redesigned React-Flow tree.
-          Both read the same store flag + the same SKILL_NODES catalog, so only
-          one may mount at a time. */}
-      {ENABLE_NEW_SKILLS ? <SkillTreeWindowGate /> : <SkillTreePanel />}
+      <SkillsPanel />
       <PlayerStatsPanel />
-      <BossBar />
       <IdleRewardModal />
       <FactionPicker />
       </div>
       </div>
       {showSettings && <SettingsMenu onClose={() => { state.showSettings = false; bump(); }} />}
-      {showAdmin && <AdminPanel onClose={() => { state.showAdmin = false; bump(); }} />}
+      {showAdmin && <AdminConsole onClose={() => { state.showAdmin = false; bump(); }} />}
       <div className="crt-overlay" />
     </div>
   );

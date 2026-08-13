@@ -593,15 +593,27 @@ export function applySpaceMaterial(
   // How much to darken the authored albedo toward dark metal. NPCs are pulled
   // down hardest (they read "too bright" with their raw Blender textures), boss
   // a little, player kept closest to authored (well-kept ship), station mid.
+  // NPCs were pulled down to 0.55 back when the world had a near-black
+  // environment and raw Blender albedo read "too bright". With the hangar's
+  // studio HDRI lighting the world that compensation is obsolete — it only made
+  // NPCs muddy next to the player. All roles now sit close to authored; NPCs
+  // stay a step below the player so a worn hull still reads as worn.
   const albedoMul =
-    role === "npc" ? 0.55 :
-    role === "boss" ? 0.72 :
-    role === "station" ? 0.7 :
+    role === "npc" ? 0.78 :
+    role === "boss" ? 0.82 :
+    role === "station" ? 0.8 :
     role === "player" ? 0.85 : 0.8;
   if (mat.map) {
-    // Keep authored albedo detail but multiply it down + tint toward the dark
-    // metal palette so nothing reads bright/flat.
-    mat.color = new THREE.Color(baseHex).lerp(new THREE.Color(0xffffff), 0.35).multiplyScalar(albedoMul + 0.25);
+    // With an albedo map, `color` is a MULTIPLIER over that texture — so tinting
+    // it toward the grey metal palette drained the authored hue: a green or red
+    // hull came out grey-green/grey-red in the world while the hangar (which
+    // does not run this path) showed it correctly.
+    //
+    // Keep the ship's OWN colour and only scale its brightness. The palette
+    // tint is still applied when there is no map, where `color` IS the surface
+    // and a neutral metal base is the right default.
+    const own = mat.color ? mat.color.clone() : new THREE.Color(0xffffff);
+    mat.color = own.multiplyScalar(albedoMul + 0.25);
   } else {
     mat.color = new THREE.Color(baseHex);
   }
@@ -609,37 +621,72 @@ export function applySpaceMaterial(
   // Detail maps (stable per seed). CRITICAL: without an explicit .repeat the
   // 512px detail map is stretched ONCE across the whole hull → invisible mush.
   // Tile it several times so plates/seams/bolts actually read at ship scale.
-  const rao = detailRoughAoTex(seed, variant);
+  //
+  // ONLY as a stand-in for maps the model does not have. These procedural plate
+  // textures used to overwrite the GLB's own roughness/normal/AO unconditionally
+  // — which is why the same hull looked like a different ship in the world than
+  // in the hangar: the hangar validates the authored materials and keeps their
+  // maps, while this path replaced them with generic panelling. Authored art
+  // wins; the procedural set stays for untextured models, where it is the only
+  // surface detail there is.
   const tile = role === "station" ? 3 : 2;
-  rao.repeat.set(tile, tile);
-  rao.needsUpdate = true;
-  mat.roughnessMap = rao;
-  mat.aoMap = rao;                 // reuse: dark seams/bolts read as occlusion
-  // Strong AO so recesses/seams go genuinely dark (was too weak to see).
-  mat.aoMapIntensity = role === "station" ? 1.6 : 1.35;
+  if (!mat.roughnessMap) {
+    const rao = detailRoughAoTex(seed, variant);
+    rao.repeat.set(tile, tile);
+    rao.needsUpdate = true;
+    mat.roughnessMap = rao;
+    if (!mat.aoMap) {
+      mat.aoMap = rao;             // reuse: dark seams/bolts read as occlusion
+      // Strong AO so recesses/seams go genuinely dark (was too weak to see).
+      mat.aoMapIntensity = role === "station" ? 1.6 : 1.35;
+    }
+  }
 
   // Detail normal — tiled + a much stronger scale so seams/bevels catch the
   // key light and the hull stops reading as a flat sticker.
-  const nrm = detailNormalTex();
-  nrm.repeat.set(tile * 1.5, tile * 1.5);
-  nrm.needsUpdate = true;
-  mat.normalMap = nrm;
-  mat.normalScale = new THREE.Vector2(0.9, 0.9);
+  if (!mat.normalMap) {
+    const nrm = detailNormalTex();
+    nrm.repeat.set(tile * 1.5, tile * 1.5);
+    nrm.needsUpdate = true;
+    mat.normalMap = nrm;
+    mat.normalScale = new THREE.Vector2(0.9, 0.9);
+  }
 
   void dirtTex(seed, heavy);
+
+  // Drop a broken metalness map before the per-role metalness below is set.
+  // Measured on the ship GLBs: the packed metalRough texture's BLUE channel
+  // (metalness) averages 0.01, so metalness = role value * 0.01 ≈ 0 and the hull
+  // renders as a dielectric — matte plastic that cannot reflect the environment
+  // no matter how high envMapIntensity goes. The GREEN (roughness) channel is
+  // fine, so only the metal channel is an export artefact. Same fix as the
+  // hangar, which is exactly why the hulls looked glossy there and matte here.
+  if (mat.metalnessMap) {
+    mat.metalnessMap = null;
+  }
 
   // Per-role PBR: dark metal, not chrome, not plastic. Player = cleaner/glossier
   // on exposed faces, NPC = rougher/duller, boss = cold hard metal, station =
   // heavy matte-ish but still metallic (NOT the old rough≥0.88 flat grey).
   switch (role) {
+    // envMapIntensity raised toward the hangar's look (there the hull renders at
+    // metalness .85 / envMapIntensity 2.3). Reflection strength is
+    // envMapIntensity * scene.environmentIntensity, and in the world that
+    // second factor is only ~0.46 per tier, so 1.15 landed far below what the
+    // hangar shows and the ships read matte the moment they undocked.
     case "player":
-      mat.metalness = 0.72; mat.roughness = 0.42; mat.envMapIntensity = 1.15; break;
+      mat.metalness = 0.82; mat.roughness = 0.34; mat.envMapIntensity = 2.1; break;
     case "boss":
-      mat.metalness = 0.78; mat.roughness = 0.40; mat.envMapIntensity = 1.1; break;
+      mat.metalness = 0.82; mat.roughness = 0.36; mat.envMapIntensity = 2.0; break;
+    // NPCs on the same PBR footing as the player (was metalness .62 /
+    // roughness .58 / envI 0.85 — deliberately duller). With the studio HDRI now
+    // lighting the world, "duller" just meant they could not reflect it, so they
+    // stayed flat next to a glossy player ship. Kept a touch rougher than the
+    // player: a worn NPC hull should read as less well-kept, not as plastic.
     case "npc":
-      mat.metalness = 0.62; mat.roughness = 0.58; mat.envMapIntensity = 0.85; break;
+      mat.metalness = 0.78; mat.roughness = 0.42; mat.envMapIntensity = 1.9; break;
     case "station":
-      mat.metalness = 0.55; mat.roughness = 0.60; mat.envMapIntensity = 0.9; break;
+      mat.metalness = 0.72; mat.roughness = 0.46; mat.envMapIntensity = 1.8; break;
     case "portal":
       mat.metalness = 0.5; mat.roughness = 0.5; mat.envMapIntensity = 1.0; break;
   }

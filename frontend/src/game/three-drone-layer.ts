@@ -190,6 +190,15 @@ export function updateDroneOnly(
     activeDrones.set(id, inst);
   }
 
+  // No smoothing here — the drone draws exactly at the anchor it is given.
+  //
+  // A second ease was tried in this layer on the theory that the anchor was
+  // computed on a separate game tick. It is not: the whole simulation runs
+  // inside the same requestAnimationFrame loop that renders (loop.ts step()),
+  // so smoothing in loop.ts and smoothing here run at the identical rate and
+  // simply stack — two chained low-pass filters over a position that already
+  // carries applyServerSmoothing's own easing, which is what made the drone
+  // wobble instead of trail. The single ease in updatePetDrone() is enough.
   const screenX = (worldX - camX) * cameraZoom;
   const screenY = (worldY - camY) * cameraZoom;
   inst.wrapper.position.set(screenX, 0, screenY);
@@ -198,13 +207,15 @@ export function updateDroneOnly(
   const finalScale = (targetPixels * cameraZoom) / inst.maxDim;
   inst.wrapper.scale.setScalar(finalScale);
 
-  // Steer to face the ship's heading — smoothed the same way the ship layer
-  // eases its own yaw, so the turn reads as a steer rather than a snap.
-  const targetYRot = -angle + Math.PI;
-  let rotDiff = targetYRot - inst.lastYRot;
-  while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
-  while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
-  inst.lastYRot += rotDiff * 0.15;
+  // Rigidly locked to the ship's heading — NOT eased.
+  //
+  // This used to lerp at 0.15/frame toward the target yaw. Because it only ever
+  // covers 15% of the remaining angle per frame, the drone LAGS the ship
+  // whenever the player is turning: it settles at an offset proportional to the
+  // turn rate, so it visibly sits at an angle to the hull mid-turn and only
+  // straightens once the ship stops steering. Assigning the yaw directly makes
+  // the drone hold the ship's exact heading at all times.
+  inst.lastYRot = -angle + Math.PI;
   inst.model.rotation.y = inst.lastYRot + DRONE_YAW_FIX;
 
   activeThisFrame.add(id);

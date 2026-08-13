@@ -3,9 +3,45 @@ import { eq } from "drizzle-orm";
 import { db, schema } from "../db/index.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { sanitizeInventory } from "../game/lootService.js";
+import { validateActiveQuests } from "../game/data.js";
+import { computeStats } from "../game/engine.js";
 
 const router = Router();
 router.use(authMiddleware);
+
+// Server-authoritative hull repair. Replaces the old client-side
+// `player.credits -= cost; player.hull = stats.hullMax` in Hangar.tsx's
+// HangarDockStrip — that path let the client compute AND apply the charge
+// with no server check. This is the same pattern as drone:upgrade in
+// socket/handler.ts: server re-derives hullMax and the cost from its own
+// state, never trusts a client-sent cost, and applies the debit + heal in
+// one transaction. (Clan research has no repair-cost project in the Kit —
+// Reinforced Plating raises hullMax itself, which is why a bigger max hull
+// costs proportionally more to top off; no separate discount here.)
+router.post("/repair", async (req, res) => {
+  try {
+    const { playerId } = (req as any).user;
+    const [player] = await db.select().from(schema.players).where(eq(schema.players.id, playerId)).limit(1);
+    if (!player) { res.status(404).json({ error: "Player not found" }); return; }
+
+    const stats = computeStats(player);
+    if (player.hull >= stats.hullMax - 0.5) {
+      res.json({ ok: true, hull: player.hull, hullMax: stats.hullMax, credits: player.credits, cost: 0 });
+      return;
+    }
+
+    const cost = Math.ceil((stats.hullMax - player.hull) * 2);
+    if (player.credits < cost) { res.status(400).json({ error: "Not enough credits to repair" }); return; }
+
+    const newCredits = player.credits - cost;
+    await db.update(schema.players).set({ hull: stats.hullMax, credits: newCredits }).where(eq(schema.players.id, playerId));
+
+    res.json({ ok: true, hull: stats.hullMax, hullMax: stats.hullMax, credits: newCredits, cost });
+  } catch (err) {
+    console.error("Repair error:", err);
+    res.status(500).json({ error: "Repair failed" });
+  }
+});
 
 router.get("/me", async (req, res) => {
   try {
@@ -21,7 +57,33 @@ router.get("/me", async (req, res) => {
       return;
     }
 
-    res.json({ player: toClient(player) });
+    // Self-heal stale quest save data (removed/renamed pool entries, or a
+    // quest whose kill zone changed since it was accepted) on every load —
+    // see validateActiveQuests in game/data.ts. Persist immediately so a
+    // later autosave (which round-trips whatever the client currently holds)
+    // can't clobber the repair with the still-stale in-memory client state.
+    const cleanedQuests = validateActiveQuests(player.activeQuests);
+    if (JSON.stringify(cleanedQuests) !== JSON.stringify(player.activeQuests)) {
+      await db
+        .update(schema.players)
+        .set({ activeQuests: cleanedQuests })
+        .where(eq(schema.players.id, playerId));
+      player.activeQuests = cleanedQuests;
+    }
+
+    let clanName: string | null = null;
+    if (player.clanId) {
+      const [clan] = await db.select({ name: schema.clans.name }).from(schema.clans).where(eq(schema.clans.id, player.clanId)).limit(1);
+      // Clan was disbanded while the player was offline — clear the dangling reference.
+      if (!clan) {
+        await db.update(schema.players).set({ clanId: null }).where(eq(schema.players.id, playerId));
+        player.clanId = null;
+      } else {
+        clanName = clan.name;
+      }
+    }
+
+    res.json({ player: toClient(player, clanName) });
   } catch (err) {
     console.error("Get player error:", err);
     res.status(500).json({ error: "Failed to load player" });
@@ -126,7 +188,7 @@ function sanitizeFloat(v: number): number {
   return v;
 }
 
-function toClient(p: any) {
+function toClient(p: any, clanName: string | null) {
   return {
     id: p.id,
     name: p.name,
@@ -167,7 +229,8 @@ function toClient(p: any) {
     milestones: p.milestones,
     dungeonClears: p.dungeonClears,
     dungeonBestTimes: p.dungeonBestTimes,
-    clan: null,
+    clan: clanName,
+    clanId: p.clanId,
     party: [],
     vel: { x: 0, y: 0 },
     angle: 0,

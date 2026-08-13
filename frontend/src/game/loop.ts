@@ -547,140 +547,7 @@ function emitTrail(x: number, y: number, color: string, alpha?: number, size?: n
 }
 
 function emitDeath(_x: number, _y: number, _color: string, _big = false, _enemySize = 12): void {
-  return; // PixiJS effect manager handles all explosions now
-  const sizeMul = Math.max(1, enemySize / 12);
-
-  // Central white flash bloom — scaled by enemy size
-  state.particles.push({
-    id: `fl-${Math.random().toString(36).slice(2, 8)}`,
-    pos: { x, y }, vel: { x: 0, y: 0 },
-    ttl: B ? 0.6 : 0.35 + sizeMul * 0.05, maxTtl: B ? 0.6 : 0.35 + sizeMul * 0.05,
-    color: "#ffffff",
-    size: B ? 300 : Math.round(160 * sizeMul), kind: "flash",
-  });
-  state.particles.push({
-    id: `fl2-${Math.random().toString(36).slice(2, 8)}`,
-    pos: { x, y }, vel: { x: 0, y: 0 },
-    ttl: B ? 0.5 : 0.32, maxTtl: B ? 0.5 : 0.32,
-    color, size: B ? 220 : 130, kind: "flash",
-  });
-  state.particles.push({
-    id: `fl3-${Math.random().toString(36).slice(2, 8)}`,
-    pos: { x, y }, vel: { x: 0, y: 0 },
-    ttl: B ? 0.35 : 0.24, maxTtl: B ? 0.35 : 0.24,
-    color: "#ffd24a", size: B ? 180 : 100, kind: "flash",
-  });
-  // Delayed secondary flash
-  setTimeout(() => {
-    state.particles.push({
-      id: `fl4-${Math.random().toString(36).slice(2, 8)}`,
-      pos: { x, y }, vel: { x: 0, y: 0 },
-      ttl: 0.2, maxTtl: 0.2,
-      color: "#ff8c00", size: B ? 150 : 80, kind: "flash",
-    });
-  }, 120);
-
-  // Expanding shockwave rings — huge and staggered
-  const ringR = B ? 220 : 130;
-  for (let i = 0; i < (B ? 6 : 4); i++) {
-    const ringColor = i === 0 ? "#ffffff" : i === 1 ? color : i === 2 ? "#ffd24a" : "#ff8c00";
-    const rSize = ringR * (1 - i * 0.12);
-    setTimeout(() => emitRing(x, y, ringColor, rSize), i * 70);
-  }
-
-  // Fireballs — large fire blobs that fly outward
-  const fbColors = ["#ff8c00", "#ff4500", "#ffd700", "#ff6600", "#ff2244", "#ff0066", "#ffaa00", "#ff7700"];
-  const fbCount = B ? 28 : 16;
-  for (let i = 0; i < fbCount; i++) {
-    const a = Math.random() * Math.PI * 2;
-    const spd = (0.3 + Math.random() * 0.7) * (B ? 160 : 110);
-    state.particles.push({
-      id: `fb-${Math.random().toString(36).slice(2, 8)}`,
-      pos: { x: x + (Math.random() - 0.5) * 20, y: y + (Math.random() - 0.5) * 20 },
-      vel: { x: Math.cos(a) * spd, y: Math.sin(a) * spd },
-      ttl: 0.7 + Math.random() * 0.6, maxTtl: 1.3,
-      color: fbColors[Math.floor(Math.random() * fbColors.length)],
-      size: B ? (100 + Math.random() * 80) : (55 + Math.random() * 40),
-      kind: "fireball",
-    });
-  }
-
-  // Smoke puffs — dark billowing clouds
-  const smokeCount = B ? 20 : 10;
-  for (let i = 0; i < smokeCount; i++) {
-    const a = Math.random() * Math.PI * 2;
-    const spd = (0.1 + Math.random() * 0.4) * (B ? 60 : 40);
-    state.particles.push({
-      id: `sm-${Math.random().toString(36).slice(2, 8)}`,
-      pos: { x: x + (Math.random() - 0.5) * 14, y: y + (Math.random() - 0.5) * 14 },
-      vel: { x: Math.cos(a) * spd, y: Math.sin(a) * spd },
-      ttl: 0.9 + Math.random() * 0.7, maxTtl: 1.6,
-      color: i % 3 === 0 ? "#111" : i % 3 === 1 ? "#333" : "#555",
-      size: B ? (50 + Math.random() * 45) : (28 + Math.random() * 22),
-      kind: "smoke",
-    });
-  }
-
-  // Large burning hull fragments — big chunks flying far in all directions, scaled by ship size
-  const debrisCount = B ? 24 : Math.round(12 * sizeMul);
-  const debrisColors = [color, "#ff8a4e", "#ffd24a", "#ffccaa", "#cccccc", "#ff5c6c"];
-  for (let i = 0; i < debrisCount; i++) {
-    const a = Math.random() * Math.PI * 2;
-    const spd = (0.4 + Math.random() * 0.6) * (B ? 300 : 180 * sizeMul);
-    state.particles.push({
-      id: `db-${Math.random().toString(36).slice(2, 8)}`,
-      pos: { x: x + (Math.random() - 0.5) * 10, y: y + (Math.random() - 0.5) * 10 },
-      vel: { x: Math.cos(a) * spd, y: Math.sin(a) * spd },
-      ttl: 1.0 + Math.random() * 1.2, maxTtl: 2.2,
-      color: debrisColors[Math.floor(Math.random() * debrisColors.length)],
-      size: B ? (12 + Math.random() * 18) : (6 + Math.random() * 10) * sizeMul,
-      rot: Math.random() * Math.PI * 2,
-      rotVel: (Math.random() - 0.5) * 18,
-      kind: "debris",
-    });
-  }
-  // Burning wreckage pieces that linger and fade (bigger ships = more wreckage)
-  if (sizeMul >= 1.3 || B) {
-    const wreckCount = B ? 6 : Math.round(3 * sizeMul);
-    for (let wi = 0; wi < wreckCount; wi++) {
-      const wa = Math.random() * Math.PI * 2;
-      const ws = 40 + Math.random() * 80;
-      state.particles.push({
-        id: `wrk-${Math.random().toString(36).slice(2, 8)}`,
-        pos: { x: x + (Math.random() - 0.5) * 20, y: y + (Math.random() - 0.5) * 20 },
-        vel: { x: Math.cos(wa) * ws, y: Math.sin(wa) * ws },
-        ttl: 2.5 + Math.random() * 2.0, maxTtl: 4.5,
-        color: Math.random() > 0.5 ? color : "#555",
-        size: B ? (18 + Math.random() * 14) : (10 + Math.random() * 8) * sizeMul,
-        rot: Math.random() * Math.PI * 2,
-        rotVel: (Math.random() - 0.5) * 6,
-        kind: "debris",
-      });
-    }
-  }
-
-  // Sparks — five tiers, fast and bright, flying far from explosion
-  emitSpark(x, y, "#ffffff", B ? 60 : 30, B ? 500 : 380, B ? 5 : 3);
-  emitSpark(x, y, color, B ? 80 : 40, B ? 360 : 280, B ? 5 : 4);
-  emitSpark(x, y, "#ffd24a", B ? 60 : 24, B ? 280 : 200, B ? 4 : 3);
-  emitSpark(x, y, "#ff8c00", B ? 40 : 18, B ? 320 : 220, B ? 4 : 3);
-  emitSpark(x, y, "#ff5cf0", B ? 24 : 10, B ? 240 : 160, B ? 3 : 2);
-
-  // Burning embers — big glowing fire chunks flying far in all directions
-  const emberCount = B ? 40 : 22;
-  const emberColors = ["#ff8c00", "#ff4500", "#ffd700", "#ffaa00", "#ff6600", "#ff2244", color];
-  for (let i = 0; i < emberCount; i++) {
-    const a = Math.random() * Math.PI * 2;
-    const spd = (180 + Math.random() * 350) * (B ? 1.5 : 1);
-    state.particles.push({
-      id: `em-${Math.random().toString(36).slice(2, 8)}`,
-      pos: { x: x + (Math.random() - 0.5) * 14, y: y + (Math.random() - 0.5) * 14 },
-      vel: { x: Math.cos(a) * spd, y: Math.sin(a) * spd },
-      ttl: 0.8 + Math.random() * 1.0, maxTtl: 1.8,
-      color: emberColors[Math.floor(Math.random() * emberColors.length)],
-      size: B ? (5 + Math.random() * 8) : (4 + Math.random() * 5), kind: "ember",
-    });
-  }
+  // PixiJS effect manager handles all explosions now.
 }
 
 // ── PROJECTILES ───────────────────────────────────────────────────────────
@@ -740,13 +607,33 @@ function updatePetDrone(p: import("./types").Player, dt: number): void {
   const anyPet = pet as any;
   anyPet.orbitPhase = (pet.orbitPhase ?? 0) + dt * 1.5;
 
-  // formation anchor: fixed one ship-length behind, no bob/rotation.
+  // Smooth the formation BEARING, then place the drone rigidly on it.
+  //
+  // Smoothing the anchor POSITION (the two previous attempts) cannot work here.
+  // p.pos is itself the output of applyServerSmoothing — it eases toward a
+  // target that only updates when a server packet lands (~30Hz), so it already
+  // carries small ripples. p.angle is worse: with WASD it is assigned straight
+  // from the cursor every frame (see `state.aimAngle` above), completely
+  // unfiltered. Chaining a position filter onto those two inputs turns their
+  // ripple into a visible wobble, because the drone's own lag keeps changing.
+  //
+  // Filtering the ANGLE instead removes the noisy input at its source: the
+  // drone then sits at a fixed 105-unit offset along a bearing that changes
+  // smoothly, so it swings out behind the ship on a turn (the trailing look)
+  // yet never jitters while flying straight — the offset is rigid, so any
+  // remaining ripple in p.pos moves ship and drone by the identical amount.
   const behind = p.angle + Math.PI;
-  const targetX = p.pos.x + Math.cos(behind) * 62;
-  const targetY = p.pos.y + Math.sin(behind) * 62;
-  const lerp = Math.min(1, dt * 5);
-  anyPet.anchorX = anyPet.anchorX != null ? anyPet.anchorX + (targetX - anyPet.anchorX) * lerp : targetX;
-  anyPet.anchorY = anyPet.anchorY != null ? anyPet.anchorY + (targetY - anyPet.anchorY) * lerp : targetY;
+  const k = 1 - Math.exp(-Math.min(0.1, dt) / 0.08);
+  if (anyPet.trailAng == null) {
+    anyPet.trailAng = behind;
+  } else {
+    let dA = behind - anyPet.trailAng;
+    while (dA > Math.PI) dA -= Math.PI * 2;
+    while (dA < -Math.PI) dA += Math.PI * 2;
+    anyPet.trailAng += dA * k;
+  }
+  anyPet.anchorX = p.pos.x + Math.cos(anyPet.trailAng) * 105;
+  anyPet.anchorY = p.pos.y + Math.sin(anyPet.trailAng) * 105;
 
   // firing: needs a weapon equipped in the pet's weapon slot
   const wid = pet.equipped.weapon;
@@ -893,9 +780,12 @@ export function applyKill(e: Enemy, killerCrit: boolean): void {
   p2.ammo.x1 = (p2.ammo.x1 ?? 0) + ammoDrop;
   pushFloater({ text: `+${ammoDrop} x1 ammo`, color: "#aabbcc", x: e.pos.x + 30, y: e.pos.y - 20, scale: 0.7, bold: false });
 
-  // Quest progress
+  // Quest progress — kill zone is `targetZone` when the quest set one
+  // (deliberately different from the board zone it was accepted in), else
+  // falls back to `zone` for every pre-existing same-zone quest.
   for (const q of state.player.activeQuests) {
-    if (!q.completed && q.killType === e.type && q.zone === state.player.zone) {
+    const killZone = q.targetZone ?? q.zone;
+    if (!q.completed && q.killType === e.type && killZone === state.player.zone) {
       q.progress++;
       if (q.progress >= q.killCount) {
         q.completed = true;
@@ -3036,10 +2926,24 @@ export function onEnemyDie(data: EnemyDieEvent): void {
   const bonusStr = (loot as any).bonusResource ? `, +${(loot as any).bonusResource.qty} ${(loot as any).bonusResource.resourceId}` : "";
   pushChat("system", "COMBAT", `Destroyed ${eName} (+${loot.credits} CR, +${loot.exp} XP${loot.resource ? `, +${loot.resource.qty} ${loot.resource.resourceId}` : ""}${bonusStr})`);
 
-  // Quest + mission progress
-  if (e) {
+  // Quest + mission progress — prefer the type the server sent directly on
+  // this event over the local `state.enemies` lookup (`e`). `e` can already
+  // be undefined here: a periodic zone:enemies snapshot (onServerZoneEnemies,
+  // which fully replaces state.enemies) may arrive and drop the just-killed
+  // enemy from the list before this enemy:die event is processed, since
+  // socket events aren't guaranteed to arrive in the order they were
+  // emitted relative to each other. That race silently skipped ALL quest
+  // progress for the kill (killType could never match e.type on undefined),
+  // which is what made kill-tracking feel inconsistent — some kills of the
+  // exact same enemy type counted, others didn't, depending on timing.
+  const killedType = data.enemyType ?? e?.type;
+  if (killedType) {
+    // Kill zone is `targetZone` when the quest set one (deliberately
+    // different from the board zone it was accepted in — sends the player
+    // to another map to hunt), else falls back to `zone`.
     for (const q of p.activeQuests) {
-      if (!q.completed && q.killType === e.type && q.zone === p.zone) {
+      const killZone = q.targetZone ?? q.zone;
+      if (!q.completed && q.killType === killedType && killZone === p.zone) {
         q.progress++;
         if (q.progress >= q.killCount) {
           q.completed = true;
@@ -3687,6 +3591,15 @@ function applyServerSmoothing(dt: number): void {
     }
     e.vel.x = tgt.vx;
     e.vel.y = tgt.vy;
+    // Ease the heading toward the server's, shortest way round. Deltas arrive
+    // ~10-30x/s while this runs every frame, so assigning tgt.angle directly
+    // would step the model between packet headings — the stutter this fixes.
+    if (tgt.angle != null) {
+      let da = tgt.angle - e.angle;
+      while (da > Math.PI) da -= Math.PI * 2;
+      while (da < -Math.PI) da += Math.PI * 2;
+      e.angle += da * Math.min(1, lerp * 1.6);
+    }
   }
   for (const n of state.npcShips) {
     const tgt = _entityTargets.get(n.id);
@@ -3704,6 +3617,12 @@ function applyServerSmoothing(dt: number): void {
     }
     n.vel.x = tgt.vx;
     n.vel.y = tgt.vy;
+    if (tgt.angle != null) {
+      let da = tgt.angle - n.angle;
+      while (da > Math.PI) da -= Math.PI * 2;
+      while (da < -Math.PI) da += Math.PI * 2;
+      n.angle += da * Math.min(1, lerp * 1.6);
+    }
   }
 }
 
@@ -3715,6 +3634,10 @@ export function onWelcome(data: WelcomePayload): void {
     frictionRefFps: data.frictionRefFps,
   };
   serverPlayerId = data.playerId;
+  // Staff flag straight from the server. Replaces the client-side
+  // `serverPlayerId === 3` test, which made admin a property of one row
+  // number rather than something that can be granted or revoked.
+  state.isAdmin = Boolean(data.isAdmin);
   serverAuthoritative = true;
   serverEnemiesReceived = true;
   // M8: the server's isDocked flag is per-connection and starts false, so a
@@ -3848,6 +3771,27 @@ export function onPlayerHitRemoteFromServer(data: { playerId: number; damage: nu
   emitSpark(data.pos.x, data.pos.y, "#ffffff", 3, 70, 2);
 }
 
+// Server-authoritative honor correction — currently the friendly-fire penalty
+// from engine.ts. The server owns honor DOWNWARD (stats:update refuses
+// decreases), so this is the only path by which a penalty reaches the client.
+// Honor drives the rank badge for the local pilot and the Outlaw brand on
+// remote ones, hence both branches.
+export function onPlayerHonorFromServer(data: { playerId: number; honor: number }): void {
+  if (data.playerId === serverPlayerId) {
+    const delta = data.honor - state.player.honor;
+    state.player.honor = data.honor;
+    // Surface the loss the same way honor gains are surfaced, so a betrayal
+    // penalty is not a silent number change the pilot only notices later.
+    if (delta !== 0) pushHonor(delta);
+  } else {
+    // state.others is an ARRAY keyed by a string id, not a Map — see the
+    // existing lookups at onPlayerDieFromServer.
+    const other = state.others.find((o) => o.id === String(data.playerId));
+    if (other) other.honor = data.honor;
+  }
+  bump();
+}
+
 // Reconcile a remote player's client-side drone list with the authoritative
 // wire form. Preserves runtime state (anchor, orbitPhase) for drones that
 // still exist so they don't teleport when a delta arrives.
@@ -3879,21 +3823,36 @@ function updateRemoteDroneFormations(dt: number): void {
       const d = o.drones[i];
       d.orbitPhase = (d.orbitPhase ?? 0) + dt * 1.5;
 
-      const behindAngle = o.angle + Math.PI;
       const cols = Math.min(4, droneCount);
       const row = Math.floor(i / cols);
       const col = i % cols;
       const spacing = 55;
-      const rowOffset = (row + 1) * spacing;
+      // First row starts at 105 (matching the pet drone's clearance) instead of
+      // one full `spacing` back — at 55 the leading row sat on the hull of the
+      // bigger ship classes. Later rows still step back by `spacing` each.
+      const rowOffset = 105 + row * spacing;
       const colOffset = (col - (Math.min(cols, droneCount - row * cols) - 1) / 2) * spacing;
+
+      // Bearing-smoothed, rigid offset — same reasoning as the pet drone above:
+      // filter the ANGLE (the noisy input), then place the drone exactly on it,
+      // rather than easing the position and amplifying p.pos's own ripple.
+      const dAny = d as any;
+      const wantAng = o.angle + Math.PI;
+      const kR = 1 - Math.exp(-Math.min(0.1, dt) / 0.08);
+      if (dAny.trailAng == null) {
+        dAny.trailAng = wantAng;
+      } else {
+        let dA = wantAng - dAny.trailAng;
+        while (dA > Math.PI) dA -= Math.PI * 2;
+        while (dA < -Math.PI) dA += Math.PI * 2;
+        dAny.trailAng += dA * kR;
+      }
+      const behindAngle = dAny.trailAng as number;
       const perpAngle = behindAngle + Math.PI / 2;
-      const targetX = o.pos.x + Math.cos(behindAngle) * rowOffset + Math.cos(perpAngle) * colOffset;
-      const targetY = o.pos.y + Math.sin(behindAngle) * rowOffset + Math.sin(perpAngle) * colOffset;
-      const prev = d.anchor;
-      const lerpFactor = Math.min(1, dt * 5);
-      const anchorX = prev ? prev.x + (targetX - prev.x) * lerpFactor : targetX;
-      const anchorY = prev ? prev.y + (targetY - prev.y) * lerpFactor : targetY;
-      d.anchor = { x: anchorX, y: anchorY };
+      d.anchor = {
+        x: o.pos.x + Math.cos(behindAngle) * rowOffset + Math.cos(perpAngle) * colOffset,
+        y: o.pos.y + Math.sin(behindAngle) * rowOffset + Math.sin(perpAngle) * colOffset,
+      };
     }
   }
 }
@@ -3904,8 +3863,13 @@ function applyEntityUpdate(entity: DeltaEntity): void {
       if (state.dungeon) break;
       const e = state.enemies.find(en => en.id === entity.id);
       if (e) {
-        setEntityTarget(entity.id, entity.x, entity.y, entity.vx ?? 0, entity.vy ?? 0);
-        if (entity.angle != null) e.angle = entity.angle;
+        // Angle goes through the interpolator like the position does, instead of
+        // being assigned straight from the packet. Positions are smoothed in
+        // applyServerSmoothing (velocity extrapolation + gentle correction), but
+        // the heading used to snap to the server value on every delta — so a
+        // turning NPC visibly stepped between headings while its position glided,
+        // which reads as a micro-stutter on anything you fly past.
+        setEntityTarget(entity.id, entity.x, entity.y, entity.vx ?? 0, entity.vy ?? 0, entity.angle ?? undefined);
         if (entity.hp != null) e.hull = entity.hp;
         if (entity.hpMax != null) e.hullMax = entity.hpMax;
         if (entity.isBoss != null) e.isBoss = entity.isBoss;
@@ -3988,8 +3952,9 @@ function applyEntityUpdate(entity: DeltaEntity): void {
     case "npc": {
       const n = state.npcShips.find(ns => ns.id === entity.id);
       if (n) {
-        setEntityTarget(entity.id, entity.x, entity.y, entity.vx ?? 0, entity.vy ?? 0);
-        if (entity.angle != null) n.angle = entity.angle;
+        // Interpolated heading, same as enemies above — a snapped angle on a
+        // smoothly-moving hull is what reads as a micro-stutter.
+        setEntityTarget(entity.id, entity.x, entity.y, entity.vx ?? 0, entity.vy ?? 0, entity.angle ?? undefined);
         if (entity.hp != null) n.hull = entity.hp;
         if (entity.hpMax != null) n.hullMax = entity.hpMax;
         if (entity.state != null) n.state = entity.state as any;

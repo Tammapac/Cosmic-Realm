@@ -4,7 +4,7 @@ import { ThreeNebulaBackground } from "./three-nebula-background";
 import { applySpaceMaterial, makeEnemyCore, makeEnemyFlowShell, ENEMY_ACCENTS, setMaterialAnisotropyMax, type SpaceRole } from "./space-material";
 import { perfRegisterThree } from "./perf";
 import { getRendererSettings } from "./RendererSettings";
-import { loadEnvironment } from "./three-environment";
+import { installStudioEnv } from "./three-environment";
 import { createPostFX, type PostFX } from "./three-postfx";
 
 // Stable string hash → seed for reproducible per-class surface aging.
@@ -236,6 +236,11 @@ interface ModelLocalHardpoints {
 interface Ship3D {
   lastYRot: number;
   yawFix?: number;   // per-model heading offset (nose not authored on -Z)
+  /** Class this instance was BUILT from. updateShip3D() only creates a model
+   *  when the entity has none, so without remembering the class here a player
+   *  who buys or equips a different ship kept flying the old mesh until the
+   *  entity was removed (i.e. until a zone change or reload). */
+  shipClass: string;
   wrapper: THREE.Group;
   model: THREE.Group;
   // Starblast-style flight lean: banking roll into turns + pitch on
@@ -593,16 +598,34 @@ export function init3DLayer(canvas: HTMLCanvasElement): void {
     nebulaBackground.init(scene, camera, renderer);
   }
 
-  // Filmic tone mapping + environment reflections: hulls pick up soft
-  // sky/sun reflections and specular highlights roll off naturally, so the
-  // ships read as objects lit BY the scene instead of cut-in renders.
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  // Exposure per tier (was a hard 0.86). The CSS brightness grade is gone
-  // (forbidden canvas filter) so the filmic exposure carries the grade.
-  renderer.toneMappingExposure = rs.toneMappingExposure;
-  // IBL: HDR via PMREM when the tier allows (RoomEnvironment fallback), so
-  // hulls pick up soft cinematic sky/sun reflections instead of reading flat.
-  const pmrem = loadEnvironment(renderer, scene);
+  // Tone mapping + environment reflections: hulls pick up soft sky/sun
+  // reflections and specular highlights roll off naturally, so the ships read
+  // as objects lit BY the scene instead of cut-in renders.
+  //
+  // AgX, matching HangarScene — the same hull has to look like the same hull in
+  // both places. ACESFilmic (the previous value here) saturates and crushes
+  // highlights differently, so a ship inspected in the hangar visibly changed
+  // character the moment it undocked.
+  renderer.toneMapping = THREE.AgXToneMapping;
+  // HangarScene.toneExposure verbatim, NOT the tier value.
+  //
+  // The tier presets (0.86-0.9) were calibrated against ACESFilmic; scaling them
+  // for AgX only ever approximated the hangar. Since the whole point is that a
+  // hull looks identical in both places, the exposure has to be the same number,
+  // not a tier-relative one — the tier still controls resolution, shadows and
+  // anisotropy, which is where it belongs.
+  renderer.toneMappingExposure = 0.62;
+  // IBL: the HANGAR's environment, not the generic one. installStudioEnv with
+  // kind:"hdr" installs the same blurred Space HDRI (with the brightened
+  // overhead pole) that HangarScene uses, so a hull reflects the same thing in
+  // both places — which is the bulk of "why does my ship look different out
+  // here". loadEnvironment() used to install RoomEnvironment/a different HDR at
+  // the tier's environmentIntensity, a visibly different reflection.
+  //
+  // 0.30 = HangarScene.envIntensity verbatim. Reflection strength is
+  // envMapIntensity * this, so matching it is what puts world gloss on the same
+  // scale as the hangar's.
+  const pmrem = installStudioEnv(renderer, scene, { kind: "hdr", intensity: 0.30 });
   // Grade the DOM-presented canvas to match the Pixi scene lighting (the
   // player layer sits ABOVE the Pixi vignette/ambient and would otherwise
   // read brighter than everything else — the "cut-in" look).
@@ -615,11 +638,17 @@ export function init3DLayer(canvas: HTMLCanvasElement): void {
   // Very low, cool ambient so the side facing away from the sun goes genuinely
   // dark instead of being lifted flat — the main cause of the "flat/cut-out"
   // read. The material's own AO map darkens recesses on top of this.
-  const ambient = new THREE.AmbientLight(0x232a42, 0.12);
+  // 0.05 (was 0.12) — same reasoning that fixed the hangar: a shadowless light
+  // lands INSIDE the key's shadow too, so ambient sets the floor a shadow can
+  // reach. No key intensity can darken a shade that ambient keeps re-lighting.
+  const ambient = new THREE.AmbientLight(0x232a42, 0.05);
   scene.add(ambient);
 
   // Main sun: strong warm key from the upper-right → clear lit side.
-  const sun = new THREE.DirectionalLight(0xfff2e0, 2.2);
+  // 5.5 (was 2.2), matching the hangar's key. Raising the KEY rather than
+  // lowering everything widens the gap between lit and shadowed, which is what
+  // actually reads as contrast instead of just making the scene darker.
+  const sun = new THREE.DirectionalLight(0xfff2e0, 5.5);
   sun.position.set(120, 320, -90);
   sun.castShadow = rs.shadowsEnabled;
   sun.shadow.mapSize.set(rs.shadowMapSize, rs.shadowMapSize);
@@ -635,13 +664,17 @@ export function init3DLayer(canvas: HTMLCanvasElement): void {
 
   // Cool fill: weak, opposite side — defines the dark side's edge without
   // lifting it to grey.
-  const fill = new THREE.DirectionalLight(0x5c86d6, 0.4);
+  // 0.15 (was 0.4) — shadowless, so it erodes the sun's shadow like the ambient
+  // above. Enough is left to keep the dark side's edge readable.
+  const fill = new THREE.DirectionalLight(0x5c86d6, 0.15);
   fill.position.set(-90, 140, 110);
   scene.add(fill);
 
   // Grazing rim from behind/below → catches top edges (fresnel-like) so hulls
   // read against the dark background instead of blending into a flat blob.
-  const rim = new THREE.DirectionalLight(0x9ec2ff, 0.55);
+  // 0.25 (was 0.55) — kept, but trimmed with the rest of the shadowless set. It
+  // only has to catch top edges, not contribute to overall brightness.
+  const rim = new THREE.DirectionalLight(0x9ec2ff, 0.25);
   rim.position.set(-30, -70, 210);
   scene.add(rim);
 
@@ -867,14 +900,37 @@ function loadModel(shipClass: string): void {
             // authored albedo) so they glisten + mirror the studio env like the
             // rest of the fleet, and keep the albedo-derived glow on the bright
             // accent areas (red lines, crystal white).
+            // Albedo-derived glow, kept but turned WAY down (was 0.38).
+            //
+            // Removing it outright drained these hulls' colour — the Knoton in
+            // particular went from deep green to near-black, because on a dark
+            // authored albedo the emissive term was carrying most of the visible
+            // hue. But at 0.38 it also made the hull self-lit: it ignored the key
+            // light and could not go dark on its shadow side.
+            //
+            // 0.12 is the middle: enough for the accent areas (red lines,
+            // crystal white, the Knoton's green) to read as glowing, faint
+            // enough that the studio HDRI and the sun still do the actual
+            // lighting and the shadow side still falls off.
             if (m.map) {
               m.emissiveMap = m.map;
               m.emissive = new THREE.Color(0xffffff);
-              m.emissiveIntensity = 0.38;
+              m.emissiveIntensity = 0.12;
             }
-            m.metalness = Math.max(m.metalness ?? 0, 0.72);
-            m.roughness = Math.min(m.roughness ?? 1, 0.4);
-            (m as any).envMapIntensity = 1.6;
+            // Close to the "npc" role in space-material.ts, but metalness held
+            // at 0.62 rather than 0.78. In PBR a metal has no diffuse term —
+            // its colour survives only in the reflection — so pushing these
+            // organic, strongly-coloured hulls that far toward metal desaturated
+            // them, which is the other half of the Knoton losing its green.
+            // 0.62 keeps enough diffuse for the authored colour to show while
+            // still catching the studio HDRI.
+            m.metalness = Math.max(m.metalness ?? 0, 0.62);
+            m.roughness = Math.min(m.roughness ?? 1, 0.42);
+            (m as any).envMapIntensity = 1.9;
+            // A broken/empty packed metalness channel would multiply the value
+            // above back to ~0 — the same export artefact fixed for the player
+            // hulls and in the hangar.
+            if (m.metalnessMap) m.metalnessMap = null;
             m.needsUpdate = true;
             hullMatCount++;
             newList.push(m);
@@ -939,6 +995,17 @@ function loadModel(shipClass: string): void {
         mesh.material = Array.isArray(mesh.material) ? newList : newList[0];
         mesh.castShadow = !anyTransparentGlow;
         mesh.receiveShadow = true;
+        // shadowSide=BackSide on DoubleSide materials — the same fix the hangar
+        // needed. For a DoubleSide material three writes BOTH faces into the
+        // shadow map; on thin hull panels the two sit within a shadow-map texel
+        // of each other and cancel out, so the ship casts almost nothing.
+        // Writing only the far face makes the cast solid. FrontSide materials
+        // are closed solids and must keep three's default (null), or they
+        // shadow their own front face and go black.
+        for (const mm of newList) {
+          const m = mm as THREE.Material;
+          if (m && m.side === THREE.DoubleSide) m.shadowSide = THREE.BackSide;
+        }
         if (anyTransparentGlow) glowSkipCount++;
       });
       if ((window as any).__DEBUG_MAT) {
@@ -1335,6 +1402,15 @@ export function updateShip3D(
 ): void {
   if (!scene || !loadedModels.has(shipClass)) return;
 
+  // Ship swapped class (bought/equipped a different hull)? Drop the old mesh so
+  // the block below rebuilds from the new template. Without this the entity kept
+  // its original model for the rest of the session — the caller passes the
+  // current class every frame, but the instance was only ever built once.
+  // Guarded on the model being loaded (checked above), so a not-yet-loaded new
+  // class leaves the old ship on screen instead of blinking it out.
+  const existing = activeShips.get(entityId);
+  if (existing && existing.shipClass !== shipClass) removeShip3D(entityId);
+
   let ship = activeShips.get(entityId);
   if (!ship) {
     const template = loadedModels.get(shipClass)!;
@@ -1464,6 +1540,7 @@ export function updateShip3D(
 
     ship = {
       wrapper, model, hardpoints, engineGlows, mixer,
+      shipClass,
       yawFix,
       lastYRot: -angle + Math.PI,
       bank: 0, pitch: 0,

@@ -242,17 +242,29 @@
 }
 
 /* Pilot rank icon -- sits in the upper part of the dark window, same spot
-   the old pre-rebuild TopBar showed rank_XX.png, but sized down and
-   nudged up to leave room for portraitRankName underneath instead of
-   filling the whole window. */
+   the old pre-rebuild TopBar showed rank_XX.png, nudged up to leave room
+   for portraitRankName underneath.
+
+   Sized against portraitWindowCore, which is inset 30px inside the 158px
+   portrait: a ~98px dark window. At the old 46px the badge used under half
+   of it and read as a stamp rather than the pilot's insignia. 78px fills
+   the window properly while keeping a margin off the octagon's angled
+   corners -- the badge art is already 6% padded inside its own canvas, so
+   the visible metal lands a little under this box. */
 .portraitRankIcon {
   position: absolute;
   left: 50%;
-  top: 46%;
+  top: 42%;
   transform: translate(-50%, -50%);
   z-index: 1;
-  width: 46px;
-  height: 46px;
+  /* Height-driven, width follows. The art files are cropped tight to each
+     badge and keep their own aspect, so a fixed 78x78 square would letterbox
+     the wide chevron ranks down to ~41px of visible art while the compact
+     shields got the full 78. max-width keeps the widest ones inside the
+     octagon's angled corners. */
+  height: 78px;
+  width: auto;
+  max-width: 92px;
   object-fit: contain;
   pointer-events: none;
 }

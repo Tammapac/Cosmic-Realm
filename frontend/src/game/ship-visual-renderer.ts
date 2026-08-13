@@ -23,7 +23,8 @@ function getSoftGlow(radius: number, color = "#ffffff"): PIXI.Texture {
   grad.addColorStop(1, "transparent");
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, sz, sz);
-  t = PIXI.Texture.from(c, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  t = PIXI.Texture.from(c);
+  ((t as PIXI.Texture).source as PIXI.TextureSource).scaleMode = "linear";
   texCache.set(key, t);
   return t;
 }
@@ -45,7 +46,8 @@ function getFlameGlow(w: number, h: number): PIXI.Texture {
   ctx.beginPath();
   ctx.ellipse(w, h, w, h, 0, 0, Math.PI * 2);
   ctx.fill();
-  t = PIXI.Texture.from(c, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  t = PIXI.Texture.from(c);
+  ((t as PIXI.Texture).source as PIXI.TextureSource).scaleMode = "linear";
   texCache.set(key, t);
   return t;
 }
@@ -76,7 +78,8 @@ function getShieldTex(radius: number): PIXI.Texture {
   ctx.globalAlpha = 1;
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, sz, sz);
-  shieldTexCache = PIXI.Texture.from(c, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  shieldTexCache = PIXI.Texture.from(c);
+  ((shieldTexCache as PIXI.Texture).source as PIXI.TextureSource).scaleMode = "linear";
   return shieldTexCache;
 }
 
@@ -137,7 +140,7 @@ export function createShipVisual(
     const glowSize = Math.ceil(6 * port.size * sizeScale);
     const glow = new PIXI.Sprite(getSoftGlow(glowSize));
     glow.anchor.set(0.5);
-    glow.blendMode = PIXI.BLEND_MODES.ADD;
+    glow.blendMode = "add";
     glow.position.set(port.x * sizeScale, port.y * sizeScale);
     glow.alpha = 0;
     engineContainer.addChild(glow);
@@ -147,7 +150,7 @@ export function createShipVisual(
     const flameH = Math.ceil(8 * port.size * sizeScale);
     const flame = new PIXI.Sprite(getFlameGlow(flameW, flameH));
     flame.anchor.set(0.5, 0.2);
-    flame.blendMode = PIXI.BLEND_MODES.ADD;
+    flame.blendMode = "add";
     flame.position.set(port.x * sizeScale, port.y * sizeScale);
     flame.alpha = 0;
     engineContainer.addChild(flame);
@@ -170,14 +173,14 @@ export function createShipVisual(
   rimLight.tint = config.rimLight.color;
   rimLight.alpha = 0;
   rimLight.scale.set(1.0 + (config.rimLight.scale - 1.0) * 0.3);
-  rimLight.blendMode = PIXI.BLEND_MODES.ADD;
+  rimLight.blendMode = "add";
   container.addChild(rimLight);
 
   // 4. Cockpit glow
   const cpSize = Math.ceil(5 * config.cockpit.size * sizeScale);
   const cockpitGlow = new PIXI.Sprite(getSoftGlow(cpSize));
   cockpitGlow.anchor.set(0.5);
-  cockpitGlow.blendMode = PIXI.BLEND_MODES.ADD;
+  cockpitGlow.blendMode = "add";
   cockpitGlow.tint = config.cockpit.color;
   cockpitGlow.alpha = quality === "LOW" ? 0 : 0.25;
   cockpitGlow.position.set(config.cockpit.x * sizeScale, config.cockpit.y * sizeScale);
@@ -189,7 +192,7 @@ export function createShipVisual(
     for (const wp of config.weaponPoints) {
       const wg = new PIXI.Sprite(getSoftGlow(Math.ceil(3 * sizeScale)));
       wg.anchor.set(0.5);
-      wg.blendMode = PIXI.BLEND_MODES.ADD;
+      wg.blendMode = "add";
       wg.tint = 0x4ee2ff;
       wg.alpha = 0.08;
       wg.position.set(wp.x * sizeScale, wp.y * sizeScale);
@@ -201,7 +204,7 @@ export function createShipVisual(
   // 6. Damage flash
   const damageFlash = new PIXI.Sprite(baseTex);
   damageFlash.anchor.set(0.5);
-  damageFlash.blendMode = PIXI.BLEND_MODES.ADD;
+  damageFlash.blendMode = "add";
   damageFlash.alpha = 0;
   damageFlash.tint = 0xffffff;
   container.addChild(damageFlash);
@@ -212,7 +215,7 @@ export function createShipVisual(
     const shieldR = Math.ceil(20 * sizeScale);
     shieldSprite = new PIXI.Sprite(getShieldTex(shieldR));
     shieldSprite.anchor.set(0.5);
-    shieldSprite.blendMode = PIXI.BLEND_MODES.ADD;
+    shieldSprite.blendMode = "add";
     shieldSprite.alpha = 0;
     container.addChild(shieldSprite);
   }

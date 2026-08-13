@@ -84,16 +84,16 @@ export function SkillTreePanel() {
         style={{ width: "min(560px, 92vw)", maxHeight: "88vh", display: "flex", flexDirection: "column", userSelect: "none", ...drag.style }}
         onContextMenu={(e) => e.preventDefault()}
       >
-        <div className="hud-titleband" onPointerDown={drag.handleProps.onPointerDown} style={{ fontSize: 13, letterSpacing: "0.3em", padding: "8px 12px", ...drag.handleProps.style }}>
+        <div className="hud-titleband" onPointerDown={drag.handleProps.onPointerDown} style={{ fontSize: 15.3, letterSpacing: "0.3em", padding: "8px 12px", ...drag.handleProps.style }}>
           <span style={{ flex: 1 }}>Skills</span>
           <span
             className="tabular-nums"
-            style={{ color: "var(--hud-gold)", fontSize: 12, textShadow: "0 0 8px rgba(232,185,77,0.5)" }}
+            style={{ color: "var(--hud-gold)", fontSize: 14.2, textShadow: "0 0 8px rgba(232,185,77,0.5)" }}
             title={`${player.skillPoints} unspent skill points\nEarn 1 per level`}
           >
             {player.skillPoints} SP
           </span>
-          <button className="gbtn gbtn-red" style={{ padding: "1px 8px", fontSize: 10, marginLeft: 8 }} onClick={close} title={"Close skill tree\nEsc also closes"}>✕</button>
+          <button className="gbtn gbtn-red" style={{ padding: "1px 8px", fontSize: 11.8, marginLeft: 8 }} onClick={close} title={"Close skill tree\nEsc also closes"}>✕</button>
         </div>
         <div style={{ display: "flex", gap: 6, padding: "8px 10px 0" }}>
           {TABS.map((t) => (
@@ -125,7 +125,7 @@ export function SkillTreePanel() {
                     left: `${pos.cx - NODE_W / 2}%`, top: `${cyMap(pos.cy) - NODE_H / 2}%`,
                     width: `${NODE_W}%`, height: `${NODE_H}%`,
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    color: "#2a3a54", fontSize: 22,
+                    color: "#2a3a54", fontSize: 26,
                   }}
                 >
                   ·
@@ -161,16 +161,16 @@ export function SkillTreePanel() {
                   opacity: gateOpen ? 1 : 0.45,
                 }}
               >
-                <span style={{ fontSize: 26, lineHeight: 1, color: glow, textShadow: `0 0 10px ${glow}88` }}>
+                <span style={{ fontSize: 30.7, lineHeight: 1, color: glow, textShadow: `0 0 10px ${glow}88` }}>
                   {node.icon}
                 </span>
                 <span
                   className="font-bold tabular-nums"
-                  style={{ fontSize: 11, color: maxed ? "#5cff8a" : rank > 0 ? "#dff6ff" : "#7a92b8", textShadow: "0 1px 2px #000" }}
+                  style={{ fontSize: 13, color: maxed ? "#5cff8a" : rank > 0 ? "#dff6ff" : "#7a92b8", textShadow: "0 1px 2px #000" }}
                 >
                   {rank}/{node.maxRank}
                 </span>
-                {!gateOpen && <span style={{ fontSize: 9, color: "#7a92b8" }}>🔒</span>}
+                {!gateOpen && <span style={{ fontSize: 10.6, color: "#7a92b8" }}>🔒</span>}
               </div>
             );
           })}
@@ -180,7 +180,7 @@ export function SkillTreePanel() {
             className="gbtn"
             onClick={() => setFilter(filter === "learned" ? "all" : "learned")}
             title={"Show only learned skills\nClick again to show all"}
-            style={{ fontSize: 10, color: filter === "learned" ? "#5cff8a" : undefined, borderColor: filter === "learned" ? "#5cff8a" : undefined }}
+            style={{ fontSize: 11.8, color: filter === "learned" ? "#5cff8a" : undefined, borderColor: filter === "learned" ? "#5cff8a" : undefined }}
           >
             LEARNED
           </button>
@@ -188,19 +188,19 @@ export function SkillTreePanel() {
             className="gbtn"
             onClick={() => setFilter(filter === "available" ? "all" : "available")}
             title={"Show only skills you can learn now\nClick again to show all"}
-            style={{ fontSize: 10, color: filter === "available" ? "var(--hud-gold)" : undefined, borderColor: filter === "available" ? "var(--hud-gold)" : undefined }}
+            style={{ fontSize: 11.8, color: filter === "available" ? "var(--hud-gold)" : undefined, borderColor: filter === "available" ? "var(--hud-gold)" : undefined }}
           >
             AVAILABLE
           </button>
           <div style={{ flex: 1 }} />
-          <div className="font-bold" style={{ fontSize: 11, letterSpacing: "0.2em", color, textShadow: `0 0 8px ${color}66`, fontFamily: "var(--font-display)" }}>
+          <div className="font-bold" style={{ fontSize: 13, letterSpacing: "0.2em", color, textShadow: `0 0 8px ${color}66`, fontFamily: "var(--font-display)" }}>
             {branch.toUpperCase()}
           </div>
           <button
             className="gbtn gbtn-red"
             title={"Refund all learned skills\nCosts 2,000 credits"}
             onClick={resetSkills}
-            style={{ fontSize: 9 }}
+            style={{ fontSize: 10.6 }}
           >
             RESPEC 2000 CR
           </button>

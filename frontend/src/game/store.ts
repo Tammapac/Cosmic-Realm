@@ -98,7 +98,17 @@ export type GameState = {
   hangarIntroDone: boolean;
   hangarTab: HangarTab;
   showMap: boolean;
+  /** I-06 · ZONE MAP — local contact map for the current zone (not the
+   *  zone-to-zone travel picker, which is `showMap`/GalaxyMapPanel). */
+  showZoneMap: boolean;
   showClan: boolean;
+  /** Which tab the Clan window shows: directory (browse/apply/found) is the
+      no-clan default; hall (Kit I-07) is the own-clan default once you're in one. */
+  clanTab: "directory" | "hall";
+  /** I-01/E-01 · FINANCIAL EXCHANGE — stock market + credit line. */
+  showExchange: boolean;
+  /** I-13 · LEADERBOARD — 4 ranking boards, monthly/all-time seasons. */
+  showLeaderboard: boolean;
   showSocial: boolean;
   showJournal: boolean;
   journalQuestId: string | null;
@@ -162,7 +172,13 @@ export type GameState = {
   minimapScale: number;
   showFullZoneMap: boolean;
   showSettings: boolean;
+  /** Round-trip ms to the server, refreshed periodically by sendPing() in
+   *  net/socket.ts. null until the first ack lands. */
+  netPingMs: number | null;
   showAdmin: boolean;
+  /** Staff flag, from the server's welcome payload (players.is_admin).
+   *  Gates admin UI only — the server re-checks on every admin call. */
+  isAdmin: boolean;
   uiScale: number;
   cameraZoom: number;
   /**
@@ -183,7 +199,7 @@ export type GameState = {
 const STORAGE_KEY = "stellar-frontier-save-v5";
 
 function newMilestones(): Milestones {
-  return { totalKills: 0, totalMined: 0, totalCreditsEarned: 0, totalWarps: 0, totalDeaths: 0, bossKills: 0 };
+  return { totalKills: 0, totalMined: 0, totalCreditsEarned: 0, totalWarps: 0, totalDeaths: 0, bossKills: 0, totalContracts: 0, totalSalvaged: 0 };
 }
 
 function rollDailyMissions(): ActiveMission[] {
@@ -260,6 +276,7 @@ function makeInitialPlayer(): Player {
     activeQuests: [],
     completedQuests: [],
     clan: null,
+    clanId: null,
     party: [],
     petDrone: newPetDrone(),
     bebcell: 0,
@@ -551,11 +568,15 @@ export const state: GameState = {
   hangarIntroDone: false,
   hangarTab: "bounties",
   showMap: false,
+  showZoneMap: false,
   showCargo: false,
   showInventory: false,
   refiningJobs: [],
   factoryLevel: 1,
   showClan: false,
+  clanTab: "directory",
+  showExchange: false,
+  showLeaderboard: false,
   showSocial: false,
   showJournal: false,
   journalQuestId: null,
@@ -604,7 +625,9 @@ export const state: GameState = {
   minimapScale: 1,
   showFullZoneMap: false,
   showSettings: false,
+  netPingMs: null,
   showAdmin: false,
+  isAdmin: false,
   uiScale: parseFloat(localStorage.getItem("sf-ui-scale") || "1"),
   cameraZoom: Math.min(window.innerWidth, 1200) / 1200,
   cameraOffset: { x: 0, y: 0 },
@@ -710,6 +733,7 @@ function _buildSavePayload(): Partial<Player> {
     activeQuests: p.activeQuests,
     completedQuests: p.completedQuests,
     clan: p.clan,
+    clanId: p.clanId ?? null,
     petDrone: p.petDrone,
     faction: p.faction,
     skills: p.skills,
@@ -779,6 +803,31 @@ function _scheduleDeferredSave(toSave: Partial<Player>, pos: { x: number; y: num
   }
 }
 
+// Opens (or closes) the Clan window, landing on the right tab: the Hall
+// (Kit I-07) if the player already belongs to a clan, the Directory (Kit
+// I-08) otherwise. Every entry point (TopBar, SideMenu, PlayerPanelCompact)
+// should call this instead of toggling state.showClan directly, so a player
+// with a clan is never dropped into the no-clan Directory by default.
+export function toggleClanWindow(): void {
+  if (state.showClan) {
+    state.showClan = false;
+  } else {
+    state.showClan = true;
+    state.clanTab = state.player.clan ? "hall" : "directory";
+  }
+  bump();
+}
+
+export function toggleExchange(): void {
+  state.showExchange = !state.showExchange;
+  bump();
+}
+
+export function toggleLeaderboard(): void {
+  state.showLeaderboard = !state.showLeaderboard;
+  bump();
+}
+
 export function save(): void {
   try {
     const p = state.player;
@@ -832,12 +881,24 @@ if (typeof window !== "undefined") {
 export function loadServerPlayer(data: any): void {
   const p = state.player;
   if (data.name) p.name = data.name;
+  // Clan membership was missing here: it was only ever set when you joined or
+  // left in the CURRENT session (ClanDirectoryPanel/ClanHallPanel write it
+  // directly), so after any reload player.clan was null even for a member.
+  // That drove the "NO CLAN" badge, hid the directory<->hall ClanTabBar
+  // (rendered under `player.clan &&`), and made toggleClanWindow open the
+  // Directory instead of the Hall — whose own load then bailed out with
+  // "Not in a clan." because clanId was null too.
+  // `!== undefined` rather than `!= null` so a server-side null (an actual
+  // clan exit) is applied instead of leaving a stale name in place.
+  if (data.clan !== undefined) p.clan = data.clan;
+  if (data.clanId !== undefined) p.clanId = data.clanId;
   if (data.shipClass) p.shipClass = data.shipClass;
   if (data.level != null) p.level = data.level;
   if (data.exp != null) p.exp = data.exp;
   if (data.credits != null && !isNaN(data.credits)) p.credits = data.credits;
   if (data.honor != null) p.honor = data.honor;
   if (typeof data.mcoins === "number") p.mcoins = data.mcoins;
+  if (typeof data.inventoryExtraPage === "boolean") p.inventoryExtraPage = data.inventoryExtraPage;
   if (typeof data.premium === "boolean") p.premium = data.premium;
   if (typeof data.premiumUntil === "number") p.premiumUntil = data.premiumUntil;
   if (data.hull != null) p.hull = data.hull;
@@ -1113,6 +1174,7 @@ export function tryCollectNearbyBoxes(): void {
         if (got > 0) {
           pushFloater({ text: `+${got} ${RESOURCES[cb.resourceId]?.name ?? cb.resourceId}`, color: "#5cff8a", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.3, bold: true, ttl: 2.0, trackPlayer: true });
           sfx.pickup();
+          state.player.milestones.totalSalvaged += 1;
           state.cargoBoxes.splice(i, 1);
         }
       } else {
@@ -1145,6 +1207,7 @@ export function collectCargoBox(boxId: string): void {
     const got = addCargo(cb.resourceId, cb.qty);
     if (got > 0) {
       pushFloater({ text: `+${got} ${RESOURCES[cb.resourceId]?.name ?? cb.resourceId}`, color: "#5cff8a", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.3, bold: true, ttl: 2.0, trackPlayer: true });
+      state.player.milestones.totalSalvaged += 1;
     } else {
       pushNotification("Cargo bay full", "bad");
       return;
@@ -1611,6 +1674,34 @@ export function buyAttribute(id: string): void {
   (state.player.skills as any)[id] = attrValue(id) + 1;
   save(); bump();
 }
+// Pull one point back out of an attribute — the Pilot Dossier's "-" button,
+// free (no cost, since nothing was actually spent yet from the server's
+// perspective until save() commits it). Symmetric with buyAttribute.
+export function sellAttribute(id: string): void {
+  if (!ATTRIBUTES.some((a) => a.id === id)) return;
+  if (attrValue(id) <= 0) return;
+  (state.player.skills as any)[id] = attrValue(id) - 1;
+  save(); bump();
+}
+// Full attribute respec: refunds every spent point back to the pool for a
+// flat Credits cost (mirrors resetSkills()'s Credits-based respec — MCoins
+// is server-authoritative and never sent by save(), so a client-side MCoins
+// charge here would silently revert on the next sync and never really
+// deduct anything real).
+export const RESPEC_ATTRIBUTES_COST = 2500;
+export function respecAttributes(): boolean {
+  const p = state.player;
+  if (attrSpent() <= 0) return false;
+  if (p.credits < RESPEC_ATTRIBUTES_COST) {
+    pushNotification(`Respec costs ${RESPEC_ATTRIBUTES_COST.toLocaleString()}cr`, "bad");
+    return false;
+  }
+  p.credits -= RESPEC_ATTRIBUTES_COST;
+  for (const a of ATTRIBUTES) (p.skills as any)[a.id] = 0;
+  pushNotification("Attributes reset", "good");
+  save(); bump();
+  return true;
+}
 
 // ── MISSIONS / MILESTONES ─────────────────────────────────────────────────
 export function bumpMission(kind: ActiveMission["kind"], amount: number, zone?: ZoneId, extra?: { resourceId?: string; stationId?: string }): void {
@@ -1638,6 +1729,7 @@ export function claimMission(missionId: string): void {
   state.player.exp += m.rewardExp;
   state.player.honor += m.rewardHonor;
   state.player.milestones.totalCreditsEarned += m.rewardCredits;
+  state.player.milestones.totalContracts += 1;
   pushNotification(`+${m.rewardCredits}cr +${m.rewardExp}xp +${m.rewardHonor}hr`, "good");
   save(); bump();
 }

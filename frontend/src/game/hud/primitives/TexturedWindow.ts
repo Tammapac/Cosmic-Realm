@@ -35,9 +35,13 @@ export class TexturedWindow extends UiComponent {
     this.sprite = s;
     this.container.addChild(s);
 
-    // If the texture is still loading, size it once it arrives.
-    if (!tex.baseTexture.valid) {
-      tex.baseTexture.once("loaded", () => {
+    // If the texture is still loading (Texture.from(url) resolves to a
+    // pending source immediately), size it once real pixels arrive. v8 has
+    // no .valid/"loaded" — TextureSource fires "update" the first time (and
+    // every time) its resource data changes, which covers "just finished
+    // loading" as a special case of "changed".
+    if (tex.source.resourceWidth === 1 && tex.source.resourceHeight === 1) {
+      tex.source.once("update", () => {
         if (this.sprite) { this.sprite.width = opts.w; this.sprite.height = opts.h; }
       });
     }

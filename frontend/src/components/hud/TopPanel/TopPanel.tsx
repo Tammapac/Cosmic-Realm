@@ -1,5 +1,5 @@
 import styles from "./TopPanel.module.css";
-import { reputationForHonor } from "../../../game/types";
+import { reputationForHonor, rankFor, rankIcon, rankIconSrcSet } from "../../../game/types";
 
 export type TopPanelProps = {
   playerName: string;
@@ -115,7 +115,12 @@ export function TopPanel({
         <div className={styles.portraitWindowCore} />
         <img
           className={styles.portraitRankIcon}
-          src={`/assets/ui/ranks/rank_${String(rank + 1).padStart(2, "0")}.png`}
+          // Derived from honor via rankFor(), not from `rank + 1`: the badge
+          // for a rank is no longer its position in the list (Outlaw is first
+          // but uses the last sheet badge), so the filename must come from the
+          // rank's own `icon` field.
+          src={rankIcon(rankFor(honor))}
+          srcSet={rankIconSrcSet(rankFor(honor))}
           alt=""
           style={{ filter: `drop-shadow(0 0 8px ${rankColor}88) drop-shadow(0 1px 2px #000)` }}
         />

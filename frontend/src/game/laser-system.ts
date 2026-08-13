@@ -50,7 +50,8 @@ function cached(key: string, w: number, h: number, draw: (ctx: CanvasRenderingCo
   const c = document.createElement("canvas");
   c.width = w; c.height = h;
   draw(c.getContext("2d")!, w, h);
-  t = PIXI.Texture.from(c, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  t = PIXI.Texture.from(c);
+  (t.source as PIXI.TextureSource).scaleMode = "linear";
   texCache.set(key, t);
   return t;
 }
@@ -330,13 +331,13 @@ export class LaserSystem {
       const cont = new PIXI.Container();
       const glow = new PIXI.Sprite(glowTex());
       glow.anchor.set(0.5);
-      glow.blendMode = PIXI.BLEND_MODES.ADD;
+      glow.blendMode = "add";
       const core = new PIXI.Sprite(coreTex());
       core.anchor.set(0.5);
-      core.blendMode = PIXI.BLEND_MODES.NORMAL; // stays readable over the glow
+      core.blendMode = "normal"; // stays readable over the glow
       const tip = new PIXI.Sprite(tipTex());
       tip.anchor.set(0.5);
-      tip.blendMode = PIXI.BLEND_MODES.ADD;
+      tip.blendMode = "add";
       cont.addChild(glow, core, tip);
       this.projFront.addChild(cont);
       v = {
@@ -571,7 +572,7 @@ export class LaserSystem {
     if (!t) {
       const spr = new PIXI.Sprite(tex);
       spr.anchor.set(0.5);
-      spr.blendMode = PIXI.BLEND_MODES.ADD;
+      spr.blendMode = "add";
       layer.addChild(spr);
       t = {
         active: false, spr, life: 0, maxLife: 1, kind,

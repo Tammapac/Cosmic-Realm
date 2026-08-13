@@ -1,4 +1,5 @@
 import { sendDockRepair, sendDockLeave } from "../net/socket";
+import { repairHull as apiRepairHull } from "../net/api";
 import { state, bump, useGame, pushNotification, pushFloater, save, stationPrice, priceDirection, priceHistory, addCargo, removeCargo, cargoUsed, cargoCapacity, claimMission, rerollDaily, rerollMissionBoard, bumpMission, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, rocketAmmoMax, getAmmoWeaponIds, ensureAmmoInitialized, setAutoRestock, setAutoRepairHull, setAutoShieldRecharge, getActiveAmmoType, switchAmmoType, purchaseAmmoAmount, getAmmoCount, ROCKET_AMMO_COST_PER, rocketMissileMax, getActiveRocketAmmoType, switchRocketAmmoType, purchaseRocketAmmo, getRocketAmmoCount, startRefineJob, collectRefineJob, upgradeFactory, petDroneSlots, upgradePetDrone, equipPetSlot, unequipPetSlot, petBoundIds, purchaseDroneAmmoAmount } from "../game/store";
 import {
   ActiveQuest, CONSUMABLE_DEFS, ConsumableId, DAILY_DUNGEON_BONUS, DRONE_DEFS, DroneKind, DroneMode, DUNGEONS, DungeonId, FACTIONS, MODULE_DEFS, ModuleDef, ModuleSlot, ModuleStats, RARITY_COLOR,
@@ -8,7 +9,15 @@ import {
   droneModelForLevel, DRONE_AMMO_COST_PER,
 } from "../game/types";
 import type { HangarTab } from "../game/store";
-import { ENABLE_NEW_DOCKING_FLOW, ENABLE_HANGAR_3D_SCENE } from "../game/renderer-config";
+import { ENABLE_NEW_DOCKING_FLOW, ENABLE_HANGAR_3D_SCENE, ENABLE_NEW_HANGAR_PANELS } from "../game/renderer-config";
+import { ShipyardHost } from "./hangar/ShipyardHost";
+import { BountyHost } from "./hangar/BountyHost";
+import { MissionsHost } from "./hangar/MissionsHost";
+import { DronesHost } from "./hangar/DronesHost";
+import { MarketHost } from "./hangar/MarketHost";
+import { StationServicesHost } from "./hangar/StationServicesHost";
+import { SkillMatrixHost } from "./hangar/SkillMatrixHost";
+import { LoadoutHost } from "./hangar/LoadoutHost";
 import { requestUndock, forceUndock } from "../game/scene/DockingController";
 import { swapActiveHangarShip } from "../game/scene/HangarScene";
 import { useDraggable } from "./useDraggable";
@@ -74,11 +83,19 @@ function loadShipModel(path: string): Promise<THREE.Group> {
   return p;
 }
 
+// Visible frame height for the preview camera: a 45deg perspective at distance
+// 5.4 spans 2*5.4*tan(22.5deg) = 4.47 world units vertically. Width follows the
+// canvas aspect.
+const VISIBLE_H_UNITS = 2 * 5.4 * Math.tan((45 * Math.PI) / 360);
+
 // Every mounted preview registers here; a single rAF loop renders them all
 // through the one shared GL context, in sequence.
 type PreviewEntry = {
-  scene: THREE.Scene; camera: THREE.PerspectiveCamera; model: THREE.Group | null;
+  scene: THREE.Scene; camera: THREE.PerspectiveCamera | THREE.OrthographicCamera; model: THREE.Group | null;
   ctx: CanvasRenderingContext2D; size: number;
+  /** Render height when it differs from `size` (letterboxed previews such as
+   *  the dock overlay's 234x88 strip). Defaults to `size` = square. */
+  height?: number;
   /** When true, the shared tick loop does NOT auto-spin the model — a
    *  pointer-drag handler (see DronePreview) owns model.rotation instead. */
   manualRotate?: boolean;
@@ -93,18 +110,48 @@ function ensurePreviewLoop() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     for (const p of _previews) {
       if (p.model && !p.manualRotate) p.model.rotation.y += 0.004;
-      const px = Math.round(p.size * dpr);
-      if (canvas.width !== px || canvas.height !== px) renderer.setSize(px, px, false);
+      const h = p.height ?? p.size;
+      const pxW = Math.round(p.size * dpr);
+      const pxH = Math.round(h * dpr);
+      if (canvas.width !== pxW || canvas.height !== pxH) renderer.setSize(pxW, pxH, false);
+      // Aspect must follow the buffer or a non-square preview renders squashed
+      // — and was never updated here at all, even for the square ones. The
+      // orthographic side view already bakes the aspect into its frustum at
+      // build time (it never changes for a fixed slot), so only the
+      // perspective cameras need the per-frame correction.
+      const aspect = p.size / h;
+      const cam = p.camera;
+      if (cam instanceof THREE.PerspectiveCamera && cam.aspect !== aspect) {
+        cam.aspect = aspect; cam.updateProjectionMatrix();
+      }
       renderer.render(p.scene, p.camera);
-      p.ctx.clearRect(0, 0, p.size, p.size);
-      p.ctx.drawImage(canvas, 0, 0, p.size, p.size);
+      p.ctx.clearRect(0, 0, p.size, h);
+      p.ctx.drawImage(canvas, 0, 0, p.size, h);
     }
     _previewRAF = requestAnimationFrame(tick);
   };
   _previewRAF = requestAnimationFrame(tick);
 }
 
-function ShipPreview({ shipId, color, size = 96 }: { shipId: string; color: string; size?: number }) {
+// Exported so the S-01 dock overlay can reuse this instead of standing up a
+// second WebGL context — see the shared-renderer note above; the browser caps
+// contexts at ~16 and previews go blank past that.
+export function ShipPreview({
+  shipId, color, size = 96, height, view = "hero", modelFill = 3.5,
+}: {
+  shipId: string; color: string; size?: number;
+  /** Render height; defaults to `size` (square). Set it for letterboxed slots
+   *  like the dock overlay's 234x88 strip so the canvas matches the box
+   *  instead of overflowing it. */
+  height?: number;
+  /** "hero" = the hangar's angled, slowly-spinning view (default, unchanged).
+   *  "side" = fixed broadside, no rotation — used by the S-01 dock overlay. */
+  view?: "hero" | "side";
+  /** Model size in world units before the camera framing. Larger = fills more
+   *  of the canvas. 3.5 is the hangar default. (Named modelFill, not fill —
+   *  `fill` is already the fill-light variable inside this component.) */
+  modelFill?: number;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -114,10 +161,34 @@ function ShipPreview({ shipId, color, size = 96 }: { shipId: string; color: stri
     if (!modelPath) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    const H = height ?? size;
+
+    // The visible frame in world units. Kept at the perspective view's old
+    // dimensions (4.47 tall) so `modelFill` keeps the meaning it already had;
+    // the side view's ortho frustum is built from exactly these numbers, which
+    // is what makes the framing maths below exact.
+    const frameH = VISIBLE_H_UNITS;
+    const frameW = frameH * (size / H);
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
-    camera.position.set(0, 3.5, 4.5);
+    // "side" views the hull broadside. Measured bounds for these GLBs put the
+    // LONG axis on X (Sovereign: x 1.91, y 1.10, z 1.36), so the camera sits on
+    // +Z and sees X run across the frame. Sitting on +X — the first attempt —
+    // looked straight down the hull's length and rendered a sliver.
+    //
+    // ORTHOGRAPHIC, not perspective, for the side view. With a perspective
+    // camera the bounding-box framing below is a lie for any hull with depth:
+    // geometry on the near face sits at (dist - z*scale/2), not at dist, so it
+    // projects larger than the box maths predicts. Deep hulls therefore
+    // overflowed the slot and clipped while flat ones fit — which is exactly
+    // the "some ships are too big and cut off" symptom. Orthographic has no
+    // depth magnification, so `frameW/x` and `frameH/y` are exact and all 15
+    // hulls frame identically at one modelFill.
+    const camera = view === "side"
+      ? new THREE.OrthographicCamera(-frameW / 2, frameW / 2, frameH / 2, -frameH / 2, 0.1, 1000)
+      : new THREE.PerspectiveCamera(45, size / H, 0.1, 1000);
+    if (view === "side") camera.position.set(0, 0, 10);
+    else camera.position.set(0, 3.5, 4.5);
     camera.lookAt(0, 0, 0);
     scene.add(new THREE.AmbientLight(0xffffff, 1.2));
     const dir = new THREE.DirectionalLight(0xffffff, 2.0);
@@ -125,19 +196,44 @@ function ShipPreview({ shipId, color, size = 96 }: { shipId: string; color: stri
     const fill = new THREE.DirectionalLight(0x8888ff, 0.6);
     fill.position.set(-2, 1, -2); scene.add(fill);
 
-    const entry: PreviewEntry = { scene, camera, model: null, ctx, size };
+    const entry: PreviewEntry = { scene, camera, model: null, ctx, size, height: H, manualRotate: view === "side" };
     let disposed = false;
 
     loadShipModel(modelPath).then((template) => {
       if (disposed) return;
       const model = template.clone(true);
+      // Measure the hull UNROTATED, then centre it, then put it inside a pivot
+      // group that carries the yaw. Rotating the mesh itself and centring after
+      // does not work: `position.sub(center * scale)` shifts along world axes
+      // while the mesh's own axes have already turned, so the hull slides out
+      // of frame (it ended up bottom-right, then vanished entirely).
       const box = new THREE.Box3().setFromObject(model);
       const center = box.getCenter(new THREE.Vector3());
       const sizeVec = box.getSize(new THREE.Vector3());
-      const maxDim = Math.max(sizeVec.x, sizeVec.y, sizeVec.z);
-      const scale = 3.5 / maxDim;
+
+      // Framing. Hero normalises on the largest axis, as before.
+      //
+      // Side view looks down -Z and sees the hull's LENGTH (x) across the width
+      // and its HEIGHT (y) up the frame. Take whichever constraint binds.
+      // modelFill is a fraction of the frame (1 = touch the edges).
+      // The canvas matches the slot exactly and the camera is orthographic, so
+      // the visible frame IS the frustum — no depth magnification to correct
+      // for, and no hull can exceed the box.
+      // (An earlier version rendered a square canvas that overflowed an 88px
+      // box and tried to compensate with a "strip" factor — the hull ended up
+      // drawn outside the clipped area, which is why the box read as empty.)
+      const scale = view === "side"
+        ? modelFill * Math.min(
+            frameW / Math.max(sizeVec.x, 0.001),   // hull length across the width
+            frameH / Math.max(sizeVec.y, 0.001),   // hull height into the frame
+          )
+        : modelFill / Math.max(sizeVec.x, sizeVec.y, sizeVec.z);
+
       model.scale.setScalar(scale);
-      model.position.sub(center.multiplyScalar(scale));
+      model.position.copy(center).multiplyScalar(-scale);
+
+      // No yaw for the side view: the hull's long axis is already X, which is
+      // exactly what a camera on +Z sees across the frame.
       scene.add(model);
       entry.model = model;
     }).catch(() => { /* leave blank on load failure */ });
@@ -149,9 +245,10 @@ function ShipPreview({ shipId, color, size = 96 }: { shipId: string; color: stri
       disposed = true;
       _previews.delete(entry);
     };
-  }, [shipId, size]);
+  }, [shipId, size, height, view, modelFill]);
 
-  return <canvas ref={canvasRef} width={size} height={size} style={{ display: "block", width: size, height: size }} />;
+  const H = height ?? size;
+  return <canvas ref={canvasRef} width={size} height={H} style={{ display: "block", width: size, height: H }} />;
 }
 
 // ── Pet drone preview: same shared-renderer pool as ShipPreview, but the
@@ -297,7 +394,7 @@ export function Hangar({ stationId }: { stationId: string }) {
   // Nothing else is shown until one is clicked, at which point a content drawer
   // slides out left→right. Clicking the active item (or its ✕) closes the drawer.
   if (glass) {
-    return <HangarGlassMenu station={station} stationId={stationId} tab={tab} undock={undock} />;
+    return <HangarGlassMenu station={station} stationId={stationId} tab={tab} />;
   }
 
   return (
@@ -311,7 +408,7 @@ export function Hangar({ stationId }: { stationId: string }) {
           className="gbtn gbtn-red"
           style={{
             position: "fixed", top: 18, right: 18, zIndex: 60,
-            padding: "10px 20px", fontSize: 13, letterSpacing: "0.08em",
+            padding: "10px 20px", fontSize: 15.3, letterSpacing: "0.08em",
             backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
             background: "rgba(40,8,12,0.5)",
           }}
@@ -343,18 +440,18 @@ export function Hangar({ stationId }: { stationId: string }) {
               border: "1px solid rgba(78,226,255,0.35)",
               background: "rgba(78,226,255,0.07)",
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 20, color: "var(--hud-cyan)",
+              fontSize: 23.6, color: "var(--hud-cyan)",
               boxShadow: "0 0 12px rgba(78,226,255,0.2)",
             }}>⬡</div>
             <div className="min-w-0">
               <div className="hud-label">DOCKED AT · {station.kind.toUpperCase()}</div>
               <div
                 className="font-bold tracking-widest glow-cyan truncate"
-                style={{ color: "var(--accent-cyan)", fontSize: 16, lineHeight: 1.2, fontFamily: "var(--font-display)" }}
+                style={{ color: "var(--accent-cyan)", fontSize: 18.9, lineHeight: 1.2, fontFamily: "var(--font-display)" }}
               >
                 {station.name.toUpperCase()}
               </div>
-              <div className="truncate mt-0.5" style={{ color: "var(--text-mute)", fontSize: 11 }}>
+              <div className="truncate mt-0.5" style={{ color: "var(--text-mute)", fontSize: 13 }}>
                 {station.description}
               </div>
             </div>
@@ -364,7 +461,7 @@ export function Hangar({ stationId }: { stationId: string }) {
           {!glass && (
             <button
               className="gbtn gbtn-red shrink-0"
-              style={{ padding: "6px 16px", fontSize: 11 }}
+              style={{ padding: "6px 16px", fontSize: 13 }}
               onClick={undock}
             >
               ✕ UNDOCK
@@ -412,22 +509,47 @@ export function Hangar({ stationId }: { stationId: string }) {
   );
 }
 
+/**
+ * Tabs that have a migrated design-export panel behind ?newhangar.
+ *
+ * Must stay in sync with the ENABLE_NEW_HANGAR_PANELS branches in TabContent
+ * below — this is what HangarGlassMenu uses to decide whether a tab renders as a
+ * self-contained overlay (own frame + header + close) or inside the old glass
+ * drawer. "skills" and "loadout" are absent on purpose: not migrated yet.
+ */
+const MIGRATED_TABS = new Set<HangarTab>([
+  "bounties", "missions", "skills", "loadout", "ships", "drones", "market", "repair",
+]);
+
 // The section body for a given tab — shared by the 2D panel and the 3D glass drawer.
 function TabContent({ tab, stationId }: { tab: HangarTab; stationId: string }) {
   return (
     <>
-      {tab === "bounties" && <BountiesTab />}
-      {tab === "missions" && <MissionsTab />}
-      {tab === "skills" && <SkillsTab />}
-      {tab === "loadout" && <LoadoutTab stationId={stationId} />}
+      {/* Migrated design-export panels behind ?newhangar, the existing tabs
+          otherwise. Both read the same state.hangarTab, so exactly one renders.
+          Skills and Loadout are deliberately NOT migrated yet — deferred. */}
+      {tab === "bounties" && (ENABLE_NEW_HANGAR_PANELS ? <BountyHost /> : <BountiesTab />)}
+      {tab === "missions" && (ENABLE_NEW_HANGAR_PANELS ? <MissionsHost /> : <MissionsTab />)}
+      {tab === "skills" && (ENABLE_NEW_HANGAR_PANELS ? <SkillMatrixHost /> : <SkillsTab />)}
+      {tab === "loadout" && (ENABLE_NEW_HANGAR_PANELS
+        ? <LoadoutHost />
+        : <LoadoutTab stationId={stationId} />)}
       {tab === "dungeons" && <DungeonsTab />}
-      {tab === "ships" && <ShipsTab />}
-      {tab === "drones" && <DronesTab />}
-      {tab === "market" && <MarketTab stationId={stationId} />}
+      {tab === "ships" && (ENABLE_NEW_HANGAR_PANELS
+        ? <ShipyardHost renderPreview={(id, color, size) => (
+            <ShipPreview shipId={id} color={color} size={size} modelFill={3.2} />
+          )} />
+        : <ShipsTab />)}
+      {tab === "drones" && (ENABLE_NEW_HANGAR_PANELS ? <DronesHost /> : <DronesTab />)}
+      {tab === "market" && (ENABLE_NEW_HANGAR_PANELS
+        ? <MarketHost stationId={stationId} />
+        : <MarketTab stationId={stationId} />)}
       {tab === "ammo" && <AmmoTab />}  {/* kept for loadout inline popup */}
       {tab === "cargo" && <CargoTab />}
       {tab === "refinery" && <RefineryTab stationId={stationId} />}
-      {tab === "repair" && <RepairTab stationId={stationId} />}
+      {tab === "repair" && (ENABLE_NEW_HANGAR_PANELS
+        ? <StationServicesHost stationId={stationId} />
+        : <RepairTab stationId={stationId} />)}
     </>
   );
 }
@@ -440,69 +562,62 @@ function TabContent({ tab, stationId }: { tab: HangarTab; stationId: string }) {
  * it, returning to just the scene + item list. `tab === null` = closed.
  */
 function HangarGlassMenu({
-  station, stationId, tab, undock,
+  station, stationId, tab,
 }: {
   station: (typeof STATIONS)[number];
   stationId: string;
   tab: HangarTab;
-  undock: () => void;
 }) {
   const items = station.kind === "factory" ? FACTORY_TABS : TABS;
   const open = tab !== null;
   const active = items.find((t) => t.id === tab) ?? null;
 
-  const pick = (id: HangarTab) => {
-    // Toggle: clicking the open section closes the drawer.
-    state.hangarTab = state.hangarTab === id ? null : id;
-    bump();
-  };
   const close = () => { state.hangarTab = null; bump(); };
+
+  // The migrated design-export panels are self-contained overlays: each brings
+  // its own 1340px-wide frame, header and close diamond. The glass drawer is
+  // sized for the OLD tab bodies (width: min(760px, 68vw) + overflow: hidden in
+  // hud-skin.css), so rendering them inside it clipped them at 760px and drew a
+  // second header above them. They therefore replace the drawer entirely rather
+  // than living in it — centred over the scene, scaled down on narrow viewports
+  // so the full frame always fits.
+  if (ENABLE_NEW_HANGAR_PANELS && MIGRATED_TABS.has(tab)) {
+    return (
+      <div
+        className="absolute inset-0 z-50"
+        style={{ pointerEvents: "none", display: "grid", placeItems: "center" }}
+      >
+        {open && (
+          <div
+            className="hangar-migrated-panel"
+            style={{
+              pointerEvents: "auto",
+              // Each panel is authored at a fixed width; the wrapper scales it
+              // to fit. Loadout is 1680 wide and much taller than the rest, so
+              // it must report its own size or it overflows the viewport.
+              ...(tab === "loadout"
+                ? { ["--panel-w" as string]: "1680", ["--panel-h" as string]: "1080" }
+                : null),
+            }}
+          >
+            <TabContent tab={tab} stationId={stationId} />
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="absolute inset-0 z-50" style={{ pointerEvents: "none" }}>
-      {/* Standalone undock button, top-right. */}
-      <button
-        className="gbtn gbtn-red"
-        style={{
-          position: "fixed", top: 18, right: 18, zIndex: 60, pointerEvents: "auto",
-          padding: "10px 20px", fontSize: 13, letterSpacing: "0.08em",
-          backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
-          background: "rgba(40,8,12,0.5)",
-        }}
-        onClick={undock}
-      >
-        ✕ UNDOCK
-      </button>
-
-      {/* Station identity chip, top-left above the item column. */}
-      <div className="hangar-glass-head">
-        <div className="hangar-glass-head-icon">⬡</div>
-        <div className="min-w-0">
-          <div className="hud-label" style={{ fontSize: 9 }}>DOCKED · {station.kind.toUpperCase()}</div>
-          <div className="hangar-glass-head-name">{station.name.toUpperCase()}</div>
-        </div>
-      </div>
-
+      {/* Undock button, station chip and the item rail used to live here. They
+          are now provided by the migrated S-01 overlay
+          (components/hangar/HangarDockOverlayHost.tsx), which renders the
+          station status card, the ship card and the 8-tab dock row over the
+          same 3D scene. Keeping both drew two undock buttons and two menus.
+          What stays is the content drawer below: the overlay's tabs set
+          state.hangarTab, this renders the section body for it. */}
       {/* Floating item column + slide-out drawer. */}
       <div className="hangar-glass-menu">
-        <nav className="hangar-glass-rail">
-          {items.map((t, i, arr) => {
-            const dividerBefore = station.kind !== "factory" && (t.id === "missions" || t.id === "ships");
-            return (
-              <div key={t.id} className="contents">
-                {dividerBefore && <div className="hangar-glass-div" />}
-                <button
-                  className={`hangar-glass-item ${tab === t.id ? "hangar-glass-item--on" : ""}`}
-                  onClick={() => pick(t.id)}
-                >
-                  <span className="hangar-glass-glyph">{t.glyph}</span>
-                  <span className="hangar-glass-lbl">{t.label}</span>
-                </button>
-              </div>
-            );
-          })}
-        </nav>
-
         {/* Content drawer — slides open from the rail's right edge. Rendered always
             so the width transition animates; content only mounts while open. */}
         <div className={`hangar-glass-drawer ${open ? "hangar-glass-drawer--open" : ""}`}>
@@ -536,20 +651,22 @@ function HangarDockStrip({ station }: { station: (typeof STATIONS)[number] }) {
 
   const repair = () => {
     if (!needsRepair) return;
-    const cost = Math.ceil((stats.hullMax - player.hull) * 2);
-    if (player.credits < cost) { pushNotification("Not enough credits to repair", "bad"); return; }
-    player.credits -= cost;
-    player.hull = stats.hullMax;
-    sendDockRepair(stats.hullMax, player.shield);
-    pushNotification(`Hull repaired · -${cost.toLocaleString()} CR`, "good");
-    save(); bump();
+    apiRepairHull()
+      .then((res) => {
+        player.credits = res.credits;
+        player.hull = res.hull;
+        sendDockRepair(res.hullMax, player.shield);
+        pushNotification(res.cost > 0 ? `Hull repaired · -${res.cost.toLocaleString()} CR` : "Hull already at full", "good");
+        save(); bump();
+      })
+      .catch((err) => pushNotification(err.message || "Repair failed", "bad"));
   };
 
   return (
     <div className="hangar-dock">
       <button
         className="gbtn"
-        style={{ padding: "6px 16px", fontSize: 11, letterSpacing: "0.12em", opacity: needsRepair ? 1 : 0.5 }}
+        style={{ padding: "6px 16px", fontSize: 13, letterSpacing: "0.12em", opacity: needsRepair ? 1 : 0.5 }}
         disabled={!needsRepair}
         title={needsRepair ? "Repair hull to full" : "Hull already at full"}
         onClick={repair}
@@ -558,7 +675,7 @@ function HangarDockStrip({ station }: { station: (typeof STATIONS)[number] }) {
       </button>
       <button
         className="gbtn"
-        style={{ padding: "6px 16px", fontSize: 11, letterSpacing: "0.12em" }}
+        style={{ padding: "6px 16px", fontSize: 13, letterSpacing: "0.12em" }}
         title="Open the loadout bay to sell unused gear"
         onClick={() => { state.hangarTab = "loadout"; bump(); }}
       >
@@ -589,8 +706,8 @@ function StationInfoRail({ station }: { station: (typeof STATIONS)[number] }) {
       <div className="dob-hdr" style={{ margin: "0 0 8px" }}><span>PILOT CONSOLE</span></div>
       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
         {rows.map((r) => (
-          <div key={r.label} className="flex items-center justify-between gap-2" style={{ fontSize: 11 }}>
-            <span className="hud-label" style={{ fontSize: 10 }}>{r.label}</span>
+          <div key={r.label} className="flex items-center justify-between gap-2" style={{ fontSize: 13 }}>
+            <span className="hud-label" style={{ fontSize: 11.8 }}>{r.label}</span>
             <span className="tabular-nums font-bold truncate" style={{ color: r.color, maxWidth: 120 }}>
               {r.value}
             </span>
@@ -599,7 +716,7 @@ function StationInfoRail({ station }: { station: (typeof STATIONS)[number] }) {
       </div>
       <div className="sw-hr" style={{ margin: "10px 0" }} />
       <div className="dob-hdr" style={{ margin: "0 0 6px" }}><span>STATION</span></div>
-      <div style={{ fontSize: 10, lineHeight: 1.5, color: "var(--text-mute)" }}>
+      <div style={{ fontSize: 11.8, lineHeight: 1.5, color: "var(--text-mute)" }}>
         <span style={{ color: "var(--accent-cyan)" }}>{station.name}</span>
         {" — "}
         {station.kind.toUpperCase()} facility. Services and prices vary by station type and controlling faction.
@@ -659,12 +776,12 @@ function BountiesTab() {
 
       {/* Tier filter */}
       <div className="flex gap-1.5 flex-wrap shrink-0">
-        <button className={`gbtn ${tierFilter === 0 ? "gbtn-gold" : ""}`} style={{ padding: "4px 14px", fontSize: 11 }} onClick={() => setTierFilter(0)}>ALL</button>
+        <button className={`gbtn ${tierFilter === 0 ? "gbtn-gold" : ""}`} style={{ padding: "4px 14px", fontSize: 13 }} onClick={() => setTierFilter(0)}>ALL</button>
         {tiers.map(t => (
           <button
             key={t}
             className={`gbtn ${tierFilter === t ? "gbtn-gold" : ""}`}
-            style={{ padding: "4px 12px", fontSize: 11, color: tierColors[t] ?? "#888", opacity: tierFilter === 0 || tierFilter === t ? 1 : 0.6 }}
+            style={{ padding: "4px 12px", fontSize: 13, color: tierColors[t] ?? "#888", opacity: tierFilter === 0 || tierFilter === t ? 1 : 0.6 }}
             onClick={() => setTierFilter(t)}
           >
             T{t}
@@ -694,7 +811,7 @@ function BountiesTab() {
                       <span>{q.killCount}× {q.killType}</span>
                       <span
                         className="font-bold tabular-nums px-1 shrink-0"
-                        style={{ color: "#ffd24a", background: "#ffd24a18", border: "1px solid #ffd24a66", fontSize: 11, fontFamily: "var(--font-display)" }}
+                        style={{ color: "#ffd24a", background: "#ffd24a18", border: "1px solid #ffd24a66", fontSize: 13, fontFamily: "var(--font-display)" }}
                       >
                         {ZONES[q.zone as keyof typeof ZONES]?.label ?? "?"}
                       </span>
@@ -706,7 +823,7 @@ function BountiesTab() {
                       <span style={{ color: "#c8a0ff" }}>+{q.rewardHonor} honor</span>
                     </div>
                   </div>
-                  <button className="gbtn gbtn-gold shrink-0" style={{ padding: "6px 14px", fontSize: 11 }} disabled={!!has} onClick={() => accept(q)}>
+                  <button className="gbtn gbtn-gold shrink-0" style={{ padding: "6px 14px", fontSize: 13 }} disabled={!!has} onClick={() => accept(q)}>
                     {has ? "ACTIVE" : "ACCEPT"}
                   </button>
                 </div>
@@ -737,7 +854,7 @@ function BountiesTab() {
                   <span className="shrink-0">{q.killType}s in</span>
                   <span
                     className="font-bold tabular-nums px-1 shrink-0"
-                    style={{ color: "#ffd24a", background: "#ffd24a18", border: "1px solid #ffd24a66", fontSize: 11, fontFamily: "var(--font-display)" }}
+                    style={{ color: "#ffd24a", background: "#ffd24a18", border: "1px solid #ffd24a66", fontSize: 13, fontFamily: "var(--font-display)" }}
                   >
                     {ZONES[q.zone as keyof typeof ZONES]?.label ?? "?"}
                   </span>
@@ -750,7 +867,7 @@ function BountiesTab() {
                     boxShadow: "0 0 6px #ff5cf0",
                   }} />
                 </div>
-                <button className={`gbtn w-full ${q.completed ? "gbtn-gold" : ""}`} style={{ padding: "5px 0", fontSize: 11 }} disabled={!q.completed} onClick={() => turnIn(q)}>
+                <button className={`gbtn w-full ${q.completed ? "gbtn-gold" : ""}`} style={{ padding: "5px 0", fontSize: 13 }} disabled={!q.completed} onClick={() => turnIn(q)}>
                   {q.completed ? "✓ TURN IN" : "IN PROGRESS"}
                 </button>
               </div>
@@ -953,7 +1070,7 @@ function SlotCell({
           <span className="equip-tier" style={{ color }}>{`T${def.tier}`}</span>
         </>
       ) : (
-        <span style={{ color: fits ? "#ffd24a" : "#4a4c58", fontSize: 16, lineHeight: 1 }}>+</span>
+        <span style={{ color: fits ? "#ffd24a" : "#4a4c58", fontSize: 18.9, lineHeight: 1 }}>+</span>
       )}
     </div>
   );
@@ -1100,7 +1217,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
           >
             {cls.name.toUpperCase()}
           </div>
-          <div className="tabular-nums font-bold" style={{ color: "var(--accent-amber)", fontSize: 12 }}>
+          <div className="tabular-nums font-bold" style={{ color: "var(--accent-amber)", fontSize: 14.2 }}>
             {player.credits.toLocaleString()} CR
           </div>
         </div>
@@ -1179,7 +1296,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
             <button
               key={f}
               className={`gbtn ${filter === f ? "gbtn-gold" : ""}`}
-              style={{ padding: "3px 0", fontSize: 10, flex: 1, letterSpacing: "0.08em", opacity: filter === f ? 1 : 0.75 }}
+              style={{ padding: "3px 0", fontSize: 11.8, flex: 1, letterSpacing: "0.08em", opacity: filter === f ? 1 : 0.75 }}
               onClick={() => setFilter(f)}
             >
               {f === "all" ? "ALL" : f === "weapon" ? "WPN" : f === "generator" ? "GEN" : "MOD"}
@@ -1198,7 +1315,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
           return (
             <button
               className="gbtn gbtn-red shrink-0"
-              style={{ padding: "4px 0", fontSize: 10, letterSpacing: "0.1em", marginBottom: 8 }}
+              style={{ padding: "4px 0", fontSize: 11.8, letterSpacing: "0.1em", marginBottom: 8 }}
               title={`Sells every item that is not equipped (${unused.length} items)`}
               onClick={() => {
                 if (!sellAllArmed) {
@@ -1257,10 +1374,10 @@ function LoadoutTab({ stationId }: { stationId: string }) {
                     <WeaponIcon def={def} size={30} />
                     <span className="equip-tier" style={{ color: RARITY_COLOR[def.rarity] }}>{`T${def.tier}`}</span>
                     {isBestUpgrade && (
-                      <span style={{ position: "absolute", top: 0, right: 3, fontSize: 10, color: "#ffd24a", textShadow: "0 0 6px #ffd24a" }}>★</span>
+                      <span style={{ position: "absolute", top: 0, right: 3, fontSize: 11.8, color: "#ffd24a", textShadow: "0 0 6px #ffd24a" }}>★</span>
                     )}
                     {def.weaponKind === "rocket" && (
-                      <span style={{ position: "absolute", top: 0, left: 4, fontSize: 8, color: "var(--hud-gold)" }}>⟁</span>
+                      <span style={{ position: "absolute", top: 0, left: 4, fontSize: 9.4, color: "var(--hud-gold)" }}>⟁</span>
                     )}
                   </div>
                 );
@@ -1311,10 +1428,10 @@ function LoadoutTab({ stationId }: { stationId: string }) {
                     <WeaponIcon def={def} size={30} />
                     <span className="equip-tier" style={{ color }}>{`T${def.tier}`}</span>
                     {isEquipped && (
-                      <span style={{ position: "absolute", top: 1, right: 4, fontSize: 8, fontWeight: 700, color: "#5cff8a", textShadow: "0 0 5px #5cff8a" }}>E</span>
+                      <span style={{ position: "absolute", top: 1, right: 4, fontSize: 9.4, fontWeight: 700, color: "#5cff8a", textShadow: "0 0 5px #5cff8a" }}>E</span>
                     )}
                     {def.weaponKind === "rocket" && (
-                      <span style={{ position: "absolute", top: 0, left: 4, fontSize: 8, color: "var(--hud-gold)" }}>⟁</span>
+                      <span style={{ position: "absolute", top: 0, left: 4, fontSize: 9.4, color: "var(--hud-gold)" }}>⟁</span>
                     )}
                   </div>
                 );
@@ -1333,7 +1450,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
           <div className="flex flex-col gap-1.5">
             <button
               className={`gbtn ${sellMode ? "gbtn-red" : ""}`}
-              style={{ padding: "4px 0", fontSize: 11, width: "100%", letterSpacing: "0.14em" }}
+              style={{ padding: "4px 0", fontSize: 13, width: "100%", letterSpacing: "0.14em" }}
               disabled={showShop}
               title={showShop ? "Switch to inventory to sell modules" : "Toggle sell mode — click inventory modules to sell them"}
               onClick={() => setSellMode((v) => !v)}
@@ -1342,7 +1459,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
             </button>
             <button
               className="gbtn gbtn-gold"
-              style={{ padding: "4px 0", fontSize: 11, width: "100%", letterSpacing: "0.14em" }}
+              style={{ padding: "4px 0", fontSize: 13, width: "100%", letterSpacing: "0.14em" }}
               title={showShop ? "Back to your inventory" : `Buy modules at ${station.name}`}
               onClick={() => { setShowShop((v) => !v); setSellMode(false); setHoveredShopDefId(null); setHoveredInvInstanceId(null); }}
             >
@@ -1351,14 +1468,14 @@ function LoadoutTab({ stationId }: { stationId: string }) {
             <div className="flex gap-1.5">
               <button
                 className="gbtn"
-                style={{ padding: "4px 0", fontSize: 11, flex: 1, letterSpacing: "0.14em" }}
+                style={{ padding: "4px 0", fontSize: 13, flex: 1, letterSpacing: "0.14em" }}
                 onClick={() => setShowAmmoPopup((v) => !v)}
               >
                 ⟁ AMMO
               </button>
               <button
                 className="gbtn"
-                style={{ padding: "4px 0", fontSize: 11, flex: 1, letterSpacing: "0.14em" }}
+                style={{ padding: "4px 0", fontSize: 13, flex: 1, letterSpacing: "0.14em" }}
                 title="Buy combat consumables"
                 onClick={() => setShowConsumablesPopup((v) => !v)}
               >
@@ -1514,7 +1631,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
           <div className="panel" style={{ maxWidth: 640, width: "90vw", maxHeight: "80vh", overflowY: "auto", padding: 0 }}>
             <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b" style={{ borderColor: "var(--border-soft)" }}>
               <div className="text-cyan tracking-widest text-sm font-bold">AMMO MANAGEMENT</div>
-              <button className="gbtn gbtn-red gbtn--quiet" style={{ padding: "2px 8px", fontSize: 13 }} onClick={() => setShowAmmoPopup(false)}>✕ Close</button>
+              <button className="gbtn gbtn-red gbtn--quiet" style={{ padding: "2px 8px", fontSize: 15.3 }} onClick={() => setShowAmmoPopup(false)}>✕ Close</button>
             </div>
             <AmmoTab />
           </div>
@@ -1532,7 +1649,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
           <div className="panel" style={{ maxWidth: 560, width: "90vw", maxHeight: "80vh", overflowY: "auto", padding: 0 }}>
             <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b" style={{ borderColor: "var(--border-soft)" }}>
               <div className="text-cyan tracking-widest text-sm font-bold">CONSUMABLES SHOP</div>
-              <button className="gbtn gbtn-red gbtn--quiet" style={{ padding: "2px 8px", fontSize: 13 }} onClick={() => setShowConsumablesPopup(false)}>✕ Close</button>
+              <button className="gbtn gbtn-red gbtn--quiet" style={{ padding: "2px 8px", fontSize: 15.3 }} onClick={() => setShowConsumablesPopup(false)}>✕ Close</button>
             </div>
             <ConsumablesShop />
           </div>
@@ -1560,7 +1677,7 @@ function ConsumablesShop() {
             >
               <div
                 style={{
-                  width: 30, height: 30, fontSize: 18,
+                  width: 30, height: 30, fontSize: 21.2,
                   display: "flex", alignItems: "center", justifyContent: "center",
                   background: `${def.color}22`, border: `1px solid ${def.color}`,
                   color: def.color, flexShrink: 0,
@@ -1577,7 +1694,7 @@ function ConsumablesShop() {
               <div className="flex gap-1">
                 <button
                   className="gbtn gbtn-gold"
-                  style={{ padding: "2px 8px", fontSize: 13 }}
+                  style={{ padding: "2px 8px", fontSize: 15.3 }}
                   disabled={player.credits < def.price}
                   onClick={() => buyConsumable(cid, 1)}
                 >
@@ -1585,7 +1702,7 @@ function ConsumablesShop() {
                 </button>
                 <button
                   className="gbtn gbtn-gold"
-                  style={{ padding: "2px 8px", fontSize: 13 }}
+                  style={{ padding: "2px 8px", fontSize: 15.3 }}
                   disabled={player.credits < def.price * 5}
                   onClick={() => buyConsumable(cid, 5)}
                 >
@@ -1700,13 +1817,13 @@ function DungeonsTab() {
               </div>
               {confirmId === d.id ? (
                 <div className="mt-2" style={{ display: "flex", gap: 6 }}>
-                  <button className="gbtn w-full" style={{ padding: "4px 8px", fontSize: 12 }} onClick={() => setConfirmId(null)}>Cancel</button>
-                  <button className="gbtn gbtn-gold w-full" style={{ padding: "4px 8px", fontSize: 12 }} onClick={() => { setConfirmId(null); state.dockedAt = null; sendDockLeave(); if (ENABLE_NEW_DOCKING_FLOW) forceUndock("dungeon entry"); enterDungeon(d.id as DungeonId); }}>Confirm Entry</button>
+                  <button className="gbtn w-full" style={{ padding: "4px 8px", fontSize: 14.2 }} onClick={() => setConfirmId(null)}>Cancel</button>
+                  <button className="gbtn gbtn-gold w-full" style={{ padding: "4px 8px", fontSize: 14.2 }} onClick={() => { setConfirmId(null); state.dockedAt = null; sendDockLeave(); if (ENABLE_NEW_DOCKING_FLOW) forceUndock("dungeon entry"); enterDungeon(d.id as DungeonId); }}>Confirm Entry</button>
                 </div>
               ) : (
                 <button
                   className="gbtn gbtn-gold w-full mt-2"
-                  style={{ padding: "3px 6px", fontSize: 13, ...(isFeatured && !locked && !dungeon ? { background: "#ffd24a", color: "#000" } : {}) }}
+                  style={{ padding: "3px 6px", fontSize: 15.3, ...(isFeatured && !locked && !dungeon ? { background: "#ffd24a", color: "#000" } : {}) }}
                   disabled={locked || !!dungeon}
                   onClick={() => setConfirmId(d.id)}
                 >
@@ -1755,7 +1872,7 @@ function ShipsTab() {
 
   return (
     <div className="p-4 space-y-2">
-      <div className="hud-label" style={{ fontSize: 10, paddingBottom: 2 }}>SHIPYARD — AVAILABLE HULLS</div>
+      <div className="hud-label" style={{ fontSize: 11.8, paddingBottom: 2 }}>SHIPYARD — AVAILABLE HULLS</div>
       {(Object.values(SHIP_CLASSES) as { id: ShipClassId; [k: string]: any }[]).map((cls) => {
         const owned = player.ownedShips.includes(cls.id);
         const active = player.shipClass === cls.id;
@@ -1777,19 +1894,19 @@ function ShipsTab() {
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 min-w-0">
-                <span className="font-bold tracking-widest truncate" style={{ color: cls.color, fontSize: 12, fontFamily: "var(--font-display)" }}>
+                <span className="font-bold tracking-widest truncate" style={{ color: cls.color, fontSize: 14.2, fontFamily: "var(--font-display)" }}>
                   {cls.name.toUpperCase()}
                 </span>
                 {active && (
-                  <span className="shrink-0" style={{ color: "var(--accent-cyan)", fontSize: 10, letterSpacing: "0.14em", border: "1px solid rgba(56,214,245,0.4)", padding: "0 4px" }}>
+                  <span className="shrink-0" style={{ color: "var(--accent-cyan)", fontSize: 11.8, letterSpacing: "0.14em", border: "1px solid rgba(56,214,245,0.4)", padding: "0 4px" }}>
                     ACTIVE
                   </span>
                 )}
               </div>
-              <div className="text-dim clamp2" style={{ fontSize: 10, lineHeight: 1.4, marginTop: 1 }}>{cls.description}</div>
+              <div className="text-dim clamp2" style={{ fontSize: 11.8, lineHeight: 1.4, marginTop: 1 }}>{cls.description}</div>
               <div className="flex flex-wrap" style={{ gap: "2px 10px", marginTop: 3 }}>
                 {stats.map(([l, v]) => (
-                  <span key={l} className="tabular-nums whitespace-nowrap" style={{ fontSize: 10 }}>
+                  <span key={l} className="tabular-nums whitespace-nowrap" style={{ fontSize: 11.8 }}>
                     <span style={{ color: "var(--text-mute)" }}>{l} </span>
                     <span style={{ color: "var(--accent-cyan)", fontWeight: 700 }}>{v}</span>
                   </span>
@@ -1798,7 +1915,7 @@ function ShipsTab() {
             </div>
             <button
               className="gbtn gbtn-gold shrink-0"
-              style={{ padding: "4px 10px", fontSize: 11, minWidth: 128 }}
+              style={{ padding: "4px 10px", fontSize: 13, minWidth: 128 }}
               disabled={active || (!owned && player.credits < cls.price)}
               onClick={() => buy(cls.id)}
             >
@@ -1816,13 +1933,13 @@ function Stat({ label, v }: { label: string; v: number | string }) {
     <div className="min-w-0">
       <div
         className="truncate"
-        style={{ color: "var(--text-mute)", fontSize: 11, letterSpacing: "0.14em" }}
+        style={{ color: "var(--text-mute)", fontSize: 13, letterSpacing: "0.14em" }}
       >
         {label}
       </div>
       <div
         className="font-bold tabular-nums truncate"
-        style={{ color: "var(--accent-cyan)", fontSize: 15 }}
+        style={{ color: "var(--accent-cyan)", fontSize: 17.7 }}
       >
         {v}
       </div>
@@ -1946,7 +2063,7 @@ function DronesTab() {
             <div className="console-corner bl" /><div className="console-corner br" />
             <div className="dob-hdr" style={{ margin: "-12px -12px 12px" }}><span>▼ UPGRADE</span></div>
             {nextCost == null ? (
-              <div className="text-center py-2" style={{ color: "var(--hud-gold)", fontSize: 12, letterSpacing: "0.1em" }}>
+              <div className="text-center py-2" style={{ color: "var(--hud-gold)", fontSize: 14.2, letterSpacing: "0.1em" }}>
                 ◈ MAX LEVEL REACHED
               </div>
             ) : (
@@ -1992,7 +2109,7 @@ function DronesTab() {
                 </div>
                 <button
                   className="gbtn gbtn-gold w-full"
-                  style={{ padding: "8px 0", fontSize: 12, letterSpacing: "0.1em" }}
+                  style={{ padding: "8px 0", fontSize: 14.2, letterSpacing: "0.1em" }}
                   disabled={!canUpgrade}
                   onClick={() => upgradePetDrone()}
                 >
@@ -2028,7 +2145,7 @@ function DronesTab() {
                 return (
                   <button
                     className="gbtn w-full"
-                    style={{ padding: "6px 0", fontSize: 11, letterSpacing: "0.08em" }}
+                    style={{ padding: "6px 0", fontSize: 13, letterSpacing: "0.08em" }}
                     disabled={missing <= 0 || player.credits < cost}
                     onClick={() => purchaseDroneAmmoAmount(buyQty)}
                     title={`${buyQty} rounds · ${DRONE_AMMO_COST_PER}cr each`}
@@ -2059,11 +2176,11 @@ function DronesTab() {
             <div className="panel" style={{ maxWidth: 520, width: "90vw", maxHeight: "78vh", overflowY: "auto", padding: 0 }}>
               <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b" style={{ borderColor: "var(--border-soft)" }}>
                 <div className="text-cyan tracking-widest text-sm font-bold">EQUIP · {meta.label.toUpperCase()} SLOT</div>
-                <button className="gbtn gbtn-red gbtn--quiet" style={{ padding: "2px 8px", fontSize: 13 }} onClick={() => setPicking(null)}>✕ Close</button>
+                <button className="gbtn gbtn-red gbtn--quiet" style={{ padding: "2px 8px", fontSize: 15.3 }} onClick={() => setPicking(null)}>✕ Close</button>
               </div>
               <div className="p-3">
                 {pet.equipped[picking] && (
-                  <button className="gbtn gbtn-red w-full mb-2" style={{ padding: "5px 0", fontSize: 11 }}
+                  <button className="gbtn gbtn-red w-full mb-2" style={{ padding: "5px 0", fontSize: 13 }}
                     onClick={() => { unequipPetSlot(picking); setPicking(null); }}>
                     ✕ UNEQUIP CURRENT
                   </button>
@@ -2215,11 +2332,11 @@ function MarketTab({ stationId }: { stationId: string }) {
       <div className="dob-hdr mb-2 shrink-0">
         <span>◆ TRADE TERMINAL · {station.name.toUpperCase()}</span>
         <span className="flex items-center gap-3">
-          <span className="tabular-nums" style={{ color: "var(--hud-text-dim)", fontSize: 11 }}>
+          <span className="tabular-nums" style={{ color: "var(--hud-text-dim)", fontSize: 13 }}>
             CARGO <span style={{ color: cargoNow >= cargoMax ? "#ff5c6c" : "var(--hud-cyan)" }}>{cargoNow}/{cargoMax}</span>
             {totalCargoValue > 0 && <span style={{ color: "var(--hud-text-mute)" }}> · worth {totalCargoValue.toLocaleString()}cr here</span>}
           </span>
-          <button className="gbtn gbtn-gold" style={{ padding: "3px 12px", fontSize: 10 }} disabled={player.cargo.length === 0} onClick={sellAll}>
+          <button className="gbtn gbtn-gold" style={{ padding: "3px 12px", fontSize: 11.8 }} disabled={player.cargo.length === 0} onClick={sellAll}>
             SELL ALL CARGO
           </button>
           <span className="tabular-nums font-bold" style={{ color: "var(--accent-amber)" }}>
@@ -2258,7 +2375,7 @@ function MarketTab({ stationId }: { stationId: string }) {
                   </div>
                   <span className="trade-row__have" style={{ color: have > 0 ? "var(--hud-cyan)" : "var(--hud-text-mute)" }}>{have > 0 ? have : "—"}</span>
                   <span className="trade-row__price" style={{ color: priceColor }}>
-                    <span style={{ color: dirColor, fontSize: 9 }}>{dirIcon}</span>{price}
+                    <span style={{ color: dirColor, fontSize: 10.6 }}>{dirIcon}</span>{price}
                   </span>
                   <Sparkline data={priceHistory(stationId, r.id, 12)} color={r.color} />
                   <span className="trade-row__profit" style={{ color: profit > 0 ? "#5cff8a" : "var(--hud-text-mute)" }}>
@@ -2385,7 +2502,7 @@ function CargoTab() {
             <div key={c.resourceId} className="panel-inset p-3 flex items-center gap-3">
               <div
                 className="flex items-center justify-center"
-                style={{ width: 36, height: 36, background: `${r.color}22`, border: `1px solid ${r.color}`, color: r.color, fontSize: 16 }}
+                style={{ width: 36, height: 36, background: `${r.color}22`, border: `1px solid ${r.color}`, color: r.color, fontSize: 18.9 }}
               >
                 {r.glyph}
               </div>
@@ -2476,7 +2593,7 @@ function RefineryTab({ stationId }: { stationId: string }) {
             const pct = Math.min(100, (elapsed / total) * 100);
             return (
               <div key={i} className="flex items-center gap-3 p-3 mb-2 border" style={{ borderColor: done ? "#5cff8a44" : "var(--border-soft)", background: done ? "#5cff8a08" : "transparent" }}>
-                <div style={{ width: 32, height: 32, background: (outRes?.color ?? "#aaa") + "22", border: "1px solid " + (outRes?.color ?? "#aaa"), color: outRes?.color ?? "#aaa", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ width: 32, height: 32, background: (outRes?.color ?? "#aaa") + "22", border: "1px solid " + (outRes?.color ?? "#aaa"), color: outRes?.color ?? "#aaa", fontSize: 18.9, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   {outRes?.glyph ?? "?"}
                 </div>
                 <div className="flex-1">
@@ -2518,7 +2635,7 @@ function RefineryTab({ stationId }: { stationId: string }) {
             <div key={recipe.id} className="p-3 border" style={{ borderColor: locked ? "var(--hud-border-dim)" : "var(--border-soft)", opacity: locked ? 0.5 : 1 }}>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <div style={{ width: 28, height: 28, background: (outRes?.color ?? "#aaa") + "22", border: "1px solid " + (outRes?.color ?? "#aaa"), color: outRes?.color ?? "#aaa", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <div style={{ width: 28, height: 28, background: (outRes?.color ?? "#aaa") + "22", border: "1px solid " + (outRes?.color ?? "#aaa"), color: outRes?.color ?? "#aaa", fontSize: 16.5, display: "flex", alignItems: "center", justifyContent: "center" }}>
                     {outRes?.glyph ?? "?"}
                   </div>
                   <div>
@@ -2550,7 +2667,7 @@ function RefineryTab({ stationId }: { stationId: string }) {
                   const have = player.cargo.find(c => c.resourceId === inp.resourceId)?.qty ?? 0;
                   const enough = have >= inp.qty;
                   return (
-                    <div key={j} className="flex items-center gap-1 px-2 py-1" style={{ background: enough ? "#5cff8a11" : "#ff5c6c11", border: "1px solid " + (enough ? "#5cff8a33" : "#ff5c6c33"), fontSize: 11 }}>
+                    <div key={j} className="flex items-center gap-1 px-2 py-1" style={{ background: enough ? "#5cff8a11" : "#ff5c6c11", border: "1px solid " + (enough ? "#5cff8a33" : "#ff5c6c33"), fontSize: 13 }}>
                       <span style={{ color: inRes?.color ?? "#aaa" }}>{inRes?.glyph ?? "?"}</span>
                       <span className="text-bright">{inp.qty}x {inRes?.name ?? inp.resourceId}</span>
                       <span style={{ color: enough ? "#5cff8a" : "#ff5c6c" }}>({have})</span>
@@ -2716,14 +2833,14 @@ function SkillsTab() {
           </span>
           <button
             className="gbtn gbtn-red"
-            style={{ padding: "3px 10px", fontSize: 10 }}
+            style={{ padding: "3px 10px", fontSize: 11.8 }}
             onClick={() => { if (confirm("Reset skills for 2000cr?")) resetSkills(); }}
           >
             RESPEC · 2000cr
           </button>
         </span>
       </div>
-      <div className="text-mute" style={{ fontSize: 11 }}>
+      <div className="text-mute" style={{ fontSize: 13 }}>
         1 skill point per level. Click a node to invest — higher nodes unlock when the one before is skilled.
       </div>
 
@@ -2817,7 +2934,7 @@ function SkillsTab() {
                           width: "100%", height: "100%",
                           borderRadius: "50%",
                           display: "flex", alignItems: "center", justifyContent: "center",
-                          fontSize: 20, lineHeight: 1,
+                          fontSize: 23.6, lineHeight: 1,
                           color: cur > 0 ? b.color : reqMet ? "var(--text-dim)" : "#55617a",
                           background: cur > 0
                             ? `radial-gradient(circle at 50% 32%, ${b.color}2e 0%, rgba(9,14,26,0.98) 72%)`
@@ -2834,7 +2951,7 @@ function SkillsTab() {
                           bottom: -16,
                           left: "50%",
                           transform: "translateX(-50%)",
-                          fontSize: 10,
+                          fontSize: 11.8,
                           fontWeight: 700,
                           letterSpacing: "0.06em",
                           fontFamily: "var(--font-display)",
@@ -2885,28 +3002,28 @@ function SkillsTab() {
             style={{ position: "fixed", left, top, width: 276, zIndex: 70, pointerEvents: "none", padding: "10px 12px" }}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="font-bold truncate" style={{ color: b.color, fontSize: 12, fontFamily: "var(--font-display)", letterSpacing: "0.08em" }}>
+              <span className="font-bold truncate" style={{ color: b.color, fontSize: 14.2, fontFamily: "var(--font-display)", letterSpacing: "0.08em" }}>
                 {n.icon} {n.name.toUpperCase()}
               </span>
-              <span className="tabular-nums shrink-0" style={{ color: maxed ? "var(--accent-gold)" : "var(--text-dim)", fontSize: 10 }}>
+              <span className="tabular-nums shrink-0" style={{ color: maxed ? "var(--accent-gold)" : "var(--text-dim)", fontSize: 11.8 }}>
                 RANK {cur}/{n.maxRank}
               </span>
             </div>
-            <div className="text-dim" style={{ fontSize: 10.5, lineHeight: 1.45, margin: "6px 0" }}>{n.description}</div>
+            <div className="text-dim" style={{ fontSize: 12.4, lineHeight: 1.45, margin: "6px 0" }}>{n.description}</div>
             <div className="sw-hr" />
-            <div style={{ fontSize: 10, lineHeight: 1.6 }}>
+            <div style={{ fontSize: 11.8, lineHeight: 1.6 }}>
               <div>
-                <span className="hud-label" style={{ fontSize: 10 }}>CURRENT </span>
+                <span className="hud-label" style={{ fontSize: 11.8 }}>CURRENT </span>
                 <span className="tabular-nums" style={{ color: cur > 0 ? b.color : "var(--text-mute)" }}>{cur > 0 ? (now ?? `rank ${cur} active`) : "not researched"}</span>
               </div>
               {!maxed && (
                 <div>
-                  <span className="hud-label" style={{ fontSize: 10 }}>NEXT RANK </span>
+                  <span className="hud-label" style={{ fontSize: 11.8 }}>NEXT RANK </span>
                   <span className="tabular-nums" style={{ color: "var(--text-bright)" }}>{next ?? `rank ${cur + 1}`}</span>
                 </div>
               )}
             </div>
-            <div style={{ marginTop: 6, fontSize: 10, letterSpacing: "0.1em", color: !reqMet ? "var(--accent-red)" : maxed ? "var(--accent-gold)" : canBuy ? "var(--accent-green)" : "var(--text-mute)" }}>
+            <div style={{ marginTop: 6, fontSize: 11.8, letterSpacing: "0.1em", color: !reqMet ? "var(--accent-red)" : maxed ? "var(--accent-gold)" : canBuy ? "var(--accent-green)" : "var(--text-mute)" }}>
               {!reqMet
                 ? `⚠ REQUIRES ${SKILL_NODES.find((x) => x.id === n.requires)?.name.toUpperCase() ?? ""}`
                 : maxed ? "✓ FULLY RESEARCHED"
@@ -2997,7 +3114,7 @@ function MissionsTab() {
         </div>
         <div
           className="mb-2 flex flex-wrap gap-2"
-          style={{ fontSize: 13 }}
+          style={{ fontSize: 15.3 }}
         >
           <span style={{ color: "var(--accent-amber)" }}>+{m.rewardCredits.toLocaleString()}cr</span>
           <span style={{ color: "#ff5cf0" }}>+{m.rewardExp.toLocaleString()}xp</span>
@@ -3005,7 +3122,7 @@ function MissionsTab() {
         </div>
         <GameButton
           className="w-full"
-          style={{ fontSize: 13, width: "100%", color: ready ? "#5cff8a" : "var(--text-mute)" }}
+          style={{ fontSize: 15.3, width: "100%", color: ready ? "#5cff8a" : "var(--text-mute)" }}
           disabled={!ready}
           onClick={() => claimMission(m.id)}
         >
@@ -3022,7 +3139,7 @@ function MissionsTab() {
         {tabs.map(t => (
           <GameButton
             key={t.id}
-            style={{ fontSize: 13, opacity: activeTab === t.id ? 1 : 0.6 }}
+            style={{ fontSize: 15.3, opacity: activeTab === t.id ? 1 : 0.6 }}
             onClick={() => setActiveTab(t.id)}
           >
             {t.icon} {t.label}
@@ -3040,7 +3157,7 @@ function MissionsTab() {
             </div>
             <button
               className="gbtn"
-              style={{ padding: "6px 12px", fontSize: 13 }}
+              style={{ padding: "6px 12px", fontSize: 15.3 }}
               onClick={rerollDaily}
               disabled={player.credits < 500}
             >
@@ -3057,13 +3174,13 @@ function MissionsTab() {
               <div key={k} className="panel-inset p-2 min-w-0">
                 <div
                   className="uppercase truncate"
-                  style={{ color: "var(--text-mute)", fontSize: 10, letterSpacing: "0.15em" }}
+                  style={{ color: "var(--text-mute)", fontSize: 11.8, letterSpacing: "0.15em" }}
                 >
                   {k}
                 </div>
                 <div
                   className="font-bold tabular-nums truncate"
-                  style={{ color: "var(--accent-amber)", fontSize: 13 }}
+                  style={{ color: "var(--accent-amber)", fontSize: 15.3 }}
                 >
                   {(v as number).toLocaleString()}
                 </div>
@@ -3083,7 +3200,7 @@ function MissionsTab() {
             </div>
             <button
               className="gbtn"
-              style={{ padding: "6px 12px", fontSize: 13 }}
+              style={{ padding: "6px 12px", fontSize: 15.3 }}
               onClick={rerollMissionBoard}
               disabled={player.credits < 2000}
             >
@@ -3194,7 +3311,7 @@ function AmmoTab() {
               <div className="flex flex-col gap-1 items-end">
                 <button
                   className="gbtn"
-                  style={{ padding: "3px 10px", fontSize: 13, minWidth: 90 }}
+                  style={{ padding: "3px 10px", fontSize: 15.3, minWidth: 90 }}
                   disabled={qty === 0 || player.credits < cost}
                   onClick={() => purchaseAmmoAmount(type, qty)}
                 >
@@ -3203,7 +3320,7 @@ function AmmoTab() {
                 <button
                   className="gbtn"
                   style={{
-                    fontSize: 13, minWidth: 90,
+                    fontSize: 15.3, minWidth: 90,
                     color: isActive ? tDef.color : "var(--text-dim)",
                     opacity: isActive ? 1 : 0.6,
                   }}
@@ -3295,14 +3412,14 @@ function AmmoTab() {
                 <div className="flex flex-col gap-1 items-end">
                   <button
                     className="gbtn"
-                    style={{ padding: "3px 10px", fontSize: 13, minWidth: 90 }}
+                    style={{ padding: "3px 10px", fontSize: 15.3, minWidth: 90 }}
                     disabled={qty === 0 || player.credits < cost}
                     onClick={() => purchaseRocketAmmo(type, qty)}
                   >
                     {missing === 0 ? "FULL" : `BUY ${qty} · ${cost}cr`}
                   </button>
                   <GameButton
-                    style={{ fontSize: 13, minWidth: 90, color: isActive ? tDef.color : "var(--text-dim)", opacity: isActive ? 1 : 0.6 }}
+                    style={{ fontSize: 15.3, minWidth: 90, color: isActive ? tDef.color : "var(--text-dim)", opacity: isActive ? 1 : 0.6 }}
                     onClick={() => switchRocketAmmoType(type)}
                   >
                     {isActive ? "ACTIVE" : "USE THIS"}

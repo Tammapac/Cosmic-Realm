@@ -71,28 +71,26 @@ export function createPortalVisual(toZoneName: string, toZoneColor?: string): PI
   }
 
   // Destination label
-  const label = new PIXI.Text(toZoneName, {
+  const label = new PIXI.Text({ text: toZoneName, style: {
     fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
     fontSize: 11,
     fill: "#4ee2ff",
     fontWeight: "bold",
-    stroke: "#000000",
-    strokeThickness: 1,
-  });
+    stroke: { color: "#000000", width: 1 },
+  } });
   label.resolution = 2;
   label.anchor.set(0.5, 0);
   label.position.set(0, PORTAL_SIZE / 2 + 6);
   container.addChild(label);
 
   // "GATE" sub-label
-  const gateLabel = new PIXI.Text("GATE", {
+  const gateLabel = new PIXI.Text({ text: "GATE", style: {
     fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
     fontSize: 9,
     fill: "#4ee2ff",
     letterSpacing: 2,
-    stroke: "#000000",
-    strokeThickness: 1,
-  });
+    stroke: { color: "#000000", width: 1 },
+  } });
   gateLabel.resolution = 2;
   gateLabel.anchor.set(0.5, 1);
   gateLabel.position.set(0, -(PORTAL_SIZE / 2 + 6));
@@ -164,45 +162,42 @@ export function createStationVisual(
   container.addChild(dockRing);
 
   // Station name
-  const nameText = new PIXI.Text(stationName, {
+  const nameText = new PIXI.Text({ text: stationName, style: {
     fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
     fontSize: 14,
     fill: "#ffffff",
     fontWeight: "bold",
     letterSpacing: 1,
-    stroke: "#000000",
-    strokeThickness: 1.5,
-  });
+    stroke: { color: "#000000", width: 1.5 },
+  } });
   nameText.resolution = 2;
   nameText.anchor.set(0.5, 1);
   nameText.position.set(0, -115);
   container.addChild(nameText);
 
   // Kind label
-  const kindLabel = new PIXI.Text(`${glyphChar} ${stationKind.toUpperCase()}`, {
+  const kindLabel = new PIXI.Text({ text: `${glyphChar} ${stationKind.toUpperCase()}`, style: {
     fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
     fontSize: 11,
     fill: accentStr,
     fontWeight: "bold",
     letterSpacing: 1,
-    stroke: "#000000",
-    strokeThickness: 1,
-  });
+    stroke: { color: "#000000", width: 1 },
+  } });
   kindLabel.resolution = 2;
   kindLabel.anchor.set(0.5, 1);
   kindLabel.position.set(0, -98);
   container.addChild(kindLabel);
 
   // Dock label
-  const dockLabel = new PIXI.Text("[ DOCK ]", {
+  const dockLabel = new PIXI.Text({ text: "[ DOCK ]", style: {
     fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
     fontSize: 11,
     fill: accentStr,
     fontWeight: "bold",
     letterSpacing: 1,
-    stroke: "#000000",
-    strokeThickness: 1,
-  });
+    stroke: { color: "#000000", width: 1 },
+  } });
   dockLabel.resolution = 2;
   dockLabel.anchor.set(0.5, 0);
   dockLabel.position.set(0, 115);
@@ -429,7 +424,9 @@ export function createAsteroidTexture(
   }
   ctx.stroke();
 
-  return PIXI.Texture.from(c, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  const __t = PIXI.Texture.from(c);
+  (__t.source as PIXI.TextureSource).scaleMode = "linear";
+  return __t;
 }
 
 function seedRng(seed: number): () => number {
@@ -472,7 +469,7 @@ export function generateEnhancedStars(w: number, h: number): EnhancedStar[][] {
         x: Math.random() * w * 2,
         y: Math.random() * h * 2,
         size: layer.minSize + Math.random() * (layer.maxSize - layer.minSize),
-        color: PIXI.utils.string2hex(colorStr),
+        color: new PIXI.Color(colorStr).toNumber(),
         speed: layer.speed,
         twinklePhase: Math.random() * Math.PI * 2,
         twinkleSpeed: 0.5 + Math.random() * 2,

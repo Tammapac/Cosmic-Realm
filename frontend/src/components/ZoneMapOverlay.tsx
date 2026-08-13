@@ -66,11 +66,11 @@ export function ZoneMapOverlay() {
         >
           <div
             className="font-bold tracking-widest glow-cyan"
-            style={{ color: "#4ee2ff", fontSize: 12 }}
+            style={{ color: "#4ee2ff", fontSize: 14.2 }}
           >
             ◈ {zone?.name ?? player.zone.toUpperCase()} — ZONE MAP
           </div>
-          <GameButton style={{ fontSize: 10 }} onClick={() => { state.showFullZoneMap = false; bump(); }}>ESC ✕</GameButton>
+          <GameButton style={{ fontSize: 11.8 }} onClick={() => { state.showFullZoneMap = false; bump(); }}>ESC ✕</GameButton>
         </div>
         <svg width={fullSize} height={fullSize} onClick={handleFullClick} style={{ cursor: "crosshair", display: "block" }}>
           <defs>
@@ -172,7 +172,7 @@ export function ZoneMapOverlay() {
         </svg>
         <div
           className="tracking-widest text-center mt-2"
-          style={{ color: "var(--text-mute)", fontSize: 9, letterSpacing: "0.18em" }}
+          style={{ color: "var(--text-mute)", fontSize: 10.6, letterSpacing: "0.18em" }}
         >
           CLICK MAP TO WARP · M TO CLOSE · +/− RESIZE MINIMAP
         </div>

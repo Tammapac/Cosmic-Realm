@@ -101,21 +101,20 @@ export class ArmorPanel extends UiComponent {
     // 2. bezel — a single milled frame, top-lit, with an inner bevel
     this.bezel.clear();
     // (a) the frame body: one ring of steel from edge to (FRAME - BEVEL)
-    this.bezel.beginFill(mixColor(COLOR.steel2, COLOR.steel1, 0.35), 1);
-    this.bezel.drawPolygon(this.silhouette(0));
-    this.bezel.beginHole(); this.bezel.drawPolygon(this.silhouette(FRAME - BEVEL)); this.bezel.endHole();
-    this.bezel.endFill();
+    // beginHole/endHole don't exist in v8's Graphics — the replacement is
+    // draw-outer, fill(), draw-inner, cut() (cut() subtracts the last-drawn
+    // path from the previously filled shape). Everything else in this file
+    // stays on the legacy beginFill/drawPolygon/endFill API, which v8's
+    // Graphics class still supports directly.
+    this.bezel.poly(this.silhouette(0)).fill({ color: mixColor(COLOR.steel2, COLOR.steel1, 0.35), alpha: 1 });
+    this.bezel.poly(this.silhouette(FRAME - BEVEL)).cut();
     // (b) bright top-lit highlight along the OUTER edge (a milled catch-light)
-    this.bezel.beginFill(mixColor(COLOR.steel1, COLOR.steel0, 0.45 + 0.25 * this.anim), 1);
-    this.bezel.drawPolygon(this.silhouette(0));
-    this.bezel.beginHole(); this.bezel.drawPolygon(this.silhouette(1.5)); this.bezel.endHole();
-    this.bezel.endFill();
+    this.bezel.poly(this.silhouette(0)).fill({ color: mixColor(COLOR.steel1, COLOR.steel0, 0.45 + 0.25 * this.anim), alpha: 1 });
+    this.bezel.poly(this.silhouette(1.5)).cut();
     // (c) the inner BEVEL: a dark chamfer dropping from the frame into the
     //     recess — this is the single depth cue, replacing the two-ring gap
-    this.bezel.beginFill(COLOR.navyDeep, 0.95);
-    this.bezel.drawPolygon(this.silhouette(FRAME - BEVEL));
-    this.bezel.beginHole(); this.bezel.drawPolygon(this.silhouette(FRAME)); this.bezel.endHole();
-    this.bezel.endFill();
+    this.bezel.poly(this.silhouette(FRAME - BEVEL)).fill({ color: COLOR.navyDeep, alpha: 0.95 });
+    this.bezel.poly(this.silhouette(FRAME)).cut();
     // (d) structural notches along the frame's top & bottom faces
     this.drawEdgeSegments(FRAME - BEVEL);
 
@@ -130,11 +129,11 @@ export class ArmorPanel extends UiComponent {
     this.conduit.clear();
     // inner vignette: dark gradient hugging the body edge (depth into the panel)
     for (let k = 0; k < 5; k++) {
-      this.conduit.lineStyle({ width: 2, color: 0x000000, alpha: 0.16 * (1 - k / 5) });
+      this.conduit.lineStyle(2, 0x000000, 0.16 * (1 - k / 5) );
       this.conduit.drawPolygon(this.silhouette(bodyInset + 1 + k * 2));
     }
     // hairline accent just inside the inner frame (the lit edge)
-    this.conduit.lineStyle({ width: 1, color: accentCol, alpha: 0.55 * lit });
+    this.conduit.lineStyle(1, accentCol, 0.55 * lit );
     this.conduit.drawPolygon(this.silhouette(bodyInset));
 
     // 5. connectors: corner cut details + edge energy markers + rivets
@@ -162,7 +161,7 @@ export class ArmorPanel extends UiComponent {
     const { w, h, cut } = this.opts;
     const g = this.connectors;
     const a = 0.85 * lit;
-    g.lineStyle({ width: 2, color: col, alpha: a });
+    g.lineStyle(2, col, a );
     const d = cut - 2, o = outer + 2;
     // each corner: a short line parallel to the chamfer + a stub
     g.moveTo(o, o + d); g.lineTo(o + d, o);                       // TL chamfer accent
@@ -184,7 +183,7 @@ export class ArmorPanel extends UiComponent {
     // bottom centre — secondary accent (magenta)
     this.tickRow(g, w / 2, h - 2.5, len, col2, lit);
     // left + right mid — short primary stubs
-    g.lineStyle({ width: 2, color: col, alpha: 0.75 * lit });
+    g.lineStyle(2, col, 0.75 * lit );
     g.moveTo(2.5, h / 2 - 10); g.lineTo(2.5, h / 2 + 10);
     g.moveTo(w - 2.5, h / 2 - 10); g.lineTo(w - 2.5, h / 2 + 10);
   }
@@ -193,9 +192,9 @@ export class ArmorPanel extends UiComponent {
    *  with a hot core dot. */
   private tickRow(g: PIXI.Graphics, cx: number, y: number, len: number, col: number, lit: number): void {
     const mid = len * 0.5, flank = len * 0.2, gap = 5;
-    g.lineStyle({ width: 2.5, color: col, alpha: 0.95 * lit });
+    g.lineStyle(2.5, col, 0.95 * lit );
     g.moveTo(cx - mid / 2, y); g.lineTo(cx + mid / 2, y);
-    g.lineStyle({ width: 2, color: col, alpha: 0.6 * lit });
+    g.lineStyle(2, col, 0.6 * lit );
     g.moveTo(cx - mid / 2 - gap - flank, y); g.lineTo(cx - mid / 2 - gap, y);
     g.moveTo(cx + mid / 2 + gap, y); g.lineTo(cx + mid / 2 + gap + flank, y);
     g.lineStyle(0);

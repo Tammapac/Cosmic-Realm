@@ -150,7 +150,16 @@ export type Quest = {
   id: string;
   title: string;
   description: string;
+  /** The "board" zone — where the quest is offered/accepted (Hangar bounty
+      board grouping, per-zone quest cap). NOT necessarily where the kill
+      has to happen; see `targetZone`. */
   zone: ZoneId;
+  /** The zone the kill must actually occur in. Defaults to `zone` when
+      omitted (every pre-existing pool entry keeps its old same-zone
+      behavior). Set this to a DIFFERENT zone to make a quest send the
+      player elsewhere — the deliberate "contracts push you into other
+      maps" design instead of always grinding the zone you're already in. */
+  targetZone?: ZoneId;
   killType: EnemyType;
   killCount: number;
   rewardCredits: number;
@@ -319,7 +328,61 @@ export type HonorRank = {
   color: string;
   symbol: string;        // small ASCII glyph
   pips: number;          // number of icon pips
+  /** Basename of the rank art in /assets/ui/ranks (without ".png").
+   *  Explicit rather than derived from `index`: the callers used to build the
+   *  filename as rank_(index+1), which breaks the moment a rank is not the
+   *  (index+1)-th badge on the sheet — Outlaw is index 0 but uses the LAST
+   *  badge. Use rankIcon() instead of recomputing this anywhere. */
+  icon: string;
 };
+
+/** Art path for a rank. Single source of truth for rank imagery — the HUD
+ *  render sites used to each build this string themselves. */
+export function rankIcon(r: HonorRank): string {
+  return `/assets/ui/ranks/${r.icon}.png`;
+}
+
+/** Intrinsic width/height of each rank badge, measured from the PNG headers.
+ *
+ *  Needed because the art is cropped tight per badge and the shapes differ
+ *  wildly — a wide chevron is 135x64 (2.11), a narrow one 37x64 (0.58). Kept as
+ *  data rather than read at runtime: the nameplate is rebuilt every frame, so
+ *  it cannot wait on image loads to decide a size. */
+const RANK_ART_RATIO: Record<string, number> = {
+  rank_01: 1.59, rank_02: 0.86, rank_03: 0.69, rank_04: 0.58, rank_05: 2.11,
+  rank_06: 1.44, rank_07: 1.30, rank_08: 1.22, rank_09: 0.94, rank_10: 0.94,
+  rank_11: 0.88, rank_12: 0.86, rank_13: 0.95, rank_14: 0.95, rank_15: 0.92,
+  rank_16: 0.92, rank_17: 1.05, rank_18: 1.09, rank_19: 1.08, rank_20: 1.11,
+  rank_21: 1.45, rank_22: 1.48, rank_23: 1.05,
+};
+
+/** Side of the square `object-fit: contain` box a rank badge should render in.
+ *
+ *  Equal-AREA rather than equal-box. A shared box looks wrong because `contain`
+ *  fits by the longest side: at box 32 the near-square General (1.11) paints
+ *  32x29, while the wider Chief General (1.45) paints only 32x22 — a third less
+ *  ink for the higher rank, which reads as "Chief General is smaller".
+ *
+ *  Solving `w*h = box^2 / max(r, 1/r)` for a constant area gives the box below,
+ *  so every badge ends up with the same amount of visible art regardless of
+ *  shape. `targetArea` lets the entry ranks (1-6) be deliberately quieter than
+ *  the star and wreath insignia without reintroducing the same distortion. */
+export function rankBoxPx(r: HonorRank, targetArea: number): number {
+  const ratio = RANK_ART_RATIO[r.icon] ?? 1;
+  return Math.round(Math.sqrt(targetArea * Math.max(ratio, 1 / ratio)));
+}
+
+/** `srcset` for a rank badge: the 1x file plus its @2x sibling.
+ *
+ *  The badges are only 66-140px in the source sheet, so there is no detail to
+ *  be won by shipping one big file — the art is exported twice instead, each
+ *  copy sharpened for the density it will be drawn at (64px tall for 1x,
+ *  128px for 2x). Handing the browser both via srcset means neither screen
+ *  resamples a file that was sharpened for the other one. */
+export function rankIconSrcSet(r: HonorRank): string {
+  const base = `/assets/ui/ranks/${r.icon}`;
+  return `${base}.png 1x, ${base}@2x.png 2x`;
+}
 
 // ── REPUTATION ──────────────────────────────────────────────────────────────
 // Standing derived purely from a player's honor. Shown as a colored pill in
@@ -379,12 +442,14 @@ export type Player = {
   credits: number;
   honor: number;
   mcoins: number;        // premium (real-money) currency; display-only for now
+  inventoryExtraPage?: boolean; // 3rd inventory page unlocked via mcoins purchase
   cargo: CargoItem[];
   zone: ZoneId;
   ownedShips: ShipClassId[];
   activeQuests: ActiveQuest[];
   completedQuests: string[];
   clan: string | null;
+  clanId: number | null;
   party: string[];
   petDrone: PetDrone;   // single upgradable companion drone (replaces the old drone array)
   bebcell: number;      // boss-only material for upgrading the pet drone
@@ -649,6 +714,11 @@ export type Milestones = {
   totalWarps: number;
   totalDeaths: number;
   bossKills: number;
+  // Lifetime counters backing the Pilot Dossier's CONTRACTS and SALVAGE
+  // career tracks — added alongside those tracks since no equivalent
+  // running total existed anywhere in the codebase before.
+  totalContracts: number;
+  totalSalvaged: number;
 };
 
 export const MILESTONE_TIERS: { kind: keyof Milestones; name: string; tiers: number[]; rewardPerTier: number; color: string; icon: string }[] = [
@@ -657,6 +727,8 @@ export const MILESTONE_TIERS: { kind: keyof Milestones; name: string; tiers: num
   { kind: "totalCreditsEarned", name: "Tycoon",          tiers: [1000, 10000, 100000, 1000000, 10000000], rewardPerTier: 600, color: "#ffd24a", icon: "$" },
   { kind: "totalWarps",         name: "Pathfinder",      tiers: [5, 25, 100, 500, 2000], rewardPerTier: 300, color: "#ff5cf0", icon: "▶" },
   { kind: "bossKills",          name: "Dread Hunter",    tiers: [1, 5, 20, 50, 200], rewardPerTier: 1500, color: "#ff8a4e", icon: "✪" },
+  { kind: "totalContracts",     name: "Contractor",      tiers: [5, 25, 100, 400, 1200], rewardPerTier: 350, color: "#b866ff", icon: "▣" },
+  { kind: "totalSalvaged",      name: "Salvager",        tiers: [10, 50, 200, 800, 3000], rewardPerTier: 250, color: "#ff5cf0", icon: "⬡" },
 ];
 
 export const DAILY_MISSION_POOL: Mission[] = [
@@ -2027,6 +2099,64 @@ export const FAKE_CLANS = [
   "Iron Wake","Crimson Veil","Pale Horizon","Null Sector","Aegis Pact","Starforge",
 ];
 
+export type ClanAdmission = "open" | "apply" | "invite";
+
+// Matches the shape returned by GET /api/clan (backend/src/routes/clan.ts).
+export type Clan = {
+  id: number;
+  name: string;
+  tag: string;
+  faction: "earth" | "mars" | "venus" | null;
+  memberCount: number;
+  motto: string;
+  tags: string[];
+  minLevel: number;
+  minHonor: number;
+  admission: ClanAdmission;
+  crestShape: string;
+  crestSymbol: string;
+  crestOuter: string;
+  crestInner: string;
+  crestSymbolColor: string;
+  maxMembers: number;
+  openSlots: number;
+  seasonRank: number;
+  totalHonor: number;
+  level: number;
+};
+
+export type ClanMember = {
+  id: number;
+  name: string;
+  level: number;
+  honor: number;
+  shipClass: string;
+  clanRole: "leader" | "officer" | "member";
+  clanContribution: number;
+};
+
+export type ClanResearchProject = {
+  id: string;
+  name: string;
+  description: string;
+  tier: number;
+  maxTier: number;
+  unit: "%" | " units";
+  perTier: number;
+  hex: string;
+  nextCost: number | null;
+};
+
+export type ClanDetail = Clan & {
+  leaderId: number;
+  members: ClanMember[];
+  treasuryCredits: number;
+  treasuryMcoins: number;
+  xp: number;
+  xpNext: number;
+  research: ClanResearchProject[];
+};
+
 export const ENEMY_NAMES: Record<EnemyType, string[]> = {
   scout:       ["Scout"],
   raider:      ["Raider"],
@@ -2064,26 +2194,144 @@ export const DRONE_DEFS: Record<DroneKind, DroneDef> = {
 };
 
 // ── HONOR RANKS ───────────────────────────────────────────────────────────
+// The 21 regular ranks are the ones drawn on the rank sheet
+// (CosmicRealm Assets/assets/ranks/CosmicRealm_Ranks.png), in sheet order, so
+// `icon` runs rank_01..rank_21 straight down the list. Honor thresholds keep
+// the previous curve's endpoints (0 .. 20M) and are redistributed across 21
+// steps instead of 13 — no player loses or gains honor, some just sit under a
+// differently-named rank than before.
+//
+// Colour progression follows the sheet's own material tiers: steel/white for
+// the chevron ranks (1-12), gold for the Major/Colonel plates (13-16), bronze
+// with stars for the command ranks (17-21).
 export const HONOR_RANKS: HonorRank[] = [
-  { index: 0,  name: "Recruit",          minHonor: 0,        color: "#7a8ad8", symbol: "·",  pips: 0 },
-  { index: 1,  name: "Space Pilot",      minHonor: 500,      color: "#7ad8ff", symbol: "▿",  pips: 1 },
-  { index: 2,  name: "Basic Pilot",      minHonor: 2000,     color: "#5cff8a", symbol: "◇",  pips: 1 },
-  { index: 3,  name: "Pilot",            minHonor: 5000,     color: "#aaff5c", symbol: "◆",  pips: 2 },
-  { index: 4,  name: "Chief Pilot",      minHonor: 12000,    color: "#ffd24a", symbol: "★",  pips: 2 },
-  { index: 5,  name: "Lieutenant",       minHonor: 30000,    color: "#ff8a4e", symbol: "★",  pips: 3 },
-  { index: 6,  name: "Commander",        minHonor: 80000,    color: "#ff5c6c", symbol: "✪",  pips: 3 },
-  { index: 7,  name: "Captain",          minHonor: 200000,   color: "#ff5cf0", symbol: "✪",  pips: 4 },
-  { index: 8,  name: "Admiral",          minHonor: 500000,   color: "#b06cff", symbol: "✸",  pips: 4 },
-  { index: 9,  name: "General",          minHonor: 1200000,  color: "#fff75c", symbol: "✺",  pips: 5 },
-  { index: 10, name: "Marshal",          minHonor: 3000000,  color: "#ff4444", symbol: "✸",  pips: 5 },
-  { index: 11, name: "Grand Marshal",    minHonor: 8000000,  color: "#ffd700", symbol: "✺",  pips: 6 },
-  { index: 12, name: "Legend",           minHonor: 20000000, color: "#ffffff", symbol: "✸",  pips: 7 },
+  // ── Outlaw. Not a progression rank: it is what a pilot falls to by killing
+  // their OWN faction (see honorForFriendlyKill / OUTLAW_HONOR). Sorted first
+  // so rankFor()'s "highest threshold that honor clears" scan lands here for
+  // anyone deep in the negative, and its icon is the LAST badge on the sheet —
+  // which is exactly why HonorRank carries an explicit `icon`.
+  { index: 0,  name: "Outlaw",            minHonor: -Infinity, color: "#ff3344", symbol: "☠",  pips: 0, icon: "rank_23" },
+
+  { index: 1,  name: "Basic Space Pilot", minHonor: 0,        color: "#9fb4d8", symbol: "·",  pips: 0, icon: "rank_01" },
+  { index: 2,  name: "Space Pilot",       minHonor: 500,      color: "#a8bcd8", symbol: "▿",  pips: 1, icon: "rank_02" },
+  { index: 3,  name: "Chief Space Pilot", minHonor: 1500,     color: "#b4c6dc", symbol: "▿",  pips: 1, icon: "rank_03" },
+  { index: 4,  name: "Basic Sergeant",    minHonor: 3500,     color: "#7ad8ff", symbol: "◇",  pips: 1, icon: "rank_04" },
+  { index: 5,  name: "Sergeant",          minHonor: 7000,     color: "#7ad8ff", symbol: "◇",  pips: 2, icon: "rank_05" },
+  { index: 6,  name: "Chief Sergeant",    minHonor: 13000,    color: "#5ce0ff", symbol: "◆",  pips: 2, icon: "rank_06" },
+  { index: 7,  name: "Basic Lieutenant",  minHonor: 24000,    color: "#5cff8a", symbol: "◆",  pips: 2, icon: "rank_07" },
+  { index: 8,  name: "Lieutenant",        minHonor: 42000,    color: "#5cff8a", symbol: "★",  pips: 3, icon: "rank_08" },
+  { index: 9,  name: "Chief Lieutenant",  minHonor: 72000,    color: "#aaff5c", symbol: "★",  pips: 3, icon: "rank_09" },
+  { index: 10, name: "Basic Captain",     minHonor: 120000,   color: "#aaff5c", symbol: "★",  pips: 3, icon: "rank_10" },
+  { index: 11, name: "Captain",           minHonor: 200000,   color: "#d8ff5c", symbol: "✪",  pips: 4, icon: "rank_11" },
+  { index: 12, name: "Chief Captain",     minHonor: 330000,   color: "#d8ff5c", symbol: "✪",  pips: 4, icon: "rank_12" },
+  { index: 13, name: "Basic Major",       minHonor: 540000,   color: "#ffd24a", symbol: "✪",  pips: 4, icon: "rank_13" },
+  { index: 14, name: "Major",             minHonor: 880000,   color: "#ffd24a", symbol: "✸",  pips: 5, icon: "rank_14" },
+  { index: 15, name: "Chief Major",       minHonor: 1400000,  color: "#ffc63a", symbol: "✸",  pips: 5, icon: "rank_15" },
+  { index: 16, name: "Basic Colonel",     minHonor: 2300000,  color: "#ffb830", symbol: "✸",  pips: 5, icon: "rank_16" },
+  { index: 17, name: "Colonel",           minHonor: 3700000,  color: "#ff9a4e", symbol: "✺",  pips: 6, icon: "rank_17" },
+  { index: 18, name: "Chief Colonel",     minHonor: 5800000,  color: "#ff8a4e", symbol: "✺",  pips: 6, icon: "rank_18" },
+  { index: 19, name: "Basic General",     minHonor: 9000000,  color: "#ff7a44", symbol: "✺",  pips: 6, icon: "rank_19" },
+  { index: 20, name: "General",           minHonor: 13500000, color: "#ff6a3a", symbol: "✺",  pips: 7, icon: "rank_20" },
+  { index: 21, name: "Chief General",     minHonor: 20000000, color: "#ffd700", symbol: "✺",  pips: 7, icon: "rank_21" },
+
+  // Administrator, index 22. Appended rather than inserted so every other
+  // rank keeps the index it already had. Its threshold (ADMIN_HONOR, below) is
+  // unreachable by playing, so rankFor() only ever returns it for an account
+  // that was set there deliberately.
+  { index: 22, name: "Administrator",     minHonor: 999000000, color: "#e8b94d", symbol: "✦",  pips: 0, icon: "rank_22" },
 ];
 
+/** Administrator — a staff badge. Not something a pilot earns by playing, but
+ *  it still has to be assignable, and this project has no admin column in the
+ *  players table (admin is a hardcoded player id in the socket handler).
+ *  Adding a schema column for it would be a database change.
+ *
+ *  So it is granted the same way every other rank is: by honor, at a threshold
+ *  set far above Chief General's 20M. Nobody reaches ADMIN_HONOR through
+ *  normal play — the highest honor any activity awards is in the tens per
+ *  kill — so in practice it is only ever set deliberately from /admin. */
+export const ADMIN_HONOR = 999000000;
+
+/** Index of the Administrator entry in HONOR_RANKS. Used to exclude it from
+ *  the progression ladder (rank counts, next-rank lookups). */
+export const ADMIN_INDEX = 22;
+
+/** The Administrator entry, read back out of HONOR_RANKS rather than declared
+ *  a second time — a separate literal would be a copy that can drift. */
+export const ADMIN_RANK: HonorRank = HONOR_RANKS[HONOR_RANKS.length - 1];
+
+/** Honor at or below which a pilot is branded an Outlaw: attackable by
+ *  everyone, including their own faction. Reached by killing allies.
+ *  MUST stay in sync with OUTLAW_HONOR in backend/src/game/engine.ts — the
+ *  server decides who may be shot, the client only picks the badge. */
+export const OUTLAW_HONOR = -10000;
+
+/** The first real rank — what a fresh pilot starts at, and the floor that
+ *  honor loss stops at before Outlaw territory begins. */
+export const FIRST_RANK = HONOR_RANKS[1];
+
+/** How many climbable ranks exist. Outlaw (index 0) is a penalty state and
+ *  Administrator (index 22) is a staff badge — neither is a rung on the
+ *  ladder, so "RANK n/MAX" must not count them. Derived, so these labels
+ *  cannot go stale the way the hardcoded "/20" did when the ladder grew. */
+export const MAX_RANK_INDEX = HONOR_RANKS.filter(
+  (r) => r.index !== 0 && r.index !== ADMIN_INDEX,
+).length;
+
 export function rankFor(honor: number): HonorRank {
-  let r = HONOR_RANKS[0];
-  for (const x of HONOR_RANKS) if (honor >= x.minHonor) r = x;
+  // Outlaw is a floor, not a step on the ladder: only a pilot who has sunk to
+  // OUTLAW_HONOR gets it. Anyone merely negative (a few friendly-fire
+  // accidents) stays at the entry rank and can climb back out.
+  if (honor <= OUTLAW_HONOR) return HONOR_RANKS[0];
+  let r = FIRST_RANK;
+  for (const x of HONOR_RANKS) {
+    if (x.index === 0) continue;         // skip Outlaw in the normal scan
+    if (honor >= x.minHonor) r = x;
+  }
   return r;
+}
+
+/** True when a pilot is flagged Outlaw — attackable everywhere, by anyone. */
+export function isOutlaw(honor: number): boolean {
+  return honor <= OUTLAW_HONOR;
+}
+
+/** True for the staff badge. Not a rung on the ladder. */
+export function isAdminRank(r: HonorRank): boolean {
+  return r.index === ADMIN_INDEX;
+}
+
+/** Short label for a rank, e.g. "RANK 14" — or the bare name for the two
+ *  states that are not ladder positions. Centralised because three panels
+ *  each wrote their own version of this conditional, and each one had to be
+ *  found and fixed again every time the ladder changed.
+ *
+ *  `total` appends "/n" (PlayerPanelCompact's style); omit it for the short
+ *  form. `withName` appends " · NAME" (the dossier's style). */
+export function rankLabel(
+  r: HonorRank,
+  opts: { total?: number; withName?: boolean } = {},
+): string {
+  if (r.index === 0 || isAdminRank(r)) return r.name.toUpperCase();
+  const n = opts.total ? `RANK ${r.index}/${opts.total}` : `RANK ${r.index}`;
+  return opts.withName ? `${n} · ${r.name.toUpperCase()}` : n;
+}
+
+/** The rank a pilot is climbing toward, or null at the cap. Outlaw is excluded
+ *  as both a source and a destination: an Outlaw's next goal is to get back to
+ *  the entry rank, not to "progress" out of index 0.
+ *
+ *  Callers used to do this inline — `HONOR_RANKS[rank.index + 1]` and
+ *  `HONOR_RANKS.find(r => r.minHonor > honor)`. Both broke once Outlaw took
+ *  index 0 with a -Infinity threshold, so the lookup lives here now. */
+export function nextRankFor(honor: number): HonorRank | null {
+  if (isOutlaw(honor)) return FIRST_RANK;
+  // Administrator is excluded as a destination: it is a staff badge, not the
+  // rung above Chief General, and offering it as "next rank" would show every
+  // maxed pilot an unreachable 999,000,000 goal instead of "MAXIMUM RANK".
+  return HONOR_RANKS.find(
+    (r) => r.index !== 0 && r.index !== ADMIN_INDEX && r.minHonor > honor,
+  ) ?? null;
 }
 
 // ── MODULE CATALOG ────────────────────────────────────────────────────────

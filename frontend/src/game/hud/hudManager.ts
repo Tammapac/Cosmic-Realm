@@ -11,6 +11,8 @@ import { HotbarSection } from "./sections/hotbarSection";
 import { ENABLE_PIXI_UI } from "../renderer-config";
 import { createUiLayers, destroyUiLayers, getUiLayers } from "./layers";
 import { COLOR, GEO } from "./theme";
+import { createKitHost2 } from "./sections/kitHost2";
+import { createLoadoutSection } from "./sections/loadoutSection";
 
 export interface HudSection {
   container: PIXI.Container;
@@ -42,10 +44,10 @@ function drawProbePlate(g: PIXI.Graphics, w: number, h: number, energy: number):
   g.drawPolygon(pts);
   g.endFill();
   // titanium rim
-  g.lineStyle({ width: GEO.rim, color: COLOR.steel1, alpha: 0.9 });
+  g.lineStyle(GEO.rim, COLOR.steel1, 0.9);
   g.drawPolygon(pts);
   // cyan inner conduit
-  g.lineStyle({ width: 2, color: COLOR.cyan, alpha: 0.85 });
+  g.lineStyle(2, COLOR.cyan, 0.85);
   const i = GEO.inset;
   g.drawPolygon([
     c, i, w - c, i, w - i, c, w - i, h - c, w - c, h - i,
@@ -93,7 +95,7 @@ export function mountHud(): void {
   // Section 1 is rendered by the React Hotbar (retextured to the UIEXAMPLE2
   // pixel-art assets) so all icons/hover/active/cooldown/dropdown functionality
   // is preserved. The PixiJS HotbarSection is kept for reference but not mounted.
-  sections = [];
+  sections = [createLoadoutSection(), createKitHost2()];
   for (const s of sections) root.addChild(s.container);
   mounted = true;
   void HotbarSection;

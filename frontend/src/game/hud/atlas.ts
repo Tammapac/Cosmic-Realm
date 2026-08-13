@@ -26,8 +26,17 @@ export const FRAME: FrameAtlas = {
   slice: { left: 54, top: 54, right: 54, bottom: 54 },
 };
 
-/** Make a nine-sliced sprite from a texture URL at the frame's margins. */
+/** Make a nine-sliced sprite from a texture URL at the frame's margins. Starts
+ *  with a blank texture and swaps in the real one once PIXI.Assets loads it
+ *  (v8's Texture.from(url) only checks the cache — it no longer implicitly
+ *  fetches the way v7 did). */
 export function makeNineSlice(url: string, m: NineSliceMargins): PIXI.NineSlicePlane {
-  const tex = PIXI.Texture.from(url);
-  return new PIXI.NineSlicePlane(tex, m.left, m.top, m.right, m.bottom);
+  const cached = PIXI.Cache.has(url) ? (PIXI.Cache.get(url) as PIXI.Texture) : PIXI.Texture.EMPTY;
+  const plane = new PIXI.NineSlicePlane(cached, m.left, m.top, m.right, m.bottom);
+  if (cached === PIXI.Texture.EMPTY) {
+    PIXI.Assets.load(url).then((tex: PIXI.Texture) => {
+      if (!plane.destroyed) plane.texture = tex;
+    });
+  }
+  return plane;
 }

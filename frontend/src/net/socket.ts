@@ -48,6 +48,10 @@ export type RemotePlayer = {
 
 export type WelcomePayload = {
   playerId: number;
+  /** Staff flag from players.is_admin. Convenience for the UI only — every
+   *  admin socket handler re-checks the database, so faking this client-side
+   *  reveals the console but grants no actual capability. */
+  isAdmin?: boolean;
   tickRate: number;
   friction: number;
   frictionRefFps: number;
@@ -158,6 +162,11 @@ export type EnemyHitEvent = {
 
 export type EnemyDieEvent = {
   enemyId: string;
+  /** The dead enemy's type — sent by the server directly so quest/mission
+      progress tracking doesn't depend on the enemy still being present in
+      the client's local `state.enemies` snapshot (it can already be gone
+      there if a periodic zone:enemies snapshot arrives before this event). */
+  enemyType?: string;
   killerId: number;
   loot: {
     credits: number; exp: number; honor: number;
@@ -238,6 +247,7 @@ type SocketEvents = {
   onPlayerHit: (data: { damage: number; hp: number; shield: number }) => void;
   onPlayerHitRemote: (data: { playerId: number; damage: number; pos: { x: number; y: number }; killerId: number | null }) => void;
   onPlayerDie: (data: { playerId: number; pos: { x: number; y: number }; killerId: number | null }) => void;
+  onPlayerHonor: (data: { playerId: number; honor: number }) => void;
   onAsteroidMine: (data: { asteroidId: string; hp: number; hpMax: number }) => void;
   onAsteroidDestroy: (data: { asteroidId: string; playerId: number; ore: { resourceId: string; qty: number } }) => void;
   onAsteroidRespawn: (asteroid: ServerAsteroid) => void;
@@ -270,6 +280,11 @@ export function connectSocket(token: string) {
       id: socket!.id,
       transport: socket!.io.engine.transport.name,
     });
+    startPingLoop();
+  });
+
+  socket.on("disconnect", () => {
+    stopPingLoop();
   });
 
   socket.io.engine.on("upgrade", () => {
@@ -411,6 +426,14 @@ export function connectSocket(token: string) {
     listeners.onPlayerDie?.(data);
   });
 
+  // Server-corrected honor (friendly-fire penalty). Applied straight to the
+  // store: honor decides the rank badge, and for remote pilots it also decides
+  // whether they show as an Outlaw, so both the local player and the
+  // others-map need it.
+  socket.on("player:honor", (data: { playerId: number; honor: number }) => {
+    listeners.onPlayerHonor?.(data);
+  });
+
   socket.on("asteroid:mine", (data: { asteroidId: string; hp: number; hpMax: number }) => {
     listeners.onAsteroidMine?.(data);
   });
@@ -490,6 +513,34 @@ export function disconnectSocket() {
 
 export function setSocketListeners(l: Partial<SocketEvents>) {
   listeners = l;
+}
+
+// ── Ping (round-trip latency for the Settings panel's SYSTEM readout) ────
+// Server just echoes the timestamp back (see backend/src/socket/handler.ts's
+// "ping" handler) — Date.now() - sentAt on ack is the round trip. Polls on
+// an interval rather than once so the SYSTEM panel reflects current network
+// conditions, not a stale value from connect time.
+let _pingTimer: ReturnType<typeof setInterval> | null = null;
+
+function pingOnce(): void {
+  if (!socket?.connected) return;
+  const sentAt = Date.now();
+  socket.emit("ping", sentAt, () => {
+    import("../game/store").then(({ state, bump }) => {
+      state.netPingMs = Date.now() - sentAt;
+      bump();
+    });
+  });
+}
+
+function startPingLoop(): void {
+  if (_pingTimer) return;
+  pingOnce();
+  _pingTimer = setInterval(pingOnce, 4000);
+}
+
+function stopPingLoop(): void {
+  if (_pingTimer) { clearInterval(_pingTimer); _pingTimer = null; }
 }
 
 // ── Outgoing events ──────────────────────────────────────────────────────
@@ -578,6 +629,20 @@ export function sendDroneUpgrade(): Promise<{ ok: boolean; error?: string; petDr
   });
 }
 
+/** Server-authoritative inventory-page purchase request. The server validates
+ *  the mcoins cost against its own balance and replies with the actual
+ *  resulting mcoins + unlocked flag — the caller must apply THOSE, not assume
+ *  the request succeeded just because it was sent. Resolves to an error
+ *  result (never rejects) if the socket is disconnected or the server says no. */
+export function sendInventoryBuyPage(): Promise<{ ok: boolean; error?: string; mcoins?: number; unlocked?: boolean }> {
+  return new Promise((resolve) => {
+    if (!socket) { resolve({ ok: false, error: "Not connected" }); return; }
+    socket.emit("inventory:buyPage", {}, (res: { ok: boolean; error?: string; mcoins?: number; unlocked?: boolean }) => {
+      resolve(res ?? { ok: false, error: "No response" });
+    });
+  });
+}
+
 export function sendInstanceEnter(dungeonId: string) {
   socket?.emit("instance:enter", { dungeonId });
 }
@@ -626,6 +691,20 @@ export function adminGetPlayer(playerId: number, cb: (data: any) => void) {
 
 export function adminUpdatePlayer(playerId: number, updates: any, cb: (data: any) => void) {
   socket?.emit("admin:update", { playerId, updates }, cb);
+}
+
+/** Column metadata for the admin console's field editor. Comes from the
+ *  server so the UI is built from the same registry the write path validates
+ *  against — a hardcoded client copy would drift from the schema. */
+export function adminFields(cb: (data: any) => void) {
+  socket?.emit("admin:fields", {}, cb);
+}
+
+/** Grant or revoke staff. Separate from adminUpdatePlayer on purpose: the
+ *  generic field editor refuses isAdmin so a promotion can never ride along
+ *  unnoticed inside a bulk save. */
+export function adminSetAdmin(playerId: number, isAdmin: boolean, cb: (data: any) => void) {
+  socket?.emit("admin:setAdmin", { playerId, isAdmin }, cb);
 }
 
 // Spawn `count` enemies of `type` into the admin's current zone (server picks
