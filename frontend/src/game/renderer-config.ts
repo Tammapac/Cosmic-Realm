@@ -186,18 +186,20 @@ export const ENABLE_HANGAR_3D_SCENE = readHangarFlag();
 // (design_handoff_hangar_panels_strict_export) in components/hangar/*, in place
 // of the existing tab bodies in components/Hangar.tsx.
 //
-// OFF by default and opt-in per browser, the same mechanism as ?shared-scene:
-// the ported panels are visually complete but were never seen running (the
-// verification loop could not be closed in the session that migrated them), and
-// the tabs they replace are working UI. Turn them on with
+// One flag for the whole set so a single switch swaps every panel, and so
+// removing the experiment is deleting one branch per tab rather than hunting
+// flags.
 //
-//     http://localhost:5173/?newhangar
-//
-// One flag for the whole set so a single URL swaps every panel, and so removing
-// the experiment is deleting one branch per tab rather than hunting flags.
+// FULL ROLLOUT: these are now the default for every player. They shipped
+// opt-in first (?newhangar) while they were being verified panel by panel;
+// that verification is done, so the flag was inverted. ?no-newhangar is the
+// emergency opt-out — it reverts that one browser to the old tab bodies if a
+// client hits a problem in the field. Same mechanism as ?no-hangar above.
 function readNewHangarFlag(): boolean {
   if (typeof window === "undefined") return false;
-  return new URLSearchParams(window.location.search).has("newhangar");
+  const p = new URLSearchParams(window.location.search);
+  if (p.has("newhangar")) return true;          // explicit on (kept for symmetry)
+  return !p.has("no-newhangar");                // default ON
 }
 export const ENABLE_NEW_HANGAR_PANELS = readNewHangarFlag();
 

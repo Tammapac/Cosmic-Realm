@@ -54,3 +54,4 @@ backend/.env
 .env
 .env.local
 .claude/
+frontend/webbundle.tar.gz
