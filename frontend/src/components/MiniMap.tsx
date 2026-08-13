@@ -81,11 +81,11 @@ export function MiniMap() {
           >
             <div
               className="font-bold tracking-widest glow-cyan"
-              style={{ color: "#4ee2ff", fontSize: 12 }}
+              style={{ color: "#4ee2ff", fontSize: 14.2 }}
             >
               ◈ {zone?.name ?? player.zone.toUpperCase()} — ZONE MAP
             </div>
-            <GameButton style={{ fontSize: 10 }} onClick={() => { state.showFullZoneMap = false; bump(); }}>ESC ✕</GameButton>
+            <GameButton style={{ fontSize: 11.8 }} onClick={() => { state.showFullZoneMap = false; bump(); }}>ESC ✕</GameButton>
           </div>
           <svg width={fullSize} height={fullSize} onClick={handleFullClick} style={{ cursor: "crosshair", display: "block" }}>
             <defs>
@@ -187,7 +187,7 @@ export function MiniMap() {
           </svg>
           <div
             className="tracking-widest text-center mt-2"
-            style={{ color: "var(--text-mute)", fontSize: 9, letterSpacing: "0.18em" }}
+            style={{ color: "var(--text-mute)", fontSize: 10.6, letterSpacing: "0.18em" }}
           >
             CLICK MAP TO WARP · M TO CLOSE · +/− RESIZE MINIMAP
           </div>
@@ -229,7 +229,7 @@ export function MiniMap() {
           className="truncate"
           style={{
             fontFamily: "var(--font-display)",
-            fontSize: 10,
+            fontSize: 11.8,
             letterSpacing: "0.16em",
             color: "var(--accent-cyan)",
             textShadow: "0 0 6px rgba(247,168,50,0.5)",
@@ -242,7 +242,7 @@ export function MiniMap() {
           className="shrink-0"
           style={{
             fontFamily: "var(--font-display)",
-            fontSize: 10,
+            fontSize: 11.8,
             fontWeight: 700,
             letterSpacing: "0.1em",
             color: "var(--accent-cyan)",

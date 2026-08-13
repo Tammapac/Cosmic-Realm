@@ -16,7 +16,7 @@ export type ZoneId =
   | "danger1" | "danger2" | "danger3" | "danger4" | "danger5"
   | "debug";
 
-export type EnemyType = "scout" | "raider" | "destroyer" | "voidling" | "dread" | "sentinel" | "wraith" | "titan" | "overlord" | "interceptor" | "corvette" | "specter" | "phantom" | "juggernaut" | "leviathan";
+export type EnemyType = "scout" | "raider" | "destroyer" | "voidling" | "dread" | "sentinel" | "wraith" | "titan" | "overlord" | "interceptor" | "corvette" | "specter" | "phantom" | "juggernaut" | "leviathan" | "erix" | "angin" | "crobium" | "draug" | "knoton" | "maron" | "nabas" | "silikum" | "simonit";
 export type EnemyBehavior = "fast" | "chaser" | "tank" | "ranged";
 
 export type ShipClassId =
@@ -71,7 +71,27 @@ export type SkillId =
   | "ut-cargo" | "ut-thrust" | "ut-salvage" | "ut-droneops"
   | "ut-trade" | "ut-scan" | "ut-warp" | "ut-drone2"
   | "eng-coolant" | "eng-capacitor" | "eng-targeting" | "eng-warp-core"
-  | "eng-overdrive" | "eng-singularity";
+  | "eng-overdrive" | "eng-singularity"
+  // ── expansion: offense (16) ──
+  | "off-caliber" | "off-steady" | "off-weakpoint" | "off-firstblood"
+  | "off-coldbore" | "off-headhunter" | "off-sustain" | "off-cadence"
+  | "off-attrition" | "off-barrage" | "off-splash" | "off-shrapnel"
+  | "off-chain" | "off-saturation" | "off-render" | "off-apex"
+  // ── expansion: defense (15) ──
+  | "def-lattice" | "def-diffuse" | "def-overshield" | "def-aegis"
+  | "def-coolant" | "def-triage" | "def-secondwind" | "def-phoenix"
+  | "def-ablative" | "def-hardened" | "def-lastditch" | "def-immovable"
+  | "def-spines" | "def-backlash" | "def-nemesis"
+  // ── expansion: utility (15) ──
+  | "ut-hold" | "ut-broker" | "ut-contraband" | "ut-magnate"
+  | "ut-vector" | "ut-slipstream" | "ut-evasion" | "ut-phaserunner"
+  | "ut-swarm" | "ut-repairbay" | "ut-hivemind" | "ut-survey"
+  | "ut-refinery" | "ut-assay" | "ut-prospector"
+  // ── expansion: engineering (16) ──
+  | "eng-plasma" | "eng-fusion" | "eng-surge" | "eng-meltdown"
+  | "eng-radiator" | "eng-cryoflow" | "eng-heatsink" | "eng-runaway"
+  | "eng-regulator" | "eng-harmonics" | "eng-transfer" | "eng-resonance"
+  | "eng-equilibrium" | "eng-recursion" | "eng-eventhorizon" | "eng-zeropoint";
 
 export type ConsumableId =
   | "rocket-ammo"
@@ -166,6 +186,13 @@ export const SHIP_CLASSES: Record<ShipClassId, {
     slots: { weapon: 3, generator: 3, module: 2 },
   },
   obsidian: {
+  // refined materials
+  "refined-alloy":  { id: "refined-alloy",  name: "Refined Alloy",    basePrice: 120,  glyph: "H", color: "#dd8844", description: "High-grade alloy." },
+  "crystal-matrix": { id: "crystal-matrix", name: "Crystal Matrix",   basePrice: 340,  glyph: "*", color: "#dd88ff", description: "Crystalline lattice." },
+  "fusion-core":    { id: "fusion-core",    name: "Fusion Core",      basePrice: 480,  glyph: "O", color: "#88ffaa", description: "Miniaturized fusion reactor." },
+  "void-steel":     { id: "void-steel",     name: "Void Steel",       basePrice: 850,  glyph: "D", color: "#8866cc", description: "Ultra-hard void-forged steel." },
+  "nano-compound":  { id: "nano-compound",  name: "Nano-Compound",    basePrice: 220,  glyph: "o", color: "#66ddcc", description: "Self-assembling nano-material." },
+  "plasma-cell":    { id: "plasma-cell",     name: "Plasma Cell",      basePrice: 180,  glyph: "#", color: "#ff8866", description: "Concentrated plasma fuel cell." },
     id: "obsidian",
     hullMax: 220, shieldMax: 180, baseSpeed: 200, baseDamage: 22,
     cargoMax: 30, droneSlots: 3, price: 65000,
@@ -338,6 +365,62 @@ export const ENEMY_DEFS: Record<EnemyType, {
     color: "#e11d48", size: 40,
     loot: { resourceId: "dread", qty: 8 },
   },
+  erix: {
+    type: "erix", behavior: "chaser",
+    hullMax: 150, damage: 18, speed: 95, exp: 15, credits: 40, honor: 1,
+    color: "#5ce1ff", size: 14,
+    loot: { resourceId: "scrap", qty: 3 },
+  },
+  // ── New-generation NPCs (GLB models) — stats anchored to the tier of the
+  // map they spawn on so combat balance stays consistent.
+  angin: {
+    type: "angin", behavior: "ranged", // x-4, sentinel-tier
+    hullMax: 460, damage: 50, speed: 105, exp: 68, credits: 230, honor: 8,
+    color: "#7dd3fc", size: 15,
+    loot: { resourceId: "quantum", qty: 2 },
+  },
+  crobium: {
+    type: "crobium", behavior: "chaser", // x-4, phantom-tier
+    hullMax: 400, damage: 62, speed: 115, exp: 88, credits: 295, honor: 11,
+    color: "#84cc16", size: 14,
+    loot: { resourceId: "quantum", qty: 3 },
+  },
+  draug: {
+    type: "draug", behavior: "fast", // x-5, wraith-tier
+    hullMax: 340, damage: 62, speed: 155, exp: 85, credits: 290, honor: 10,
+    color: "#94a3b8", size: 13,
+    loot: { resourceId: "void", qty: 3 },
+  },
+  knoton: {
+    type: "knoton", behavior: "tank", // x-5, juggernaut-tier
+    hullMax: 1700, damage: 82, speed: 60, exp: 175, credits: 600, honor: 21,
+    color: "#fb923c", size: 30,
+    loot: { resourceId: "dread", qty: 5 },
+  },
+  maron: {
+    type: "maron", behavior: "tank", // 4-1, titan-tier
+    hullMax: 1450, damage: 72, speed: 85, exp: 145, credits: 480, honor: 17,
+    color: "#b45309", size: 28,
+    loot: { resourceId: "dread", qty: 4 },
+  },
+  nabas: {
+    type: "nabas", behavior: "ranged", // 4-2, dread-tier
+    hullMax: 800, damage: 58, speed: 90, exp: 105, credits: 360, honor: 12,
+    color: "#f472b6", size: 22,
+    loot: { resourceId: "dread", qty: 3 },
+  },
+  silikum: {
+    type: "silikum", behavior: "tank", // 4-3, overlord-tier
+    hullMax: 2100, damage: 92, speed: 72, exp: 240, credits: 780, honor: 29,
+    color: "#e2e8f0", size: 33,
+    loot: { resourceId: "dread", qty: 6 },
+  },
+  simonit: {
+    type: "simonit", behavior: "tank", // 4-4, leviathan-tier
+    hullMax: 3300, damage: 115, speed: 48, exp: 380, credits: 1150, honor: 43,
+    color: "#14b8a6", size: 38,
+    loot: { resourceId: "dread", qty: 7 },
+  },
 };
 
 // ── FACTION-SPECIFIC ENEMY MODS ──────────────────────────────────────────────
@@ -384,86 +467,86 @@ export const ZONES: Record<ZoneId, {
   // Earth Faction (1-1 to 1-5)
   alpha: {
     id: "alpha", name: "Alpha Sector", label: "1-1", faction: "earth",
-    enemyTier: 1, enemyTypes: ["scout", "raider", "interceptor"], unlockLevel: 1,
+    enemyTier: 1, enemyTypes: ["scout", "interceptor", "erix"], unlockLevel: 1,
   },
   nebula: {
     id: "nebula", name: "Veil Nebula", label: "1-2", faction: "earth",
-    enemyTier: 2, enemyTypes: ["raider", "destroyer", "corvette"], unlockLevel: 8,
+    enemyTier: 2, enemyTypes: ["raider", "corvette"], unlockLevel: 8,
   },
   crimson: {
     id: "crimson", name: "Crimson Reach", label: "1-3", faction: "earth",
-        enemyTier: 3, enemyTypes: ["destroyer", "sentinel", "specter"], unlockLevel: 16,
+        enemyTier: 3, enemyTypes: ["destroyer", "specter", "voidling"], unlockLevel: 16,
   },
   void: {
     id: "void", name: "The Void", label: "1-4", faction: "earth",
-        enemyTier: 4, enemyTypes: ["sentinel", "wraith", "phantom"], unlockLevel: 24,
+        enemyTier: 4, enemyTypes: ["sentinel", "phantom", "wraith"], unlockLevel: 24,
   },
   forge: {
     id: "forge", name: "Iron Forge", label: "1-5", faction: "earth",
-        enemyTier: 5, enemyTypes: ["wraith", "titan", "juggernaut"], unlockLevel: 32,
+        enemyTier: 5, enemyTypes: ["titan", "overlord", "juggernaut"], unlockLevel: 32,
   },
   // Mars Faction (2-1 to 2-5)
   corona: {
     id: "corona", name: "Mars Frontier", label: "2-1", faction: "mars",
-    enemyTier: 1, enemyTypes: ["scout", "raider", "interceptor"], unlockLevel: 1,
+    enemyTier: 1, enemyTypes: ["scout", "interceptor", "erix"], unlockLevel: 1,
   },
   fracture: {
     id: "fracture", name: "Dust Expanse", label: "2-2", faction: "mars",
-    enemyTier: 2, enemyTypes: ["raider", "destroyer", "corvette"], unlockLevel: 8,
+    enemyTier: 2, enemyTypes: ["raider", "corvette"], unlockLevel: 8,
   },
   abyss: {
     id: "abyss", name: "Red Reaches", label: "2-3", faction: "mars",
-        enemyTier: 3, enemyTypes: ["destroyer", "sentinel", "specter"], unlockLevel: 16,
+        enemyTier: 3, enemyTypes: ["destroyer", "specter", "voidling"], unlockLevel: 16,
   },
   marsdepth: {
     id: "marsdepth", name: "Mars Deep Field", label: "2-4", faction: "mars",
-        enemyTier: 4, enemyTypes: ["sentinel", "wraith", "phantom"], unlockLevel: 24,
+        enemyTier: 4, enemyTypes: ["sentinel", "phantom", "wraith"], unlockLevel: 24,
   },
   maelstrom: {
     id: "maelstrom", name: "The Maelstrom", label: "2-5", faction: "mars",
-        enemyTier: 5, enemyTypes: ["wraith", "titan", "juggernaut"], unlockLevel: 32,
+        enemyTier: 5, enemyTypes: ["titan", "overlord", "juggernaut"], unlockLevel: 32,
   },
   // Venus Faction (3-1 to 3-5)
   venus1: {
     id: "venus1", name: "Venus Cloud Gate", label: "3-1", faction: "venus",
-    enemyTier: 1, enemyTypes: ["scout", "raider", "interceptor"], unlockLevel: 1,
+    enemyTier: 1, enemyTypes: ["scout", "interceptor", "erix"], unlockLevel: 1,
   },
   venus2: {
     id: "venus2", name: "Sulphur Winds", label: "3-2", faction: "venus",
-    enemyTier: 2, enemyTypes: ["raider", "destroyer", "corvette"], unlockLevel: 8,
+    enemyTier: 2, enemyTypes: ["raider", "corvette"], unlockLevel: 8,
   },
   venus3: {
     id: "venus3", name: "Acidic Deep", label: "3-3", faction: "venus",
-        enemyTier: 3, enemyTypes: ["destroyer", "sentinel", "specter"], unlockLevel: 16,
+        enemyTier: 3, enemyTypes: ["destroyer", "specter", "voidling"], unlockLevel: 16,
   },
   venus4: {
     id: "venus4", name: "Pressure Core", label: "3-4", faction: "venus",
-        enemyTier: 4, enemyTypes: ["sentinel", "wraith", "phantom"], unlockLevel: 24,
+        enemyTier: 4, enemyTypes: ["sentinel", "phantom", "wraith"], unlockLevel: 24,
   },
   venus5: {
     id: "venus5", name: "Eye of Venus", label: "3-5", faction: "venus",
-        enemyTier: 5, enemyTypes: ["wraith", "titan", "juggernaut"], unlockLevel: 32,
+        enemyTier: 5, enemyTypes: ["titan", "overlord", "juggernaut"], unlockLevel: 32,
   },
   // Danger Zones (4-1 to 4-5)
   danger1: {
     id: "danger1", name: "Outer Rift", label: "4-1", faction: "earth",
-        enemyTier: 4, enemyTypes: ["sentinel", "wraith", "titan"], unlockLevel: 20,
+        enemyTier: 4, enemyTypes: ["nabas", "dread"], unlockLevel: 20,
   },
   danger2: {
     id: "danger2", name: "Dead Zone", label: "4-2", faction: "mars",
-        enemyTier: 5, enemyTypes: ["wraith", "titan", "dread"], unlockLevel: 26,
+        enemyTier: 5, enemyTypes: ["angin", "crobium"], unlockLevel: 26,
   },
   danger3: {
     id: "danger3", name: "Pirate Haven", label: "4-3", faction: "venus",
-        enemyTier: 5, enemyTypes: ["titan", "dread", "overlord", "leviathan"], unlockLevel: 30,
+        enemyTier: 5, enemyTypes: ["draug", "knoton"], unlockLevel: 30,
   },
   danger4: {
     id: "danger4", name: "Null Sector", label: "4-4", faction: "earth",
-        enemyTier: 6, enemyTypes: ["titan", "overlord", "juggernaut", "leviathan"], unlockLevel: 36,
+        enemyTier: 6, enemyTypes: ["leviathan", "silikum"], unlockLevel: 36,
   },
   danger5: {
     id: "danger5", name: "The Abyss Gate", label: "4-5", faction: "mars",
-        enemyTier: 7, enemyTypes: ["overlord", "leviathan", "juggernaut"], unlockLevel: 42,
+        enemyTier: 7, enemyTypes: ["maron", "simonit"], unlockLevel: 42,
   },
   debug: {
     id: "debug", name: "Debug Arena", label: "DBG", faction: "earth",
@@ -481,78 +564,123 @@ export const MODULE_DEFS: Record<string, {
   tier: number;
   weaponKind?: WeaponKind;
   firingPattern?: "standard" | "sniper" | "scatter" | "rail" | "mining";
-}> = {
-  // ── LASER WEAPONS ──────────────────────────────────────────────────────────
-  "wp-mining-1":   { id: "wp-mining-1",   slot: "weapon", weaponKind: "laser",  firingPattern: "mining", tier: 1, price: 2000,   stats: { damage: 3,  fireRate: 1.0, miningBonus: 1.0 } },
-  "wp-mining-2":   { id: "wp-mining-2",   slot: "weapon", weaponKind: "laser",  firingPattern: "mining", tier: 2, price: 15000,  stats: { damage: 5,  fireRate: 1.0, miningBonus: 2.0 } },
-  "wp-mining-3":   { id: "wp-mining-3",   slot: "weapon", weaponKind: "laser",  firingPattern: "mining", tier: 3, price: 50000,  stats: { damage: 8,  fireRate: 1.0, miningBonus: 3.5 } },
-  "wp-mining-4":   { id: "wp-mining-4",   slot: "weapon", weaponKind: "laser",  firingPattern: "mining", tier: 4, price: 120000, stats: { damage: 12, fireRate: 1.0, miningBonus: 5.0 } },
-  "wp-pulse-1":    { id: "wp-pulse-1",    slot: "weapon", weaponKind: "laser",  tier: 1, price: 5000,    stats: { damage: 6,  fireRate: 1.0 } },
-  "wp-pulse-2":    { id: "wp-pulse-2",    slot: "weapon", weaponKind: "laser",  tier: 2, price: 22000,   stats: { damage: 12, fireRate: 1.15 } },
-  "wp-pulse-3":    { id: "wp-pulse-3",    slot: "weapon", weaponKind: "laser",  tier: 3, price: 85000,   stats: { damage: 20, fireRate: 1.3, critChance: 0.03 } },
-  "wp-ion":        { id: "wp-ion",        slot: "weapon", weaponKind: "laser",  firingPattern: "sniper", tier: 2, price: 34000,   stats: { damage: 16, fireRate: 0.95 } },
-  "wp-scatter":    { id: "wp-scatter",    slot: "weapon", weaponKind: "laser",  firingPattern: "scatter", tier: 2, price: 38000,   stats: { damage: 18, fireRate: 1.4, aoeRadius: 8 } },
-  "wp-plasma":     { id: "wp-plasma",     slot: "weapon", weaponKind: "laser",  tier: 3, price: 78000,   stats: { damage: 22, fireRate: 0.85, critChance: 0.04 } },
-  "wp-phase":      { id: "wp-phase",      slot: "weapon", weaponKind: "laser",  firingPattern: "rail", tier: 3, price: 90000,   stats: { damage: 14, fireRate: 1.5, critChance: 0.08 } },
-  "wp-arc":        { id: "wp-arc",        slot: "weapon", weaponKind: "laser",  firingPattern: "rail", tier: 3, price: 110000,  stats: { damage: 18, fireRate: 1.1, aoeRadius: 14, critChance: 0.05 } },
-  "wp-sniper":     { id: "wp-sniper",     slot: "weapon", weaponKind: "laser",  firingPattern: "sniper", tier: 4, price: 180000,  stats: { damage: 48, fireRate: 0.45, critChance: 0.18 } },
-  "wp-solar":      { id: "wp-solar",      slot: "weapon", weaponKind: "laser",  tier: 4, price: 240000,  stats: { damage: 34, fireRate: 1.0, aoeRadius: 18, critChance: 0.06 } },
-  "wp-void-lance": { id: "wp-void-lance", slot: "weapon", weaponKind: "laser",  tier: 5, price: 550000,  stats: { damage: 44, fireRate: 1.3, aoeRadius: 22, critChance: 0.10 } },
-  "wp-singular":   { id: "wp-singular",   slot: "weapon", weaponKind: "laser",  tier: 5, price: 800000,  stats: { damage: 52, fireRate: 1.1, aoeRadius: 28, critChance: 0.12 } },
+}> = buildBackendCatalog();
 
+// Server-authoritative catalog. MUST match the stat formulas in
+// frontend/src/game/types.ts buildCatalog() exactly (client predicts, server
+// resolves — divergent stats desync damage). Stats-only shape.
+function buildBackendCatalog() {
+  const out: Record<string, {
+    id: string; slot: ModuleSlot; stats: ModuleStats; price: number; tier: number;
+    weaponKind?: WeaponKind; firingPattern?: "standard" | "sniper" | "scatter" | "rail" | "mining";
+  }> = {};
+  const round = (n: number, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
+  const laserPatterns: ("standard" | "rail" | "scatter" | "sniper")[] = ["standard", "rail", "scatter", "sniper"];
 
-  // ── NEW TIERED WEAPONS ──
-  "wp-sniper-0":   { id: "wp-sniper-0",   slot: "weapon", weaponKind: "laser",  firingPattern: "sniper",  tier: 1, price: 4000,    stats: { damage: 8,  fireRate: 0.6 } },
-  "wp-scatter-0":  { id: "wp-scatter-0",  slot: "weapon", weaponKind: "laser",  firingPattern: "scatter", tier: 1, price: 4500,    stats: { damage: 10, fireRate: 1.1, aoeRadius: 6 } },
-  "wp-rail-0":     { id: "wp-rail-0",     slot: "weapon", weaponKind: "laser",  firingPattern: "rail",    tier: 1, price: 4200,    stats: { damage: 9,  fireRate: 0.95 } },
-  "wp-sniper-1":   { id: "wp-sniper-1",   slot: "weapon", weaponKind: "laser",  firingPattern: "sniper",  tier: 2, price: 32000,   stats: { damage: 18, fireRate: 0.55, critChance: 0.08 } },
-  "wp-sniper-2":   { id: "wp-sniper-2",   slot: "weapon", weaponKind: "laser",  firingPattern: "sniper",  tier: 3, price: 95000,   stats: { damage: 32, fireRate: 0.5, critChance: 0.12 } },
-  "wp-scatter-2":  { id: "wp-scatter-2",  slot: "weapon", weaponKind: "laser",  firingPattern: "scatter", tier: 3, price: 82000,   stats: { damage: 28, fireRate: 1.2, aoeRadius: 10 } },
-  "wp-scatter-3":  { id: "wp-scatter-3",  slot: "weapon", weaponKind: "laser",  firingPattern: "scatter", tier: 4, price: 200000,  stats: { damage: 40, fireRate: 1.1, aoeRadius: 14, critChance: 0.06 } },
-  "wp-rail-1":     { id: "wp-rail-1",     slot: "weapon", weaponKind: "laser",  firingPattern: "rail",    tier: 2, price: 35000,   stats: { damage: 17, fireRate: 0.9 } },
-  "wp-rail-2":     { id: "wp-rail-2",     slot: "weapon", weaponKind: "laser",  firingPattern: "rail",    tier: 3, price: 88000,   stats: { damage: 25, fireRate: 0.85, critChance: 0.04 } },
-  "wp-rail-3":     { id: "wp-rail-3",     slot: "weapon", weaponKind: "laser",  firingPattern: "rail",    tier: 4, price: 220000,  stats: { damage: 42, fireRate: 0.8, critChance: 0.08 } },
+  for (let t = 0; t <= 10; t++) {
+    const stats: ModuleStats = { damage: round(5 + t * 4.7), fireRate: round(0.9 + t * 0.045, 2) };
+    if (t >= 3) stats.critChance = round((t - 2) * 0.015, 3);
+    if (t >= 4) stats.aoeRadius = round(6 + (t - 4) * 3);
+    out[`wp-laser-t${t}`] = {
+      id: `wp-laser-t${t}`, slot: "weapon", weaponKind: "laser",
+      firingPattern: laserPatterns[t % laserPatterns.length],
+      tier: t, price: t === 0 ? 0 : Math.round(3000 * 1.9 ** t), stats,
+    };
+  }
+  for (let t = 0; t <= 5; t++) {
+    const stats: ModuleStats = {
+      damage: round(22 + t * 14), fireRate: round(0.55 - t * 0.04, 2), aoeRadius: round(18 + t * 6),
+    };
+    if (t >= 2) stats.critChance = round((t - 1) * 0.02, 3);
+    out[`wp-rocket-t${t}`] = {
+      id: `wp-rocket-t${t}`, slot: "weapon", weaponKind: "rocket",
+      tier: t, price: t === 0 ? 0 : Math.round(18000 * 2.2 ** t), stats,
+    };
+  }
+  // SHIELD GENERATORS 0-5 (must match frontend gn-shield-t* formulas)
+  for (let t = 0; t <= 5; t++) {
+    out[`gn-shield-t${t}`] = {
+      id: `gn-shield-t${t}`, slot: "generator", tier: t, price: t === 0 ? 0 : Math.round(2500 * 2.6 ** t),
+      stats: {
+        shieldMax: round(30 + t * 95), shieldRegen: round(2 + t * 4.6),
+        shieldAbsorb: round(0.05 + t * 0.05, 2),
+      },
+    };
+  }
+  // SPEED GENERATORS 0-5 (must match frontend gn-speed-t* formulas)
+  for (let t = 0; t <= 5; t++) {
+    out[`gn-speed-t${t}`] = {
+      id: `gn-speed-t${t}`, slot: "generator", tier: t, price: t === 0 ? 0 : Math.round(2800 * 2.6 ** t),
+      stats: {
+        speed: round(30 + t * 36), shieldMax: round(20 + t * 40),
+        shieldRegen: round(2 + t * 1.6), shieldAbsorb: round(0.04 + t * 0.02, 2),
+      },
+    };
+  }
+  // MODULES: 9 types x tier 0-4 (must match frontend modRoles stat formulas)
+  const modStat: ((t: number) => ModuleStats)[] = [
+    (t) => ({ speed: round(25 + t * 22) }),
+    (t) => ({ hullMax: round(30 + t * 45), damageReduction: round(0.03 + t * 0.03, 3) }),
+    (t) => ({ critChance: round(0.04 + t * 0.035, 3) }),
+    (t) => ({ shieldMax: round(40 + t * 55), shieldRegen: round(1 + t * 2) }),
+    (t) => ({ cargoBonus: round(0.15 + t * 0.15, 2) }),
+    (t) => ({ lootBonus: t >= 2 ? Math.floor((t - 1) / 1.5) + 1 : 1 }),
+    (t) => ({ ammoCapacity: round(8 + t * 8) }),
+    (t) => ({ fireRate: round(1.05 + t * 0.06, 2), damage: round(4 + t * 4) }),
+    (t) => ({ speed: round(15 + t * 12), critChance: round(0.02 + t * 0.015, 3), damageReduction: round(0.02 + t * 0.02, 3), shieldMax: round(20 + t * 30) }),
+  ];
+  modStat.forEach((fn, ty) => {
+    for (let t = 0; t <= 4; t++) {
+      out[`md${ty}-t${t}`] = {
+        id: `md${ty}-t${t}`, slot: "module", tier: t, price: t === 0 ? 1500 : Math.round(3000 * 3 ** t),
+        stats: fn(t),
+      };
+    }
+  });
+  const miningPrice = [2000, 15000, 50000, 120000];
+  for (let t = 1; t <= 4; t++) {
+    out[`wp-mining-${t}`] = {
+      id: `wp-mining-${t}`, slot: "weapon", weaponKind: "laser", firingPattern: "mining",
+      tier: t, price: miningPrice[t - 1],
+      stats: { damage: 3 + t, fireRate: 1.0, miningBonus: t * 1.2 },
+    };
+  }
+  return out;
+}
 
-  // ── ROCKET WEAPONS ─────────────────────────────────────────────────────────
-  "wp-rocket-1":   { id: "wp-rocket-1",   slot: "weapon", weaponKind: "rocket", tier: 2, price: 55000,   stats: { damage: 30, fireRate: 0.5,  aoeRadius: 20 } },
-  "wp-rocket-2":   { id: "wp-rocket-2",   slot: "weapon", weaponKind: "rocket", tier: 3, price: 140000,  stats: { damage: 55, fireRate: 0.4,  aoeRadius: 30, critChance: 0.04 } },
-  "wp-torpedo":    { id: "wp-torpedo",    slot: "weapon", weaponKind: "rocket", tier: 4, price: 380000,  stats: { damage: 90, fireRate: 0.3,  aoeRadius: 45, critChance: 0.08 } },
-  "wp-hellfire":   { id: "wp-hellfire",   slot: "weapon", weaponKind: "rocket", tier: 4, price: 420000,  stats: { damage: 35, fireRate: 0.85, aoeRadius: 18, critChance: 0.06 } },
-
-  // ── GENERATORS ─────────────────────────────────────────────────────────────
-  "gn-core-1":     { id: "gn-core-1",     slot: "generator", tier: 1, price: 2500,    stats: { shieldMax: 30,  shieldRegen: 2, shieldAbsorb: 0.05 } },
-  "gn-core-2":     { id: "gn-core-2",     slot: "generator", tier: 2, price: 12000,   stats: { shieldMax: 80,  shieldRegen: 5, shieldAbsorb: 0.10 } },
-  "gn-sprint":     { id: "gn-sprint",     slot: "generator", tier: 2, price: 16000,   stats: { speed: 45, shieldMax: 30, shieldRegen: 2, shieldAbsorb: 0.05 } },
-  "gn-aegis":      { id: "gn-aegis",      slot: "generator", tier: 3, price: 45000,   stats: { shieldMax: 140, shieldRegen: 7, shieldAbsorb: 0.15 } },
-  "gn-fortify":    { id: "gn-fortify",    slot: "generator", tier: 3, price: 45000,   stats: { shieldMax: 160, shieldRegen: 6, shieldAbsorb: 0.20 } },
-  "gn-hyper":      { id: "gn-hyper",      slot: "generator", tier: 3, price: 60000,   stats: { speed: 90, shieldMax: 50, shieldRegen: 3, shieldAbsorb: 0.08 } },
-  "gn-prism":      { id: "gn-prism",      slot: "generator", tier: 3, price: 55000,   stats: { speed: 60, shieldMax: 100, shieldRegen: 5, shieldAbsorb: 0.10 } },
-  "gn-quantum":    { id: "gn-quantum",    slot: "generator", tier: 4, price: 130000,  stats: { shieldMax: 280, shieldRegen: 14, shieldAbsorb: 0.25 } },
-  "gn-warp-drive": { id: "gn-warp-drive", slot: "generator", tier: 4, price: 150000,  stats: { speed: 130, shieldMax: 100, shieldRegen: 6, shieldAbsorb: 0.12 } },
-  "gn-leviathan":  { id: "gn-leviathan",  slot: "generator", tier: 5, price: 475000,  stats: { shieldMax: 500, shieldRegen: 25, shieldAbsorb: 0.30 } },
-  "gn-phase-drive":{ id: "gn-phase-drive",slot: "generator", tier: 5, price: 450000,  stats: { speed: 200, shieldMax: 180, shieldRegen: 10, shieldAbsorb: 0.15 } },
-
-  // ── UTILITY MODULES ────────────────────────────────────────────────────────
-  "md-thrust-1":   { id: "md-thrust-1",   slot: "module", tier: 1, price: 3000,    stats: { speed: 30 } },
-  "md-thrust-2":   { id: "md-thrust-2",   slot: "module", tier: 2, price: 14000,   stats: { speed: 70 } },
-  "md-afterburn":  { id: "md-afterburn",  slot: "module", tier: 3, price: 47500,   stats: { speed: 110 } },
-  "md-cargo":      { id: "md-cargo",      slot: "module", tier: 2, price: 16000,   stats: { cargoBonus: 0.25 } },
-  "md-cargo-2":    { id: "md-cargo-2",    slot: "module", tier: 3, price: 40000,   stats: { cargoBonus: 0.50 } },
-  "md-ammo-bay":   { id: "md-ammo-bay",   slot: "module", tier: 2, price: 17500,   stats: { ammoCapacity: 10 } },
-  "md-ammo-bay-2": { id: "md-ammo-bay-2", slot: "module", tier: 3, price: 47500,   stats: { ammoCapacity: 25 } },
-  "md-targeter":   { id: "md-targeter",   slot: "module", tier: 3, price: 40000,   stats: { critChance: 0.10 } },
-  "md-targeter-2": { id: "md-targeter-2", slot: "module", tier: 4, price: 110000,  stats: { critChance: 0.18 } },
-  "md-plating":    { id: "md-plating",    slot: "module", tier: 3, price: 47500,   stats: { damageReduction: 0.08, hullMax: 40 } },
-  "md-heavy-armor":{ id: "md-heavy-armor",slot: "module", tier: 4, price: 130000,  stats: { damageReduction: 0.15, hullMax: 80 } },
-  "md-shield-boost":{ id: "md-shield-boost", slot: "module", tier: 3, price: 42500, stats: { shieldMax: 120, shieldRegen: 3 } },
-  "md-scavenger":  { id: "md-scavenger",  slot: "module", tier: 3, price: 37500,   stats: { lootBonus: 1 } },
-  "md-loot-2":     { id: "md-loot-2",     slot: "module", tier: 4, price: 100000,  stats: { lootBonus: 2 } },
-  "md-overcharge": { id: "md-overcharge", slot: "module", tier: 4, price: 140000,  stats: { damage: 14, fireRate: 1.1 } },
-  "md-overclock":  { id: "md-overclock",  slot: "module", tier: 4, price: 150000,  stats: { fireRate: 1.25, damage: 8, hullMax: -30 } },
-  "md-nano-rep":   { id: "md-nano-rep",   slot: "module", tier: 2, price: 22500,   stats: { shieldRegen: 5, hullMax: 30 } },
-  "md-voidframe":  { id: "md-voidframe",  slot: "module", tier: 5, price: 450000,  stats: { speed: 60, damageReduction: 0.12, shieldMax: 120, critChance: 0.05 } },
-  "md-singularity":{ id: "md-singularity",slot: "module", tier: 5, price: 600000,  stats: { damage: 20, speed: 50, shieldMax: 150, shieldRegen: 8, critChance: 0.08, damageReduction: 0.10 } },
+// Legacy id -> new tier id (mirrors frontend LEGACY_ITEM_ALIAS). Old saved
+// inventories / equipped slots resolve through this so nothing desyncs.
+export const LEGACY_ITEM_ALIAS: Record<string, string> = {
+  "wp-sniper-0": "wp-laser-t0", "wp-scatter-0": "wp-laser-t0", "wp-rail-0": "wp-laser-t1",
+  "wp-pulse-1": "wp-laser-t1", "wp-pulse-2": "wp-laser-t3", "wp-pulse-3": "wp-laser-t5",
+  "wp-ion": "wp-laser-t3", "wp-scatter": "wp-laser-t3", "wp-sniper-1": "wp-laser-t3",
+  "wp-rail-1": "wp-laser-t3", "wp-plasma": "wp-laser-t5", "wp-phase": "wp-laser-t5",
+  "wp-arc": "wp-laser-t5", "wp-sniper-2": "wp-laser-t5", "wp-scatter-2": "wp-laser-t5",
+  "wp-rail-2": "wp-laser-t5", "wp-sniper": "wp-laser-t7", "wp-solar": "wp-laser-t7",
+  "wp-scatter-3": "wp-laser-t7", "wp-rail-3": "wp-laser-t7",
+  "wp-void-lance": "wp-laser-t9", "wp-singular": "wp-laser-t10",
+  "wp-rocket-1": "wp-rocket-t1", "wp-rocket-2": "wp-rocket-t2",
+  "wp-torpedo": "wp-rocket-t3", "wp-hellfire": "wp-rocket-t3",
+  "gn-core-1": "gn-shield-t1", "gn-core-2": "gn-shield-t2",
+  "gn-aegis": "gn-shield-t3", "gn-fortify": "gn-shield-t3", "gn-prism": "gn-shield-t3",
+  "gn-quantum": "gn-shield-t4", "gn-leviathan": "gn-shield-t5",
+  "gn-sprint": "gn-speed-t2", "gn-hyper": "gn-speed-t3",
+  "gn-warp-drive": "gn-speed-t4", "gn-phase-drive": "gn-speed-t5",
+  "gn-t1": "gn-shield-t1", "gn-t2": "gn-shield-t2", "gn-t3": "gn-shield-t3",
+  "gn-t4": "gn-shield-t4", "gn-t5": "gn-shield-t5",
+  "md-thrust-1": "md0-t1", "md-thrust-2": "md0-t3", "md-afterburn": "md0-t4",
+  "md-plating": "md1-t2", "md-heavy-armor": "md1-t4",
+  "md-targeter": "md2-t2", "md-targeter-2": "md2-t4", "md-shield-boost": "md3-t3",
+  "md-cargo": "md4-t1", "md-cargo-2": "md4-t3", "md-scavenger": "md5-t2", "md-loot-2": "md5-t4",
+  "md-ammo-bay": "md6-t1", "md-ammo-bay-2": "md6-t3",
+  "md-overcharge": "md7-t3", "md-overclock": "md7-t4", "md-nano-rep": "md3-t1",
+  "md-voidframe": "md8-t3", "md-singularity": "md8-t4",
+  "md-t1": "md8-t1", "md-t2": "md8-t2", "md-t3": "md8-t3", "md-t4": "md8-t4", "md-t5": "md8-t4",
 };
+export function resolveItemId(id: string): string {
+  if (MODULE_DEFS[id]) return id;
+  return LEGACY_ITEM_ALIAS[id] ?? id;
+}
 
 // ── ROCKET AMMO TYPE DEFINITIONS ─────────────────────────────────────────────
 
@@ -654,6 +782,76 @@ export const SKILL_NODES: {
   { id: "eng-warp-core",   branch: "engineering", maxRank: 3, cost: 2, requires: "eng-targeting" },
   { id: "eng-overdrive",   branch: "engineering", maxRank: 3, cost: 2, requires: "eng-warp-core" },
   { id: "eng-singularity", branch: "engineering", maxRank: 1, cost: 3, requires: "eng-overdrive" },
+
+  // Offense (expansion)
+  { id: "off-caliber",    branch: "offense",  maxRank: 5, cost: 1, requires: "off-power" },
+  { id: "off-steady",     branch: "offense",  maxRank: 5, cost: 1, requires: "off-caliber" },
+  { id: "off-weakpoint",  branch: "offense",  maxRank: 5, cost: 1, requires: "off-steady" },
+  { id: "off-firstblood", branch: "offense",  maxRank: 3, cost: 2, requires: "off-weakpoint" },
+  { id: "off-coldbore",   branch: "offense",  maxRank: 3, cost: 2, requires: "off-firstblood" },
+  { id: "off-headhunter", branch: "offense",  maxRank: 1, cost: 3, requires: "off-coldbore" },
+  { id: "off-sustain",    branch: "offense",  maxRank: 5, cost: 1, requires: "off-rapid" },
+  { id: "off-cadence",    branch: "offense",  maxRank: 3, cost: 2, requires: "off-sustain" },
+  { id: "off-attrition",  branch: "offense",  maxRank: 3, cost: 2, requires: "off-cadence" },
+  { id: "off-barrage",    branch: "offense",  maxRank: 1, cost: 3, requires: "off-attrition" },
+  { id: "off-splash",     branch: "offense",  maxRank: 5, cost: 1, requires: "off-pierce" },
+  { id: "off-shrapnel",   branch: "offense",  maxRank: 3, cost: 2, requires: "off-splash" },
+  { id: "off-chain",      branch: "offense",  maxRank: 3, cost: 2, requires: "off-shrapnel" },
+  { id: "off-saturation", branch: "offense",  maxRank: 1, cost: 3, requires: "off-chain" },
+  { id: "off-render",     branch: "offense",  maxRank: 3, cost: 2, requires: "off-execute" },
+  { id: "off-apex",       branch: "offense",  maxRank: 1, cost: 3, requires: "off-render" },
+
+  // Defense (expansion)
+  { id: "def-lattice",    branch: "defense",  maxRank: 5, cost: 1, requires: "def-shield" },
+  { id: "def-diffuse",    branch: "defense",  maxRank: 5, cost: 1, requires: "def-lattice" },
+  { id: "def-overshield", branch: "defense",  maxRank: 3, cost: 2, requires: "def-diffuse" },
+  { id: "def-aegis",      branch: "defense",  maxRank: 1, cost: 3, requires: "def-overshield" },
+  { id: "def-coolant",    branch: "defense",  maxRank: 5, cost: 1, requires: "def-regen" },
+  { id: "def-triage",     branch: "defense",  maxRank: 3, cost: 2, requires: "def-coolant" },
+  { id: "def-secondwind", branch: "defense",  maxRank: 3, cost: 2, requires: "def-triage" },
+  { id: "def-phoenix",    branch: "defense",  maxRank: 1, cost: 3, requires: "def-secondwind" },
+  { id: "def-ablative",   branch: "defense",  maxRank: 5, cost: 1, requires: "def-armor" },
+  { id: "def-hardened",   branch: "defense",  maxRank: 5, cost: 1, requires: "def-ablative" },
+  { id: "def-lastditch",  branch: "defense",  maxRank: 3, cost: 2, requires: "def-hardened" },
+  { id: "def-immovable",  branch: "defense",  maxRank: 1, cost: 3, requires: "def-lastditch" },
+  { id: "def-spines",     branch: "defense",  maxRank: 3, cost: 2, requires: "def-reflect" },
+  { id: "def-backlash",   branch: "defense",  maxRank: 3, cost: 2, requires: "def-spines" },
+  { id: "def-nemesis",    branch: "defense",  maxRank: 1, cost: 3, requires: "def-backlash" },
+
+  // Utility (expansion)
+  { id: "ut-hold",        branch: "utility",  maxRank: 5, cost: 1, requires: "ut-cargo" },
+  { id: "ut-broker",      branch: "utility",  maxRank: 5, cost: 1, requires: "ut-trade" },
+  { id: "ut-contraband",  branch: "utility",  maxRank: 3, cost: 2, requires: "ut-broker" },
+  { id: "ut-magnate",     branch: "utility",  maxRank: 1, cost: 3, requires: "ut-contraband" },
+  { id: "ut-vector",      branch: "utility",  maxRank: 5, cost: 1, requires: "ut-thrust" },
+  { id: "ut-slipstream",  branch: "utility",  maxRank: 3, cost: 2, requires: "ut-vector" },
+  { id: "ut-evasion",     branch: "utility",  maxRank: 3, cost: 2, requires: "ut-slipstream" },
+  { id: "ut-phaserunner", branch: "utility",  maxRank: 1, cost: 3, requires: "ut-evasion" },
+  { id: "ut-swarm",       branch: "utility",  maxRank: 5, cost: 1, requires: "ut-drone2" },
+  { id: "ut-repairbay",   branch: "utility",  maxRank: 3, cost: 2, requires: "ut-swarm" },
+  { id: "ut-hivemind",    branch: "utility",  maxRank: 1, cost: 3, requires: "ut-repairbay" },
+  { id: "ut-survey",      branch: "utility",  maxRank: 5, cost: 1, requires: "ut-scan" },
+  { id: "ut-refinery",    branch: "utility",  maxRank: 5, cost: 1, requires: "ut-survey" },
+  { id: "ut-assay",       branch: "utility",  maxRank: 3, cost: 2, requires: "ut-refinery" },
+  { id: "ut-prospector",  branch: "utility",  maxRank: 1, cost: 3, requires: "ut-assay" },
+
+  // Engineering (expansion)
+  { id: "eng-plasma",       branch: "engineering", maxRank: 5, cost: 1, requires: "eng-capacitor" },
+  { id: "eng-fusion",       branch: "engineering", maxRank: 5, cost: 1, requires: "eng-plasma" },
+  { id: "eng-surge",        branch: "engineering", maxRank: 3, cost: 2, requires: "eng-fusion" },
+  { id: "eng-meltdown",     branch: "engineering", maxRank: 1, cost: 3, requires: "eng-surge" },
+  { id: "eng-radiator",     branch: "engineering", maxRank: 5, cost: 1, requires: "eng-coolant" },
+  { id: "eng-cryoflow",     branch: "engineering", maxRank: 5, cost: 1, requires: "eng-radiator" },
+  { id: "eng-heatsink",     branch: "engineering", maxRank: 3, cost: 2, requires: "eng-cryoflow" },
+  { id: "eng-runaway",      branch: "engineering", maxRank: 1, cost: 3, requires: "eng-heatsink" },
+  { id: "eng-regulator",    branch: "engineering", maxRank: 5, cost: 1, requires: "eng-capacitor" },
+  { id: "eng-harmonics",    branch: "engineering", maxRank: 5, cost: 1, requires: "eng-regulator" },
+  { id: "eng-transfer",     branch: "engineering", maxRank: 3, cost: 2, requires: "eng-harmonics" },
+  { id: "eng-resonance",    branch: "engineering", maxRank: 3, cost: 2, requires: "eng-transfer" },
+  { id: "eng-equilibrium",  branch: "engineering", maxRank: 1, cost: 3, requires: "eng-resonance" },
+  { id: "eng-recursion",    branch: "engineering", maxRank: 3, cost: 2, requires: "eng-overdrive" },
+  { id: "eng-eventhorizon", branch: "engineering", maxRank: 1, cost: 3, requires: "eng-singularity" },
+  { id: "eng-zeropoint",    branch: "engineering", maxRank: 1, cost: 3, requires: "eng-eventhorizon" },
 ];
 
 // ── DRONE DEFINITIONS (5) ────────────────────────────────────────────────────
@@ -700,6 +898,7 @@ export const STATIONS: {
   prices: Partial<Record<ResourceId, number>>;
   controlledBy: FactionId;
 }[] = [
+] = [
   // alpha
   { id: "helix", name: "Helix Station", pos: { x: 0, y: 0 }, zone: "alpha", kind: "hub",
     controlledBy: "earth",
@@ -993,13 +1192,6 @@ export const RESOURCES: Record<ResourceId, {
   iridium:         { id: "iridium",         name: "Iridium Ore",      basePrice: 380 },
   sulfur:          { id: "sulfur",          name: "Sulfur Deposit",   basePrice: 30 },
   obsidian:        { id: "obsidian",        name: "Void Obsidian",    basePrice: 165 },
-  // refined materials (factory output)
-  "refined-alloy":  { id: "refined-alloy",  name: "Refined Alloy",    basePrice: 120 },
-  "crystal-matrix": { id: "crystal-matrix", name: "Crystal Matrix",   basePrice: 340 },
-  "fusion-core":    { id: "fusion-core",    name: "Fusion Core",      basePrice: 480 },
-  "void-steel":     { id: "void-steel",     name: "Void Steel",       basePrice: 850 },
-  "nano-compound":  { id: "nano-compound",  name: "Nano-Compound",    basePrice: 220 },
-  "plasma-cell":    { id: "plasma-cell",     name: "Plasma Cell",      basePrice: 180 },
 };
 
 
@@ -1039,50 +1231,90 @@ export function pickAsteroidYield(zone: string): ResourceId {
   return pool[pool.length - 1].resourceId;
 }
 
-// ── QUEST POOL (30) ──────────────────────────────────────────────────────────
-
+// ── QUEST POOL ────────────────────────────────────────────────────────────
+// Kept in sync with frontend/src/game/types.ts QUEST_POOL by id+zone+killType.
+// The client owns quest *assignment*; this copy exists ONLY so the server can
+// validate a player's stored activeQuests against reality on load (see
+// validateActiveQuests below) and strip/repair anything that no longer
+// matches a live pool entry — e.g. an id whose kill zone changed, or an id
+// that was removed from the pool entirely (stale save data).
 export const QUEST_POOL: {
   id: string;
   zone: ZoneId;
+  targetZone?: ZoneId;
   killType: EnemyType;
   killCount: number;
   rewardCredits: number;
   rewardExp: number;
   rewardHonor: number;
 }[] = [
-  { id: "q-alpha-scouts",         zone: "alpha",     killType: "scout",     killCount: 5,  rewardCredits: 350,     rewardExp: 80,     rewardHonor: 5 },
-  { id: "q-alpha-raiders",        zone: "alpha",     killType: "raider",    killCount: 3,  rewardCredits: 600,     rewardExp: 140,    rewardHonor: 10 },
-  { id: "q-nebula-raiders",       zone: "nebula",    killType: "raider",    killCount: 6,  rewardCredits: 1400,    rewardExp: 320,    rewardHonor: 18 },
-  { id: "q-nebula-destroyers",    zone: "nebula",    killType: "destroyer", killCount: 3,  rewardCredits: 2400,    rewardExp: 600,    rewardHonor: 30 },
-  { id: "q-crimson-destroyers",   zone: "crimson",   killType: "destroyer", killCount: 5,  rewardCredits: 4000,    rewardExp: 1100,   rewardHonor: 50 },
-  { id: "q-crimson-dread",        zone: "crimson",   killType: "dread",     killCount: 1,  rewardCredits: 6000,    rewardExp: 1800,   rewardHonor: 100 },
-  { id: "q-void-voidlings",       zone: "void",      killType: "voidling",  killCount: 6,  rewardCredits: 9000,    rewardExp: 2600,   rewardHonor: 140 },
-  { id: "q-void-dread",           zone: "void",      killType: "dread",     killCount: 2,  rewardCredits: 18000,   rewardExp: 5000,   rewardHonor: 280 },
-  { id: "q-forge-destroyers",     zone: "forge",     killType: "destroyer", killCount: 8,  rewardCredits: 32000,   rewardExp: 9500,   rewardHonor: 500 },
-  { id: "q-forge-voidlings",      zone: "forge",     killType: "voidling",  killCount: 5,  rewardCredits: 55000,   rewardExp: 16000,  rewardHonor: 850 },
-  { id: "q-corona-voidlings",     zone: "corona",    killType: "voidling",  killCount: 7,  rewardCredits: 90000,   rewardExp: 26000,  rewardHonor: 1400 },
-  { id: "q-corona-dread",         zone: "corona",    killType: "dread",     killCount: 2,  rewardCredits: 150000,  rewardExp: 44000,  rewardHonor: 2300 },
-  { id: "q-fracture-voidlings",   zone: "fracture",  killType: "voidling",  killCount: 9,  rewardCredits: 240000,  rewardExp: 70000,  rewardHonor: 3800 },
-  { id: "q-fracture-dread",       zone: "fracture",  killType: "dread",     killCount: 3,  rewardCredits: 400000,  rewardExp: 115000, rewardHonor: 6000 },
-  { id: "q-abyss-dread",          zone: "abyss",     killType: "dread",     killCount: 4,  rewardCredits: 650000,  rewardExp: 190000, rewardHonor: 10000 },
-  { id: "q-abyss-apex",           zone: "abyss",     killType: "dread",     killCount: 6,  rewardCredits: 1100000, rewardExp: 320000, rewardHonor: 17000 },
-  // Mars deep zones
-  { id: "q-marsdepth-voidlings",  zone: "marsdepth", killType: "voidling",  killCount: 6,  rewardCredits: 9500,    rewardExp: 2800,   rewardHonor: 150 },
-  { id: "q-marsdepth-dread",      zone: "marsdepth", killType: "dread",     killCount: 2,  rewardCredits: 19000,   rewardExp: 5500,   rewardHonor: 300 },
-  { id: "q-maelstrom-dread",      zone: "maelstrom", killType: "dread",     killCount: 4,  rewardCredits: 34000,   rewardExp: 10000,  rewardHonor: 550 },
-  { id: "q-maelstrom-apex",       zone: "maelstrom", killType: "dread",     killCount: 6,  rewardCredits: 58000,   rewardExp: 17000,  rewardHonor: 920 },
-  // Venus zones
-  { id: "q-venus1-scouts",        zone: "venus1",    killType: "scout",     killCount: 5,  rewardCredits: 380,     rewardExp: 90,     rewardHonor: 6 },
-  { id: "q-venus1-raiders",       zone: "venus1",    killType: "raider",    killCount: 3,  rewardCredits: 650,     rewardExp: 150,    rewardHonor: 11 },
-  { id: "q-venus2-raiders",       zone: "venus2",    killType: "raider",    killCount: 6,  rewardCredits: 1500,    rewardExp: 340,    rewardHonor: 19 },
-  { id: "q-venus2-destroyers",    zone: "venus2",    killType: "destroyer", killCount: 3,  rewardCredits: 2600,    rewardExp: 650,    rewardHonor: 32 },
-  { id: "q-venus3-destroyers",    zone: "venus3",    killType: "destroyer", killCount: 5,  rewardCredits: 4200,    rewardExp: 1200,   rewardHonor: 55 },
-  { id: "q-venus3-dread",         zone: "venus3",    killType: "dread",     killCount: 1,  rewardCredits: 6500,    rewardExp: 1900,   rewardHonor: 110 },
-  { id: "q-venus4-voidlings",     zone: "venus4",    killType: "voidling",  killCount: 6,  rewardCredits: 9500,    rewardExp: 2800,   rewardHonor: 150 },
-  { id: "q-venus4-dread",         zone: "venus4",    killType: "dread",     killCount: 2,  rewardCredits: 19000,   rewardExp: 5500,   rewardHonor: 300 },
-  { id: "q-venus5-dread",         zone: "venus5",    killType: "dread",     killCount: 4,  rewardCredits: 34000,   rewardExp: 10000,  rewardHonor: 550 },
-  { id: "q-venus5-apex",          zone: "venus5",    killType: "dread",     killCount: 6,  rewardCredits: 58000,   rewardExp: 17000,  rewardHonor: 920 },
+  { id: "q-t1-scouts",        zone: "alpha",     killType: "scout",     killCount: 5, rewardCredits: 150,   rewardExp: 40,    rewardHonor: 2 },
+  { id: "q-t1-raiders",       zone: "alpha",     killType: "raider",    killCount: 3, rewardCredits: 250,   rewardExp: 60,    rewardHonor: 4 },
+  { id: "q-t1-scouts2",       zone: "corona",    killType: "scout",     killCount: 8, rewardCredits: 200,   rewardExp: 50,    rewardHonor: 3 },
+  { id: "q-t1-raiders2",      zone: "venus1",    killType: "raider",    killCount: 4, rewardCredits: 300,   rewardExp: 70,    rewardHonor: 5 },
+
+  { id: "q-t2-raiders",       zone: "nebula",    killType: "raider",    killCount: 6, rewardCredits: 500,   rewardExp: 120,   rewardHonor: 8 },
+  { id: "q-t2-destroyers",    zone: "nebula",    killType: "destroyer", killCount: 3, rewardCredits: 800,   rewardExp: 200,   rewardHonor: 12 },
+  { id: "q-t2-raiders2",      zone: "fracture",  killType: "raider",    killCount: 8, rewardCredits: 600,   rewardExp: 150,   rewardHonor: 10 },
+  { id: "q-t2-destroyers2",   zone: "venus2",    killType: "destroyer", killCount: 4, rewardCredits: 900,   rewardExp: 220,   rewardHonor: 14 },
+
+  { id: "q-t3-destroyers",    zone: "crimson",   killType: "destroyer", killCount: 5, rewardCredits: 1200,  rewardExp: 350,   rewardHonor: 18 },
+  { id: "q-t3-sentinels",     zone: "crimson",   killType: "sentinel",  killCount: 4, rewardCredits: 1500,  rewardExp: 400,   rewardHonor: 22 },
+  { id: "q-t3-dread",         zone: "crimson",   killType: "dread",     killCount: 1, rewardCredits: 2000,  rewardExp: 500,   rewardHonor: 30 },
+  { id: "q-t3-sentinels2",    zone: "abyss",     killType: "sentinel",  killCount: 5, rewardCredits: 1800,  rewardExp: 450,   rewardHonor: 25 },
+  { id: "q-t3-destroyers2",   zone: "venus3",    killType: "destroyer", killCount: 6, rewardCredits: 1400,  rewardExp: 380,   rewardHonor: 20 },
+
+  { id: "q-t4-wraiths",       zone: "void",      killType: "wraith",    killCount: 5, rewardCredits: 3000,  rewardExp: 800,   rewardHonor: 40 },
+  { id: "q-t4-sentinels",     zone: "void",      killType: "sentinel",  killCount: 6, rewardCredits: 3500,  rewardExp: 900,   rewardHonor: 45 },
+  { id: "q-t4-dread",         zone: "void",      killType: "dread",     killCount: 2, rewardCredits: 5000,  rewardExp: 1200,  rewardHonor: 60 },
+  { id: "q-t4-wraiths2",      zone: "marsdepth", killType: "wraith",    killCount: 6, rewardCredits: 3500,  rewardExp: 850,   rewardHonor: 42 },
+  { id: "q-t4-sentinels2",    zone: "venus4",    killType: "sentinel",  killCount: 7, rewardCredits: 4000,  rewardExp: 1000,  rewardHonor: 50 },
+
+  { id: "q-t5-titans",        zone: "forge",     killType: "titan",     killCount: 3, rewardCredits: 8000,  rewardExp: 2000,  rewardHonor: 100 },
+  { id: "q-t5-wraiths",       zone: "forge",     killType: "wraith",    killCount: 6, rewardCredits: 6000,  rewardExp: 1500,  rewardHonor: 75 },
+  { id: "q-t5-dread",         zone: "forge",     killType: "dread",     killCount: 3, rewardCredits: 10000, rewardExp: 2500,  rewardHonor: 120 },
+  { id: "q-t5-titans2",       zone: "maelstrom", killType: "titan",     killCount: 4, rewardCredits: 9000,  rewardExp: 2200,  rewardHonor: 110 },
+  { id: "q-t5-wraiths2",      zone: "venus5",    killType: "wraith",    killCount: 8, rewardCredits: 7000,  rewardExp: 1800,  rewardHonor: 85 },
+
+  { id: "q-t6-titans",        zone: "danger1",   killType: "titan",     killCount: 4, rewardCredits: 12000, rewardExp: 3000,  rewardHonor: 150 },
+  { id: "q-t6-overlords",     zone: "danger3",   killType: "overlord",  killCount: 2, rewardCredits: 18000, rewardExp: 5000,  rewardHonor: 250 },
+  { id: "q-t7-overlords",     zone: "danger4",   killType: "overlord",  killCount: 3, rewardCredits: 25000, rewardExp: 8000,  rewardHonor: 400 },
+  { id: "q-t8-titans",        zone: "danger5",   killType: "titan",     killCount: 5, rewardCredits: 30000, rewardExp: 10000, rewardHonor: 500 },
+  { id: "q-t8-overlords",     zone: "danger5",   killType: "overlord",  killCount: 4, rewardCredits: 40000, rewardExp: 15000, rewardHonor: 800 },
+
+  // Legacy ids kept alive with a repaired targetZone rather than deleted —
+  // players who already accepted these before the pool changed keep a
+  // completable quest instead of losing progress/rewards outright.
+  { id: "q-corona-voidlings", zone: "corona", targetZone: "abyss",   killType: "voidling", killCount: 7, rewardCredits: 90000,  rewardExp: 26000, rewardHonor: 1400 },
+  { id: "q-corona-dread",     zone: "corona", targetZone: "crimson", killType: "dread",    killCount: 2, rewardCredits: 150000, rewardExp: 44000, rewardHonor: 2300 },
 ];
+
+const QUEST_POOL_BY_ID = new Map(QUEST_POOL.map((q) => [q.id, q]));
+
+// Strips quest ids no longer in QUEST_POOL and repairs zone/killType/targetZone
+// on any surviving quest to match the live pool entry — self-heals stale save
+// data (removed/changed quests) on every load instead of needing a one-off
+// manual DB patch. `progress`/`completed` on the stored quest are preserved.
+export function validateActiveQuests(activeQuests: unknown): any[] {
+  if (!Array.isArray(activeQuests)) return [];
+  const result: any[] = [];
+  for (const q of activeQuests) {
+    if (!q || typeof q !== "object" || typeof q.id !== "string") continue;
+    const def = QUEST_POOL_BY_ID.get(q.id);
+    if (!def) continue; // orphaned id — quest no longer exists, drop it
+    result.push({
+      ...q,
+      zone: def.zone,
+      killType: def.killType,
+      killCount: def.killCount,
+      rewardCredits: def.rewardCredits,
+      rewardExp: def.rewardExp,
+      rewardHonor: def.rewardHonor,
+      targetZone: def.targetZone,
+    });
+  }
+  return result;
+}
 
 // ── DAILY MISSION POOL (8) ───────────────────────────────────────────────────
 
@@ -1258,7 +1490,7 @@ export const DUNGEONS: Record<DungeonId, {
     enemyTypes: ["dread"], enemyHpMul: 3.5, enemyDmgMul: 2.9,
     waves: 7, enemiesPerWave: 8,
     rewardCredits: 290000, rewardExp: 82000,
-    rewardModules: ["wp-singular", "wp-void-lance", "wp-hellfire", "gn-leviathan", "gn-phase-drive", "md-singularity", "md-voidframe"],
+    rewardModules: ["wp-laser-t10", "wp-laser-t9", "wp-rocket-t5", "gn-t5", "md-t5"],
     rewardMaterials: [{ resourceId: "void", qty: 20 }, { resourceId: "dread", qty: 14 }, { resourceId: "quantum", qty: 18 }],
     color: "#7722cc", unlockLevel: 30,
   },
@@ -1344,4 +1576,13 @@ export const ENEMY_NAMES: Record<EnemyType, string[]> = {
   phantom:     ["Phantom"],
   juggernaut:  ["Juggernaut"],
   leviathan:   ["Leviathan"],
+  erix:        ["Erix"],
+  angin:       ["Angin"],
+  crobium:     ["Crobium"],
+  draug:       ["Draug"],
+  knoton:      ["Knoton"],
+  maron:       ["Maron"],
+  nabas:       ["Nabas"],
+  silikum:     ["Silikum"],
+  simonit:     ["Simonit"],
 };

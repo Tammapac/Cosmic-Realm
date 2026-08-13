@@ -23,7 +23,7 @@ export function IdleRewardModal() {
         <div className="flex items-center justify-between mb-1.5" onPointerDown={drag.handleProps.onPointerDown} style={drag.handleProps.style}>
           <div
             className="font-bold tracking-widest"
-            style={{ color: "var(--accent-amber)", fontSize: 10, letterSpacing: "0.2em" }}
+            style={{ color: "var(--accent-amber)", fontSize: 11.8, letterSpacing: "0.2em" }}
           >
             ⌬ IDLE REWARD
           </div>
@@ -34,7 +34,7 @@ export function IdleRewardModal() {
               border: "none",
               color: "var(--text-mute)",
               cursor: "pointer",
-              fontSize: 12,
+              fontSize: 14.2,
               padding: "0 2px",
               lineHeight: 1,
             }}
@@ -45,7 +45,7 @@ export function IdleRewardModal() {
         </div>
 
         {/* Away time */}
-        <div style={{ color: "var(--text-dim)", fontSize: 10, marginBottom: 8 }}>
+        <div style={{ color: "var(--text-dim)", fontSize: 11.8, marginBottom: 8 }}>
           Away {hours > 0 ? `${hours}h ` : ""}{mins}m · couriers ran ops.
         </div>
 
@@ -63,7 +63,7 @@ export function IdleRewardModal() {
             <div className="hud-label">CR</div>
             <div
               className="font-bold tabular-nums"
-              style={{ color: "var(--accent-amber)", fontSize: 14 }}
+              style={{ color: "var(--accent-amber)", fontSize: 16.5 }}
             >
               +{r.credits.toLocaleString()}
             </div>
@@ -80,7 +80,7 @@ export function IdleRewardModal() {
             <div className="hud-label">XP</div>
             <div
               className="font-bold tabular-nums"
-              style={{ color: "var(--accent-magenta)", fontSize: 14 }}
+              style={{ color: "var(--accent-magenta)", fontSize: 16.5 }}
             >
               +{r.exp.toLocaleString()}
             </div>
@@ -89,7 +89,7 @@ export function IdleRewardModal() {
 
         <button
           className="gbtn gbtn-gold w-full"
-          style={{ padding: "5px 0", fontSize: 10, letterSpacing: "0.2em" }}
+          style={{ padding: "5px 0", fontSize: 11.8, letterSpacing: "0.2em" }}
           onClick={claimIdleReward}
         >
           CLAIM REWARD

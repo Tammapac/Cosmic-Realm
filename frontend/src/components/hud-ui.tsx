@@ -29,6 +29,48 @@
  * is built from the same primitives — never hand-roll a popup again.
  */
 import type { CSSProperties, ReactNode, PointerEvent as ReactPointerEvent } from "react";
+import { weaponSpriteUrl, type ModuleDef } from "../game/types";
+
+/**
+ * Weapon/module icon. Renders the PNG sprite when the weapon has one (laser
+ * weapons — low tier plain, high tier glowing), else falls back to the
+ * Unicode glyph in the def's color (rockets, mining lasers, non-weapon
+ * modules). `size` is the box in px; the sprite is contained inside it with
+ * a subtle tier-colored glow so it still reads as "that rarity".
+ */
+export function WeaponIcon({
+  def, size = 28, color, glow = true, style,
+}: {
+  def: Pick<ModuleDef, "id" | "glyph" | "color">;
+  size?: number;
+  color?: string;
+  glow?: boolean;
+  style?: CSSProperties;
+}) {
+  const url = weaponSpriteUrl(def.id);
+  const tint = color ?? def.color;
+  if (url) {
+    return (
+      <img
+        src={url}
+        alt=""
+        draggable={false}
+        style={{
+          width: size, height: size, objectFit: "contain",
+          imageRendering: "auto",
+          filter: glow ? `drop-shadow(0 0 4px ${tint}66) drop-shadow(0 1px 2px #000a)` : undefined,
+          pointerEvents: "none",
+          ...style,
+        }}
+      />
+    );
+  }
+  return (
+    <span style={{ color: tint, fontSize: size * 0.72, lineHeight: 1, textShadow: `0 0 8px ${tint}66`, ...style }}>
+      {def.glyph}
+    </span>
+  );
+}
 
 /** Standard window plate: ring frame + title band + content. */
 export function HudWindow({
@@ -55,6 +97,7 @@ export function HudWindow({
       className={`panel ${gold ? "panel-gold" : ""}`}
       style={{ width, maxWidth: "94vw", maxHeight: "88vh", display: "flex", flexDirection: "column", ...style }}
     >
+      <span className="panel-rim" aria-hidden="true" />
       <div
         className="hud-titleband"
         onPointerDown={dragHandle?.onPointerDown}
@@ -62,7 +105,7 @@ export function HudWindow({
       >
         <span style={{ flex: 1, minWidth: 0 }} className="truncate">{title}</span>
         {onClose && (
-          <button className="gbtn gbtn-red" style={{ padding: "1px 8px", fontSize: 10 }} onClick={onClose} title="Close">
+          <button className="gbtn gbtn-red" style={{ padding: "1px 8px", fontSize: 11.8 }} onClick={onClose} title="Close">
             ✕
           </button>
         )}
@@ -130,7 +173,7 @@ export function HudButton({
 }) {
   const cls = variant === "primary" ? "gbtn gbtn-gold" : variant === "danger" ? "gbtn gbtn-red" : "gbtn";
   return (
-    <button {...props} className={`${cls} ${className}`} style={{ padding: "6px 18px", fontSize: 11, ...style }}>
+    <button {...props} className={`${cls} ${className}`} style={{ padding: "6px 18px", fontSize: 13, ...style }}>
       {children}
     </button>
   );

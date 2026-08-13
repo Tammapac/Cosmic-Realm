@@ -29,7 +29,9 @@ function vignetteTex(): PIXI.Texture {
   g.addColorStop(1, "rgba(150,160,195,0.72)"); // cool shade, not pure black
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, S, S);
-  return PIXI.Texture.from(c, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  const __t = PIXI.Texture.from(c);
+  (__t.source as PIXI.TextureSource).scaleMode = "linear";
+  return __t;
 }
 
 function keyLightTex(): PIXI.Texture {
@@ -45,7 +47,9 @@ function keyLightTex(): PIXI.Texture {
   g.addColorStop(1, "rgba(255,236,200,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, S, S);
-  return PIXI.Texture.from(c, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  const __t = PIXI.Texture.from(c);
+  (__t.source as PIXI.TextureSource).scaleMode = "linear";
+  return __t;
 }
 
 function ambientTex(): PIXI.Texture {
@@ -60,7 +64,9 @@ function ambientTex(): PIXI.Texture {
   g.addColorStop(1, "rgba(255,255,255,0.75)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, S, S);
-  return PIXI.Texture.from(c, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  const __t = PIXI.Texture.from(c);
+  (__t.source as PIXI.TextureSource).scaleMode = "linear";
+  return __t;
 }
 
 export class SceneLighting {
@@ -71,18 +77,29 @@ export class SceneLighting {
 
   constructor() {
     this.keyLight = new PIXI.Sprite(keyLightTex());
-    this.keyLight.blendMode = PIXI.BLEND_MODES.SCREEN;
+    this.keyLight.blendMode = "screen";
 
     this.ambient = new PIXI.Sprite(ambientTex());
-    this.ambient.blendMode = PIXI.BLEND_MODES.SCREEN;
+    this.ambient.blendMode = "screen";
     this.ambient.alpha = 0.09;
 
     this.vignette = new PIXI.Sprite(vignetteTex());
-    this.vignette.blendMode = PIXI.BLEND_MODES.MULTIPLY;
+    this.vignette.blendMode = "multiply";
     this.vignette.alpha = 0.85;
 
     this.container.addChild(this.keyLight, this.ambient, this.vignette);
     this.container.eventMode = "none"; // never intercepts input
+  }
+
+  private vignetteOnly = false;
+
+  /** Vignette-only mode: hide the SCREEN key/ambient grade layers (which
+   *  flatten 3D contrast) and keep just a mild corner vignette. */
+  setVignetteOnly(on: boolean): void {
+    this.vignetteOnly = on;
+    this.keyLight.visible = !on;
+    this.ambient.visible = !on;
+    if (on) this.vignette.alpha = 0.55; // gentler than the full 0.85
   }
 
   /** Per-frame: fit to screen, tint the ambient from the zone palette. */
@@ -91,7 +108,8 @@ export class SceneLighting {
       s.width = w;
       s.height = h;
     }
-    this.ambient.tint = PIXI.utils.string2hex(ambientHex);
+    if (this.vignetteOnly) return;
+    this.ambient.tint = new PIXI.Color(ambientHex).toNumber();
     // Barely-there breathing keeps the light alive without being noticed.
     this.keyLight.alpha = 0.9 + 0.1 * Math.sin(tick * 0.11);
   }

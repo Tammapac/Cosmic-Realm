@@ -40,15 +40,32 @@ export type OnlinePlayer = {
   honor: number;
   targetX: number | null;
   targetY: number | null;
+  // WASD control scheme: heading (rad) the ship faces regardless of movement
+  // direction (cursor aim). null = classic (nose follows movement/target).
+  aimAngle: number | null;
   speed: number;
   isLaserFiring: boolean;
   isRocketFiring: boolean;
   attackTargetId: string | null;
+  // Player id (as string) this player has explicitly selected as a PvP target.
+  // Enables same-faction opt-in duels: same-faction damage only lands when the
+  // victim is the attacker's chosen pvpTargetId. Different-faction PvP never
+  // needs this. Null when no player is targeted.
+  pvpTargetId: string | null;
   miningTargetId: string | null;
   laserAmmoType: string;
   rocketAmmoType: string;
   laserFireCd: number;
   rocketFireCd: number;
+  // Server-side cooldown for the pet drone's own weapon fire, independent of
+  // the player's own laserFireCd/rocketFireCd. The drone fires only while the
+  // player is firing (isLaserFiring/isRocketFiring) AND has a weapon equipped
+  // in petDrone.equipped.weapon; see tickPlayerCombat's drone block. The
+  // drone's muzzle position is computed server-side from p.posX/posY/angle
+  // with the SAME formation formula the client uses for its visual (loop.ts
+  // updatePetDrone) — no separate anchor field needed, since it is a pure
+  // function of state the server already owns.
+  droneFireCd: number;
   shieldRegen: number;
   afterburnUntil: number;
   lastHitTick: number;

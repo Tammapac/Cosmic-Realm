@@ -37,7 +37,7 @@ function redTex(): PIXI.Texture {
 }
 
 function logDiagnostics(tag: string, spr: PIXI.Container, app: PIXI.Application): void {
-  spr.updateTransform();
+  spr.updateTransform({});
   console.log(`[laser-debug] ${tag}`, {
     parent: spr.parent ? spr.parent.constructor.name : null,
     parentChildren: spr.parent ? spr.parent.children.length : 0,

@@ -39,6 +39,76 @@
   --hud-brushed-line: rgba(140, 190, 220, 0.035);
   --hud-noise-opacity: 0.05;
 
+  /* ══════════════════════════════════════════════════════════════════════
+     CANONICAL MATERIAL SYSTEM  (Phase 1 — AAA titanium/tech-glass pass)
+     One shared set of values for the 7 layers that were drifting per
+     component (glowRim, crispEdge, metal-fill, console-shadow, innerBevel,
+     sheen, noise) + the new AAA layers (directional bevel, edge specular,
+     contact AO, rim light). NO new colours — every value is an existing
+     one, promoted to a token so all shells share it instead of copying.
+     Reference: the Minimap (fullest implementation) + Hotbar (fill).
+     ══════════════════════════════════════════════════════════════════════ */
+
+  /* Base titanium/gunmetal fill — the console body (#283a58→#060a14). */
+  --mat-fill:
+    linear-gradient(180deg, #283a58 0%, #17233c 32%, #0d1626 62%, #060a14 100%);
+  /* Anodised-aluminium sheen wash laid over the fill (light rakes off the top). */
+  --mat-sheen:
+    linear-gradient(180deg, rgba(200, 225, 255, 0.14) 0%, rgba(200, 225, 255, 0.04) 30%, transparent 55%);
+  /* Brushed-metal micro-grain (vertical passes). */
+  --mat-brushed:
+    repeating-linear-gradient(90deg, var(--hud-brushed-line) 0 1px, transparent 1px 3px);
+
+  /* Directional bevel light — top+left lifted, right+bottom shaded. This is
+     the AAA depth cue that was missing (everything was only top/bottom). */
+  --mat-bevel:
+    inset 0 2px 5px rgba(180, 220, 255, 0.16),      /* top edge highlight   */
+    inset 2px 0 4px rgba(150, 195, 235, 0.09),      /* left edge lift        */
+    inset -2px 0 5px rgba(0, 0, 0, 0.30),           /* right edge shade      */
+    inset 0 -14px 22px rgba(0, 0, 0, 0.55);         /* bottom deep shade     */
+
+  /* Contact AO — a tight dark inset ring where a surface meets its frame, so
+     inset panels/slots read as machined-in, not floating. */
+  --mat-ao: inset 0 0 0 1px rgba(0, 0, 0, 0.45), inset 0 2px 6px rgba(0, 0, 0, 0.5);
+
+  /* Edge specular — a concentrated hot highlight for milled edges / screws /
+     reinforcements (used sparingly, only on rims & corner hardware). */
+  --mat-specular: rgba(216, 240, 255, 0.85);
+
+  /* Rim light — a few-px cold-cyan material light on the outer edge. NOT a
+     neon line: low alpha, tight radius. */
+  --mat-rim: 0 0 3px rgba(120, 200, 255, 0.35);
+
+  /* Outer seating shadow + restrained material glow (metal does NOT glow —
+     this is just how the console sits on the backdrop). */
+  --mat-drop: 0 8px 22px rgba(0, 0, 0, 0.6);
+  --mat-glow-soft: 0 0 16px rgba(78, 226, 255, 0.14);   /* subtle, energy-only */
+
+  /* Canonical noise grain params (single scale everywhere). */
+  --mat-noise-opacity: 0.045;
+
+  /* ── Canonical frosted-glass fills ───────────────────────────────────────
+     The SAME translucent glass the .panel / QUESTS window uses, promoted to a
+     token so every surface (windows, HUD modules, inner console blocks) shares
+     one look. --glass-fill-main = full window fill (bright titanium sheen +
+     brushed streaks + navy). --glass-fill-inset = same navy, a gentler sheen
+     for deeply-nested sub-cards so stacked layers don't read as too milky. */
+  /* Bluer, slightly denser navy so EVERY panel reads the same cool blue as the
+     Chat/Quests windows even over dark space (the frosted glass still lets the
+     background show through, but blue now dominates instead of grey). */
+  /* True frosted glass: the fill is only ~30% opaque and the blur does the
+     rest, so the world reads through the window instead of the panel sitting
+     on top of it as a near-solid slab. Paired with --glass-blur below. */
+  --glass-fill-main:
+    linear-gradient(180deg, rgba(150, 195, 235, 0.18) 0%, transparent 38%),
+    linear-gradient(180deg, rgba(96, 128, 176, 0.30) 0%, rgba(26, 42, 68, 0.30) 100%);
+  --glass-fill-inset:
+    linear-gradient(180deg, rgba(150, 195, 235, 0.10) 0%, transparent 42%),
+    linear-gradient(180deg, rgba(96, 128, 176, 0.22) 0%, rgba(26, 42, 68, 0.26) 100%);
+  /* One blur recipe for every glass surface. */
+  --glass-blur: blur(18px) saturate(1.35) brightness(1.06);
+  --glass-blur-tip: blur(22px) saturate(1.4);
+
   /* ── Text ── */
   --hud-text-bright: #eaf4ff;
   --hud-text-dim: #7a92b8;
@@ -73,4 +143,31 @@
   --hud-fs-sm: clamp(10px, 0.75vw, 12px);
   --hud-fs-md: clamp(12px, 0.9vw, 15px);
   --hud-fs-lg: clamp(16px, 1.2vw, 20px);
+
+  /* ── UI aliases ─────────────────────────────────────────────────────────
+     Semantic --ui-* names for the unified popup/window system. These are
+     PURE ALIASES onto the existing --hud-* palette — no new colors, borders,
+     radii or materials are introduced. Popup components reference --ui-* so
+     the single source of truth stays the main HUD. */
+  --ui-bg-primary:   var(--hud-bg-panel);        /* window/panel fill        */
+  --ui-bg-solid:     var(--hud-bg-panel-solid);  /* opaque floor             */
+  --ui-bg-raised:    var(--hud-bg-panel-raised); /* raised inner surfaces    */
+  --ui-border:       var(--hud-border);          /* default frame border     */
+  --ui-border-bright:var(--hud-border-bright);   /* focused/active border    */
+  --ui-border-dim:   var(--hud-border-dim);      /* dividers, faint edges    */
+  --ui-border-width: var(--hud-border-w);
+  --ui-cyan:         var(--hud-cyan);            /* primary accent           */
+  --ui-cyan-glow:    var(--hud-cyan-glow);
+  --ui-gold:         var(--hud-gold);            /* rewards/credits accent   */
+  --ui-danger:       var(--hud-hp);              /* destructive / warning    */
+  --ui-success:      var(--hud-green);           /* completed / positive     */
+  --ui-warning:      var(--hud-energy);          /* caution (NOT orange)     */
+  --ui-text-primary: var(--hud-text-bright);     /* body/primary text        */
+  --ui-text-secondary:var(--hud-text-dim);       /* secondary/label text     */
+  --ui-text-muted:   var(--hud-text-mute);       /* disabled/locked text     */
+  --ui-radius:       var(--hud-radius);          /* 0 — HUD never rounds      */
+  --ui-cut:          var(--hud-cut);             /* panel bevel/notch        */
+  --ui-cut-sm:       var(--hud-cut-sm);
+  --ui-glow-soft:    var(--hud-glow-soft);
+  --ui-glow-med:     var(--hud-glow-med);
 }

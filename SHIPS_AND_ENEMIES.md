@@ -1,5 +1,13 @@
 # Cosmic Realm — Ships & Enemies
 
+*Content last reviewed: 2026-07-22*
+
+> **Visuals:** every hull/enemy/station is retextured on load by the material system in
+> `frontend/src/game/space-material.ts` (metal/aging/dirt/normal maps, per-enemy accent
+> glow, boss/portal presets). Signature glows: overlord blue crystal, juggernaut red,
+> leviathan pulsing green cracks. See `RENDERING_PIPELINE.md` → "Material System". Ships
+> are drawn by three separate Three.js renderers (player / enemy / station).
+
 ## Player Ships — 15 hulls
 
 Bought at station shipyards; owned hulls can be swapped freely when docked.

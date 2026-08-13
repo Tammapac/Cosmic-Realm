@@ -181,7 +181,7 @@ export function Hotbar() {
           color: attackOnCooldown ? "#7a3a44" : "#ffb3bb",
           fontFamily: "var(--font-display)",
           fontWeight: "bold",
-          fontSize: 10,
+          fontSize: 11.8,
           letterSpacing: "0.08em",
           cursor: attackOnCooldown ? "not-allowed" : "pointer",
           boxShadow: isAttacking ? "0 0 14px #ff3b4d, 0 0 28px #ff3b4d44" : attackOnCooldown ? "none" : "0 0 10px #ff3b4d55",
@@ -436,19 +436,19 @@ function TraySlot({ left, keyLabel, glyph, color, sub, count, active, title, onC
             }}
           />
         )}
-        <div style={{ position: "absolute", top: 3, left: 5, fontSize: 9, color: "#8a6a3a", zIndex: 3, fontFamily: "var(--font-display)" }}>
+        <div style={{ position: "absolute", top: 3, left: 5, fontSize: 10.6, color: "#8a6a3a", zIndex: 3, fontFamily: "var(--font-display)" }}>
           {keyLabel}
         </div>
-        <div style={{ fontSize: 19, lineHeight: 1, color, zIndex: 3, textShadow: `0 0 8px ${color}`, fontWeight: "bold" }}>
+        <div style={{ fontSize: 22.4, lineHeight: 1, color, zIndex: 3, textShadow: `0 0 8px ${color}`, fontWeight: "bold" }}>
           {glyph}
         </div>
         {sub && (
-          <div style={{ position: "absolute", bottom: 3, right: 5, fontSize: 9, fontWeight: "bold", color: count === 0 ? "#6a4a2a" : "#e8c890", zIndex: 3 }}>
+          <div style={{ position: "absolute", bottom: 3, right: 5, fontSize: 10.6, fontWeight: "bold", color: count === 0 ? "#6a4a2a" : "#e8c890", zIndex: 3 }}>
             {sub}
           </div>
         )}
         {cooldownText != null && (
-          <div style={{ position: "absolute", fontSize: 12, fontWeight: "bold", color: "#fff", zIndex: 4, textShadow: "0 1px 3px #000" }}>
+          <div style={{ position: "absolute", fontSize: 14.2, fontWeight: "bold", color: "#fff", zIndex: 4, textShadow: "0 1px 3px #000" }}>
             {cooldownText}
           </div>
         )}
@@ -476,7 +476,7 @@ function Dropdown({ header, children }: { header: string; children: React.ReactN
         zIndex: 60,
       }}
     >
-      <div style={{ fontSize: 8, color: "rgba(232,200,144,0.65)", letterSpacing: "0.18em", textAlign: "center", padding: "3px 0 2px", fontFamily: "var(--font-display)" }}>
+      <div style={{ fontSize: 9.4, color: "rgba(232,200,144,0.65)", letterSpacing: "0.18em", textAlign: "center", padding: "3px 0 2px", fontFamily: "var(--font-display)" }}>
         {header}
       </div>
       {children}
@@ -509,17 +509,17 @@ function DropRow({ glyph, color, name, desc, count, isActive, onClick }: {
       onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = "#ffffff0a"; }}
       onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
     >
-      <div style={{ fontSize: 16, color, fontWeight: "bold", width: 20, textAlign: "center", textShadow: `0 0 6px ${color}` }}>
+      <div style={{ fontSize: 18.9, color, fontWeight: "bold", width: 20, textAlign: "center", textShadow: `0 0 6px ${color}` }}>
         {glyph}
       </div>
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: 10, color: isActive ? color : "#e8d5b0", fontWeight: isActive ? "bold" : "normal" }}>
+        <div style={{ fontSize: 11.8, color: isActive ? color : "#e8d5b0", fontWeight: isActive ? "bold" : "normal" }}>
           {name} {isActive && "◂"}
         </div>
-        <div style={{ fontSize: 8, color: "#8a7a5a" }}>{desc}</div>
+        <div style={{ fontSize: 9.4, color: "#8a7a5a" }}>{desc}</div>
       </div>
       {count != null && (
-        <div style={{ fontSize: 10, color: count === 0 ? "#ff5c6c" : "#c8b088", fontWeight: "bold", fontFamily: "'Courier New', monospace" }}>
+        <div style={{ fontSize: 11.8, color: count === 0 ? "#ff5c6c" : "#c8b088", fontWeight: "bold", fontFamily: "'Courier New', monospace" }}>
           {count}
         </div>
       )}

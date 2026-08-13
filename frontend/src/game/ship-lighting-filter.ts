@@ -177,41 +177,92 @@ void main() {
 `;
 
 // ── ShipLightingFilter ─────────────────────────────────────────────────
+// v8 rewrite: Filter no longer takes (vertex, fragment, uniforms) — it wants
+// a GlProgram (compiled GLSL) + a `resources` map of UniformGroups, and there
+// is no default vertex shader auto-supplied, so the standard filter-quad
+// vertex shader is inlined below. The fragment shaders above are still
+// GLSL ES 1.0 (texture2D/varying/gl_FragColor) since they were written for
+// v7; migrateFragmentFromV7toV8 is pixi's own helper for exactly this
+// translation (GlProgram compiles everything as `#version 300 es`, so an
+// un-migrated ES1 fragment would fail to compile against it).
+import { migrateFragmentFromV7toV8 } from "pixi.js";
+
+const FILTER_VERTEX = `
+in vec2 aPosition;
+out vec2 vTextureCoord;
+
+uniform vec4 uInputSize;
+uniform vec4 uOutputFrame;
+uniform vec4 uOutputTexture;
+
+vec4 filterVertexPosition(void)
+{
+    vec2 position = aPosition * uOutputFrame.zw + uOutputFrame.xy;
+    position.x = position.x * (2.0 / uOutputTexture.x) - 1.0;
+    position.y = position.y * (2.0 * uOutputTexture.z / uOutputTexture.y) - uOutputTexture.z;
+    return vec4(position, 0.0, 1.0);
+}
+
+vec2 filterTextureCoord(void)
+{
+    return aPosition * (uOutputFrame.zw * uInputSize.zw);
+}
+
+void main(void)
+{
+    gl_Position = filterVertexPosition();
+    vTextureCoord = filterTextureCoord();
+}
+`;
+
 export class ShipLightingFilter extends PIXI.Filter {
   private _quality: QualityLevel;
+  private _lightingUniforms: PIXI.UniformGroup<any>;
 
   constructor(quality: QualityLevel = "HIGH") {
-    const frag = quality === "HIGH" ? FRAG_FULL : quality === "MEDIUM" ? FRAG_MED : FRAG_LOW;
-    super(undefined, frag, {
-      uLightDir: [0.0, -1.0],
-      uLightIntensity: 0.8,
-      uShadowStrength: 0.5,
-      uRimColor: [0.55, 0.75, 1.0],
-      uRimIntensity: 0.7,
-      uRimWidth: 3.0,
-      uSpecPower: 16.0,
-      uSpecIntensity: 0.5,
-      uDamage: 0.0,
-      uBoost: 0.0,
-      uTime: 0.0,
-      uBrightness: 1.0,
+    const rawFrag = quality === "HIGH" ? FRAG_FULL : quality === "MEDIUM" ? FRAG_MED : FRAG_LOW;
+    const glProgram = new PIXI.GlProgram({
+      vertex: FILTER_VERTEX,
+      fragment: migrateFragmentFromV7toV8(rawFrag),
+      name: "ship-lighting-filter",
     });
+
+    const lightingUniforms = new PIXI.UniformGroup({
+      uLightDir: { value: [0.0, -1.0], type: "vec2<f32>" },
+      uLightIntensity: { value: 0.8, type: "f32" },
+      uShadowStrength: { value: 0.5, type: "f32" },
+      uRimColor: { value: [0.55, 0.75, 1.0], type: "vec3<f32>" },
+      uRimIntensity: { value: 0.7, type: "f32" },
+      uRimWidth: { value: 3.0, type: "f32" },
+      uSpecPower: { value: 16.0, type: "f32" },
+      uSpecIntensity: { value: 0.5, type: "f32" },
+      uDamage: { value: 0.0, type: "f32" },
+      uBoost: { value: 0.0, type: "f32" },
+      uTime: { value: 0.0, type: "f32" },
+      uBrightness: { value: 1.0, type: "f32" },
+    });
+
+    super({
+      glProgram,
+      resources: { lightingUniforms },
+      padding: 0,
+    });
+    this._lightingUniforms = lightingUniforms;
     this._quality = quality;
-    this.padding = 0;
   }
 
   update(shipRotation: number, tick: number, speed: number, damage: number): void {
     const localAngle = LIGHT_ANGLE - shipRotation;
-    this.uniforms.uLightDir = [Math.cos(localAngle), Math.sin(localAngle)];
+    this._lightingUniforms.uniforms.uLightDir = [Math.cos(localAngle), Math.sin(localAngle)];
     if (this._quality !== "LOW") {
-      this.uniforms.uTime = tick;
-      this.uniforms.uBoost = Math.min(1, speed / 200);
+      this._lightingUniforms.uniforms.uTime = tick;
+      this._lightingUniforms.uniforms.uBoost = Math.min(1, speed / 200);
     }
-    this.uniforms.uDamage = damage;
+    this._lightingUniforms.uniforms.uDamage = damage;
   }
 
-  setDamage(d: number): void { this.uniforms.uDamage = Math.max(0, Math.min(1, d)); }
-  setBoost(b: number): void { if (this._quality !== "LOW") this.uniforms.uBoost = b; }
+  setDamage(d: number): void { this._lightingUniforms.uniforms.uDamage = Math.max(0, Math.min(1, d)); }
+  setBoost(b: number): void { if (this._quality !== "LOW") this._lightingUniforms.uniforms.uBoost = b; }
 
   configure(opts: {
     lightIntensity?: number;
@@ -223,14 +274,15 @@ export class ShipLightingFilter extends PIXI.Filter {
     specIntensity?: number;
     brightness?: number;
   }): void {
-    if (opts.lightIntensity !== undefined) this.uniforms.uLightIntensity = opts.lightIntensity;
-    if (opts.shadowStrength !== undefined) this.uniforms.uShadowStrength = opts.shadowStrength;
-    if (opts.rimColor !== undefined) this.uniforms.uRimColor = opts.rimColor;
-    if (opts.rimIntensity !== undefined) this.uniforms.uRimIntensity = opts.rimIntensity;
-    if (opts.rimWidth !== undefined) this.uniforms.uRimWidth = opts.rimWidth;
-    if (opts.specPower !== undefined) this.uniforms.uSpecPower = opts.specPower;
-    if (opts.specIntensity !== undefined) this.uniforms.uSpecIntensity = opts.specIntensity;
-    if (opts.brightness !== undefined) this.uniforms.uBrightness = opts.brightness;
+    const u = this._lightingUniforms.uniforms;
+    if (opts.lightIntensity !== undefined) u.uLightIntensity = opts.lightIntensity;
+    if (opts.shadowStrength !== undefined) u.uShadowStrength = opts.shadowStrength;
+    if (opts.rimColor !== undefined) u.uRimColor = opts.rimColor;
+    if (opts.rimIntensity !== undefined) u.uRimIntensity = opts.rimIntensity;
+    if (opts.rimWidth !== undefined) u.uRimWidth = opts.rimWidth;
+    if (opts.specPower !== undefined) u.uSpecPower = opts.specPower;
+    if (opts.specIntensity !== undefined) u.uSpecIntensity = opts.specIntensity;
+    if (opts.brightness !== undefined) u.uBrightness = opts.brightness;
   }
 
   get quality(): QualityLevel { return this._quality; }

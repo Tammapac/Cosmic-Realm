@@ -1,0 +1,184 @@
+{
+  "image": "armor-atlas.png",
+  "size": {
+    "w": 1024,
+    "h": 524
+  },
+  "frames": {
+    "metal_surface": {
+      "x": 8,
+      "y": 8,
+      "w": 256,
+      "h": 256,
+      "role": "metalSurface",
+      "ninePatch": null,
+      "tile": "both"
+    },
+    "composite": {
+      "x": 272,
+      "y": 8,
+      "w": 256,
+      "h": 256,
+      "role": "compositeMaterial",
+      "ninePatch": null,
+      "tile": "both"
+    },
+    "scratch_overlay": {
+      "x": 536,
+      "y": 8,
+      "w": 256,
+      "h": 256,
+      "role": "scratches",
+      "ninePatch": null,
+      "tile": "both"
+    },
+    "edge_wear": {
+      "x": 8,
+      "y": 272,
+      "w": 256,
+      "h": 48,
+      "role": "edgeWear",
+      "ninePatch": {
+        "left": 16,
+        "top": 0,
+        "right": 16,
+        "bottom": 0
+      },
+      "tile": "x"
+    },
+    "corner_outer": {
+      "x": 272,
+      "y": 272,
+      "w": 64,
+      "h": 64,
+      "role": "cornerOuter",
+      "ninePatch": null,
+      "tile": "none"
+    },
+    "corner_inner": {
+      "x": 344,
+      "y": 272,
+      "w": 64,
+      "h": 64,
+      "role": "cornerInner",
+      "ninePatch": null,
+      "tile": "none"
+    },
+    "frame_h": {
+      "x": 416,
+      "y": 272,
+      "w": 192,
+      "h": 24,
+      "role": "frameH",
+      "ninePatch": {
+        "left": 12,
+        "top": 0,
+        "right": 12,
+        "bottom": 0
+      },
+      "tile": "x"
+    },
+    "frame_v": {
+      "x": 616,
+      "y": 272,
+      "w": 24,
+      "h": 192,
+      "role": "frameV",
+      "ninePatch": {
+        "left": 0,
+        "top": 12,
+        "right": 0,
+        "bottom": 12
+      },
+      "tile": "y"
+    },
+    "bolt": {
+      "x": 648,
+      "y": 272,
+      "w": 32,
+      "h": 32,
+      "role": "bolt",
+      "ninePatch": null,
+      "tile": "none"
+    },
+    "vent": {
+      "x": 688,
+      "y": 272,
+      "w": 160,
+      "h": 56,
+      "role": "vent",
+      "ninePatch": {
+        "left": 20,
+        "top": 0,
+        "right": 20,
+        "bottom": 0
+      },
+      "tile": "x"
+    },
+    "slot_frame": {
+      "x": 856,
+      "y": 272,
+      "w": 96,
+      "h": 96,
+      "role": "slotFrame",
+      "ninePatch": {
+        "left": 22,
+        "top": 22,
+        "right": 22,
+        "bottom": 22
+      },
+      "tile": "none"
+    },
+    "button_frame": {
+      "x": 8,
+      "y": 472,
+      "w": 144,
+      "h": 44,
+      "role": "buttonFrame",
+      "ninePatch": {
+        "left": 14,
+        "top": 12,
+        "right": 14,
+        "bottom": 12
+      },
+      "tile": "none"
+    },
+    "energy_line": {
+      "x": 160,
+      "y": 472,
+      "w": 192,
+      "h": 16,
+      "role": "energyLine",
+      "ninePatch": {
+        "left": 24,
+        "top": 0,
+        "right": 24,
+        "bottom": 0
+      },
+      "tile": "x"
+    },
+    "divider": {
+      "x": 360,
+      "y": 472,
+      "w": 192,
+      "h": 10,
+      "role": "divider",
+      "ninePatch": {
+        "left": 8,
+        "top": 0,
+        "right": 8,
+        "bottom": 0
+      },
+      "tile": "x"
+    },
+    "corner_cap": {
+      "x": 560,
+      "y": 472,
+      "w": 44,
+      "h": 44,
+      "role": "cornerCap",
+      "ninePatch": null,
+      "tile": "none"
+    }
+  }
+}

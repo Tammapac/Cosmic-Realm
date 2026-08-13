@@ -1,7 +1,27 @@
+import { useEffect, useRef, useState } from "react";
 import { AbilitySlot, type AbilitySlotState } from "./AbilitySlot";
 import { HealthBar } from "../PlayerStatus/HealthBar";
 import { ShieldBar } from "../PlayerStatus/ShieldBar";
 import styles from "./Hotbar.module.css";
+
+/**
+ * True while `value` is climbing. ResourceBar already implements the recharge
+ * sweep (.regenWave), but nothing ever passed `regenerating`, so in-game the
+ * animation never ran. Rather than plumbing a new prop through every call
+ * site, the rise is detected here: any increase arms the flag, and it clears
+ * once the value has been static for `idleMs`.
+ */
+function useRegenerating(value: number, idleMs = 600): boolean {
+  const prev = useRef(value);
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    if (value > prev.current) setOn(true);
+    prev.current = value;
+    const t = window.setTimeout(() => setOn(false), idleMs);
+    return () => window.clearTimeout(t);
+  }, [value, idleMs]);
+  return on;
+}
 
 export type HotbarSlotData = {
   keyLabel: string;
@@ -34,24 +54,18 @@ export type HotbarProps = {
  * outline.
  */
 export function Hotbar({ slots, hull, hullMax, shield, shieldMax, onSlotClick, onSlotContextMenu }: HotbarProps) {
+  const hullRegen = useRegenerating(hull);
+  const shieldRegen = useRegenerating(shield);
   return (
     <div className={`${styles.consoleWrap} hud-interactive`}>
-      <div className={styles.glowRim} />
-      <div className={styles.crispEdge} />
-
-      <div className={`${styles.console} hud-mat-brushed`}>
-        <div className={styles.innerBevel} />
-        <div className={styles.consoleVeins} />
-        <div className={styles.consoleNoise} />
-        <div className={styles.consoleSheen} />
-
+      <div className={`${styles.console} panel`}>
         <div className={styles.statusRow}>
           <div className={styles.statusWing}>
-            <HealthBar hull={hull} hullMax={hullMax} compact />
+            <HealthBar hull={hull} hullMax={hullMax} compact regenerating={hullRegen} />
           </div>
           <div className={styles.statusDivider} />
           <div className={styles.statusWing}>
-            <ShieldBar shield={shield} shieldMax={shieldMax} compact mirrored />
+            <ShieldBar shield={shield} shieldMax={shieldMax} compact mirrored regenerating={shieldRegen} />
           </div>
         </div>
 

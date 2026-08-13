@@ -1,14 +1,31 @@
 import { sendDockRepair, sendDockLeave } from "../net/socket";
-import { state, bump, useGame, pushNotification, pushFloater, save, stationPrice, priceDirection, addCargo, removeCargo, cargoUsed, cargoCapacity, maxDroneSlots, claimMission, rerollDaily, rerollMissionBoard, bumpMission, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, rocketAmmoMax, getAmmoWeaponIds, ensureAmmoInitialized, setAutoRestock, setAutoRepairHull, setAutoShieldRecharge, getActiveAmmoType, switchAmmoType, purchaseAmmoAmount, getAmmoCount, ROCKET_AMMO_COST_PER, rocketMissileMax, getActiveRocketAmmoType, switchRocketAmmoType, purchaseRocketAmmo, getRocketAmmoCount, startRefineJob, collectRefineJob, upgradeFactory } from "../game/store";
+import { repairHull as apiRepairHull } from "../net/api";
+import { state, bump, useGame, pushNotification, pushFloater, save, stationPrice, priceDirection, priceHistory, addCargo, removeCargo, cargoUsed, cargoCapacity, claimMission, rerollDaily, rerollMissionBoard, bumpMission, equipModule, unequipSlot, sellInventoryItem, addInventoryItem, enterDungeon, reconcileShipSlots, buyConsumable, rocketAmmoMax, getAmmoWeaponIds, ensureAmmoInitialized, setAutoRestock, setAutoRepairHull, setAutoShieldRecharge, getActiveAmmoType, switchAmmoType, purchaseAmmoAmount, getAmmoCount, ROCKET_AMMO_COST_PER, rocketMissileMax, getActiveRocketAmmoType, switchRocketAmmoType, purchaseRocketAmmo, getRocketAmmoCount, startRefineJob, collectRefineJob, upgradeFactory, petDroneSlots, upgradePetDrone, equipPetSlot, unequipPetSlot, petBoundIds, purchaseDroneAmmoAmount } from "../game/store";
 import {
   ActiveQuest, CONSUMABLE_DEFS, ConsumableId, DAILY_DUNGEON_BONUS, DRONE_DEFS, DroneKind, DroneMode, DUNGEONS, DungeonId, FACTIONS, MODULE_DEFS, ModuleDef, ModuleSlot, ModuleStats, RARITY_COLOR,
   Quest, QUEST_POOL, MISSION_BOARD_POOL, MissionCategory, RESOURCES, ResourceId, ROCKET_AMMO_TYPE_DEFS, RocketAmmoType, ROCKET_MISSILE_TYPE_DEFS, RocketMissileType, ROCKET_MISSILE_TYPE_ORDER, SHIP_CLASSES, SKILL_NODES, SkillNode, STATIONS, ShipClassId, SkillBranch,
   SkillId, ZONES, getDailyFeaturedDungeon, REFINE_RECIPES, FACTORY_SPEED_BONUS, FACTORY_UPGRADE_COSTS,
+  PET_DRONE_UPGRADE_COST, PET_DRONE_SLOT_ORDER, PetDroneSlot, petDroneSlotCount,
+  droneModelForLevel, DRONE_AMMO_COST_PER,
 } from "../game/types";
 import type { HangarTab } from "../game/store";
+import { ENABLE_NEW_DOCKING_FLOW, ENABLE_HANGAR_3D_SCENE, ENABLE_NEW_HANGAR_PANELS } from "../game/renderer-config";
+import { ShipyardHost } from "./hangar/ShipyardHost";
+import { BountyHost } from "./hangar/BountyHost";
+import { MissionsHost } from "./hangar/MissionsHost";
+import { DronesHost } from "./hangar/DronesHost";
+import { MarketHost } from "./hangar/MarketHost";
+import { StationServicesHost } from "./hangar/StationServicesHost";
+import { SkillMatrixHost } from "./hangar/SkillMatrixHost";
+import { LoadoutHost } from "./hangar/LoadoutHost";
+import { requestUndock, forceUndock } from "../game/scene/DockingController";
+import { swapActiveHangarShip } from "../game/scene/HangarScene";
 import { useDraggable } from "./useDraggable";
+import { WeaponIcon } from "./hud-ui";
 import { effectiveStats } from "../game/loop";
-import { isRolledItem, lootItemColor, lootItemName, lootSellPrice, lootTipText } from "../game/loot-ui";
+import { fmtStat } from "../game/fmt";
+import { isRolledItem, lootItemColor, lootItemName, lootSellPrice } from "../game/loot-ui";
+import { useItemTooltip } from "../hooks/useItemTooltip";
 import { affixLine, resolveAffixStats } from "../../../lib/loot/loot";
 import { buySkillRank, resetSkills } from "../game/store";
 import { useState, useMemo, useEffect, useRef } from "react";
@@ -35,7 +52,106 @@ const SHIP_PREVIEW_MODELS: Record<string, string> = {
   wasp: "/models/Wasp_Interceptor.glb",
 };
 
-function ShipPreview({ shipId, color, size = 96 }: { shipId: string; color: string; size?: number }) {
+// ── Shared ShipPreview renderer pool ──────────────────────────────────────
+// The hangar can show many ship previews at once (loadout hero + a shipyard
+// list of 15 hulls). Giving each its own WebGLRenderer blows past the browser
+// WebGL-context cap (~16) — contexts get "lost", previews go blank, and it can
+// even kill the main game's ship/enemy/station renderers. So all previews share
+// ONE offscreen renderer: each frame it renders a preview's scene into the
+// shared GL canvas, then blits the pixels into that preview's own 2D canvas.
+// GLB models are cache-loaded once and cloned per preview.
+let _sharedGL: THREE.WebGLRenderer | null = null;
+let _sharedGLCanvas: HTMLCanvasElement | null = null;
+function getSharedGL(): { renderer: THREE.WebGLRenderer; canvas: HTMLCanvasElement } {
+  if (!_sharedGL || !_sharedGLCanvas) {
+    _sharedGLCanvas = document.createElement("canvas");
+    _sharedGL = new THREE.WebGLRenderer({ canvas: _sharedGLCanvas, alpha: true, antialias: true });
+    _sharedGL.setPixelRatio(1);
+  }
+  return { renderer: _sharedGL, canvas: _sharedGLCanvas };
+}
+
+const _gltfCache = new Map<string, Promise<THREE.Group>>();
+function loadShipModel(path: string): Promise<THREE.Group> {
+  let p = _gltfCache.get(path);
+  if (!p) {
+    p = new Promise<THREE.Group>((resolve, reject) => {
+      new GLTFLoader().load(path, (gltf) => resolve(gltf.scene), undefined, reject);
+    });
+    _gltfCache.set(path, p);
+  }
+  return p;
+}
+
+// Visible frame height for the preview camera: a 45deg perspective at distance
+// 5.4 spans 2*5.4*tan(22.5deg) = 4.47 world units vertically. Width follows the
+// canvas aspect.
+const VISIBLE_H_UNITS = 2 * 5.4 * Math.tan((45 * Math.PI) / 360);
+
+// Every mounted preview registers here; a single rAF loop renders them all
+// through the one shared GL context, in sequence.
+type PreviewEntry = {
+  scene: THREE.Scene; camera: THREE.PerspectiveCamera | THREE.OrthographicCamera; model: THREE.Group | null;
+  ctx: CanvasRenderingContext2D; size: number;
+  /** Render height when it differs from `size` (letterboxed previews such as
+   *  the dock overlay's 234x88 strip). Defaults to `size` = square. */
+  height?: number;
+  /** When true, the shared tick loop does NOT auto-spin the model — a
+   *  pointer-drag handler (see DronePreview) owns model.rotation instead. */
+  manualRotate?: boolean;
+};
+const _previews = new Set<PreviewEntry>();
+let _previewRAF = 0;
+function ensurePreviewLoop() {
+  if (_previewRAF) return;
+  const tick = () => {
+    if (_previews.size === 0) { _previewRAF = 0; return; }
+    const { renderer, canvas } = getSharedGL();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    for (const p of _previews) {
+      if (p.model && !p.manualRotate) p.model.rotation.y += 0.004;
+      const h = p.height ?? p.size;
+      const pxW = Math.round(p.size * dpr);
+      const pxH = Math.round(h * dpr);
+      if (canvas.width !== pxW || canvas.height !== pxH) renderer.setSize(pxW, pxH, false);
+      // Aspect must follow the buffer or a non-square preview renders squashed
+      // — and was never updated here at all, even for the square ones. The
+      // orthographic side view already bakes the aspect into its frustum at
+      // build time (it never changes for a fixed slot), so only the
+      // perspective cameras need the per-frame correction.
+      const aspect = p.size / h;
+      const cam = p.camera;
+      if (cam instanceof THREE.PerspectiveCamera && cam.aspect !== aspect) {
+        cam.aspect = aspect; cam.updateProjectionMatrix();
+      }
+      renderer.render(p.scene, p.camera);
+      p.ctx.clearRect(0, 0, p.size, h);
+      p.ctx.drawImage(canvas, 0, 0, p.size, h);
+    }
+    _previewRAF = requestAnimationFrame(tick);
+  };
+  _previewRAF = requestAnimationFrame(tick);
+}
+
+// Exported so the S-01 dock overlay can reuse this instead of standing up a
+// second WebGL context — see the shared-renderer note above; the browser caps
+// contexts at ~16 and previews go blank past that.
+export function ShipPreview({
+  shipId, color, size = 96, height, view = "hero", modelFill = 3.5,
+}: {
+  shipId: string; color: string; size?: number;
+  /** Render height; defaults to `size` (square). Set it for letterboxed slots
+   *  like the dock overlay's 234x88 strip so the canvas matches the box
+   *  instead of overflowing it. */
+  height?: number;
+  /** "hero" = the hangar's angled, slowly-spinning view (default, unchanged).
+   *  "side" = fixed broadside, no rotation — used by the S-01 dock overlay. */
+  view?: "hero" | "side";
+  /** Model size in world units before the camera framing. Larger = fills more
+   *  of the canvas. 3.5 is the hangar default. (Named modelFill, not fill —
+   *  `fill` is already the fill-light variable inside this component.) */
+  modelFill?: number;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -43,57 +159,195 @@ function ShipPreview({ shipId, color, size = 96 }: { shipId: string; color: stri
     if (!canvas) return;
     const modelPath = SHIP_PREVIEW_MODELS[shipId];
     if (!modelPath) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const H = height ?? size;
 
-    const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
-    renderer.setSize(size, size);
-    renderer.setPixelRatio(window.devicePixelRatio);
+    // The visible frame in world units. Kept at the perspective view's old
+    // dimensions (4.47 tall) so `modelFill` keeps the meaning it already had;
+    // the side view's ortho frustum is built from exactly these numbers, which
+    // is what makes the framing maths below exact.
+    const frameH = VISIBLE_H_UNITS;
+    const frameW = frameH * (size / H);
 
     const scene = new THREE.Scene();
-
-    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
-    camera.position.set(0, 3.5, 4.5);
+    // "side" views the hull broadside. Measured bounds for these GLBs put the
+    // LONG axis on X (Sovereign: x 1.91, y 1.10, z 1.36), so the camera sits on
+    // +Z and sees X run across the frame. Sitting on +X — the first attempt —
+    // looked straight down the hull's length and rendered a sliver.
+    //
+    // ORTHOGRAPHIC, not perspective, for the side view. With a perspective
+    // camera the bounding-box framing below is a lie for any hull with depth:
+    // geometry on the near face sits at (dist - z*scale/2), not at dist, so it
+    // projects larger than the box maths predicts. Deep hulls therefore
+    // overflowed the slot and clipped while flat ones fit — which is exactly
+    // the "some ships are too big and cut off" symptom. Orthographic has no
+    // depth magnification, so `frameW/x` and `frameH/y` are exact and all 15
+    // hulls frame identically at one modelFill.
+    const camera = view === "side"
+      ? new THREE.OrthographicCamera(-frameW / 2, frameW / 2, frameH / 2, -frameH / 2, 0.1, 1000)
+      : new THREE.PerspectiveCamera(45, size / H, 0.1, 1000);
+    if (view === "side") camera.position.set(0, 0, 10);
+    else camera.position.set(0, 3.5, 4.5);
     camera.lookAt(0, 0, 0);
-
-    const ambient = new THREE.AmbientLight(0xffffff, 1.2);
-    scene.add(ambient);
+    scene.add(new THREE.AmbientLight(0xffffff, 1.2));
     const dir = new THREE.DirectionalLight(0xffffff, 2.0);
-    dir.position.set(2, 4, 2);
-    scene.add(dir);
+    dir.position.set(2, 4, 2); scene.add(dir);
     const fill = new THREE.DirectionalLight(0x8888ff, 0.6);
-    fill.position.set(-2, 1, -2);
-    scene.add(fill);
+    fill.position.set(-2, 1, -2); scene.add(fill);
 
-    let animId: number;
-    let modelGroup: THREE.Group | null = null;
+    const entry: PreviewEntry = { scene, camera, model: null, ctx, size, height: H, manualRotate: view === "side" };
+    let disposed = false;
 
-    const loader = new GLTFLoader();
-    loader.load(modelPath, (gltf) => {
-      modelGroup = gltf.scene;
-      // Center and scale the model to fit the view
-      const box = new THREE.Box3().setFromObject(modelGroup);
+    loadShipModel(modelPath).then((template) => {
+      if (disposed) return;
+      const model = template.clone(true);
+      // Measure the hull UNROTATED, then centre it, then put it inside a pivot
+      // group that carries the yaw. Rotating the mesh itself and centring after
+      // does not work: `position.sub(center * scale)` shifts along world axes
+      // while the mesh's own axes have already turned, so the hull slides out
+      // of frame (it ended up bottom-right, then vanished entirely).
+      const box = new THREE.Box3().setFromObject(model);
       const center = box.getCenter(new THREE.Vector3());
       const sizeVec = box.getSize(new THREE.Vector3());
-      const maxDim = Math.max(sizeVec.x, sizeVec.y, sizeVec.z);
-      const scale = 3.5 / maxDim;
-      modelGroup.scale.setScalar(scale);
-      modelGroup.position.sub(center.multiplyScalar(scale));
-      scene.add(modelGroup);
-    });
 
-    const animate = () => {
-      animId = requestAnimationFrame(animate);
-      if (modelGroup) modelGroup.rotation.y += 0.004;
-      renderer.render(scene, camera);
-    };
-    animate();
+      // Framing. Hero normalises on the largest axis, as before.
+      //
+      // Side view looks down -Z and sees the hull's LENGTH (x) across the width
+      // and its HEIGHT (y) up the frame. Take whichever constraint binds.
+      // modelFill is a fraction of the frame (1 = touch the edges).
+      // The canvas matches the slot exactly and the camera is orthographic, so
+      // the visible frame IS the frustum — no depth magnification to correct
+      // for, and no hull can exceed the box.
+      // (An earlier version rendered a square canvas that overflowed an 88px
+      // box and tried to compensate with a "strip" factor — the hull ended up
+      // drawn outside the clipped area, which is why the box read as empty.)
+      const scale = view === "side"
+        ? modelFill * Math.min(
+            frameW / Math.max(sizeVec.x, 0.001),   // hull length across the width
+            frameH / Math.max(sizeVec.y, 0.001),   // hull height into the frame
+          )
+        : modelFill / Math.max(sizeVec.x, sizeVec.y, sizeVec.z);
+
+      model.scale.setScalar(scale);
+      model.position.copy(center).multiplyScalar(-scale);
+
+      // No yaw for the side view: the hull's long axis is already X, which is
+      // exactly what a camera on +Z sees across the frame.
+      scene.add(model);
+      entry.model = model;
+    }).catch(() => { /* leave blank on load failure */ });
+
+    _previews.add(entry);
+    ensurePreviewLoop();
 
     return () => {
-      cancelAnimationFrame(animId);
-      renderer.dispose();
+      disposed = true;
+      _previews.delete(entry);
     };
-  }, [shipId, size]);
+  }, [shipId, size, height, view, modelFill]);
 
-  return <canvas ref={canvasRef} width={size} height={size} style={{ display: "block" }} />;
+  const H = height ?? size;
+  return <canvas ref={canvasRef} width={size} height={H} style={{ display: "block", width: size, height: H }} />;
+}
+
+// ── Pet drone preview: same shared-renderer pool as ShipPreview, but the
+// player DRAGS to rotate it instead of watching it auto-spin — this is the
+// hangar's "inspect the thing I'm about to upgrade" view, not a passive
+// showcase. Swaps model on level up (DRONE_3D_MODELS keyed by level).
+function DronePreview({ level, size = 180 }: { level: number; size?: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const dragState = useRef<{ dragging: boolean; lastX: number; lastY: number }>({ dragging: false, lastX: 0, lastY: 0 });
+  const entryRef = useRef<PreviewEntry | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const modelPath = droneModelForLevel(Math.max(1, level) as any);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 1000);
+    camera.position.set(0, 1.2, 4.2);
+    camera.lookAt(0, 0, 0);
+    scene.add(new THREE.AmbientLight(0xffffff, 1.3));
+    const dir = new THREE.DirectionalLight(0xffffff, 2.2);
+    dir.position.set(2, 4, 3); scene.add(dir);
+    const fill = new THREE.DirectionalLight(0x4ee2ff, 0.7);
+    fill.position.set(-3, -1, -2); scene.add(fill);
+
+    const entry: PreviewEntry = { scene, camera, model: null, ctx, size, manualRotate: true };
+    entryRef.current = entry;
+    let disposed = false;
+
+    loadShipModel(modelPath).then((template) => {
+      if (disposed) return;
+      const inner = template.clone(true);
+      const box = new THREE.Box3().setFromObject(inner);
+      const center = box.getCenter(new THREE.Vector3());
+      const sizeVec = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(sizeVec.x, sizeVec.y, sizeVec.z, 0.001);
+      const scale = 2.6 / maxDim;
+      inner.scale.setScalar(scale);
+      inner.position.sub(center.multiplyScalar(scale));
+      // Rotation must pivot around the model's visual centre, not its own
+      // local origin — otherwise dragging swings the mesh through a wide arc
+      // instead of spinning in place (looks like the camera orbiting it). A
+      // wrapper group holds the already-centred inner model; ONLY the
+      // wrapper's rotation is touched by the drag handler.
+      const pivot = new THREE.Group();
+      pivot.add(inner);
+      // start at a flattering 3/4 angle rather than dead-on
+      pivot.rotation.y = 0.5;
+      pivot.rotation.x = -0.15;
+      scene.add(pivot);
+      entry.model = pivot;
+    }).catch(() => { /* leave blank on load failure */ });
+
+    _previews.add(entry);
+    ensurePreviewLoop();
+
+    return () => {
+      disposed = true;
+      _previews.delete(entry);
+      entryRef.current = null;
+    };
+  }, [level, size]);
+
+  const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    dragState.current = { dragging: true, lastX: e.clientX, lastY: e.clientY };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const ds = dragState.current;
+    if (!ds.dragging) return;
+    const dx = e.clientX - ds.lastX;
+    const dy = e.clientY - ds.lastY;
+    ds.lastX = e.clientX; ds.lastY = e.clientY;
+    const model = entryRef.current?.model;
+    if (model) {
+      model.rotation.y += dx * 0.012;
+      model.rotation.x = Math.max(-0.9, Math.min(0.9, model.rotation.x + dy * 0.012));
+    }
+  };
+  const onPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    dragState.current.dragging = false;
+    try { (e.target as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* already released */ }
+  };
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={size}
+      height={size}
+      style={{ display: "block", width: size, height: size, cursor: "grab", touchAction: "none" }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerLeave={onPointerUp}
+    />
+  );
 }
 
 let _pendingRiftConfirm: string | null = null;
@@ -123,16 +377,56 @@ export function Hangar({ stationId }: { stationId: string }) {
   const station = STATIONS.find((s) => s.id === stationId);
   if (!station) return null;
 
+  // In the 3D hangar the menu floats over the live scene: drop the opaque scrim
+  // and make the panel glassy (frosted) so the hangar lights read through it, and
+  // move the undock control out to a standalone top-right button.
+  const glass = ENABLE_HANGAR_3D_SCENE;
+  const undock = () => {
+    if (ENABLE_NEW_DOCKING_FLOW) { requestUndock(); return; }
+    state.dockedAt = null; sendDockLeave();
+    state.player.pos.y += 200;
+    state.cameraTarget = { ...state.player.pos };
+    save();
+    bump();
+  };
+
+  // 3D hangar: a floating column of INDIVIDUAL menu items over the live scene.
+  // Nothing else is shown until one is clicked, at which point a content drawer
+  // slides out left→right. Clicking the active item (or its ✕) closes the drawer.
+  if (glass) {
+    return <HangarGlassMenu station={station} stationId={stationId} tab={tab} />;
+  }
+
   return (
     <div
       className="absolute inset-0 z-50 flex items-center justify-center"
-      style={{ background: "rgba(2, 4, 12, 0.88)" }}
+      style={{ background: glass ? "rgba(2, 4, 12, 0.28)" : "rgba(2, 4, 12, 0.88)" }}
     >
+      {/* Standalone undock button, top-right (3D hangar only). */}
+      {glass && (
+        <button
+          className="gbtn gbtn-red"
+          style={{
+            position: "fixed", top: 18, right: 18, zIndex: 60,
+            padding: "10px 20px", fontSize: 15.3, letterSpacing: "0.08em",
+            backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
+            background: "rgba(40,8,12,0.5)",
+          }}
+          onClick={undock}
+        >
+          ✕ UNDOCK
+        </button>
+      )}
       <div
         className="panel panel-framed panel-gold relative flex flex-col"
         style={{
           width: "min(1280px, 96vw)",
           height: "min(820px, 94vh)",
+          ...(glass ? {
+            background: "rgba(6,10,20,0.46)",
+            backdropFilter: "blur(14px) saturate(1.1)",
+            WebkitBackdropFilter: "blur(14px) saturate(1.1)",
+          } : {}),
           ...drag.style,
         }}
       >
@@ -146,77 +440,250 @@ export function Hangar({ stationId }: { stationId: string }) {
               border: "1px solid rgba(78,226,255,0.35)",
               background: "rgba(78,226,255,0.07)",
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 20, color: "var(--hud-cyan)",
+              fontSize: 23.6, color: "var(--hud-cyan)",
               boxShadow: "0 0 12px rgba(78,226,255,0.2)",
             }}>⬡</div>
             <div className="min-w-0">
               <div className="hud-label">DOCKED AT · {station.kind.toUpperCase()}</div>
               <div
                 className="font-bold tracking-widest glow-cyan truncate"
-                style={{ color: "var(--accent-cyan)", fontSize: 16, lineHeight: 1.2, fontFamily: "var(--font-display)" }}
+                style={{ color: "var(--accent-cyan)", fontSize: 18.9, lineHeight: 1.2, fontFamily: "var(--font-display)" }}
               >
                 {station.name.toUpperCase()}
               </div>
-              <div className="truncate mt-0.5" style={{ color: "var(--text-mute)", fontSize: 11 }}>
+              <div className="truncate mt-0.5" style={{ color: "var(--text-mute)", fontSize: 13 }}>
                 {station.description}
               </div>
             </div>
           </div>
-          <button
-            className="gbtn gbtn-red shrink-0"
-            style={{ padding: "6px 16px", fontSize: 11 }}
-            onClick={() => {
-              state.dockedAt = null; sendDockLeave();
-              state.player.pos.y += 200;
-              state.cameraTarget = { ...state.player.pos };
-              save();
-              bump();
-            }}
-          >
-            ✕ UNDOCK
-          </button>
+          {/* In the 3D hangar the undock control lives standalone top-right; keep
+              the header button only for the 2D version. */}
+          {!glass && (
+            <button
+              className="gbtn gbtn-red shrink-0"
+              style={{ padding: "6px 16px", fontSize: 13 }}
+              onClick={undock}
+            >
+              ✕ UNDOCK
+            </button>
+          )}
         </div>
 
-        {/* Station body: left nav · content · info rail */}
+        {/* Station body: bay rail · content · info rail */}
         <div className="flex flex-1 min-h-0">
-          {/* left navigation */}
-          <div className="sw-nav">
-            <div className="dob-hdr" style={{ margin: "0 0 8px" }}>
-              <span>STATION SERVICES</span>
-            </div>
-            {(station.kind === "factory" ? FACTORY_TABS : TABS).map((t) => (
-              <button
-                key={t.id}
-                className={`sw-nav-item ${tab === t.id ? "sw-nav-item--selected" : ""}`}
-                onClick={() => { state.hangarTab = t.id; bump(); }}
-              >
-                <span style={{ width: 16, textAlign: "center", opacity: 0.8, flexShrink: 0 }}>{t.glyph}</span>
-                <span className="truncate">{t.label}</span>
-              </button>
-            ))}
-          </div>
+          {/* icon bay rail — grouped into service clusters, hover labels */}
+          <nav className="hangar-rail">
+            {(station.kind === "factory" ? FACTORY_TABS : TABS).map((t, i, arr) => {
+              // insert dividers between the wireframe's service clusters
+              const dividerBefore = station.kind !== "factory" && (t.id === "missions" || t.id === "ships");
+              return (
+                <div key={t.id} className="contents">
+                  {dividerBefore && <div className="hangar-rail-div" />}
+                  <button
+                    className={`hangar-bay ${tab === t.id ? "hangar-bay--on" : ""}`}
+                    onClick={() => { state.hangarTab = t.id; bump(); }}
+                    title={t.label}
+                  >
+                    <span>{t.glyph}</span>
+                    <span className="hangar-bay-lbl">{t.label}</span>
+                  </button>
+                </div>
+              );
+            })}
+          </nav>
 
           {/* content */}
           <div className="overflow-y-auto flex-1 min-h-0">
-            {tab === "bounties" && <BountiesTab />}
-            {tab === "missions" && <MissionsTab />}
-            {tab === "skills" && <SkillsTab />}
-            {tab === "loadout" && <LoadoutTab stationId={stationId} />}
-            {tab === "dungeons" && <DungeonsTab />}
-            {tab === "ships" && <ShipsTab />}
-            {tab === "drones" && <DronesTab />}
-            {tab === "market" && <MarketTab stationId={stationId} />}
-            {tab === "ammo" && <AmmoTab />}  {/* kept for loadout inline popup */}
-            {tab === "cargo" && <CargoTab />}
-            {tab === "refinery" && <RefineryTab stationId={stationId} />}
-            {tab === "repair" && <RepairTab stationId={stationId} />}
+            <TabContent tab={tab} stationId={stationId} />
           </div>
 
           {/* info rail: pilot + resources summary */}
           <StationInfoRail station={station} />
         </div>
+
+        {/* bottom dock strip — persistent quick actions + context line */}
+        <HangarDockStrip station={station} />
       </div>
 
+    </div>
+  );
+}
+
+/**
+ * Tabs that have a migrated design-export panel behind ?newhangar.
+ *
+ * Must stay in sync with the ENABLE_NEW_HANGAR_PANELS branches in TabContent
+ * below — this is what HangarGlassMenu uses to decide whether a tab renders as a
+ * self-contained overlay (own frame + header + close) or inside the old glass
+ * drawer. "skills" and "loadout" are absent on purpose: not migrated yet.
+ */
+const MIGRATED_TABS = new Set<HangarTab>([
+  "bounties", "missions", "skills", "loadout", "ships", "drones", "market", "repair",
+]);
+
+// The section body for a given tab — shared by the 2D panel and the 3D glass drawer.
+function TabContent({ tab, stationId }: { tab: HangarTab; stationId: string }) {
+  return (
+    <>
+      {/* Migrated design-export panels behind ?newhangar, the existing tabs
+          otherwise. Both read the same state.hangarTab, so exactly one renders.
+          Skills and Loadout are deliberately NOT migrated yet — deferred. */}
+      {tab === "bounties" && (ENABLE_NEW_HANGAR_PANELS ? <BountyHost /> : <BountiesTab />)}
+      {tab === "missions" && (ENABLE_NEW_HANGAR_PANELS ? <MissionsHost /> : <MissionsTab />)}
+      {tab === "skills" && (ENABLE_NEW_HANGAR_PANELS ? <SkillMatrixHost /> : <SkillsTab />)}
+      {tab === "loadout" && (ENABLE_NEW_HANGAR_PANELS
+        ? <LoadoutHost />
+        : <LoadoutTab stationId={stationId} />)}
+      {tab === "dungeons" && <DungeonsTab />}
+      {tab === "ships" && (ENABLE_NEW_HANGAR_PANELS
+        ? <ShipyardHost renderPreview={(id, color, size) => (
+            <ShipPreview shipId={id} color={color} size={size} modelFill={3.2} />
+          )} />
+        : <ShipsTab />)}
+      {tab === "drones" && (ENABLE_NEW_HANGAR_PANELS ? <DronesHost /> : <DronesTab />)}
+      {tab === "market" && (ENABLE_NEW_HANGAR_PANELS
+        ? <MarketHost stationId={stationId} />
+        : <MarketTab stationId={stationId} />)}
+      {tab === "ammo" && <AmmoTab />}  {/* kept for loadout inline popup */}
+      {tab === "cargo" && <CargoTab />}
+      {tab === "refinery" && <RefineryTab stationId={stationId} />}
+      {tab === "repair" && (ENABLE_NEW_HANGAR_PANELS
+        ? <StationServicesHost stationId={stationId} />
+        : <RepairTab stationId={stationId} />)}
+    </>
+  );
+}
+
+/**
+ * 3D-hangar menu (glass mode). Instead of one big panel, the individual menu items
+ * float in a column on the left over the live hangar scene. Nothing else is shown
+ * until the pilot clicks one — then a frosted content drawer slides out from left to
+ * right beside the column. Clicking the active item again (or the drawer's ✕) closes
+ * it, returning to just the scene + item list. `tab === null` = closed.
+ */
+function HangarGlassMenu({
+  station, stationId, tab,
+}: {
+  station: (typeof STATIONS)[number];
+  stationId: string;
+  tab: HangarTab;
+}) {
+  const items = station.kind === "factory" ? FACTORY_TABS : TABS;
+  const open = tab !== null;
+  const active = items.find((t) => t.id === tab) ?? null;
+
+  const close = () => { state.hangarTab = null; bump(); };
+
+  // The migrated design-export panels are self-contained overlays: each brings
+  // its own 1340px-wide frame, header and close diamond. The glass drawer is
+  // sized for the OLD tab bodies (width: min(760px, 68vw) + overflow: hidden in
+  // hud-skin.css), so rendering them inside it clipped them at 760px and drew a
+  // second header above them. They therefore replace the drawer entirely rather
+  // than living in it — centred over the scene, scaled down on narrow viewports
+  // so the full frame always fits.
+  if (ENABLE_NEW_HANGAR_PANELS && MIGRATED_TABS.has(tab)) {
+    return (
+      <div
+        className="absolute inset-0 z-50"
+        style={{ pointerEvents: "none", display: "grid", placeItems: "center" }}
+      >
+        {open && (
+          <div
+            className="hangar-migrated-panel"
+            style={{
+              pointerEvents: "auto",
+              // Each panel is authored at a fixed width; the wrapper scales it
+              // to fit. Loadout is 1680 wide and much taller than the rest, so
+              // it must report its own size or it overflows the viewport.
+              ...(tab === "loadout"
+                ? { ["--panel-w" as string]: "1680", ["--panel-h" as string]: "1080" }
+                : null),
+            }}
+          >
+            <TabContent tab={tab} stationId={stationId} />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="absolute inset-0 z-50" style={{ pointerEvents: "none" }}>
+      {/* Undock button, station chip and the item rail used to live here. They
+          are now provided by the migrated S-01 overlay
+          (components/hangar/HangarDockOverlayHost.tsx), which renders the
+          station status card, the ship card and the 8-tab dock row over the
+          same 3D scene. Keeping both drew two undock buttons and two menus.
+          What stays is the content drawer below: the overlay's tabs set
+          state.hangarTab, this renders the section body for it. */}
+      {/* Floating item column + slide-out drawer. */}
+      <div className="hangar-glass-menu">
+        {/* Content drawer — slides open from the rail's right edge. Rendered always
+            so the width transition animates; content only mounts while open. */}
+        <div className={`hangar-glass-drawer ${open ? "hangar-glass-drawer--open" : ""}`}>
+          {open && active && (
+            <>
+              <div className="hangar-glass-drawer-head">
+                <span className="hangar-glass-drawer-title">
+                  <span style={{ opacity: 0.7, marginRight: 8 }}>{active.glyph}</span>
+                  {active.label.toUpperCase()}
+                </span>
+                <button className="hangar-glass-close" onClick={close} title="Close">✕</button>
+              </div>
+              <div className="hangar-glass-drawer-body">
+                <TabContent tab={tab} stationId={stationId} />
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Persistent bottom strip: repair/refuel + sell junk shortcuts, station status.
+function HangarDockStrip({ station }: { station: (typeof STATIONS)[number] }) {
+  const player = useGame((s) => s.player);
+  const stats = effectiveStats();
+  const hullPct = Math.round((player.hull / stats.hullMax) * 100);
+  const needsRepair = player.hull < stats.hullMax - 0.5;
+  const bounties = player.activeQuests?.filter((q: any) => !q.completed).length ?? 0;
+
+  const repair = () => {
+    if (!needsRepair) return;
+    apiRepairHull()
+      .then((res) => {
+        player.credits = res.credits;
+        player.hull = res.hull;
+        sendDockRepair(res.hullMax, player.shield);
+        pushNotification(res.cost > 0 ? `Hull repaired · -${res.cost.toLocaleString()} CR` : "Hull already at full", "good");
+        save(); bump();
+      })
+      .catch((err) => pushNotification(err.message || "Repair failed", "bad"));
+  };
+
+  return (
+    <div className="hangar-dock">
+      <button
+        className="gbtn"
+        style={{ padding: "6px 16px", fontSize: 13, letterSpacing: "0.12em", opacity: needsRepair ? 1 : 0.5 }}
+        disabled={!needsRepair}
+        title={needsRepair ? "Repair hull to full" : "Hull already at full"}
+        onClick={repair}
+      >
+        ✚ REPAIR HULL {needsRepair ? `· ${hullPct}%` : "· FULL"}
+      </button>
+      <button
+        className="gbtn"
+        style={{ padding: "6px 16px", fontSize: 13, letterSpacing: "0.12em" }}
+        title="Open the loadout bay to sell unused gear"
+        onClick={() => { state.hangarTab = "loadout"; bump(); }}
+      >
+        ⚙ MANAGE LOADOUT
+      </button>
+      <span className="hangar-dock-note">
+        DOCKED · {station.name.toUpperCase()} · {bounties > 0 ? `${bounties} ACTIVE ${bounties === 1 ? "CONTRACT" : "CONTRACTS"}` : "SYSTEMS NOMINAL"}
+      </span>
     </div>
   );
 }
@@ -239,8 +706,8 @@ function StationInfoRail({ station }: { station: (typeof STATIONS)[number] }) {
       <div className="dob-hdr" style={{ margin: "0 0 8px" }}><span>PILOT CONSOLE</span></div>
       <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
         {rows.map((r) => (
-          <div key={r.label} className="flex items-center justify-between gap-2" style={{ fontSize: 11 }}>
-            <span className="hud-label" style={{ fontSize: 10 }}>{r.label}</span>
+          <div key={r.label} className="flex items-center justify-between gap-2" style={{ fontSize: 13 }}>
+            <span className="hud-label" style={{ fontSize: 11.8 }}>{r.label}</span>
             <span className="tabular-nums font-bold truncate" style={{ color: r.color, maxWidth: 120 }}>
               {r.value}
             </span>
@@ -249,7 +716,7 @@ function StationInfoRail({ station }: { station: (typeof STATIONS)[number] }) {
       </div>
       <div className="sw-hr" style={{ margin: "10px 0" }} />
       <div className="dob-hdr" style={{ margin: "0 0 6px" }}><span>STATION</span></div>
-      <div style={{ fontSize: 10, lineHeight: 1.5, color: "var(--text-mute)" }}>
+      <div style={{ fontSize: 11.8, lineHeight: 1.5, color: "var(--text-mute)" }}>
         <span style={{ color: "var(--accent-cyan)" }}>{station.name}</span>
         {" — "}
         {station.kind.toUpperCase()} facility. Services and prices vary by station type and controlling faction.
@@ -309,12 +776,12 @@ function BountiesTab() {
 
       {/* Tier filter */}
       <div className="flex gap-1.5 flex-wrap shrink-0">
-        <button className={`gbtn ${tierFilter === 0 ? "gbtn-gold" : ""}`} style={{ padding: "4px 14px", fontSize: 11 }} onClick={() => setTierFilter(0)}>ALL</button>
+        <button className={`gbtn ${tierFilter === 0 ? "gbtn-gold" : ""}`} style={{ padding: "4px 14px", fontSize: 13 }} onClick={() => setTierFilter(0)}>ALL</button>
         {tiers.map(t => (
           <button
             key={t}
             className={`gbtn ${tierFilter === t ? "gbtn-gold" : ""}`}
-            style={{ padding: "4px 12px", fontSize: 11, color: tierColors[t] ?? "#888", opacity: tierFilter === 0 || tierFilter === t ? 1 : 0.6 }}
+            style={{ padding: "4px 12px", fontSize: 13, color: tierColors[t] ?? "#888", opacity: tierFilter === 0 || tierFilter === t ? 1 : 0.6 }}
             onClick={() => setTierFilter(t)}
           >
             T{t}
@@ -334,7 +801,7 @@ function BountiesTab() {
               const has = player.activeQuests.find((x: any) => x.id === q.id);
               const tierColor = tierColors[q.tier ?? 1] ?? "#888";
               return (
-                <div key={q.id} className="panel p-3 flex items-center gap-3" style={{ borderLeft: `3px solid ${tierColor}` }}>
+                <div key={q.id} className="panel-inset p-3 flex items-center gap-3" style={{ ["--edge" as any]: tierColor }}>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-[11px] font-bold px-1 shrink-0" style={{ background: tierColor + "22", color: tierColor, border: `1px solid ${tierColor}55` }}>T{q.tier ?? 1}</span>
@@ -344,7 +811,7 @@ function BountiesTab() {
                       <span>{q.killCount}× {q.killType}</span>
                       <span
                         className="font-bold tabular-nums px-1 shrink-0"
-                        style={{ color: "#ffd24a", background: "#ffd24a18", border: "1px solid #ffd24a66", fontSize: 11, fontFamily: "var(--font-display)" }}
+                        style={{ color: "#ffd24a", background: "#ffd24a18", border: "1px solid #ffd24a66", fontSize: 13, fontFamily: "var(--font-display)" }}
                       >
                         {ZONES[q.zone as keyof typeof ZONES]?.label ?? "?"}
                       </span>
@@ -356,7 +823,7 @@ function BountiesTab() {
                       <span style={{ color: "#c8a0ff" }}>+{q.rewardHonor} honor</span>
                     </div>
                   </div>
-                  <button className="gbtn gbtn-gold shrink-0" style={{ padding: "6px 14px", fontSize: 11 }} disabled={!!has} onClick={() => accept(q)}>
+                  <button className="gbtn gbtn-gold shrink-0" style={{ padding: "6px 14px", fontSize: 13 }} disabled={!!has} onClick={() => accept(q)}>
                     {has ? "ACTIVE" : "ACCEPT"}
                   </button>
                 </div>
@@ -376,7 +843,7 @@ function BountiesTab() {
               <div className="text-mute text-sm italic">No active contracts. Take one from the board.</div>
             )}
             {player.activeQuests.map((q: any) => (
-              <div key={q.id} className="panel p-3">
+              <div key={q.id} className="panel-inset p-3">
                 <div className="flex items-center justify-between gap-2 min-w-0">
                   <span className="text-amber text-[13px] font-bold tracking-wide truncate">{q.title}</span>
                   <span className="text-[12px] tabular-nums shrink-0" style={{ color: q.completed ? "#5cff8a" : "#8f96a6" }}>
@@ -387,7 +854,7 @@ function BountiesTab() {
                   <span className="shrink-0">{q.killType}s in</span>
                   <span
                     className="font-bold tabular-nums px-1 shrink-0"
-                    style={{ color: "#ffd24a", background: "#ffd24a18", border: "1px solid #ffd24a66", fontSize: 11, fontFamily: "var(--font-display)" }}
+                    style={{ color: "#ffd24a", background: "#ffd24a18", border: "1px solid #ffd24a66", fontSize: 13, fontFamily: "var(--font-display)" }}
                   >
                     {ZONES[q.zone as keyof typeof ZONES]?.label ?? "?"}
                   </span>
@@ -400,7 +867,7 @@ function BountiesTab() {
                     boxShadow: "0 0 6px #ff5cf0",
                   }} />
                 </div>
-                <button className={`gbtn w-full ${q.completed ? "gbtn-gold" : ""}`} style={{ padding: "5px 0", fontSize: 11 }} disabled={!q.completed} onClick={() => turnIn(q)}>
+                <button className={`gbtn w-full ${q.completed ? "gbtn-gold" : ""}`} style={{ padding: "5px 0", fontSize: 13 }} disabled={!q.completed} onClick={() => turnIn(q)}>
                   {q.completed ? "✓ TURN IN" : "IN PROGRESS"}
                 </button>
               </div>
@@ -428,7 +895,7 @@ function computeStatDiff(equipped: ModuleStats, shop: ModuleStats): StatDiffEntr
   const num = (a?: number, b?: number) => (b ?? 0) - (a ?? 0);
 
   const dmg = num(equipped.damage, shop.damage);
-  if (dmg !== 0) diffs.push({ label: "DMG", delta: dmg, formatted: `${dmg > 0 ? "+" : ""}${dmg}` });
+  if (dmg !== 0) diffs.push({ label: "DMG", delta: dmg, formatted: `${dmg > 0 ? "+" : ""}${fmtStat(dmg)}` });
 
   if ((equipped.fireRate ?? 1) !== 1 || (shop.fireRate ?? 1) !== 1) {
     const rDelta = (shop.fireRate ?? 1) - (equipped.fireRate ?? 1);
@@ -439,28 +906,28 @@ function computeStatDiff(equipped: ModuleStats, shop: ModuleStats): StatDiffEntr
   if (Math.abs(crit) > 0.0001) diffs.push({ label: "CRIT", delta: crit, formatted: `${crit > 0 ? "+" : ""}${Math.round(crit * 100)}%` });
 
   const shd = num(equipped.shieldMax, shop.shieldMax);
-  if (shd !== 0) diffs.push({ label: "SHD", delta: shd, formatted: `${shd > 0 ? "+" : ""}${shd}` });
+  if (shd !== 0) diffs.push({ label: "SHD", delta: shd, formatted: `${shd > 0 ? "+" : ""}${fmtStat(shd)}` });
 
   const reg = num(equipped.shieldRegen, shop.shieldRegen);
-  if (reg !== 0) diffs.push({ label: "REG", delta: reg, formatted: `${reg > 0 ? "+" : ""}${reg.toFixed(1)}` });
+  if (reg !== 0) diffs.push({ label: "REG", delta: reg, formatted: `${reg > 0 ? "+" : ""}${fmtStat(reg)}` });
 
   const hul = num(equipped.hullMax, shop.hullMax);
-  if (hul !== 0) diffs.push({ label: "HUL", delta: hul, formatted: `${hul > 0 ? "+" : ""}${hul}` });
+  if (hul !== 0) diffs.push({ label: "HUL", delta: hul, formatted: `${hul > 0 ? "+" : ""}${fmtStat(hul)}` });
 
   const spd = num(equipped.speed, shop.speed);
-  if (spd !== 0) diffs.push({ label: "SPD", delta: spd, formatted: `${spd > 0 ? "+" : ""}${spd}` });
+  if (spd !== 0) diffs.push({ label: "SPD", delta: spd, formatted: `${spd > 0 ? "+" : ""}${fmtStat(spd)}` });
 
   const dr = num(equipped.damageReduction, shop.damageReduction);
   if (Math.abs(dr) > 0.0001) diffs.push({ label: "DR", delta: dr, formatted: `${dr > 0 ? "+" : ""}${Math.round(dr * 100)}%` });
 
   const aoe = num(equipped.aoeRadius, shop.aoeRadius);
-  if (aoe !== 0) diffs.push({ label: "AOE", delta: aoe, formatted: `${aoe > 0 ? "+" : ""}${aoe}` });
+  if (aoe !== 0) diffs.push({ label: "AOE", delta: aoe, formatted: `${aoe > 0 ? "+" : ""}${fmtStat(aoe)}` });
 
   const ammo = num(equipped.ammoCapacity, shop.ammoCapacity);
-  if (ammo !== 0) diffs.push({ label: "AMMO", delta: ammo, formatted: `${ammo > 0 ? "+" : ""}${ammo}` });
+  if (ammo !== 0) diffs.push({ label: "AMMO", delta: ammo, formatted: `${ammo > 0 ? "+" : ""}${fmtStat(ammo)}` });
 
   const loot = num(equipped.lootBonus, shop.lootBonus);
-  if (loot !== 0) diffs.push({ label: "LOOT", delta: loot, formatted: `${loot > 0 ? "+" : ""}${loot}` });
+  if (loot !== 0) diffs.push({ label: "LOOT", delta: loot, formatted: `${loot > 0 ? "+" : ""}${fmtStat(loot)}` });
 
   return diffs;
 }
@@ -486,18 +953,18 @@ function normalizedUpgradeScore(equipped: ModuleStats, shop: ModuleStats): numbe
 
 function modStatPills(stats: typeof MODULE_DEFS[string]["stats"]) {
   const pills: { k: string; v: string; c: string }[] = [];
-  if (stats.damage)          pills.push({ k: "DMG", v: `+${stats.damage}`, c: "#ff5c6c" });
+  if (stats.damage)          pills.push({ k: "DMG", v: `+${fmtStat(stats.damage)}`, c: "#ff5c6c" });
   if (stats.fireRate && stats.fireRate !== 1) pills.push({ k: "RATE", v: `×${stats.fireRate.toFixed(2)}`, c: "#ffd24a" });
   if (stats.critChance)      pills.push({ k: "CRIT", v: `+${Math.round(stats.critChance * 100)}%`, c: "#ff5cf0" });
-  if (stats.aoeRadius)       pills.push({ k: "AOE", v: `${stats.aoeRadius}`, c: "#ff8a4e" });
-  if (stats.shieldMax)       pills.push({ k: "SHD", v: `+${stats.shieldMax}`, c: "#4ee2ff" });
-  if (stats.shieldRegen)     pills.push({ k: "REG", v: `+${stats.shieldRegen}`, c: "#4ee2ff" });
-  if (stats.hullMax)         pills.push({ k: "HUL", v: `+${stats.hullMax}`, c: "#5cff8a" });
-  if (stats.speed)           pills.push({ k: "SPD", v: `+${stats.speed}`, c: "#aaff5c" });
-  if (stats.damageReduction) pills.push({ k: "DR",  v: `${Math.round(stats.damageReduction * 100)}%`, c: "#ff8a4e" });
+  if (stats.aoeRadius)       pills.push({ k: "AOE", v: `${fmtStat(stats.aoeRadius)}`, c: "#e8b94d" });
+  if (stats.shieldMax)       pills.push({ k: "SHD", v: `+${fmtStat(stats.shieldMax)}`, c: "#4ee2ff" });
+  if (stats.shieldRegen)     pills.push({ k: "REG", v: `+${fmtStat(stats.shieldRegen)}`, c: "#4ee2ff" });
+  if (stats.hullMax)         pills.push({ k: "HUL", v: `+${fmtStat(stats.hullMax)}`, c: "#5cff8a" });
+  if (stats.speed)           pills.push({ k: "SPD", v: `+${fmtStat(stats.speed)}`, c: "#aaff5c" });
+  if (stats.damageReduction) pills.push({ k: "DR",  v: `${Math.round(stats.damageReduction * 100)}%`, c: "#e8b94d" });
   if (stats.cargoBonus)      pills.push({ k: "CRG", v: `+${Math.round(stats.cargoBonus * 100)}%`, c: "#c69060" });
-  if (stats.lootBonus)       pills.push({ k: "LOOT", v: `+${stats.lootBonus}`, c: "#ffd24a" });
-  if (stats.ammoCapacity)    pills.push({ k: "AMMO", v: `+${stats.ammoCapacity}`, c: "#ff8a4e" });
+  if (stats.lootBonus)       pills.push({ k: "LOOT", v: `+${fmtStat(stats.lootBonus)}`, c: "#ffd24a" });
+  if (stats.ammoCapacity)    pills.push({ k: "AMMO", v: `+${fmtStat(stats.ammoCapacity)}`, c: "#e8b94d" });
   return (
     <div className="flex flex-wrap gap-1 mt-1">
       {pills.map((p, i) => statChip(p.k, p.v, p.c))}
@@ -512,7 +979,7 @@ function RocketAmmoBadge() {
     <div className="relative inline-block mt-1">
       <span
         className="text-[12px] tracking-widest cursor-help inline-flex items-center gap-1"
-        style={{ color: "#ff8a4e", border: "1px solid #ff8a4e55", padding: "1px 5px" }}
+        style={{ color: "var(--hud-gold)", border: "1px solid rgba(232,185,77,0.4)", padding: "1px 5px" }}
         onMouseEnter={() => setShowTip(true)}
         onMouseLeave={() => setShowTip(false)}
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowTip((v) => !v); }}
@@ -521,10 +988,10 @@ function RocketAmmoBadge() {
       </span>
       {showTip && (
         <div
-          className="absolute z-50 bottom-full left-0 mb-1.5 panel p-2 text-[12px] leading-relaxed"
+          className="absolute z-50 bottom-full left-0 mb-1.5 panel-inset p-2 text-[12px] leading-relaxed"
           style={{ width: 200, pointerEvents: "none", color: "var(--text-dim)" }}
         >
-          <div className="text-[12px] font-bold tracking-widest mb-1" style={{ color: "#ff8a4e" }}>AMMO SYSTEM</div>
+          <div className="text-[12px] font-bold tracking-widest mb-1" style={{ color: "var(--hud-gold)" }}>AMMO SYSTEM</div>
           Rocket weapons fire limited rounds. Restock at any station for <span style={{ color: "#ffd24a" }}>{ROCKET_AMMO_COST_PER}cr per round</span>.
           Current max capacity: <span style={{ color: "#4ee2ff" }}>{maxAmmo} rounds</span>.
           Equip a <span style={{ color: "#ff5cf0" }}>Munitions Bay</span> module to increase capacity.
@@ -539,20 +1006,20 @@ function RocketAmmoBadge() {
 function moduleTipText(def: ModuleDef, opts?: { action?: string }): string {
   const st = def.stats;
   const parts: string[] = [];
-  if (st.damage != null) parts.push(`DMG +${st.damage}`);
-  if (st.fireRate != null && st.fireRate !== 1) parts.push(`ROF ×${st.fireRate}`);
+  if (st.damage != null) parts.push(`DMG +${fmtStat(st.damage)}`);
+  if (st.fireRate != null && st.fireRate !== 1) parts.push(`ROF ×${fmtStat(st.fireRate)}`);
   if (st.critChance) parts.push(`CRIT +${Math.round(st.critChance * 100)}%`);
-  if (st.aoeRadius) parts.push(`AOE ${st.aoeRadius}`);
-  if (st.shieldMax) parts.push(`SHD +${st.shieldMax}`);
-  if (st.shieldRegen) parts.push(`REG +${st.shieldRegen}/s`);
+  if (st.aoeRadius) parts.push(`AOE ${fmtStat(st.aoeRadius)}`);
+  if (st.shieldMax) parts.push(`SHD +${fmtStat(st.shieldMax)}`);
+  if (st.shieldRegen) parts.push(`REG +${fmtStat(st.shieldRegen)}/s`);
   if (st.shieldAbsorb) parts.push(`ABS +${Math.round(st.shieldAbsorb * 100)}%`);
-  if (st.hullMax) parts.push(`HUL +${st.hullMax}`);
-  if (st.speed) parts.push(`SPD +${st.speed}`);
+  if (st.hullMax) parts.push(`HUL +${fmtStat(st.hullMax)}`);
+  if (st.speed) parts.push(`SPD +${fmtStat(st.speed)}`);
   if (st.damageReduction) parts.push(`DR ${Math.round(st.damageReduction * 100)}%`);
-  if (st.ammoCapacity) parts.push(`AMMO +${st.ammoCapacity}`);
-  if (st.cargoBonus) parts.push(`CARGO +${st.cargoBonus}`);
-  if (st.lootBonus) parts.push(`LOOT +${st.lootBonus}`);
-  if (st.miningBonus) parts.push(`MINING +${st.miningBonus}`);
+  if (st.ammoCapacity) parts.push(`AMMO +${fmtStat(st.ammoCapacity)}`);
+  if (st.cargoBonus) parts.push(`CARGO +${Math.round(st.cargoBonus * 100)}%`);
+  if (st.lootBonus) parts.push(`LOOT +${fmtStat(st.lootBonus)}`);
+  if (st.miningBonus) parts.push(`MINING +${fmtStat(st.miningBonus)}`);
   const lines = [
     `${def.name} · T${def.tier} ${def.rarity.toUpperCase()}`,
     def.description,
@@ -564,10 +1031,12 @@ function moduleTipText(def: ModuleDef, opts?: { action?: string }): string {
 }
 
 function SlotCell({
-  slot, index, instanceId, compareWithDef, onHover,
+  slot, index, instanceId, compareWithDef, onHover, tip,
 }: {
   slot: ModuleSlot; index: number; instanceId: string | null; compareWithDef?: ModuleDef | null;
   onHover?: (info: { slot: ModuleSlot; index: number; def: ModuleDef | null } | null) => void;
+  /** Shared rich-tooltip binder from useItemTooltip (owned by the parent tab). */
+  tip?: ReturnType<typeof useItemTooltip>;
 }) {
   const player = useGame((s) => s.player);
   const item = instanceId ? player.inventory.find((m) => m.instanceId === instanceId) : null;
@@ -577,8 +1046,12 @@ function SlotCell({
   const fits = !!compareWithDef;
   return (
     <div
-      className="sw-slot equip-cell"
-      title={item && def ? lootTipText(item, { action: "CLICK TO UNEQUIP" }) : "Empty slot\nEquip a module from the inventory list"}
+      className={`sw-slot equip-cell${item ? ` rarity--${item.rarity ?? def?.rarity ?? "common"}` : ""}`}
+      /* Filled slots get the rich card; empty ones keep a plain hint (there is
+         no item to render a card for). */
+      title={item && def ? undefined : "Empty slot\nEquip a module from the inventory list"}
+      onPointerEnter={item && tip ? tip.bind(item, { action: "CLICK TO UNEQUIP" }).onPointerEnter : undefined}
+      onPointerLeave={item && tip ? tip.bind(item, { action: "CLICK TO UNEQUIP" }).onPointerLeave : undefined}
       style={{
         boxShadow: def
           ? `inset 0 0 0 1px ${color}88${fits ? ", 0 0 8px rgba(255,210,74,0.5)" : ""}`
@@ -588,16 +1061,16 @@ function SlotCell({
       }}
       onMouseEnter={() => onHover?.({ slot, index, def })}
       onMouseLeave={() => onHover?.(null)}
-      onClick={() => { if (def) unequipSlot(slot, index); }}
+      onClick={() => { if (def) { tip?.clear(); unequipSlot(slot, index); } }}
     >
       <span className="equip-num">{index + 1}</span>
       {def ? (
         <>
-          <span style={{ color: def.color, fontSize: 20, lineHeight: 1, textShadow: `0 0 8px ${def.color}` }}>{def.glyph}</span>
-          <span className="equip-tier" style={{ color }}>{"\u25aa".repeat(Math.min(5, def.tier))}</span>
+          <WeaponIcon def={def} size={34} />
+          <span className="equip-tier" style={{ color }}>{`T${def.tier}`}</span>
         </>
       ) : (
-        <span style={{ color: fits ? "#ffd24a" : "#4a4c58", fontSize: 16, lineHeight: 1 }}>+</span>
+        <span style={{ color: fits ? "#ffd24a" : "#4a4c58", fontSize: 18.9, lineHeight: 1 }}>+</span>
       )}
     </div>
   );
@@ -611,12 +1084,16 @@ function LoadoutTab({ stationId }: { stationId: string }) {
   const [filter, setFilter] = useState<ModuleSlot | "all">("all");
   const [showShop, setShowShop] = useState(false);
   const [showAmmoPopup, setShowAmmoPopup] = useState(false);
+  const [showConsumablesPopup, setShowConsumablesPopup] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [sellMode, setSellMode] = useState(false);
   const [sellAllArmed, setSellAllArmed] = useState(false);
   // rich comparison card anchored next to the hovered inventory/shop cell
   const [cardHover, setCardHover] = useState<{ kind: "inv" | "shop"; id: string; x: number; y: number } | null>(null);
   const [hoverEquip, setHoverEquip] = useState<{ slot: ModuleSlot; index: number; def: ModuleDef | null } | null>(null);
+  // Rich card for the EQUIPPED slots (the inventory/shop lists have their own
+  // comparison card below via `cardHover`).
+  const equipTip = useItemTooltip();
   const [hoveredShopDefId, setHoveredShopDefId] = useState<string | null>(null);
   const hoveredShopDef = hoveredShopDefId ? MODULE_DEFS[hoveredShopDefId] ?? null : null;
   const [hoveredInvInstanceId, setHoveredInvInstanceId] = useState<string | null>(null);
@@ -626,9 +1103,12 @@ function LoadoutTab({ stationId }: { stationId: string }) {
     return it ? MODULE_DEFS[it.defId] ?? null : null;
   })();
 
-  // Shop offer: 4 random buyable modules, capped to ones unlocked by ship tier-ish
-  const tierCap2 = Math.min(5, Math.max(1, Math.ceil(player.level / 4)));
-  const shopPool = Object.values(MODULE_DEFS).filter((d) => d.tier <= tierCap2);
+  // Shop offer: buyable modules unlocked by player level. Weapons span tier
+  // 0-10 (unlock ~1 tier per 4 levels), generators/modules stay tier 1-5.
+  const weaponTierCap = Math.min(10, Math.max(0, Math.floor(player.level / 4)));
+  const otherTierCap = Math.min(5, Math.max(1, Math.ceil(player.level / 8)));
+  const shopPool = Object.values(MODULE_DEFS).filter((d) =>
+    d.slot === "weapon" ? d.tier <= weaponTierCap : d.tier <= otherTierCap);
   // Show all available weapons + generators + modules (no arbitrary limit)
   const shopOffer = shopPool;
 
@@ -663,8 +1143,17 @@ function LoadoutTab({ stationId }: { stationId: string }) {
   }, [showShop, shopOffer, player.equipped, player.inventory]);
 
   const SLOT_ORDER: Record<ModuleSlot, number> = { weapon: 0, generator: 1, module: 2 };
+  // Equipped gear is shown in the slot sections above, not repeated in the
+  // inventory list — the list is what is SPARE. Unequipping a slot puts the
+  // item straight back here.
+  const wornIds = new Set<string>([
+    ...player.equipped.weapon,
+    ...player.equipped.generator,
+    ...player.equipped.module,
+  ].filter((x): x is string => !!x));
   const visibleInv = player.inventory
     .filter((it) => {
+      if (wornIds.has(it.instanceId)) return false;
       if (filter === "all") return true;
       return MODULE_DEFS[it.defId]?.slot === filter;
     })
@@ -698,7 +1187,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
         {!isCollapsed && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, 54px)", gap: 6, padding: "8px 2px 6px" }}>
             {player.equipped[slot].map((id, i) => (
-              <SlotCell key={`${slot}-${i}`} slot={slot} index={i} instanceId={id} compareWithDef={compareDef} onHover={setHoverEquip} />
+              <SlotCell key={`${slot}-${i}`} slot={slot} index={i} instanceId={id} compareWithDef={compareDef} onHover={setHoverEquip} tip={equipTip} />
             ))}
           </div>
         )}
@@ -728,7 +1217,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
           >
             {cls.name.toUpperCase()}
           </div>
-          <div className="tabular-nums font-bold" style={{ color: "var(--accent-amber)", fontSize: 12 }}>
+          <div className="tabular-nums font-bold" style={{ color: "var(--accent-amber)", fontSize: 14.2 }}>
             {player.credits.toLocaleString()} CR
           </div>
         </div>
@@ -755,14 +1244,14 @@ function LoadoutTab({ stationId }: { stationId: string }) {
         {/* hovered equipped-module inspect pane */}
         <div
           className="flex-1 min-h-0 overflow-y-auto"
-          style={{ background: "linear-gradient(180deg, rgba(22,22,28,0.92), rgba(13,13,17,0.92))", border: "1px solid #33353e", padding: "8px 10px", minHeight: 76 }}
+          style={{ background: "linear-gradient(180deg, rgba(22,22,28,0.92), rgba(13,13,17,0.92))", border: "1px solid var(--hud-border-dim)", padding: "8px 10px", minHeight: 76 }}
         >
           {hoverEquip?.def ? (
             <>
               <div className="flex items-center gap-2 mb-1 min-w-0">
                 <div className="shrink-0 flex items-center justify-center"
-                  style={{ width: 24, height: 24, background: `${hoverEquip.def.color}22`, border: `1px solid ${hoverEquip.def.color}`, color: hoverEquip.def.color, fontSize: 13 }}>
-                  {hoverEquip.def.glyph}
+                  style={{ width: 24, height: 24, background: `${hoverEquip.def.color}22`, border: `1px solid ${hoverEquip.def.color}` }}>
+                  <WeaponIcon def={hoverEquip.def} size={20} />
                 </div>
                 <span className="text-[12px] font-bold tracking-widest truncate" style={{ color: RARITY_COLOR[hoverEquip.def.rarity] }}>{hoverEquip.def.name}</span>
               </div>
@@ -807,7 +1296,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
             <button
               key={f}
               className={`gbtn ${filter === f ? "gbtn-gold" : ""}`}
-              style={{ padding: "3px 0", fontSize: 10, flex: 1, letterSpacing: "0.08em", opacity: filter === f ? 1 : 0.75 }}
+              style={{ padding: "3px 0", fontSize: 11.8, flex: 1, letterSpacing: "0.08em", opacity: filter === f ? 1 : 0.75 }}
               onClick={() => setFilter(f)}
             >
               {f === "all" ? "ALL" : f === "weapon" ? "WPN" : f === "generator" ? "GEN" : "MOD"}
@@ -826,7 +1315,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
           return (
             <button
               className="gbtn gbtn-red shrink-0"
-              style={{ padding: "4px 0", fontSize: 10, letterSpacing: "0.1em", marginBottom: 8 }}
+              style={{ padding: "4px 0", fontSize: 11.8, letterSpacing: "0.1em", marginBottom: 8 }}
               title={`Sells every item that is not equipped (${unused.length} items)`}
               onClick={() => {
                 if (!sellAllArmed) {
@@ -859,7 +1348,9 @@ function LoadoutTab({ stationId }: { stationId: string }) {
                 return (
                   <div
                     key={def.id}
-                    className="sw-slot equip-cell"
+                    /* rarity--* draws the tier ring + aura, same as the
+                       inventory grid — shop cells were missing it. */
+                    className={`sw-slot equip-cell rarity--${def.rarity}`}
                     style={{
                       width: 48, height: 48,
                       boxShadow: `inset 0 0 0 1px ${RARITY_COLOR[def.rarity]}88${isBestUpgrade ? ", 0 0 8px rgba(255,210,74,0.55)" : ""}`,
@@ -880,13 +1371,13 @@ function LoadoutTab({ stationId }: { stationId: string }) {
                       save(); bump();
                     }}
                   >
-                    <span style={{ color: def.color, fontSize: 17, lineHeight: 1, textShadow: `0 0 8px ${def.color}` }}>{def.glyph}</span>
-                    <span className="equip-tier" style={{ color: RARITY_COLOR[def.rarity] }}>{"▪".repeat(Math.min(5, def.tier))}</span>
+                    <WeaponIcon def={def} size={30} />
+                    <span className="equip-tier" style={{ color: RARITY_COLOR[def.rarity] }}>{`T${def.tier}`}</span>
                     {isBestUpgrade && (
-                      <span style={{ position: "absolute", top: 0, right: 3, fontSize: 10, color: "#ffd24a", textShadow: "0 0 6px #ffd24a" }}>★</span>
+                      <span style={{ position: "absolute", top: 0, right: 3, fontSize: 11.8, color: "#ffd24a", textShadow: "0 0 6px #ffd24a" }}>★</span>
                     )}
                     {def.weaponKind === "rocket" && (
-                      <span style={{ position: "absolute", top: 0, left: 4, fontSize: 8, color: "#ff8a4e" }}>⟁</span>
+                      <span style={{ position: "absolute", top: 0, left: 4, fontSize: 9.4, color: "var(--hud-gold)" }}>⟁</span>
                     )}
                   </div>
                 );
@@ -895,6 +1386,10 @@ function LoadoutTab({ stationId }: { stationId: string }) {
               visibleInv.map((it) => {
                 const def = MODULE_DEFS[it.defId];
                 if (!def) return null;
+                // Kept as a guard, not a live branch: visibleInv now filters
+                // equipped items out, so this is false for every rendered
+                // cell. Left in place so the fallbacks below stay correct if
+                // that filter is ever relaxed.
                 const isEquipped =
                   player.equipped.weapon.includes(it.instanceId) ||
                   player.equipped.generator.includes(it.instanceId) ||
@@ -909,7 +1404,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
                 return (
                   <div
                     key={it.instanceId}
-                    className="sw-slot equip-cell"
+                    className={`sw-slot equip-cell rarity--${it.rarity ?? def.rarity}`}
                     style={{
                       width: 48, height: 48,
                       boxShadow: `inset 0 0 0 1px ${color}88${sellMode ? ", inset 0 0 10px rgba(255,60,80,0.35)" : ""}`,
@@ -930,13 +1425,13 @@ function LoadoutTab({ stationId }: { stationId: string }) {
                       equipModule(it.instanceId, def.slot, idx);
                     }}
                   >
-                    <span style={{ color: def.color, fontSize: 17, lineHeight: 1, textShadow: `0 0 8px ${def.color}` }}>{def.glyph}</span>
-                    <span className="equip-tier" style={{ color }}>{"▪".repeat(Math.min(5, def.tier))}</span>
+                    <WeaponIcon def={def} size={30} />
+                    <span className="equip-tier" style={{ color }}>{`T${def.tier}`}</span>
                     {isEquipped && (
-                      <span style={{ position: "absolute", top: 1, right: 4, fontSize: 8, fontWeight: 700, color: "#5cff8a", textShadow: "0 0 5px #5cff8a" }}>E</span>
+                      <span style={{ position: "absolute", top: 1, right: 4, fontSize: 9.4, fontWeight: 700, color: "#5cff8a", textShadow: "0 0 5px #5cff8a" }}>E</span>
                     )}
                     {def.weaponKind === "rocket" && (
-                      <span style={{ position: "absolute", top: 0, left: 4, fontSize: 8, color: "#ff8a4e" }}>⟁</span>
+                      <span style={{ position: "absolute", top: 0, left: 4, fontSize: 9.4, color: "var(--hud-gold)" }}>⟁</span>
                     )}
                   </div>
                 );
@@ -955,7 +1450,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
           <div className="flex flex-col gap-1.5">
             <button
               className={`gbtn ${sellMode ? "gbtn-red" : ""}`}
-              style={{ padding: "4px 0", fontSize: 11, width: "100%", letterSpacing: "0.14em" }}
+              style={{ padding: "4px 0", fontSize: 13, width: "100%", letterSpacing: "0.14em" }}
               disabled={showShop}
               title={showShop ? "Switch to inventory to sell modules" : "Toggle sell mode — click inventory modules to sell them"}
               onClick={() => setSellMode((v) => !v)}
@@ -964,23 +1459,34 @@ function LoadoutTab({ stationId }: { stationId: string }) {
             </button>
             <button
               className="gbtn gbtn-gold"
-              style={{ padding: "4px 0", fontSize: 11, width: "100%", letterSpacing: "0.14em" }}
+              style={{ padding: "4px 0", fontSize: 13, width: "100%", letterSpacing: "0.14em" }}
               title={showShop ? "Back to your inventory" : `Buy modules at ${station.name}`}
               onClick={() => { setShowShop((v) => !v); setSellMode(false); setHoveredShopDefId(null); setHoveredInvInstanceId(null); }}
             >
               {showShop ? "INVENTORY" : "SHOP"}
             </button>
-            <button
-              className="gbtn"
-              style={{ padding: "4px 0", fontSize: 11, width: "100%", letterSpacing: "0.14em" }}
-              onClick={() => setShowAmmoPopup((v) => !v)}
-            >
-              ⟁ AMMO
-            </button>
+            <div className="flex gap-1.5">
+              <button
+                className="gbtn"
+                style={{ padding: "4px 0", fontSize: 13, flex: 1, letterSpacing: "0.14em" }}
+                onClick={() => setShowAmmoPopup((v) => !v)}
+              >
+                ⟁ AMMO
+              </button>
+              <button
+                className="gbtn"
+                style={{ padding: "4px 0", fontSize: 13, flex: 1, letterSpacing: "0.14em" }}
+                title="Buy combat consumables"
+                onClick={() => setShowConsumablesPopup((v) => !v)}
+              >
+                ✚ ITEMS
+              </button>
+            </div>
           </div>
         </div>
       </div>
       {/* rich item comparison card — MMORPG style, anchored beside the cell */}
+      {equipTip.layer}
       {cardHover && (() => {
         let def: ModuleDef | undefined;
         let item: (typeof player.inventory)[number] | null = null;
@@ -1017,22 +1523,33 @@ function LoadoutTab({ stationId }: { stationId: string }) {
         const diffs = computeStatDiff(eqStats, cand);
         const CARD_W = 288;
         const left = Math.max(8, cardHover.x - CARD_W - 14 > 8 ? cardHover.x - CARD_W - 14 : cardHover.x + 62);
-        const top = Math.max(8, Math.min(cardHover.y - 20, window.innerHeight - 380));
+        // 380 was a guess at the card height; a tall card (many affixes + a
+        // full comparison block) still ran off the bottom. Reserve enough for
+        // the tallest variant and clamp to the viewport.
+        const top = Math.max(8, Math.min(cardHover.y - 20, window.innerHeight - 430));
         const isEquippedNow = item != null && (
           player.equipped.weapon.includes(item.instanceId) ||
           player.equipped.generator.includes(item.instanceId) ||
           player.equipped.module.includes(item.instanceId));
-        return (
+        // PORTAL to <body>. This card used position:fixed inside the tab
+        // content, but the panel above it uses clip-path for its chamfered
+        // silhouette — and clip-path clips fixed descendants too, so the card
+        // was being cut off at the panel edge. Same fix as useItemTooltip.
+        // The `itip` class gives it the SAME frame/glass as the inventory
+        // tooltip, so loadout and inventory finally look alike.
+        return createPortal(
           <div
-            className="console-sq"
-            style={{ position: "fixed", left, top, width: CARD_W, zIndex: 90, pointerEvents: "none", padding: "10px 12px" }}
+            className={`itip rarity--${item?.rarity ?? def.rarity}`}
+            style={{
+              position: "fixed", left, top, width: CARD_W, zIndex: 4000,
+              pointerEvents: "none", padding: "10px 12px",
+              ["--itip-accent" as string]: nameColor,
+            }}
           >
-            <div className="console-corner tl" /><div className="console-corner tr" />
-            <div className="console-corner bl" /><div className="console-corner br" />
             <div className="flex items-center gap-2 min-w-0">
               <div className="shrink-0 flex items-center justify-center"
-                style={{ width: 30, height: 30, background: `${def.color}22`, border: `1px solid ${def.color}`, color: def.color, fontSize: 15 }}>
-                {def.glyph}
+                style={{ width: 30, height: 30, background: `${def.color}22`, border: `1px solid ${def.color}` }}>
+                <WeaponIcon def={def} size={26} />
               </div>
               <div className="min-w-0">
                 <div className="font-bold tracking-wide text-[13px] truncate" style={{ color: nameColor, fontFamily: "var(--font-display)" }}>
@@ -1054,7 +1571,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
             )}
             {/* comparison block: green gains, red losses */}
             {!isSame && (
-              <div className="mt-2 pt-1.5" style={{ borderTop: "1px solid #33353e" }}>
+              <div className="mt-2 pt-1.5" style={{ borderTop: "1px solid var(--hud-border-dim)" }}>
                 <div className="text-[10px] tracking-widest mb-1" style={{ color: "#8f96a6" }}>
                   {eqDef ? `VS EQUIPPED · ${eqItem && isRolledItem(eqItem) ? lootItemName(eqItem, eqDef) : eqDef.name}` : "VS EMPTY SLOT"}
                 </div>
@@ -1074,7 +1591,7 @@ function LoadoutTab({ stationId }: { stationId: string }) {
                 )}
               </div>
             )}
-            <div className="flex items-center justify-between mt-2 pt-1.5 text-[11px]" style={{ borderTop: "1px solid #33353e" }}>
+            <div className="flex items-center justify-between mt-2 pt-1.5 text-[11px]" style={{ borderTop: "1px solid var(--hud-border-dim)" }}>
               {cardHover.kind === "shop" ? (
                 <>
                   <span style={{ color: player.credits >= def.price ? "var(--accent-amber)" : "#ff5c6c" }} className="font-bold tabular-nums">
@@ -1093,7 +1610,8 @@ function LoadoutTab({ stationId }: { stationId: string }) {
                 </>
               )}
             </div>
-          </div>
+          </div>,
+          document.body,
         );
       })()}
       {showAmmoPopup && (
@@ -1113,12 +1631,88 @@ function LoadoutTab({ stationId }: { stationId: string }) {
           <div className="panel" style={{ maxWidth: 640, width: "90vw", maxHeight: "80vh", overflowY: "auto", padding: 0 }}>
             <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b" style={{ borderColor: "var(--border-soft)" }}>
               <div className="text-cyan tracking-widest text-sm font-bold">AMMO MANAGEMENT</div>
-              <button className="gbtn gbtn-red" style={{ padding: "2px 8px", fontSize: 13 }} onClick={() => setShowAmmoPopup(false)}>✕ Close</button>
+              <button className="gbtn gbtn-red gbtn--quiet" style={{ padding: "2px 8px", fontSize: 15.3 }} onClick={() => setShowAmmoPopup(false)}>✕ Close</button>
             </div>
             <AmmoTab />
           </div>
         </div>
       )}
+      {showConsumablesPopup && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 60, display: "flex",
+            alignItems: "center", justifyContent: "center",
+            background: "rgba(0,0,0,0.7)", pointerEvents: "auto",
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowConsumablesPopup(false); }}
+        >
+          <div className="panel" style={{ maxWidth: 560, width: "90vw", maxHeight: "80vh", overflowY: "auto", padding: 0 }}>
+            <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b" style={{ borderColor: "var(--border-soft)" }}>
+              <div className="text-cyan tracking-widest text-sm font-bold">CONSUMABLES SHOP</div>
+              <button className="gbtn gbtn-red gbtn--quiet" style={{ padding: "2px 8px", fontSize: 15.3 }} onClick={() => setShowConsumablesPopup(false)}>✕ Close</button>
+            </div>
+            <ConsumablesShop />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Combat consumables shop — one buyable per row (×1 / ×5). Shown as a popup in
+// the Loadout bay (moved out of the Market's trade terminal).
+function ConsumablesShop() {
+  const player = useGame((s) => s.player);
+  return (
+    <div className="p-3">
+      <div className="grid grid-cols-1 gap-1">
+        {(Object.keys(CONSUMABLE_DEFS) as ConsumableId[]).map((cid) => {
+          const def = CONSUMABLE_DEFS[cid];
+          const have = player.consumables[cid] ?? 0;
+          return (
+            <div
+              key={cid}
+              className="flex items-center gap-3 px-3 py-2 border-b"
+              style={{ borderColor: "var(--border-soft)" }}
+            >
+              <div
+                style={{
+                  width: 30, height: 30, fontSize: 21.2,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  background: `${def.color}22`, border: `1px solid ${def.color}`,
+                  color: def.color, flexShrink: 0,
+                }}
+              >
+                {def.icon}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-bright text-[13px] font-bold">{def.name}</div>
+                <div className="text-mute text-[12px]">{def.description}</div>
+              </div>
+              <div className="text-cyan text-[13px] tabular-nums whitespace-nowrap">×{have}</div>
+              <div className="text-amber text-[13px] tabular-nums whitespace-nowrap">{def.price}cr</div>
+              <div className="flex gap-1">
+                <button
+                  className="gbtn gbtn-gold"
+                  style={{ padding: "2px 8px", fontSize: 15.3 }}
+                  disabled={player.credits < def.price}
+                  onClick={() => buyConsumable(cid, 1)}
+                >
+                  ×1
+                </button>
+                <button
+                  className="gbtn gbtn-gold"
+                  style={{ padding: "2px 8px", fontSize: 15.3 }}
+                  disabled={player.credits < def.price * 5}
+                  onClick={() => buyConsumable(cid, 5)}
+                >
+                  ×5
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1155,7 +1749,7 @@ function DungeonsTab() {
         Each dungeon is a wave-based instance. Clear all waves for credits, materials and a guaranteed module drop.
       </div>
       {/* Daily featured banner */}
-      <div className="panel p-2.5" style={{ borderColor: "#ffd24a", background: "rgba(255,210,74,0.06)" }}>
+      <div className="panel-inset panel-inset--gold p-2.5">
         <div className="flex items-center gap-2">
           <span className="text-[14px]">⭐</span>
           <div>
@@ -1169,7 +1763,7 @@ function DungeonsTab() {
         </div>
       </div>
       {dungeon && (
-        <div className="panel p-2" style={{ borderColor: "#ffd24a" }}>
+        <div className="panel-inset panel-inset--gold p-2">
           <div className="text-amber text-[13px] font-bold tracking-widest">⚠ DUNGEON IN PROGRESS — {DUNGEONS[dungeon.id].name.toUpperCase()}</div>
           <div className="text-mute text-[13px]">Wave {dungeon.wave}/{dungeon.totalWaves}. Undock to fight.</div>
         </div>
@@ -1184,11 +1778,7 @@ function DungeonsTab() {
           return (
             <div
               key={d.id}
-              className="panel p-2.5"
-              style={{
-                borderColor: isFeatured ? "#ffd24a" : d.color,
-                background: isFeatured ? "rgba(255,210,74,0.05)" : undefined,
-              }}
+              className={`panel-inset p-2.5 ${isFeatured ? "panel-inset--gold" : ""}`}
             >
               {isFeatured && (
                 <div className="flex items-center gap-1 mb-1.5 -mt-0.5">
@@ -1218,7 +1808,7 @@ function DungeonsTab() {
                 Materials: {d.rewardMaterials.map((m) => `${m.qty}× ${RESOURCES[m.resourceId].name}`).join(" · ")}
               </div>
               <div className="flex items-center gap-2 mt-1.5">
-                <div className="text-[12px]" style={{ color: clears > 0 ? "#5cff8a" : "#555" }}>
+                <div className="text-[12px]" style={{ color: clears > 0 ? "var(--hud-green)" : "var(--hud-text-mute)" }}>
                   ✓ {clears === 0 ? "Never cleared" : `${clears}× cleared`}
                 </div>
                 {bestMs !== undefined && (
@@ -1227,13 +1817,13 @@ function DungeonsTab() {
               </div>
               {confirmId === d.id ? (
                 <div className="mt-2" style={{ display: "flex", gap: 6 }}>
-                  <button className="gbtn w-full" style={{ padding: "4px 8px", fontSize: 12, background: "#333", color: "#ccc", border: "1px solid #555" }} onClick={() => setConfirmId(null)}>Cancel</button>
-                  <button className="gbtn gbtn-gold w-full" style={{ padding: "4px 8px", fontSize: 12, background: "#4a6cf7" }} onClick={() => { setConfirmId(null); state.dockedAt = null; sendDockLeave(); enterDungeon(d.id as DungeonId); }}>Confirm Entry</button>
+                  <button className="gbtn w-full" style={{ padding: "4px 8px", fontSize: 14.2 }} onClick={() => setConfirmId(null)}>Cancel</button>
+                  <button className="gbtn gbtn-gold w-full" style={{ padding: "4px 8px", fontSize: 14.2 }} onClick={() => { setConfirmId(null); state.dockedAt = null; sendDockLeave(); if (ENABLE_NEW_DOCKING_FLOW) forceUndock("dungeon entry"); enterDungeon(d.id as DungeonId); }}>Confirm Entry</button>
                 </div>
               ) : (
                 <button
                   className="gbtn gbtn-gold w-full mt-2"
-                  style={{ padding: "3px 6px", fontSize: 13, ...(isFeatured && !locked && !dungeon ? { background: "#ffd24a", color: "#000" } : {}) }}
+                  style={{ padding: "3px 6px", fontSize: 15.3, ...(isFeatured && !locked && !dungeon ? { background: "#ffd24a", color: "#000" } : {}) }}
                   disabled={locked || !!dungeon}
                   onClick={() => setConfirmId(d.id)}
                 >
@@ -1261,6 +1851,9 @@ function ShipsTab() {
       const stats = effectiveStats();
       player.hull = stats.hullMax; player.shield = stats.shieldMax;
       pushNotification(`Boarded ${cls.name}`, "good");
+      // Live-swap the parked hull in the 3D hangar so the ship you just boarded is
+      // the one standing on the pad (no re-dock needed).
+      swapActiveHangarShip(id);
       save(); bump();
       return;
     }
@@ -1273,12 +1866,13 @@ function ShipsTab() {
     const stats = effectiveStats();
     player.hull = stats.hullMax; player.shield = stats.shieldMax;
     pushNotification(`Acquired ${cls.name}!`, "good");
+    swapActiveHangarShip(id);
     save(); bump();
   };
 
   return (
     <div className="p-4 space-y-2">
-      <div className="hud-label" style={{ fontSize: 10, paddingBottom: 2 }}>SHIPYARD — AVAILABLE HULLS</div>
+      <div className="hud-label" style={{ fontSize: 11.8, paddingBottom: 2 }}>SHIPYARD — AVAILABLE HULLS</div>
       {(Object.values(SHIP_CLASSES) as { id: ShipClassId; [k: string]: any }[]).map((cls) => {
         const owned = player.ownedShips.includes(cls.id);
         const active = player.shipClass === cls.id;
@@ -1300,19 +1894,19 @@ function ShipsTab() {
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2 min-w-0">
-                <span className="font-bold tracking-widest truncate" style={{ color: cls.color, fontSize: 12, fontFamily: "var(--font-display)" }}>
+                <span className="font-bold tracking-widest truncate" style={{ color: cls.color, fontSize: 14.2, fontFamily: "var(--font-display)" }}>
                   {cls.name.toUpperCase()}
                 </span>
                 {active && (
-                  <span className="shrink-0" style={{ color: "var(--accent-cyan)", fontSize: 10, letterSpacing: "0.14em", border: "1px solid rgba(56,214,245,0.4)", padding: "0 4px" }}>
+                  <span className="shrink-0" style={{ color: "var(--accent-cyan)", fontSize: 11.8, letterSpacing: "0.14em", border: "1px solid rgba(56,214,245,0.4)", padding: "0 4px" }}>
                     ACTIVE
                   </span>
                 )}
               </div>
-              <div className="text-dim clamp2" style={{ fontSize: 10, lineHeight: 1.4, marginTop: 1 }}>{cls.description}</div>
+              <div className="text-dim clamp2" style={{ fontSize: 11.8, lineHeight: 1.4, marginTop: 1 }}>{cls.description}</div>
               <div className="flex flex-wrap" style={{ gap: "2px 10px", marginTop: 3 }}>
                 {stats.map(([l, v]) => (
-                  <span key={l} className="tabular-nums whitespace-nowrap" style={{ fontSize: 10 }}>
+                  <span key={l} className="tabular-nums whitespace-nowrap" style={{ fontSize: 11.8 }}>
                     <span style={{ color: "var(--text-mute)" }}>{l} </span>
                     <span style={{ color: "var(--accent-cyan)", fontWeight: 700 }}>{v}</span>
                   </span>
@@ -1321,7 +1915,7 @@ function ShipsTab() {
             </div>
             <button
               className="gbtn gbtn-gold shrink-0"
-              style={{ padding: "4px 10px", fontSize: 11, minWidth: 128 }}
+              style={{ padding: "4px 10px", fontSize: 13, minWidth: 128 }}
               disabled={active || (!owned && player.credits < cls.price)}
               onClick={() => buy(cls.id)}
             >
@@ -1339,13 +1933,13 @@ function Stat({ label, v }: { label: string; v: number | string }) {
     <div className="min-w-0">
       <div
         className="truncate"
-        style={{ color: "var(--text-mute)", fontSize: 11, letterSpacing: "0.14em" }}
+        style={{ color: "var(--text-mute)", fontSize: 13, letterSpacing: "0.14em" }}
       >
         {label}
       </div>
       <div
         className="font-bold tabular-nums truncate"
-        style={{ color: "var(--accent-cyan)", fontSize: 15 }}
+        style={{ color: "var(--accent-cyan)", fontSize: 17.7 }}
       >
         {v}
       </div>
@@ -1353,156 +1947,295 @@ function Stat({ label, v }: { label: string; v: number | string }) {
   );
 }
 
-// ── DRONES ────────────────────────────────────────────────────────────────
+// ── PET DRONE ─────────────────────────────────────────────────────────────
+const PET_SLOT_META: Record<PetDroneSlot, { label: string; glyph: string; accepts: string; color: string }> = {
+  weapon: { label: "Weapon", glyph: "🔫", accepts: "weapon", color: "#ff5c6c" },
+  module: { label: "Module", glyph: "◈", accepts: "module/generator", color: "#4ee2ff" },
+  extra:  { label: "Aux",    glyph: "✦", accepts: "any", color: "#b866ff" },
+};
+
 function DronesTab() {
   const player = useGame((s) => s.player);
-  const cls = SHIP_CLASSES[player.shipClass];
-  const totalSlots = maxDroneSlots();
-  const slotsLeft = totalSlots - player.drones.length;
+  const pet = player.petDrone;
+  const slots = petDroneSlots();
+  const nextCost = pet.level < 6 ? PET_DRONE_UPGRADE_COST[(pet.level + 1) as 1 | 2 | 3 | 4 | 5 | 6] : null;
+  const canUpgrade = nextCost != null && player.bebcell >= nextCost;
+  const bound = petBoundIds();
+  // slot currently open for item selection
+  const [picking, setPicking] = useState<PetDroneSlot | null>(null);
+  const tip = useItemTooltip();
 
-  const dronePrice = (kind: DroneKind) => {
-    const def = DRONE_DEFS[kind];
-    const owned = player.drones.filter((d) => d.kind === kind).length;
-    return def.price * Math.pow(2, owned);
-  };
-
-  const buy = (kind: DroneKind) => {
-    const def = DRONE_DEFS[kind];
-    const price = dronePrice(kind);
-    if (player.credits < price) { pushNotification("Not enough credits", "bad"); return; }
-    if (slotsLeft <= 0) { pushNotification("No drone slots free", "bad"); return; }
-    player.credits -= price;
-    player.drones.push({
-      id: `dr-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
-      kind,
-      mode: "orbit",
-      hp: 300 + def.shieldBonus * 2 + def.hullBonus * 2,
-      hpMax: 300 + def.shieldBonus * 2 + def.hullBonus * 2,
-      orbitPhase: Math.random() * Math.PI * 2,
-      fireCd: 0,
+  // items eligible for a given slot: matching type, not on ship, not already on drone elsewhere
+  const eligibleFor = (slot: PetDroneSlot) =>
+    player.inventory.filter((it) => {
+      const def = MODULE_DEFS[it.defId];
+      if (!def) return false;
+      if (slot === "weapon" && def.slot !== "weapon") return false;
+      if (slot === "module" && def.slot === "weapon") return false;
+      const onShip =
+        player.equipped.weapon.includes(it.instanceId) ||
+        player.equipped.generator.includes(it.instanceId) ||
+        player.equipped.module.includes(it.instanceId);
+      if (onShip) return false;
+      if (bound.has(it.instanceId) && pet.equipped[slot] !== it.instanceId) return false;
+      return true;
     });
-    pushNotification(`Deployed ${def.name}`, "good");
-    save(); bump();
-  };
 
-  const setMode = (id: string, mode: DroneMode) => {
-    const d = player.drones.find((x) => x.id === id);
-    if (!d) return;
-    d.mode = mode;
-    pushNotification(`Drone set to ${mode.toUpperCase()}`, "info");
-    save(); bump();
-  };
-
-  const scrap = (id: string) => {
-    const d = player.drones.find((x) => x.id === id);
-    if (!d) return;
-    const def = DRONE_DEFS[d.kind];
-    const refund = Math.floor(def.price * 0.5);
-    player.credits += refund;
-    player.drones = player.drones.filter((x) => x.id !== id);
-    pushNotification(`Scrapped drone +${refund}cr`, "good");
-    save(); bump();
+  const equippedDef = (slot: PetDroneSlot): ModuleDef | null => {
+    const id = pet.equipped[slot];
+    if (!id) return null;
+    const it = player.inventory.find((m) => m.instanceId === id);
+    return it ? MODULE_DEFS[it.defId] ?? null : null;
   };
 
   return (
-    <div className="p-4 grid grid-cols-2 gap-3" style={{ height: "100%", minHeight: 0 }}>
-      <div className="flex flex-col min-h-0">
-        <div className="dob-hdr shrink-0" style={{ marginBottom: 8 }}>
-          <span>✦ DRONE BAY</span>
-          <span style={{ color: "#8f96a6" }}>{player.drones.length}/{totalSlots} SLOTS</span>
-        </div>
-        <div className="space-y-2 overflow-y-auto min-h-0 flex-1 pr-1">
-          {player.drones.length === 0 && (
-            <div className="text-mute italic text-sm">No drones deployed.</div>
-          )}
-          {player.drones.map((d) => {
-            const def = DRONE_DEFS[d.kind];
+    <div className="p-4 flex flex-col" style={{ height: "100%", minHeight: 0 }}>
+      {tip.layer}
+      <div className="dob-hdr shrink-0 mb-3">
+        <span>✦ COMPANION DRONE</span>
+        <span className="tabular-nums" style={{ color: "var(--hud-magenta)" }}>◈ {player.bebcell.toLocaleString()} BEBCELL</span>
+      </div>
+
+      <div className="pet-grid flex-1 min-h-0">
+        {/* CENTER STAGE — the drone + its slots */}
+        <div className="pet-stage">
+          <div className="pet-stage__ring" />
+          <div className="pet-stage__drone" style={{ opacity: pet.level > 0 ? 1 : 0.4 }}>
+            {pet.level > 0 ? (
+              <DronePreview level={pet.level} size={180} />
+            ) : (
+              <div className="pet-stage__glyph">✦</div>
+            )}
+            <div className="pet-stage__lvl">LV {pet.level}</div>
+          </div>
+
+          {/* slot ring: 3 slots positioned around the drone */}
+          {PET_DRONE_SLOT_ORDER.map((slot, i) => {
+            const unlocked = i < slots;
+            const meta = PET_SLOT_META[slot];
+            const def = equippedDef(slot);
+            const posClass = `pet-slot pet-slot--${i}`;
             return (
-              <div key={d.id} className="panel p-3 flex items-center gap-3">
-                <div
-                  className="flex items-center justify-center text-xl shrink-0"
-                  style={{ width: 44, height: 44, background: `${def.color}22`, border: `1px solid ${def.color}`, color: def.color }}
-                >
-                  ✦
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-bold tracking-widest truncate" style={{ color: def.color, fontSize: 13 }}>{def.name}</div>
-                  <div className="text-dim text-[12px] flex gap-2.5 flex-wrap">
-                    {def.damageBonus > 0 && <span style={{ color: "#ff5c6c" }}>+{def.damageBonus} dmg</span>}
-                    {def.shieldBonus > 0 && <span style={{ color: "#4ee2ff" }}>+{def.shieldBonus} shd</span>}
-                    {def.hullBonus > 0 && <span style={{ color: "#5cff8a" }}>+{def.hullBonus} hp</span>}
-                  </div>
-                </div>
-                <div className="flex flex-col gap-1.5 items-stretch shrink-0" style={{ width: 138 }}>
-                  <div className="flex gap-1">
-                    {(["orbit", "forward", "defensive"] as DroneMode[]).map((m) => (
-                      <button
-                        key={m}
-                        className={`gbtn ${d.mode === m ? "gbtn-gold" : ""}`}
-                        style={{ fontSize: 10, padding: "3px 0", flex: 1, opacity: d.mode === m ? 1 : 0.7 }}
-                        title={m === "orbit" ? "Orbit: circle the ship" : m === "forward" ? "Forward: advance toward the target" : "Defensive: hold close, short range"}
-                        onClick={() => setMode(d.id, m)}
-                      >
-                        {m === "orbit" ? "ORB" : m === "forward" ? "FWD" : "DEF"}
-                      </button>
-                    ))}
-                  </div>
-                  <button className="gbtn gbtn-red" style={{ fontSize: 10, padding: "3px 0" }} onClick={() => scrap(d.id)}>
-                    ✕ SCRAP · +{Math.floor(DRONE_DEFS[d.kind].price * 0.5).toLocaleString()}cr
-                  </button>
-                </div>
-              </div>
+              <button
+                key={slot}
+                className={`${posClass} ${!unlocked ? "pet-slot--locked" : def ? "pet-slot--filled" : "pet-slot--empty"}`}
+                style={unlocked ? { ["--slot-color" as any]: meta.color } : undefined}
+                disabled={!unlocked}
+                title={
+                  !unlocked ? `Locked — upgrade drone to Lv ${(i + 1) * 2}`
+                  : def ? `${def.name} · click to change / right-click to remove`
+                  : `Empty ${meta.label} slot — click to equip (${meta.accepts})`
+                }
+                onClick={() => { if (unlocked) setPicking(slot); }}
+                onContextMenu={(e) => { e.preventDefault(); if (unlocked && def) unequipPetSlot(slot); }}
+              >
+                {!unlocked ? (
+                  <span className="pet-slot__lock">🔒</span>
+                ) : def ? (
+                  <>
+                    <WeaponIcon def={def} size={30} />
+                    <span className="pet-slot__tier" style={{ color: RARITY_COLOR[def.rarity] }}>T{def.tier}</span>
+                  </>
+                ) : (
+                  <span className="pet-slot__plus" style={{ color: meta.color }}>+</span>
+                )}
+                <span className="pet-slot__label">{meta.label}</span>
+              </button>
             );
           })}
         </div>
-        <div className="text-mute text-[11px] mt-2 italic shrink-0">
-          ORB circles the ship · FWD advances to mid-target · DEF holds close at short range.
-        </div>
-      </div>
 
-      <div className="flex flex-col min-h-0">
-        <div className="dob-hdr shrink-0" style={{ marginBottom: 8 }}>
-          <span>✦ DRONE CATALOG</span>
-          <span style={{ color: "var(--accent-amber)" }} className="tabular-nums">{player.credits.toLocaleString()} CR</span>
-        </div>
-        <div className="space-y-2 overflow-y-auto min-h-0 flex-1 pr-1">
-          {Object.values(DRONE_DEFS).map((def) => {
-            const price = dronePrice(def.id);
-            const owned = player.drones.filter((d) => d.kind === def.id).length;
-            return (
-              <div key={def.id} className="panel p-3">
-                <div className="flex items-center justify-between gap-2 mb-1 min-w-0">
-                  <div className="font-bold text-[13px] tracking-wide truncate" style={{ color: def.color }}>
-                    {def.name}
-                    {owned > 0 && <span className="text-mute font-normal text-[11px]"> · ×{owned} owned</span>}
-                  </div>
-                  <div className="text-amber text-[13px] font-bold tabular-nums shrink-0">{price.toLocaleString()}cr</div>
+        {/* RIGHT — upgrade + info panel */}
+        <div className="pet-panel">
+          <div className="console-sq" style={{ padding: 12 }}>
+            <div className="console-corner tl" /><div className="console-corner tr" />
+            <div className="console-corner bl" /><div className="console-corner br" />
+            <div className="dob-hdr" style={{ margin: "-12px -12px 12px" }}><span>▼ DRONE STATUS</span></div>
+            <div className="flex flex-col gap-2">
+              <Stat label="LEVEL" v={`${pet.level} / 6`} />
+              <Stat label="SLOTS" v={`${slots} / 3`} />
+              <Stat label="HULL" v={Math.round(pet.hpMax)} />
+            </div>
+          </div>
+
+          <div className="console-sq mt-3" style={{ padding: 12 }}>
+            <div className="console-corner tl" /><div className="console-corner tr" />
+            <div className="console-corner bl" /><div className="console-corner br" />
+            <div className="dob-hdr" style={{ margin: "-12px -12px 12px" }}><span>▼ UPGRADE</span></div>
+            {nextCost == null ? (
+              <div className="text-center py-2" style={{ color: "var(--hud-gold)", fontSize: 14.2, letterSpacing: "0.1em" }}>
+                ◈ MAX LEVEL REACHED
+              </div>
+            ) : (
+              <>
+                <div className="text-[12px] mb-2" style={{ color: "var(--hud-text-dim)", lineHeight: 1.5 }}>
+                  {(() => {
+                    // A slot unlocks only every OTHER level (2/4/6) — index into
+                    // PET_DRONE_SLOT_ORDER by slot COUNT, not by raw level.
+                    const willUnlock = petDroneSlotCount(pet.level + 1) > petDroneSlotCount(pet.level);
+                    const nextSlot = PET_DRONE_SLOT_ORDER[petDroneSlotCount(pet.level)];
+                    return (
+                      <>
+                        Upgrade to <b style={{ color: "var(--hud-cyan)" }}>Lv {pet.level + 1}</b>
+                        {willUnlock ? (
+                          <>
+                            {" "}to unlock the{" "}
+                            <b style={{ color: PET_SLOT_META[nextSlot].color }}>{PET_SLOT_META[nextSlot].label}</b>{" "}slot.
+                          </>
+                        ) : (
+                          <>. Strengthens the drone; the next slot unlocks at Lv {pet.level + 2}.</>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
-                <div className="text-dim text-[12px] mb-1.5">{def.description}</div>
-                <div className="flex gap-3 text-[12px] mb-2 flex-wrap">
-                  {def.damageBonus > 0 && <span style={{ color: "#ff5c6c" }}>+{def.damageBonus} dmg</span>}
-                  {def.shieldBonus > 0 && <span style={{ color: "#4ee2ff" }}>+{def.shieldBonus} shield</span>}
-                  {def.hullBonus > 0 && <span style={{ color: "#5cff8a" }}>+{def.hullBonus} hull</span>}
-                  {def.fireRate > 0 && <span className="text-amber">{def.fireRate.toFixed(1)} shots/s</span>}
+                <div className="pet-cost">
+                  <span className="k">COST</span>
+                  <span className="v" style={{ color: canUpgrade ? "var(--hud-magenta)" : "#ff5c6c" }}>
+                    ◈ {nextCost.toLocaleString()} BEBCELL
+                  </span>
+                </div>
+                <div className="pet-cost">
+                  <span className="k">YOU HAVE</span>
+                  <span className="v tabular-nums">{player.bebcell.toLocaleString()}</span>
+                </div>
+                {/* progress toward the cost */}
+                <div className="bar mt-2 mb-3">
+                  <div className="bar-fill" style={{
+                    width: `${Math.min(100, (player.bebcell / nextCost) * 100)}%`,
+                    background: "linear-gradient(90deg, #7a3fbf, #b866ff)",
+                    boxShadow: "0 0 6px rgba(184,102,255,0.5)",
+                  }} />
                 </div>
                 <button
                   className="gbtn gbtn-gold w-full"
-                  style={{ padding: "5px 0", fontSize: 11 }}
-                  disabled={player.credits < price || slotsLeft <= 0}
-                  onClick={() => buy(def.id)}
+                  style={{ padding: "8px 0", fontSize: 14.2, letterSpacing: "0.1em" }}
+                  disabled={!canUpgrade}
+                  onClick={() => upgradePetDrone()}
                 >
-                  {slotsLeft <= 0 ? "NO SLOTS FREE" : `DEPLOY · ${price.toLocaleString()}cr`}
+                  {canUpgrade ? `▲ UPGRADE TO LV ${pet.level + 1}` : `NEED ${(nextCost - player.bebcell).toLocaleString()} MORE`}
                 </button>
+              </>
+            )}
+          </div>
+
+          {pet.level > 0 && pet.equipped.weapon && (
+            <div className="console-sq mt-3" style={{ padding: 12 }}>
+              <div className="console-corner tl" /><div className="console-corner tr" />
+              <div className="console-corner bl" /><div className="console-corner br" />
+              <div className="dob-hdr" style={{ margin: "-12px -12px 12px" }}><span>▼ DRONE AMMO</span></div>
+              <div className="text-[11px] mb-2" style={{ color: "var(--hud-text-dim)", lineHeight: 1.5 }}>
+                A separate, weaker supply from your own laser/rocket ammo — buying one never refills the other.
               </div>
-            );
-          })}
+              <div className="pet-cost">
+                <span className="k">ROUNDS</span>
+                <span className="v tabular-nums">{player.droneAmmo ?? 0} / {player.droneAmmoMax ?? 0}</span>
+              </div>
+              <div className="bar mt-2 mb-3">
+                <div className="bar-fill" style={{
+                  width: `${Math.min(100, ((player.droneAmmo ?? 0) / Math.max(1, player.droneAmmoMax ?? 1)) * 100)}%`,
+                  background: "linear-gradient(90deg, #1f6f92, #4ee2ff)",
+                  boxShadow: "0 0 6px rgba(78,226,255,0.5)",
+                }} />
+              </div>
+              {(() => {
+                const missing = Math.max(0, (player.droneAmmoMax ?? 0) - (player.droneAmmo ?? 0));
+                const buyQty = Math.min(missing, 100);
+                const cost = buyQty * DRONE_AMMO_COST_PER;
+                return (
+                  <button
+                    className="gbtn w-full"
+                    style={{ padding: "6px 0", fontSize: 13, letterSpacing: "0.08em" }}
+                    disabled={missing <= 0 || player.credits < cost}
+                    onClick={() => purchaseDroneAmmoAmount(buyQty)}
+                    title={`${buyQty} rounds · ${DRONE_AMMO_COST_PER}cr each`}
+                  >
+                    {missing <= 0 ? "AMMO FULL" : `BUY ${buyQty} · -${cost.toLocaleString()}cr`}
+                  </button>
+                );
+              })()}
+            </div>
+          )}
+
+          <div className="text-mute text-[11px] mt-3 italic" style={{ lineHeight: 1.5 }}>
+            <b style={{ color: "var(--hud-magenta)" }}>Bebcell</b> drops only from bosses. The drone fights
+            beside you with its equipped weapon; module/aux slots buff your ship. Right-click a slot to unequip.
+          </div>
         </div>
       </div>
+
+      {/* item picker popup */}
+      {picking && (() => {
+        const list = eligibleFor(picking);
+        const meta = PET_SLOT_META[picking];
+        return (
+          <div
+            style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,0.7)" }}
+            onClick={(e) => { if (e.target === e.currentTarget) setPicking(null); }}
+          >
+            <div className="panel" style={{ maxWidth: 520, width: "90vw", maxHeight: "78vh", overflowY: "auto", padding: 0 }}>
+              <div className="flex items-center justify-between px-4 pt-3 pb-2 border-b" style={{ borderColor: "var(--border-soft)" }}>
+                <div className="text-cyan tracking-widest text-sm font-bold">EQUIP · {meta.label.toUpperCase()} SLOT</div>
+                <button className="gbtn gbtn-red gbtn--quiet" style={{ padding: "2px 8px", fontSize: 15.3 }} onClick={() => setPicking(null)}>✕ Close</button>
+              </div>
+              <div className="p-3">
+                {pet.equipped[picking] && (
+                  <button className="gbtn gbtn-red w-full mb-2" style={{ padding: "5px 0", fontSize: 13 }}
+                    onClick={() => { unequipPetSlot(picking); setPicking(null); }}>
+                    ✕ UNEQUIP CURRENT
+                  </button>
+                )}
+                {list.length === 0 ? (
+                  <div className="text-mute text-[12px] italic p-3 text-center">
+                    No eligible {meta.accepts} items in your inventory. They must not be equipped on your ship.
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, 52px)", gap: 6, justifyContent: "center" }}>
+                    {list.map((it) => {
+                      const def = MODULE_DEFS[it.defId];
+                      if (!def) return null;
+                      const color = isRolledItem(it) ? lootItemColor(it, def) : RARITY_COLOR[def.rarity];
+                      return (
+                        <div
+                          key={it.instanceId}
+                          className={`sw-slot equip-cell rarity--${it.rarity ?? def.rarity}`}
+                          {...tip.bind(it, { action: "CLICK TO EQUIP ON DRONE" })}
+                          style={{ width: 52, height: 52, boxShadow: `inset 0 0 0 1px ${color}88`, cursor: "pointer" }}
+                          onClick={() => { tip.clear(); equipPetSlot(picking, it.instanceId); setPicking(null); }}
+                        >
+                          <WeaponIcon def={def} size={32} />
+                          <span className="equip-tier" style={{ color }}>T{def.tier}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
 
 // ── MARKET ────────────────────────────────────────────────────────────────
+type TradeSort = "name" | "have" | "price" | "profit";
+
+function Sparkline({ data, w = 44, h = 18, color }: { data: number[]; w?: number; h?: number; color: string }) {
+  const min = Math.min(...data), max = Math.max(...data);
+  const range = max - min || 1;
+  const n = data.length;
+  const bw = Math.max(1, w / n - 1);
+  return (
+    <div className="trade-row__spark" style={{ width: w, height: h }}>
+      {data.map((v, i) => (
+        <i key={i} style={{ width: bw, height: `${Math.max(8, ((v - min) / range) * 100)}%`, background: color, opacity: i === n - 1 ? 1 : 0.55 }} />
+      ))}
+    </div>
+  );
+}
+
 function MarketTab({ stationId }: { stationId: string }) {
   const player = useGame((s) => s.player);
   const [, setTick] = useState(0);
@@ -1511,57 +2244,48 @@ function MarketTab({ stationId }: { stationId: string }) {
     return () => clearInterval(iv);
   }, []);
   const station = STATIONS.find((s) => s.id === stationId)!;
-  const cls = SHIP_CLASSES[player.shipClass];
-  const tierCap = Math.min(5, Math.max(1, Math.ceil(player.level / 4)));
-  const marketWeaponModules = Object.values(MODULE_DEFS).filter((d) => d.slot === "weapon" && d.tier <= tierCap);
+  const [selId, setSelId] = useState<ResourceId | null>(null);
+  const [qty, setQty] = useState(1);
+  const [sort, setSort] = useState<TradeSort>("profit");
 
-  const buy = (rid: ResourceId, qty: number) => {
+  const buy = (rid: ResourceId, n: number) => {
     const price = stationPrice(stationId, rid);
-    const cost = price * qty;
+    const cost = price * n;
     if (player.credits < cost) { pushNotification("Not enough credits", "bad"); return; }
-    if (cargoUsed() + qty > cargoCapacity()) { pushNotification("Cargo bay full", "bad"); return; }
+    if (cargoUsed() + n > cargoCapacity()) { pushNotification("Cargo bay full", "bad"); return; }
     player.credits -= cost;
-    addCargo(rid, qty);
-    pushNotification(`Bought ${qty}× ${RESOURCES[rid].name} · -${cost.toLocaleString()}cr`, "good");
+    addCargo(rid, n);
+    pushNotification(`Bought ${n}× ${RESOURCES[rid].name} · -${cost.toLocaleString()}cr`, "good");
     save(); bump();
   };
 
-  const sell = (rid: ResourceId, qty: number) => {
+  const sell = (rid: ResourceId, n: number) => {
     const have = player.cargo.find((c) => c.resourceId === rid);
     if (!have) return;
-    const take = Math.min(have.qty, qty);
+    const take = Math.min(have.qty, n);
     if (take <= 0) return;
     const price = stationPrice(stationId, rid);
     const earn = price * take;
     removeCargo(rid, take);
     player.credits += earn;
     pushNotification(`Sold ${take}× ${RESOURCES[rid].name} · +${earn.toLocaleString()}cr`, "good");
-        bumpMission("transport", take, undefined, { resourceId: rid });
+    bumpMission("transport", take, undefined, { resourceId: rid });
     bumpMission("deliver", take, undefined, { resourceId: rid, stationId });
     bumpMission("earn-credits", earn);
-save(); bump();
+    save(); bump();
   };
-
-  // Show resources this station trades + any the player is carrying
-  const stationResIds = new Set(Object.keys(station.prices));
-  const cargoResIds = new Set(player.cargo.map(c => c.resourceId));
-  const allRes = Object.values(RESOURCES).filter(
-    r => stationResIds.has(r.id) || cargoResIds.has(r.id)
-  );
-  const isTrade = true;
 
   const sellAll = () => {
     let totalEarn = 0;
     for (const c of [...player.cargo]) {
       const price = stationPrice(stationId, c.resourceId);
-      const earn = price * c.qty;
-      totalEarn += earn;
+      totalEarn += price * c.qty;
       removeCargo(c.resourceId, c.qty);
     }
     if (totalEarn > 0) {
       player.credits += totalEarn;
       pushNotification(`Sold all cargo · +${totalEarn.toLocaleString()}cr`, "good");
-            bumpMission("transport", 1, undefined, {});
+      bumpMission("transport", 1, undefined, {});
       bumpMission("earn-credits", totalEarn);
       save(); bump();
     } else {
@@ -1569,169 +2293,188 @@ save(); bump();
     }
   };
 
-  const MARKET_COLS = "minmax(150px, 2fr) 88px 55px 105px 104px 148px";
+  const bestSellFor = (rid: ResourceId) =>
+    STATIONS.reduce<{ name: string; price: number; zone: string } | null>((best, s) => {
+      if (s.id === stationId) return best;
+      const sp = stationPrice(s.id, rid);
+      if (!best || sp > best.price) return { name: s.name, price: sp, zone: s.zone };
+      return best;
+    }, null);
+
+  // Rows: resources this station trades + any the player is carrying.
+  const stationResIds = new Set(Object.keys(station.prices));
+  const cargoResIds = new Set(player.cargo.map((c) => c.resourceId));
+  const rows = Object.values(RESOURCES)
+    .filter((r) => stationResIds.has(r.id) || cargoResIds.has(r.id))
+    .map((r) => {
+      const price = stationPrice(stationId, r.id);
+      const have = player.cargo.find((c) => c.resourceId === r.id)?.qty ?? 0;
+      const best = bestSellFor(r.id);
+      const profit = best ? best.price - price : 0;
+      return { r, price, have, best, profit };
+    });
+  rows.sort((a, b) => {
+    if (sort === "name") return a.r.name.localeCompare(b.r.name);
+    if (sort === "have") return b.have - a.have || a.r.name.localeCompare(b.r.name);
+    if (sort === "price") return b.price - a.price;
+    return b.profit - a.profit; // profit
+  });
+
+  const totalCargoValue = player.cargo.reduce((s, c) => s + stationPrice(stationId, c.resourceId) * c.qty, 0);
+  const cargoNow = cargoUsed();
+  const cargoMax = cargoCapacity();
+
+  const sel = selId ? rows.find((row) => row.r.id === selId) ?? null : null;
 
   return (
-    <div className="p-4">
-      {isTrade && (
-        <>
-          <div className="dob-hdr mb-2">
-            <span>◆ COMMODITY EXCHANGE</span>
-            <span className="flex items-center gap-2">
-              <button className="gbtn gbtn-gold" style={{ padding: "3px 12px", fontSize: 10 }} onClick={sellAll}>
-                SELL ALL CARGO
-              </button>
-              <span className="tabular-nums font-bold" style={{ color: "var(--accent-amber)" }}>
-                {player.credits.toLocaleString()} CR
-              </span>
-            </span>
-          </div>
-          <div className="text-mute text-[12px] mb-2">
-            Buy low here, sell high elsewhere — stations specialize in different resources. ▼ green price = cheap, ▲ red = expensive.
-          </div>
+    <div className="p-4 flex flex-col">
+      {/* terminal header — station, credits, cargo, sell-all */}
+      <div className="dob-hdr mb-2 shrink-0">
+        <span>◆ TRADE TERMINAL · {station.name.toUpperCase()}</span>
+        <span className="flex items-center gap-3">
+          <span className="tabular-nums" style={{ color: "var(--hud-text-dim)", fontSize: 13 }}>
+            CARGO <span style={{ color: cargoNow >= cargoMax ? "#ff5c6c" : "var(--hud-cyan)" }}>{cargoNow}/{cargoMax}</span>
+            {totalCargoValue > 0 && <span style={{ color: "var(--hud-text-mute)" }}> · worth {totalCargoValue.toLocaleString()}cr here</span>}
+          </span>
+          <button className="gbtn gbtn-gold" style={{ padding: "3px 12px", fontSize: 11.8 }} disabled={player.cargo.length === 0} onClick={sellAll}>
+            SELL ALL CARGO
+          </button>
+          <span className="tabular-nums font-bold" style={{ color: "var(--accent-amber)" }}>
+            {player.credits.toLocaleString()} CR
+          </span>
+        </span>
+      </div>
 
-          <div className="grid gap-2 px-2 py-1.5 text-[11px] tracking-widest text-mute" style={{ background: "linear-gradient(180deg, #24252d 0%, #15161b 100%)", border: "1px solid #33353e", gridTemplateColumns: MARKET_COLS }}>
-            <div>RESOURCE</div>
-            <div className="text-right">PRICE HERE</div>
-            <div className="text-right">OWNED</div>
-            <div className="text-center">BEST SELL AT</div>
-            <div className="text-center">BUY</div>
-            <div className="text-center">SELL</div>
+      {/* split: commodity list | detail panel */}
+      <div className="trade-term shrink-0" style={{ height: 440 }}>
+        {/* LEFT — sortable commodity list */}
+        <div className="trade-list">
+          <div className="trade-list__head">
+            <button className={sort === "name" ? "th-sorted" : ""} onClick={() => setSort("name")}>Commodity{sort === "name" ? " ▾" : ""}</button>
+            <button className={sort === "have" ? "th-sorted" : ""} style={{ textAlign: "right" }} onClick={() => setSort("have")}>Have{sort === "have" ? " ▾" : ""}</button>
+            <button className={sort === "price" ? "th-sorted" : ""} style={{ textAlign: "right" }} onClick={() => setSort("price")}>Price{sort === "price" ? " ▾" : ""}</button>
+            <span style={{ textAlign: "center" }}>Trend</span>
+            <button className={sort === "profit" ? "th-sorted" : ""} style={{ textAlign: "right" }} onClick={() => setSort("profit")}>Profit{sort === "profit" ? " ▾" : ""}</button>
           </div>
-
-          <div className="mt-1">
-            {allRes.map((r, rowIdx) => {
-              const price = stationPrice(stationId, r.id);
+          <div className="trade-list__scroll">
+            {rows.map(({ r, price, have, profit }) => {
               const diff = ((price - r.basePrice) / r.basePrice) * 100;
-              const have = player.cargo.find((c) => c.resourceId === r.id)?.qty ?? 0;
-              // Find best station to sell this resource
-              const bestStation = STATIONS.reduce<{ name: string; price: number; zone: string } | null>((best, s) => {
-                if (s.id === stationId) return best;
-                const sp = stationPrice(s.id, r.id);
-                if (!best || sp > best.price) return { name: s.name, price: sp, zone: s.zone };
-                return best;
-              }, null);
               const dir = priceDirection(stationId, r.id);
-              const dirIcon = dir === "up" ? "▲" : dir === "down" ? "▼" : "●";
-              const dirColor = dir === "up" ? "#ff5c6c" : dir === "down" ? "#5cff8a" : "#666";
-              const profitVsHere = bestStation ? bestStation.price - price : 0;
+              const dirIcon = dir === "up" ? "▲" : dir === "down" ? "▼" : "·";
+              const dirColor = dir === "up" ? "#ff5c6c" : dir === "down" ? "#5cff8a" : "#5a6a80";
+              const priceColor = diff < 0 ? "#5cff8a" : diff > 0 ? "#ff5c6c" : "var(--hud-text-bright)";
               return (
                 <div
                   key={r.id}
-                  className="grid gap-2 items-center px-2 py-2 hover:bg-white/5 border-b"
-                  style={{ borderColor: "var(--border-soft)", gridTemplateColumns: MARKET_COLS, background: rowIdx % 2 === 0 ? "rgba(255,255,255,0.02)" : "transparent" }}
+                  className={`trade-row ${selId === r.id ? "trade-row--sel" : ""}`}
+                  onClick={() => { setSelId(r.id); setQty(1); }}
                 >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div
-                      className="flex items-center justify-center shrink-0"
-                      style={{ width: 26, height: 26, background: `${r.color}22`, border: `1px solid ${r.color}`, color: r.color, fontSize: 13 }}
-                    >
-                      {r.glyph}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="text-bright text-[13px] truncate">{r.name}</div>
-                      <div className="text-mute text-[11px] truncate">base {r.basePrice}cr</div>
-                    </div>
+                  <div className="trade-row__name">
+                    <span className="trade-row__ico" style={{ background: `${r.color}22`, border: `1px solid ${r.color}`, color: r.color }}>{r.glyph}</span>
+                    <span className="trade-row__nm">{r.name}</span>
                   </div>
-                  <div className="text-right">
-                    <div className="font-bold tabular-nums text-[14px] flex items-center justify-end gap-1" style={{ color: diff < 0 ? "#5cff8a" : diff > 0 ? "#ff5c6c" : "var(--text-dim)" }}>
-                      <span style={{ color: dirColor, fontSize: 9 }}>{dirIcon}</span>
-                      {price}
-                    </div>
-                    <div className="text-[10px] tabular-nums" style={{ color: diff < 0 ? "#5cff8a" : "#ff5c6c" }}>
-                      {diff > 0 ? "+" : ""}{diff.toFixed(0)}% vs base
-                    </div>
-                  </div>
-                  <div className="text-right text-cyan text-[14px] font-bold tabular-nums">{have}</div>
-                  <div className="text-center text-[11px]" title={bestStation ? `${bestStation.name} (${(ZONES as any)[bestStation.zone]?.label ?? bestStation.zone}) pays ${bestStation.price}cr` : ""}>
-                    {bestStation && profitVsHere > 0 ? (
-                      <div>
-                        <div style={{ color: "#5cff8a", fontWeight: "bold" }}>+{profitVsHere}cr/u</div>
-                        <div className="text-mute truncate" style={{ maxWidth: 100, fontSize: 10, margin: "0 auto" }}>
-                          {bestStation.name} [{(ZONES as any)[bestStation.zone]?.label ?? "?"}]
-                        </div>
-                      </div>
-                    ) : (
-                      <span style={{ color: "#ffd24a", fontWeight: "bold" }}>BEST HERE</span>
-                    )}
-                  </div>
-                  <div className="flex gap-1 justify-center">
-                    <button className="gbtn gbtn-gold" style={{ padding: "5px 0", fontSize: 11, flex: 1 }} disabled={player.credits < price} onClick={() => buy(r.id, 1)}>+1</button>
-                    <button className="gbtn gbtn-gold" style={{ padding: "5px 0", fontSize: 11, flex: 1 }} disabled={player.credits < price * 10} onClick={() => buy(r.id, 10)}>+10</button>
-                  </div>
-                  <div className="flex gap-1 justify-center">
-                    <button className="gbtn" style={{ padding: "5px 0", fontSize: 11, flex: 1 }} disabled={have <= 0} onClick={() => sell(r.id, 1)}>−1</button>
-                    <button className="gbtn" style={{ padding: "5px 0", fontSize: 11, flex: 1 }} disabled={have < 10} onClick={() => sell(r.id, 10)}>−10</button>
-                    <button className="gbtn" style={{ padding: "5px 0", fontSize: 11, flex: 1 }} disabled={have <= 0} onClick={() => sell(r.id, have)}>ALL</button>
-                  </div>
+                  <span className="trade-row__have" style={{ color: have > 0 ? "var(--hud-cyan)" : "var(--hud-text-mute)" }}>{have > 0 ? have : "—"}</span>
+                  <span className="trade-row__price" style={{ color: priceColor }}>
+                    <span style={{ color: dirColor, fontSize: 10.6 }}>{dirIcon}</span>{price}
+                  </span>
+                  <Sparkline data={priceHistory(stationId, r.id, 12)} color={r.color} />
+                  <span className="trade-row__profit" style={{ color: profit > 0 ? "#5cff8a" : "var(--hud-text-mute)" }}>
+                    {profit > 0 ? `+${profit}` : "—"}
+                  </span>
                 </div>
               );
             })}
           </div>
-        </>
-      )}
-
-      {!isTrade && (
-        <div className="mb-4 p-3 text-center" style={{ background: "rgba(247, 168, 50, 0.05)", border: "1px solid var(--border-soft)" }}>
-          <div className="text-mute text-[13px]">This station does not have a commodity exchange.</div>
-          <div className="text-dim text-[12px] mt-1">Visit a Trade station to buy and sell resources.</div>
         </div>
-      )}
 
-      {/* Consumables Shop */}
-      <div className="mt-4">
-        <div className="dob-hdr mb-2"><span>◆ CONSUMABLES SHOP</span></div>
-        <div className="grid grid-cols-1 gap-1">
-          {(Object.keys(CONSUMABLE_DEFS) as ConsumableId[]).map((cid) => {
-            const def = CONSUMABLE_DEFS[cid];
-            const have = player.consumables[cid] ?? 0;
+        {/* RIGHT — detail / trade panel */}
+        <div className="trade-detail">
+          {!sel ? (
+            <div className="trade-detail__empty">
+              Select a commodity on the left<br />to inspect its price, trend,<br />and best trade route.
+            </div>
+          ) : (() => {
+            const { r, price, have, best, profit } = sel;
+            const diff = ((price - r.basePrice) / r.basePrice) * 100;
+            const hist = priceHistory(stationId, r.id, 24);
+            const buyCost = price * qty;
+            const sellQty = Math.min(qty, have);
+            const canBuy = player.credits >= buyCost && cargoNow + qty <= cargoMax;
             return (
-              <div
-                key={cid}
-                className="flex items-center gap-3 px-3 py-2 border-b"
-                style={{ borderColor: "var(--border-soft)" }}
-              >
-                <div
-                  style={{
-                    width: 30, height: 30, fontSize: 18,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    background: `${def.color}22`, border: `1px solid ${def.color}`,
-                    color: def.color, flexShrink: 0,
-                  }}
-                >
-                  {def.icon}
+              <>
+                <div className="trade-detail__head">
+                  <div className="trade-detail__ico" style={{ background: `${r.color}22`, border: `1px solid ${r.color}`, color: r.color }}>{r.glyph}</div>
+                  <div className="min-w-0">
+                    <div className="trade-detail__title truncate">{r.name}</div>
+                    <div className="trade-detail__sub">BASE {r.basePrice} CR · YOU HAVE {have}</div>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-bright text-[13px] font-bold">{def.name}</div>
-                  <div className="text-mute text-[12px]">{def.description}</div>
+                <div className="trade-detail__body">
+                  <div>
+                    <div className="trade-detail__price">
+                      <span className="big" style={{ color: diff < 0 ? "#5cff8a" : diff > 0 ? "#ff5c6c" : "var(--hud-text-bright)" }}>{price}</span>
+                      <span className="unit">CR / UNIT</span>
+                      <span className="pct" style={{ color: diff < 0 ? "#5cff8a" : diff > 0 ? "#ff5c6c" : "var(--hud-text-mute)" }}>{diff > 0 ? "+" : ""}{diff.toFixed(0)}% vs base</span>
+                    </div>
+                    <div className="trade-spark mt-2">
+                      {hist.map((v, i) => {
+                        const min = Math.min(...hist), max = Math.max(...hist), range = max - min || 1;
+                        return <i key={i} style={{ height: `${Math.max(4, ((v - min) / range) * 100)}%`, opacity: i === hist.length - 1 ? 1 : 0.7 }} />;
+                      })}
+                    </div>
+                    <div className="text-[10px] mt-1" style={{ color: "var(--hud-text-mute)", letterSpacing: "0.1em" }}>PRICE · LAST 4 MIN</div>
+                  </div>
+
+                  {/* best sell route */}
+                  <div className="trade-route">
+                    <span className="trade-route__hd">Best sell route</span>
+                    {best && profit > 0 ? (
+                      <>
+                        <span className="trade-route__to">→ {best.name} <span style={{ color: "var(--hud-text-mute)" }}>[{(ZONES as any)[best.zone]?.label ?? "?"}]</span></span>
+                        <span className="trade-route__profit" style={{ color: "#5cff8a" }}>+{profit} cr/u · {best.price} CR there</span>
+                      </>
+                    ) : (
+                      <span className="trade-route__to" style={{ color: "#ffd24a" }}>◈ This station pays the most — sell here.</span>
+                    )}
+                  </div>
+
+                  {/* quantity stepper */}
+                  <div className="flex flex-col gap-2">
+                    <div className="trade-qty">
+                      <button className="gbtn step" onClick={() => setQty((q) => Math.max(1, q - 1))}>−</button>
+                      <div className="trade-qty__field">
+                        <span className="n">{qty}</span>
+                        <span className="l">UNITS</span>
+                      </div>
+                      <button className="gbtn step" onClick={() => setQty((q) => q + 1)}>+</button>
+                    </div>
+                    <div className="trade-qty__presets">
+                      {[10, 50, 100].map((n) => (
+                        <button key={n} className="gbtn" onClick={() => setQty(n)}>{n}</button>
+                      ))}
+                      <button className="gbtn" onClick={() => setQty(Math.max(1, cargoMax - cargoNow))} title="Fill remaining cargo space">MAX</button>
+                      {have > 0 && <button className="gbtn" onClick={() => setQty(have)} title="Match what you're carrying">HAVE</button>}
+                    </div>
+                  </div>
+
+                  {/* buy / sell */}
+                  <div className="trade-actions">
+                    <button className="gbtn gbtn-gold" disabled={!canBuy} title={canBuy ? "" : (player.credits < buyCost ? "Not enough credits" : "Cargo bay full")} onClick={() => buy(r.id, qty)}>
+                      BUY {qty} · {buyCost.toLocaleString()} CR
+                    </button>
+                    <button className="gbtn" disabled={sellQty <= 0} onClick={() => sell(r.id, sellQty)}>
+                      SELL {sellQty > 0 ? sellQty : ""} · {(price * sellQty).toLocaleString()} CR
+                    </button>
+                  </div>
+                  <div className="text-[10px]" style={{ color: "var(--hud-text-mute)", lineHeight: 1.5 }}>{r.description}</div>
                 </div>
-                <div className="text-cyan text-[13px] tabular-nums whitespace-nowrap">×{have}</div>
-                <div className="text-amber text-[13px] tabular-nums whitespace-nowrap">{def.price}cr</div>
-                <div className="flex gap-1">
-                  <button
-                    className="gbtn gbtn-gold"
-                    style={{ padding: "2px 8px", fontSize: 13 }}
-                    disabled={player.credits < def.price}
-                    onClick={() => buyConsumable(cid, 1)}
-                  >
-                    ×1
-                  </button>
-                  <button
-                    className="gbtn gbtn-gold"
-                    style={{ padding: "2px 8px", fontSize: 13 }}
-                    disabled={player.credits < def.price * 5}
-                    onClick={() => buyConsumable(cid, 5)}
-                  >
-                    ×5
-                  </button>
-                </div>
-              </div>
+              </>
             );
-          })}
+          })()}
         </div>
       </div>
 
-          </div>
+    </div>
   );
 }
 
@@ -1756,10 +2499,10 @@ function CargoTab() {
         {player.cargo.map((c) => {
           const r = RESOURCES[c.resourceId];
           return (
-            <div key={c.resourceId} className="panel p-3 flex items-center gap-3">
+            <div key={c.resourceId} className="panel-inset p-3 flex items-center gap-3">
               <div
                 className="flex items-center justify-center"
-                style={{ width: 36, height: 36, background: `${r.color}22`, border: `1px solid ${r.color}`, color: r.color, fontSize: 16 }}
+                style={{ width: 36, height: 36, background: `${r.color}22`, border: `1px solid ${r.color}`, color: r.color, fontSize: 18.9 }}
               >
                 {r.glyph}
               </div>
@@ -1850,7 +2593,7 @@ function RefineryTab({ stationId }: { stationId: string }) {
             const pct = Math.min(100, (elapsed / total) * 100);
             return (
               <div key={i} className="flex items-center gap-3 p-3 mb-2 border" style={{ borderColor: done ? "#5cff8a44" : "var(--border-soft)", background: done ? "#5cff8a08" : "transparent" }}>
-                <div style={{ width: 32, height: 32, background: (outRes?.color ?? "#aaa") + "22", border: "1px solid " + (outRes?.color ?? "#aaa"), color: outRes?.color ?? "#aaa", fontSize: 16, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ width: 32, height: 32, background: (outRes?.color ?? "#aaa") + "22", border: "1px solid " + (outRes?.color ?? "#aaa"), color: outRes?.color ?? "#aaa", fontSize: 18.9, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   {outRes?.glyph ?? "?"}
                 </div>
                 <div className="flex-1">
@@ -1889,10 +2632,10 @@ function RefineryTab({ stationId }: { stationId: string }) {
           const timeSec = Math.round(recipe.timeSeconds * speedMul);
 
           return (
-            <div key={recipe.id} className="p-3 border" style={{ borderColor: locked ? "#333" : "var(--border-soft)", opacity: locked ? 0.5 : 1 }}>
+            <div key={recipe.id} className="p-3 border" style={{ borderColor: locked ? "var(--hud-border-dim)" : "var(--border-soft)", opacity: locked ? 0.5 : 1 }}>
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <div style={{ width: 28, height: 28, background: (outRes?.color ?? "#aaa") + "22", border: "1px solid " + (outRes?.color ?? "#aaa"), color: outRes?.color ?? "#aaa", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <div style={{ width: 28, height: 28, background: (outRes?.color ?? "#aaa") + "22", border: "1px solid " + (outRes?.color ?? "#aaa"), color: outRes?.color ?? "#aaa", fontSize: 16.5, display: "flex", alignItems: "center", justifyContent: "center" }}>
                     {outRes?.glyph ?? "?"}
                   </div>
                   <div>
@@ -1924,7 +2667,7 @@ function RefineryTab({ stationId }: { stationId: string }) {
                   const have = player.cargo.find(c => c.resourceId === inp.resourceId)?.qty ?? 0;
                   const enough = have >= inp.qty;
                   return (
-                    <div key={j} className="flex items-center gap-1 px-2 py-1" style={{ background: enough ? "#5cff8a11" : "#ff5c6c11", border: "1px solid " + (enough ? "#5cff8a33" : "#ff5c6c33"), fontSize: 11 }}>
+                    <div key={j} className="flex items-center gap-1 px-2 py-1" style={{ background: enough ? "#5cff8a11" : "#ff5c6c11", border: "1px solid " + (enough ? "#5cff8a33" : "#ff5c6c33"), fontSize: 13 }}>
                       <span style={{ color: inRes?.color ?? "#aaa" }}>{inRes?.glyph ?? "?"}</span>
                       <span className="text-bright">{inp.qty}x {inRes?.name ?? inp.resourceId}</span>
                       <span style={{ color: enough ? "#5cff8a" : "#ff5c6c" }}>({have})</span>
@@ -1961,26 +2704,22 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
     pushNotification(`Hull repaired · -${repairCost}cr`, "good");
     save(); bump();
   };
+  const pet = player.petDrone;
+  const droneRepairCost = pet && pet.level > 0 ? Math.ceil((pet.hpMax - pet.hp) * 1.5) : 0;
   const repairDrones = () => {
-    let total = 0;
-    for (const d of player.drones) {
-      const cost = Math.ceil((d.hpMax - d.hp) * 1.5);
-      total += cost;
-    }
-    if (player.credits < total) { pushNotification("Not enough credits", "bad"); return; }
-    player.credits -= total;
-    for (const d of player.drones) d.hp = d.hpMax;
-    pushNotification(`Drones repaired · -${total}cr`, "good");
+    if (droneRepairCost <= 0) return;
+    if (player.credits < droneRepairCost) { pushNotification("Not enough credits", "bad"); return; }
+    player.credits -= droneRepairCost;
+    pet.hp = pet.hpMax;
+    pushNotification(`Drone repaired · -${droneRepairCost}cr`, "good");
     save(); bump();
   };
-
-  const droneRepairCost = player.drones.reduce((a, d) => a + Math.ceil((d.hpMax - d.hp) * 1.5), 0);
 
   return (
     <div className="p-5 space-y-4 max-w-2xl">
       <div className="dob-hdr mb-2"><span>✚ STATION SERVICES</span></div>
 
-      <div className="panel p-4 flex items-center gap-4">
+      <div className="panel-inset p-4 flex items-center gap-4">
         <div className="text-3xl text-green">✚</div>
         <div className="flex-1">
           <div className="text-green font-bold tracking-widest">HULL REPAIR</div>
@@ -1991,7 +2730,7 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
         </button>
       </div>
 
-      <div className="panel p-4 flex items-center gap-4">
+      <div className="panel-inset p-4 flex items-center gap-4">
         <div className="text-3xl text-cyan">⟁</div>
         <div className="flex-1">
           <div className="text-cyan font-bold tracking-widest">SHIELD RECHARGE</div>
@@ -2002,12 +2741,12 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
         </button>
       </div>
 
-      <div className="panel p-4 flex items-center gap-4">
+      <div className="panel-inset p-4 flex items-center gap-4">
         <div className="text-3xl text-amber">✦</div>
         <div className="flex-1">
           <div className="text-amber font-bold tracking-widest">DRONE OVERHAUL</div>
           <div className="text-dim text-[13px]">
-            Restore all {player.drones.length} drone(s) to full HP.
+            {pet && pet.level > 0 ? "Restore your companion drone to full HP." : "No companion drone active."}
           </div>
         </div>
         <button className="gbtn" disabled={droneRepairCost <= 0 || player.credits < droneRepairCost} onClick={repairDrones}>
@@ -2015,20 +2754,20 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
         </button>
       </div>
 
-      <div className="panel p-4 flex items-center gap-4">
-        <div className="text-3xl" style={{ color: "#ff8a4e" }}>⟳</div>
+      <div className="panel-inset p-4 flex items-center gap-4">
+        <div className="text-3xl" style={{ color: "var(--hud-gold)" }}>⟳</div>
         <div className="flex-1">
-          <div className="font-bold tracking-widest" style={{ color: "#ff8a4e" }}>AUTO-RESTOCK AMMO</div>
+          <div className="font-bold tracking-widest" style={{ color: "var(--hud-gold)" }}>AUTO-RESTOCK AMMO</div>
           <div className="text-dim text-[13px]">
             Automatically top up rocket ammo when docking, if you have enough credits.
           </div>
         </div>
-        <GameButton style={{ color: player.autoRestock ? "#ff8a4e" : "#888", minWidth: 64 }} onClick={() => setAutoRestock(!player.autoRestock)}>
+        <GameButton style={{ color: player.autoRestock ? "var(--hud-gold)" : "var(--hud-text-dim)", minWidth: 64 }} onClick={() => setAutoRestock(!player.autoRestock)}>
           {player.autoRestock ? "ON" : "OFF"}
         </GameButton>
       </div>
 
-      <div className="panel p-4 flex items-center gap-4">
+      <div className="panel-inset p-4 flex items-center gap-4">
         <div className="text-3xl text-green">⚙</div>
         <div className="flex-1">
           <div className="text-green font-bold tracking-widest">AUTO-REPAIR HULL</div>
@@ -2036,12 +2775,12 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
             Automatically repair hull damage when docking, if you have enough credits (2cr/HP).
           </div>
         </div>
-        <GameButton style={{ color: player.autoRepairHull ? "#5cff8a" : "#888", minWidth: 64 }} onClick={() => setAutoRepairHull(!player.autoRepairHull)}>
+        <GameButton style={{ color: player.autoRepairHull ? "#5cff8a" : "var(--hud-text-dim)", minWidth: 64 }} onClick={() => setAutoRepairHull(!player.autoRepairHull)}>
           {player.autoRepairHull ? "ON" : "OFF"}
         </GameButton>
       </div>
 
-      <div className="panel p-4 flex items-center gap-4">
+      <div className="panel-inset p-4 flex items-center gap-4">
         <div className="text-3xl text-cyan">↺</div>
         <div className="flex-1">
           <div className="text-cyan font-bold tracking-widest">AUTO-SHIELD RECHARGE</div>
@@ -2049,12 +2788,12 @@ function RepairTab({ stationId: _stationId }: { stationId: string }) {
             Automatically recharge shields to full when docking. Always free.
           </div>
         </div>
-        <GameButton style={{ color: player.autoShieldRecharge ? "#4ee2ff" : "#888", minWidth: 64 }} onClick={() => setAutoShieldRecharge(!player.autoShieldRecharge)}>
+        <GameButton style={{ color: player.autoShieldRecharge ? "#4ee2ff" : "var(--hud-text-dim)", minWidth: 64 }} onClick={() => setAutoShieldRecharge(!player.autoShieldRecharge)}>
           {player.autoShieldRecharge ? "ON" : "OFF"}
         </GameButton>
       </div>
 
-      <div className="panel p-4">
+      <div className="panel-inset p-4">
         <div className="text-cyan tracking-widest text-sm mb-2">▶ INSURANCE & RESPAWN</div>
         <div className="text-dim text-[13px]">
           Death penalty: <span className="text-red font-bold">10% credit loss</span> · Hull and shield refilled · Respawn at last station.
@@ -2094,14 +2833,14 @@ function SkillsTab() {
           </span>
           <button
             className="gbtn gbtn-red"
-            style={{ padding: "3px 10px", fontSize: 10 }}
+            style={{ padding: "3px 10px", fontSize: 11.8 }}
             onClick={() => { if (confirm("Reset skills for 2000cr?")) resetSkills(); }}
           >
             RESPEC · 2000cr
           </button>
         </span>
       </div>
-      <div className="text-mute" style={{ fontSize: 11 }}>
+      <div className="text-mute" style={{ fontSize: 13 }}>
         1 skill point per level. Click a node to invest — higher nodes unlock when the one before is skilled.
       </div>
 
@@ -2195,7 +2934,7 @@ function SkillsTab() {
                           width: "100%", height: "100%",
                           borderRadius: "50%",
                           display: "flex", alignItems: "center", justifyContent: "center",
-                          fontSize: 20, lineHeight: 1,
+                          fontSize: 23.6, lineHeight: 1,
                           color: cur > 0 ? b.color : reqMet ? "var(--text-dim)" : "#55617a",
                           background: cur > 0
                             ? `radial-gradient(circle at 50% 32%, ${b.color}2e 0%, rgba(9,14,26,0.98) 72%)`
@@ -2212,7 +2951,7 @@ function SkillsTab() {
                           bottom: -16,
                           left: "50%",
                           transform: "translateX(-50%)",
-                          fontSize: 10,
+                          fontSize: 11.8,
                           fontWeight: 700,
                           letterSpacing: "0.06em",
                           fontFamily: "var(--font-display)",
@@ -2263,28 +3002,28 @@ function SkillsTab() {
             style={{ position: "fixed", left, top, width: 276, zIndex: 70, pointerEvents: "none", padding: "10px 12px" }}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="font-bold truncate" style={{ color: b.color, fontSize: 12, fontFamily: "var(--font-display)", letterSpacing: "0.08em" }}>
+              <span className="font-bold truncate" style={{ color: b.color, fontSize: 14.2, fontFamily: "var(--font-display)", letterSpacing: "0.08em" }}>
                 {n.icon} {n.name.toUpperCase()}
               </span>
-              <span className="tabular-nums shrink-0" style={{ color: maxed ? "var(--accent-gold)" : "var(--text-dim)", fontSize: 10 }}>
+              <span className="tabular-nums shrink-0" style={{ color: maxed ? "var(--accent-gold)" : "var(--text-dim)", fontSize: 11.8 }}>
                 RANK {cur}/{n.maxRank}
               </span>
             </div>
-            <div className="text-dim" style={{ fontSize: 10.5, lineHeight: 1.45, margin: "6px 0" }}>{n.description}</div>
+            <div className="text-dim" style={{ fontSize: 12.4, lineHeight: 1.45, margin: "6px 0" }}>{n.description}</div>
             <div className="sw-hr" />
-            <div style={{ fontSize: 10, lineHeight: 1.6 }}>
+            <div style={{ fontSize: 11.8, lineHeight: 1.6 }}>
               <div>
-                <span className="hud-label" style={{ fontSize: 10 }}>CURRENT </span>
+                <span className="hud-label" style={{ fontSize: 11.8 }}>CURRENT </span>
                 <span className="tabular-nums" style={{ color: cur > 0 ? b.color : "var(--text-mute)" }}>{cur > 0 ? (now ?? `rank ${cur} active`) : "not researched"}</span>
               </div>
               {!maxed && (
                 <div>
-                  <span className="hud-label" style={{ fontSize: 10 }}>NEXT RANK </span>
+                  <span className="hud-label" style={{ fontSize: 11.8 }}>NEXT RANK </span>
                   <span className="tabular-nums" style={{ color: "var(--text-bright)" }}>{next ?? `rank ${cur + 1}`}</span>
                 </div>
               )}
             </div>
-            <div style={{ marginTop: 6, fontSize: 10, letterSpacing: "0.1em", color: !reqMet ? "var(--accent-red)" : maxed ? "var(--accent-gold)" : canBuy ? "var(--accent-green)" : "var(--text-mute)" }}>
+            <div style={{ marginTop: 6, fontSize: 11.8, letterSpacing: "0.1em", color: !reqMet ? "var(--accent-red)" : maxed ? "var(--accent-gold)" : canBuy ? "var(--accent-green)" : "var(--text-mute)" }}>
               {!reqMet
                 ? `⚠ REQUIRES ${SKILL_NODES.find((x) => x.id === n.requires)?.name.toUpperCase() ?? ""}`
                 : maxed ? "✓ FULLY RESEARCHED"
@@ -2345,7 +3084,7 @@ function MissionsTab() {
     return (
       <div
         key={m.id}
-        className="panel p-3"
+        className="panel-inset p-3"
         style={{
           opacity: claimed ? 0.5 : 1,
           borderColor: ready ? "#5cff8a" : "var(--border-soft)",
@@ -2375,7 +3114,7 @@ function MissionsTab() {
         </div>
         <div
           className="mb-2 flex flex-wrap gap-2"
-          style={{ fontSize: 13 }}
+          style={{ fontSize: 15.3 }}
         >
           <span style={{ color: "var(--accent-amber)" }}>+{m.rewardCredits.toLocaleString()}cr</span>
           <span style={{ color: "#ff5cf0" }}>+{m.rewardExp.toLocaleString()}xp</span>
@@ -2383,7 +3122,7 @@ function MissionsTab() {
         </div>
         <GameButton
           className="w-full"
-          style={{ fontSize: 13, width: "100%", color: ready ? "#5cff8a" : "var(--text-mute)" }}
+          style={{ fontSize: 15.3, width: "100%", color: ready ? "#5cff8a" : "var(--text-mute)" }}
           disabled={!ready}
           onClick={() => claimMission(m.id)}
         >
@@ -2400,7 +3139,7 @@ function MissionsTab() {
         {tabs.map(t => (
           <GameButton
             key={t.id}
-            style={{ fontSize: 13, opacity: activeTab === t.id ? 1 : 0.6 }}
+            style={{ fontSize: 15.3, opacity: activeTab === t.id ? 1 : 0.6 }}
             onClick={() => setActiveTab(t.id)}
           >
             {t.icon} {t.label}
@@ -2418,7 +3157,7 @@ function MissionsTab() {
             </div>
             <button
               className="gbtn"
-              style={{ padding: "6px 12px", fontSize: 13 }}
+              style={{ padding: "6px 12px", fontSize: 15.3 }}
               onClick={rerollDaily}
               disabled={player.credits < 500}
             >
@@ -2432,16 +3171,16 @@ function MissionsTab() {
           <div className="text-cyan tracking-widest text-sm mt-4 mb-2">LIFETIME MILESTONES</div>
           <div className="grid grid-cols-3 gap-2">
             {Object.entries(player.milestones).map(([k, v]) => (
-              <div key={k} className="panel p-2 min-w-0">
+              <div key={k} className="panel-inset p-2 min-w-0">
                 <div
                   className="uppercase truncate"
-                  style={{ color: "var(--text-mute)", fontSize: 10, letterSpacing: "0.15em" }}
+                  style={{ color: "var(--text-mute)", fontSize: 11.8, letterSpacing: "0.15em" }}
                 >
                   {k}
                 </div>
                 <div
                   className="font-bold tabular-nums truncate"
-                  style={{ color: "var(--accent-amber)", fontSize: 13 }}
+                  style={{ color: "var(--accent-amber)", fontSize: 15.3 }}
                 >
                   {(v as number).toLocaleString()}
                 </div>
@@ -2461,7 +3200,7 @@ function MissionsTab() {
             </div>
             <button
               className="gbtn"
-              style={{ padding: "6px 12px", fontSize: 13 }}
+              style={{ padding: "6px 12px", fontSize: 15.3 }}
               onClick={rerollMissionBoard}
               disabled={player.credits < 2000}
             >
@@ -2502,7 +3241,7 @@ function AmmoTab() {
             All weapons share one ammo pool. Select your active type and buy rounds.
           </div>
         </div>
-        <div className="panel px-3 py-2 text-right">
+        <div className="panel-inset px-3 py-2 text-right">
           <div className="text-mute text-[12px] tracking-widest">MAX CAPACITY</div>
           <div className="text-amber font-bold tabular-nums">{ammoMax} rounds</div>
         </div>
@@ -2546,8 +3285,8 @@ function AmmoTab() {
                       className="text-[13px] px-1.5 py-0.5 tracking-widest"
                       style={{
                         background: (buyAmounts[type] ?? 100) === n ? tDef.color + "30" : "transparent",
-                        color: (buyAmounts[type] ?? 100) === n ? tDef.color : "#666",
-                        border: `1px solid ${(buyAmounts[type] ?? 100) === n ? tDef.color + "99" : "#444"}`,
+                        color: (buyAmounts[type] ?? 100) === n ? tDef.color : "var(--hud-text-dim)",
+                        border: `1px solid ${(buyAmounts[type] ?? 100) === n ? tDef.color + "99" : "var(--hud-border-dim)"}`,
                         cursor: "pointer",
                       }}
                       onClick={() => setBuyAmounts((prev) => ({ ...prev, [type]: n }))}
@@ -2559,8 +3298,8 @@ function AmmoTab() {
                     className="text-[13px] px-1.5 py-0.5 tracking-widest"
                     style={{
                       background: (buyAmounts[type] ?? 100) === missing ? tDef.color + "30" : "transparent",
-                      color: (buyAmounts[type] ?? 100) === missing ? tDef.color : "#666",
-                      border: `1px solid ${(buyAmounts[type] ?? 100) === missing ? tDef.color + "99" : "#444"}`,
+                      color: (buyAmounts[type] ?? 100) === missing ? tDef.color : "var(--hud-text-dim)",
+                      border: `1px solid ${(buyAmounts[type] ?? 100) === missing ? tDef.color + "99" : "var(--hud-border-dim)"}`,
                       cursor: "pointer",
                     }}
                     onClick={() => setBuyAmounts((prev) => ({ ...prev, [type]: missing }))}
@@ -2572,7 +3311,7 @@ function AmmoTab() {
               <div className="flex flex-col gap-1 items-end">
                 <button
                   className="gbtn"
-                  style={{ padding: "3px 10px", fontSize: 13, minWidth: 90 }}
+                  style={{ padding: "3px 10px", fontSize: 15.3, minWidth: 90 }}
                   disabled={qty === 0 || player.credits < cost}
                   onClick={() => purchaseAmmoAmount(type, qty)}
                 >
@@ -2581,7 +3320,7 @@ function AmmoTab() {
                 <button
                   className="gbtn"
                   style={{
-                    fontSize: 13, minWidth: 90,
+                    fontSize: 15.3, minWidth: 90,
                     color: isActive ? tDef.color : "var(--text-dim)",
                     opacity: isActive ? 1 : 0.6,
                   }}
@@ -2595,17 +3334,17 @@ function AmmoTab() {
         })}
       </div>
 
-      <div style={{ borderTop: "1px solid #334", paddingTop: 16 }}>
+      <div style={{ borderTop: "1px solid var(--hud-border-dim)", paddingTop: 16 }}>
         <div className="flex items-center justify-between">
           <div>
-            <div className="tracking-widest text-sm" style={{ color: "#ff8a4e" }}>ROCKET AMMO</div>
+            <div className="tracking-widest text-sm" style={{ color: "var(--hud-gold)" }}>ROCKET AMMO</div>
             <div className="text-dim text-[13px] mt-1">
               Rocket launchers use separate ammo. Select type with key 2.
             </div>
           </div>
-          <div className="panel px-3 py-2 text-right">
+          <div className="panel-inset px-3 py-2 text-right">
             <div className="text-mute text-[12px] tracking-widest">MAX CAPACITY</div>
-            <div className="font-bold tabular-nums" style={{ color: "#ff8a4e" }}>{rocketMax} rounds</div>
+            <div className="font-bold tabular-nums" style={{ color: "var(--hud-gold)" }}>{rocketMax} rounds</div>
           </div>
         </div>
 
@@ -2647,8 +3386,8 @@ function AmmoTab() {
                         className="text-[13px] px-1.5 py-0.5 tracking-widest"
                         style={{
                           background: (buyAmounts[type] ?? 20) === n ? tDef.color + "30" : "transparent",
-                          color: (buyAmounts[type] ?? 20) === n ? tDef.color : "#666",
-                          border: `1px solid ${(buyAmounts[type] ?? 20) === n ? tDef.color + "99" : "#444"}`,
+                          color: (buyAmounts[type] ?? 20) === n ? tDef.color : "var(--hud-text-dim)",
+                          border: `1px solid ${(buyAmounts[type] ?? 20) === n ? tDef.color + "99" : "var(--hud-border-dim)"}`,
                           cursor: "pointer",
                         }}
                         onClick={() => setBuyAmounts((prev) => ({ ...prev, [type]: n }))}
@@ -2660,8 +3399,8 @@ function AmmoTab() {
                       className="text-[13px] px-1.5 py-0.5 tracking-widest"
                       style={{
                         background: (buyAmounts[type] ?? 20) === missing ? tDef.color + "30" : "transparent",
-                        color: (buyAmounts[type] ?? 20) === missing ? tDef.color : "#666",
-                        border: `1px solid ${(buyAmounts[type] ?? 20) === missing ? tDef.color + "99" : "#444"}`,
+                        color: (buyAmounts[type] ?? 20) === missing ? tDef.color : "var(--hud-text-dim)",
+                        border: `1px solid ${(buyAmounts[type] ?? 20) === missing ? tDef.color + "99" : "var(--hud-border-dim)"}`,
                         cursor: "pointer",
                       }}
                       onClick={() => setBuyAmounts((prev) => ({ ...prev, [type]: missing }))}
@@ -2673,14 +3412,14 @@ function AmmoTab() {
                 <div className="flex flex-col gap-1 items-end">
                   <button
                     className="gbtn"
-                    style={{ padding: "3px 10px", fontSize: 13, minWidth: 90 }}
+                    style={{ padding: "3px 10px", fontSize: 15.3, minWidth: 90 }}
                     disabled={qty === 0 || player.credits < cost}
                     onClick={() => purchaseRocketAmmo(type, qty)}
                   >
                     {missing === 0 ? "FULL" : `BUY ${qty} · ${cost}cr`}
                   </button>
                   <GameButton
-                    style={{ fontSize: 13, minWidth: 90, color: isActive ? tDef.color : "var(--text-dim)", opacity: isActive ? 1 : 0.6 }}
+                    style={{ fontSize: 15.3, minWidth: 90, color: isActive ? tDef.color : "var(--text-dim)", opacity: isActive ? 1 : 0.6 }}
                     onClick={() => switchRocketAmmoType(type)}
                   >
                     {isActive ? "ACTIVE" : "USE THIS"}

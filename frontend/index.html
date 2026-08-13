@@ -3,11 +3,47 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
-    <title>Cosmic Realm</title>
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Cosmic Realm — Browser Space MMO</title>
+    <meta name="description" content="Cosmic Realm is a free browser-based space MMO. Fly, fight, mine and conquer in real-time PvP zones. Explore. Fight. Build. Conquer." />
+
+    <!-- Icons. The SVG is what modern browsers prefer; the .ico and PNGs are
+         what Google's crawler, Safari and pinned/installed shortcuts use — an
+         SVG alone left those falling back to a generic placeholder.
+         ?v=2 busts the Cloudflare cache holding the old red square. -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=2" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png?v=2" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/icon-16.png?v=2" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=2" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png?v=2" />
+    <!-- .json, not .webmanifest: nginx's mime.types on the VPS has no entry for
+         .webmanifest, so it was served as application/octet-stream and Chrome
+         ignored it. Renaming is the fix that needs no server config change. -->
+    <link rel="manifest" href="/manifest.json?v=2" />
+    <meta name="theme-color" content="#0d1626" />
+
+    <!-- Link preview (Google, Discord, WhatsApp, X) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Cosmic Realm" />
+    <meta property="og:title" content="Cosmic Realm — Browser Space MMO" />
+    <meta property="og:description" content="Explore. Fight. Build. Conquer. A free real-time space MMO in your browser." />
+    <meta property="og:url" content="https://cosmicrealm.net/" />
+    <meta property="og:image" content="https://cosmicrealm.net/social-card.png?v=2" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Cosmic Realm — Browser Space MMO" />
+    <meta name="twitter:description" content="Explore. Fight. Build. Conquer. A free real-time space MMO in your browser." />
+    <meta name="twitter:image" content="https://cosmicrealm.net/social-card.png?v=2" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- The three display faces the design export asks for BY NAME in
+         Cosmic Components.dc.html: Orbitron (154 rules), JetBrains Mono (86),
+         Chakra Petch (6). None of them were loaded, so every migrated hangar
+         panel silently fell back to a generic sans — which is why the carousel
+         chevrons (U+2039/U+203A) drew as ROUND glyphs instead of the sharp
+         angular arrows the design shows, and why the panels' typography did not
+         match the reference in general. Orbitron 400..900: the arrows use 900. -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Orbitron:wght@400..900&family=JetBrains+Mono:wght@400;500;700&family=Chakra+Petch:wght@400;500;600;700&display=swap" rel="stylesheet">
   </head>
   <body>
     <div id="root"></div>

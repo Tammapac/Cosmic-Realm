@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { state, bump, useGame, save, pushNotification, pushChat, abandonDungeon, useConsumable, runDockingServices, loadServerPlayer, collectCargoBox, enterDungeon, stationPrice, completeDungeon, pushEvent } from "./game/store";
+import { state, bump, useGame, save, pushNotification, pushChat, abandonDungeon, useConsumable, runDockingServices, loadServerPlayer, collectCargoBox, enterDungeon, stationPrice, completeDungeon, pushEvent, getActiveRocketAmmoType } from "./game/store";
 import { startLoop, stopLoop, checkPortal, checkStationDock, effectiveStats, hasRocketWeapon, setEntityTarget, applyKill } from "./game/loop";
+import { initPerf, perfBegin, perfEnd, perfFrame } from "./game/perf";
 import { render } from "./game/render";
 import { initPixiRenderer, destroyPixiRenderer, pixiRender } from "./game/pixi-renderer-v2-integrated";
 import { init3DLayer, destroy3DLayer, getLoadingProgress, initStationLayer, renderStationLayer, destroyStationLayer } from "./game/three-ship-layer";
 import { destroyStation3DLayer } from "./game/three-station-layer";
-import { activeRenderer } from "./game/renderer-config";
+import { activeRenderer, ENABLE_NEW_DOCKING_FLOW, ENABLE_SHARED_3D_SCENE, ENABLE_HANGAR_3D_SCENE } from "./game/renderer-config";
+import { isControlLocked } from "./game/scene/docking-gate";
+import { requestDock, dockPoint, requestUndock, forceUndock } from "./game/scene/DockingController";
 import { WorldTargetHud, LogoutFlow } from "./components/TopBar";
 import { GameHud } from "./components/hud/GameHud";
 import "./styles/hud/hud-tokens.css";
@@ -13,20 +16,28 @@ import "./styles/hud/hud-animations.css";
 import "./styles/hud/hud-theme.css";
 import "./styles/hud/hud-materials.css";
 import { Hangar } from "./components/Hangar";
-import { SocialPanel, ClanPanel, GalaxyMap } from "./components/SocialPanel";
-import { ZoneMapOverlay } from "./components/ZoneMapOverlay";
+import { HangarDockOverlayHost } from "./components/hangar/HangarDockOverlayHost";
+import { TargetLockPanel } from "./components/TargetLockPanel";
+import { SocialPanel } from "./components/SocialPanel";
+import { ClanDirectoryPanel } from "./components/ClanDirectoryPanel";
+import { ClanHallPanel } from "./components/ClanHallPanel";
+import { ExchangePanel } from "./components/ExchangePanel";
+import { LeaderboardPanel } from "./components/LeaderboardPanel";
+import { GalaxyMapPanel } from "./components/GalaxyMapPanel";
+import { ZoneMapPanel } from "./components/ZoneMapPanel";
 import { FactionPicker } from "./components/FactionPicker";
 import { IdleRewardModal } from "./components/IdleRewardModal";
 import { EventBanners } from "./components/EventBanners";
 import { GameTooltip } from "./components/GameTooltip";
 import { InventoryPanel } from "./components/InventoryPanel";
-import { SkillTreePanel } from "./components/SkillTreePanel";
+import { SkillsPanel } from "./components/SkillsPanel";
+import { CargoPanel } from "./components/CargoPanel";
 import { PlayerStatsPanel } from "./components/PlayerStatsPanel";
 import { BossBar } from "./components/BossBar";
 import { QuestTracker } from "./components/QuestTracker";
 import SettingsMenu from "./components/SettingsMenu";
-import { AdminPanel } from "./components/AdminPanel";
-import { DUNGEONS, STATIONS, PORTALS, ZONES, MODULE_DEFS, RESOURCES, SHIP_CLASSES, ENEMY_DEFS, type EnemyType, type DungeonId } from "./game/types";
+import { AdminConsole } from "./components/admin/AdminConsole";
+import { DUNGEONS, STATIONS, PORTALS, ZONES, MODULE_DEFS, RESOURCES, SHIP_CLASSES, ENEMY_DEFS, SHIP_SIZE_SCALE, type EnemyType, type DungeonId } from "./game/types";
 import { travelToZone, state as gameState } from "./game/store";
 import { enemyModelKey, enemySizeScale, shipHullRadius } from "../../lib/hitbox";
 import AuthScreen from "./components/AuthScreen";
@@ -42,7 +53,7 @@ import {
   onAsteroidMine, onAsteroidDestroy, onAsteroidRespawn,
   onServerZoneEnemies, onServerZoneAsteroids, onServerZoneNpcs,
   onNpcSpawn, onNpcDie,
-  onWelcome, onDelta, onSnapshot, onPlayerHitFromServer, onPlayerDieFromServer,
+  onWelcome, onDelta, onSnapshot, onPlayerHitFromServer, onPlayerHitRemoteFromServer, onPlayerDieFromServer, onPlayerHonorFromServer,
   onProjectileSpawnFromServer,
 } from "./game/loop";
 
@@ -65,25 +76,48 @@ function GameCanvas() {
       // PixiJS renderer
       const container = pixiContainerRef.current;
       if (!container) return;
-      initPixiRenderer(container, labelOverlayRef.current ?? undefined);
 
-      // Station 3D layer is now bootstrapped inside initPixiRenderer as an
-      // offscreen canvas wrapped as a Pixi sprite; no DOM canvas here.
-
-      // Ships Three.js canvas at z=2 (above Pixi)
-      const threeCanvas = threeCanvasRef.current;
-      if (threeCanvas) {
-        init3DLayer(threeCanvas);
-        console.log("[App] Three.js ship canvas initialized");
-      }
-
+      // v8's Application.init() is async (it probes for WebGPU support), so
+      // the whole boot sequence below only starts once it resolves. `cancelled`
+      // guards against a fast unmount (e.g. React StrictMode's mount→unmount→
+      // remount in dev) landing after init() finishes but before this effect's
+      // own cleanup ran — without it we'd start a RAF loop for an app that's
+      // already been told to tear down.
+      let cancelled = false;
       let raf = 0;
-      const draw = () => {
-        try { pixiRender(); } catch (err) { console.error("[PIXI] Render error:", err); }
+      (async () => {
+        await initPixiRenderer(container, labelOverlayRef.current ?? undefined);
+        if (cancelled) { destroy3DLayer(); destroyStation3DLayer(); destroyPixiRenderer(); return; }
+
+        // Station 3D layer is now bootstrapped inside initPixiRenderer as an
+        // offscreen canvas wrapped as a Pixi sprite; no DOM canvas here.
+
+        // Ships Three.js canvas at z=2 (above Pixi).
+        //
+        // With the shared 3D scene, ships are no longer a separate canvas at all:
+        // initPixiRenderer boots the one world renderer on an offscreen canvas
+        // and composites it as a sprite inside worldLayer, so this DOM canvas
+        // stays empty and must NOT be initialized (init3DLayer is idempotent —
+        // whichever canvas gets there first is the one the renderer draws to).
+        const threeCanvas = threeCanvasRef.current;
+        if (threeCanvas && !ENABLE_SHARED_3D_SCENE) {
+          init3DLayer(threeCanvas);
+          console.log("[App] Three.js ship canvas initialized");
+        }
+
+        initPerf();
+        const draw = () => {
+          perfBegin("render");
+          try { pixiRender(); } catch (err) { console.error("[PIXI] Render error:", err); }
+          perfEnd("render");
+          perfFrame();
+          raf = requestAnimationFrame(draw);
+        };
         raf = requestAnimationFrame(draw);
-      };
-      raf = requestAnimationFrame(draw);
+      })();
+
       return () => {
+        cancelled = true;
         cancelAnimationFrame(raf);
         destroy3DLayer();
         destroyStation3DLayer();
@@ -146,8 +180,22 @@ function GameCanvas() {
     return best;
   };
 
+  // Same nearest-within-silhouette pick as enemies, over other players in the
+  // current zone. Used for click-to-select (target HUD + future group invite).
+  const pickPlayerAt = (wx: number, wy: number) => {
+    let best: (typeof state.others)[number] | null = null;
+    let bestD = Infinity;
+    for (const o of state.others) {
+      if (o.zone !== state.player.zone) continue;
+      const r = Math.max(44, shipHullRadius(o.shipClass, SHIP_SIZE_SCALE[o.shipClass] ?? 1) * 1.15 + 12);
+      const d = Math.hypot(o.pos.x - wx, o.pos.y - wy);
+      if (d < r && d < bestD) { bestD = d; best = o; }
+    }
+    return best;
+  };
+
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement | HTMLDivElement>) => {
-    if (state.dockedAt) return;
+    if (isControlLocked()) return;
     const { x: wx, y: wy } = screenToWorld(e);
 
     // Check if clicking on enemy — lock target (stays locked), do NOT auto-attack
@@ -160,6 +208,24 @@ function GameCanvas() {
         detail: `${enemy.type.toUpperCase()} · ${Math.max(0, Math.round(enemy.hull))}/${Math.round(enemy.hullMax)} HP`,
       };
       state.attackTargetId = enemy.id;
+      state.miningTargetId = null;
+      state.selectedPlayerId = null;
+      bump();
+      return;
+    }
+
+    // Check if clicking on another player — select them (for the target HUD
+    // and later group invites). Players are NOT auto-fired at, so this only
+    // sets the selection, not attackTargetId.
+    const other = pickPlayerAt(wx, wy);
+    if (other) {
+      state.selectedPlayerId = other.id;
+      state.selectedWorldTarget = {
+        kind: "player",
+        id: other.id,
+        name: other.name,
+        detail: `${(SHIP_CLASSES[other.shipClass]?.name ?? other.shipClass).toUpperCase()} · LV ${other.level}`,
+      };
       state.miningTargetId = null;
       bump();
       return;
@@ -204,9 +270,14 @@ function GameCanvas() {
       }
     }
 
+    // WASD mode: free-space clicks shoot (handled in mousedown), never move.
+    if (state.controlMode === "wasd") { bump(); return; }
+
     // Clicked on free space — move ship there, keep target lock
     state.cameraTarget = { x: wx, y: wy };
     state.miningTargetId = null;
+    state.selectedPlayerId = null;
+    if (state.selectedWorldTarget?.kind === "player") state.selectedWorldTarget = null;
 
     // Snap to station if clicked nearby
     for (const s of STATIONS) {
@@ -220,7 +291,7 @@ function GameCanvas() {
   };
 
   const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement | HTMLDivElement>) => {
-    if (state.dockedAt) return;
+    if (isControlLocked()) return;
     const { x: wx, y: wy } = screenToWorld(e);
     const enemy = pickEnemyAt(wx, wy);
     if (enemy) {
@@ -240,20 +311,246 @@ function GameCanvas() {
     }
   };
 
-  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement | HTMLDivElement>) => {
-    if (e.buttons !== 1 || state.dockedAt) return;
-    const rect = (e.target as HTMLElement).getBoundingClientRect();
-    const cx = e.clientX - rect.left;
-    const cy = e.clientY - rect.top;
+  // Steer cameraTarget toward a remembered screen-space cursor position.
+  const steerToHeld = () => {
+    const h = heldMouse.current;
+    if (!h || isControlLocked()) return;
     state.cameraTarget = {
-      x: state.player.pos.x + (cx - rect.width / 2) / state.cameraZoom,
-      y: state.player.pos.y + (cy - rect.height / 2) / state.cameraZoom,
+      x: state.player.pos.x + (h.x - h.w / 2) / state.cameraZoom,
+      y: state.player.pos.y + (h.y - h.h / 2) / state.cameraZoom,
     };
   };
+
+  // ── WASD control scheme ────────────────────────────────────────────────
+  // Screen-relative thrust: W = up, S = down, A = left, D = right. The
+  // cursor only sets where the ship LOOKS (state.aimAngle → input:aim).
+  // Movement stays server-authoritative: we only synthesize a cameraTarget
+  // ~600 world units in the thrust direction each frame (same channel
+  // click-to-move uses). Releasing all keys parks the target on the ship.
+  const steerWasd = () => {
+    if (isControlLocked()) return;
+
+    // Aim: ship nose follows the cursor (ship = screen center), always —
+    // even while standing still.
+    const c = lastCursor.current;
+    if (c) {
+      const dx = c.x - c.w / 2;
+      const dy = c.y - c.h / 2;
+      if (Math.hypot(dx, dy) > 8) state.aimAngle = Math.atan2(dy, dx);
+    }
+
+    const k = wasdKeys.current;
+    const vx = (k.d ? 1 : 0) - (k.a ? 1 : 0); // screen x = world x
+    const vy = (k.s ? 1 : 0) - (k.w ? 1 : 0); // screen down = world +y
+    if (vx === 0 && vy === 0) {
+      if (wasdWasThrusting.current) {
+        // Park the stop target at the natural COASTING point, not at the
+        // current position: the ship still carries velocity and glides past
+        // a park-on-the-spot target, and the server then drags it BACKWARD
+        // to that point (visible rubber-band on every stop). Braking
+        // distance with the 0.94/tick friction at 30Hz ≈ v * 0.55.
+        const bd = 0.55;
+        state.cameraTarget = {
+          x: state.player.pos.x + state.player.vel.x * bd,
+          y: state.player.pos.y + state.player.vel.y * bd,
+        };
+        wasdWasThrusting.current = false;
+      }
+      return;
+    }
+    const vl = Math.hypot(vx, vy) || 1;
+    state.cameraTarget = {
+      x: state.player.pos.x + (vx / vl) * 600,
+      y: state.player.pos.y + (vy / vl) * 600,
+    };
+    wasdWasThrusting.current = true;
+  };
+
+  const rememberMouse = (e: React.MouseEvent<HTMLElement>) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    heldMouse.current = {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+      w: rect.width,
+      h: rect.height,
+    };
+  };
+
+  // Always-on cursor tracking (WASD mode aims with the free cursor, no
+  // button required — unlike heldMouse, which only exists while held).
+  const rememberCursor = (e: React.MouseEvent<HTMLElement>) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    lastCursor.current = {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+      w: rect.width,
+      h: rect.height,
+    };
+  };
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLElement>) => {
+    if (isControlLocked()) return;
+
+    if (state.controlMode === "wasd") {
+      // WASD mode: free-aim combat. LMB = lasers, RMB = rockets — both fire
+      // straight down the cursor ray (server mirrors via input:aim), no
+      // target lock required. Clicking an enemy still selects it for the
+      // target HUD.
+      rememberCursor(e);
+      const { x: wx, y: wy } = screenToWorld(e as unknown as React.MouseEvent<HTMLDivElement>);
+      const enemy = pickEnemyAt(wx, wy);
+      if (enemy) {
+        state.selectedWorldTarget = {
+          kind: "enemy",
+          id: enemy.id,
+          name: enemy.name ?? enemy.type.toUpperCase(),
+          detail: `${enemy.type.toUpperCase()} · ${Math.max(0, Math.round(enemy.hull))}/${Math.round(enemy.hullMax)} HP`,
+        };
+        state.attackTargetId = enemy.id;
+        state.miningTargetId = null;
+        state.selectedPlayerId = null;
+      }
+      if (e.button === 0) {
+        state.isLaserFiring = true;
+        state.isAttacking = true;
+        lmbFiring.current = true;
+        window.dispatchEvent(new Event("cr-input-flush"));
+      } else if (e.button === 2) {
+        // Explicit feedback instead of silently doing nothing — the #1
+        // reason rockets "don't launch" is no launcher / empty ammo.
+        if (!hasRocketWeapon()) {
+          pushNotification("No rocket launcher equipped", "bad");
+        } else if ((state.player.rocketAmmo[getActiveRocketAmmoType()] ?? 0) < 1) {
+          pushNotification("Rocket ammo empty", "bad");
+        } else {
+          state.isRocketFiring = true;
+          state.isAttacking = true;
+          rmbFiring.current = true;
+          window.dispatchEvent(new Event("cr-input-flush"));
+        }
+      }
+      bump();
+      return;
+    }
+
+    if (e.button !== 0) return;
+    rememberMouse(e);
+    // If the press landed on a pickable target (enemy/player/asteroid/cargo/
+    // rift), don't fly — let the click handler select it. Only start steering
+    // when the press is on empty space (then holding flies toward the cursor).
+    const { x: wx, y: wy } = screenToWorld(e as unknown as React.MouseEvent<HTMLDivElement>);
+    const onTarget =
+      pickEnemyAt(wx, wy) ||
+      pickPlayerAt(wx, wy) ||
+      state.asteroids.some((a) => a.zone === state.player.zone && Math.hypot(a.pos.x - wx, a.pos.y - wy) < a.size + 10) ||
+      state.cargoBoxes.some((cb) => Math.hypot(cb.pos.x - wx, cb.pos.y - wy) < 24);
+    if (onTarget) { heldMouse.current = null; return; }
+    steerToHeld();
+  };
+
+  const stopLmbFire = () => {
+    if (!lmbFiring.current) return;
+    lmbFiring.current = false;
+    state.isLaserFiring = false;
+    if (!rmbFiring.current) state.isAttacking = false;
+    bump();
+    window.dispatchEvent(new Event("cr-input-flush"));
+  };
+
+  const stopRmbFire = () => {
+    if (!rmbFiring.current) return;
+    rmbFiring.current = false;
+    state.isRocketFiring = false;
+    if (!lmbFiring.current) state.isAttacking = false;
+    bump();
+    window.dispatchEvent(new Event("cr-input-flush"));
+  };
+
+  const handleMouseUp = (e?: React.MouseEvent<HTMLElement>) => {
+    heldMouse.current = null;
+    if (!e || e.button === 0) stopLmbFire();
+    if (!e || e.button === 2) stopRmbFire();
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement | HTMLDivElement>) => {
+    rememberCursor(e);
+    if (state.controlMode === "wasd") return; // aim only — no click-steering
+    if (e.buttons !== 1 || isControlLocked()) { heldMouse.current = null; return; }
+    rememberMouse(e);
+    steerToHeld();
+  };
+
+  // Steering tick: classic mode re-aims toward the held cursor every frame;
+  // WASD mode synthesizes the thrust target from keys + cursor direction.
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      if (state.controlMode === "wasd") steerWasd();
+      else { state.aimAngle = null; steerToHeld(); }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    const onUp = (ev: MouseEvent | FocusEvent) => {
+      heldMouse.current = null;
+      const btn = (ev as MouseEvent).button;
+      if (ev.type === "blur" || btn === 0) stopLmbFire();
+      if (ev.type === "blur" || btn === 2) stopRmbFire();
+    };
+    window.addEventListener("mouseup", onUp);
+    window.addEventListener("blur", onUp);
+
+    // WASD key tracking — layout-independent via e.code, ignores chat inputs.
+    const isTyping = (t: EventTarget | null) => {
+      const el = t as HTMLElement | null;
+      return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+    };
+    const KEYMAP: Record<string, "w" | "a" | "s" | "d"> = { KeyW: "w", KeyA: "a", KeyS: "s", KeyD: "d" };
+    const onKeyDown = (e: KeyboardEvent) => {
+      const k = KEYMAP[e.code];
+      if (!k || isTyping(e.target)) return;
+      if (!wasdKeys.current[k]) {
+        wasdKeys.current[k] = true;
+        // steer FIRST so the flush sends the fresh thrust target, not the
+        // previous one (steerWasd otherwise runs on the next RAF).
+        if (state.controlMode === "wasd") { steerWasd(); window.dispatchEvent(new Event("cr-input-flush")); }
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      const k = KEYMAP[e.code];
+      if (k && wasdKeys.current[k]) {
+        wasdKeys.current[k] = false;
+        if (state.controlMode === "wasd") { steerWasd(); window.dispatchEvent(new Event("cr-input-flush")); }
+      }
+    };
+    const onBlurKeys = () => { wasdKeys.current = { w: false, a: false, s: false, d: false }; };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlurKeys);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("blur", onUp);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlurKeys);
+    };
+  }, []);
 
   // ── Pinch-to-zoom for mobile ──
   const lastPinchDist = useRef<number>(0);
   const lastTouchPos = useRef<{ x: number; y: number } | null>(null);
+  // Hold-to-fly: while the left button is held, keep steering the ship toward
+  // the cursor every frame — even when the mouse ISN'T moving (a mousemove
+  // event only fires on motion, so a held-but-still mouse used to stop the
+  // ship dead). We remember the last cursor screen position + rect and re-aim
+  // cameraTarget on a tick until the button is released.
+  const heldMouse = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  // WASD control scheme state
+  const lastCursor = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  const wasdKeys = useRef({ w: false, a: false, s: false, d: false });
+  const wasdWasThrusting = useRef(false);
+  const lmbFiring = useRef(false);
+  const rmbFiring = useRef(false);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length === 2) {
@@ -267,6 +564,13 @@ function GameCanvas() {
 
   const handleTouchMove = (e: React.TouchEvent) => {
     e.preventDefault();
+    // The two zoom/pan inputs were the only camera writers in this file without
+    // a control-lock guard — harmless while docking was instant, but the M4-M7
+    // cinematic writes cameraZoom and flies the ship every frame. A pinch would
+    // fight the scripted push-in; a one-finger drag would hand the server a new
+    // move target mid-approach. preventDefault stays above the guard so the page
+    // still doesn't scroll while control is locked.
+    if (isControlLocked()) return;
     if (e.touches.length === 2) {
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
@@ -298,6 +602,8 @@ function GameCanvas() {
 
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement | HTMLDivElement>) => {
     e.preventDefault();
+    // See handleTouchMove — the cinematic owns the zoom while it runs.
+    if (isControlLocked()) return;
     const delta = e.deltaY > 0 ? -0.1 : 0.1;
     const minZoom = Math.min(window.innerWidth, 1200) / 1200;
     state.cameraZoom = Math.max(minZoom * 0.7, Math.min(2.5, state.cameraZoom + delta));
@@ -311,6 +617,8 @@ function GameCanvas() {
           ref={pixiContainerRef}
           onClick={handleClick}
           onDoubleClick={handleDoubleClick}
+          onMouseDown={handleMouseDown}
+          onMouseUp={handleMouseUp}
           onMouseMove={handleMouseMove}
           onWheel={handleWheel}
           onTouchStart={handleTouchStart}
@@ -336,6 +644,8 @@ function GameCanvas() {
         ref={canvasRef}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
+        onMouseDown={handleMouseDown}
+        onMouseUp={handleMouseUp}
         onMouseMove={handleMouseMove}
         onWheel={handleWheel}
         onContextMenu={(e) => e.preventDefault()}
@@ -428,9 +738,18 @@ function DockPrompt() {
   const player = useGame((s) => s.player);
   useGame((s) => s.tick);
 
-  const station = STATIONS.find(
-    (s) => s.zone === player.zone && Math.hypot(s.pos.x - player.pos.x, s.pos.y - player.pos.y) < 300
-  );
+  // Range is measured to the HANGAR MOUTH, not the station's nominal position.
+  // The model is ~1843 world units across and the door sits ~676 out from the
+  // centre, so a centre-measured 300 puts the prompt deep inside the hull —
+  // nowhere near the opening the player is being asked to fly into.
+  // dockPoint() returns the station's own position when there is no door
+  // (factories, and every station with ENABLE_NEW_DOCKING_FLOW off), so the
+  // legacy geometry is untouched.
+  const station = STATIONS.find((s) => {
+    if (s.zone !== player.zone) return false;
+    const d = dockPoint(s);
+    return Math.hypot(d.x - player.pos.x, d.y - player.pos.y) < 300;
+  });
   const portal = PORTALS.find(
     (po) => po.fromZone === player.zone && Math.hypot(po.pos.x - player.pos.x, po.pos.y - player.pos.y) < 70
   );
@@ -444,6 +763,10 @@ function DockPrompt() {
           className="gbtn gbtn-gold text-base px-8 py-3"
           style={{ animation: "pulse-glow 2s ease-in-out infinite", whiteSpace: "nowrap", minWidth: "fit-content" }}
           onClick={() => {
+            if (ENABLE_NEW_DOCKING_FLOW) {
+              requestDock(station.id);
+              return;
+            }
             state.dockedAt = station.id; sendDockEnter();
             state.hangarTab = station.kind === "factory" ? "refinery" : "bounties";
             state.player.vel = { x: 0, y: 0 };
@@ -476,17 +799,6 @@ function DockPrompt() {
   );
 }
 
-
-function Title() {
-  return (
-    <div className="absolute bottom-3 left-3 z-30 pointer-events-none">
-      <div className="text-cyan glow-cyan text-[10px] tracking-[0.3em]">COSMIC REALM</div>
-      <div className="text-mute text-[9px] tracking-widest">
-        v 2.0 · CLICK to move · MINIMAP click warps · SPACE docks · SHOOT asteroids to mine
-      </div>
-    </div>
-  );
-}
 
 function DockingSummary() {
   const summary = useGame((s) => s.dockingSummary);
@@ -521,16 +833,11 @@ function DockingSummary() {
       style={{ animation: "fadeInDown 0.3s ease" }}
     >
       <div
-        className="rounded border px-5 py-4 cursor-pointer select-none"
-        style={{
-          background: "rgba(2,6,20,0.92)",
-          borderColor: "#1e3a5f",
-          boxShadow: "0 0 24px rgba(0,180,255,0.15)",
-          minWidth: 260,
-        }}
+        className="panel cursor-pointer select-none"
+        style={{ minWidth: 260 }}
       >
-        <div className="text-cyan text-[11px] tracking-[0.25em] font-bold mb-3">◉ DOCKING REPORT</div>
-        <div className="flex flex-col gap-2">
+        <div className="hud-titleband" style={{ marginBottom: 4 }}>◉ DOCKING REPORT</div>
+        <div className="flex flex-col gap-2" style={{ padding: "8px 16px 0" }}>
           {summary.map((entry, i) => (
             <div key={i} className="flex items-center justify-between gap-4 text-[12px]">
               <div className="flex items-center gap-2">
@@ -543,91 +850,22 @@ function DockingSummary() {
             </div>
           ))}
         </div>
-        {totalCost > 0 && (
-          <>
-            <div className="border-t mt-3 mb-2" style={{ borderColor: "#1e3a5f" }} />
-            <div className="flex justify-between text-[12px]">
-              <span style={{ color: "#7a9cbf" }}>Total spent</span>
-              <span style={{ color: "#facc15" }}>-{totalCost}cr</span>
-            </div>
-          </>
-        )}
-        <div className="text-[9px] tracking-widest mt-3" style={{ color: "#3a5a7a" }}>CLICK TO DISMISS</div>
-      </div>
-    </div>
-  );
-}
-
-function CargoOverlay() {
-  const showCargo = useGame((s) => s.showCargo);
-  const player = useGame((s) => s.player);
-  if (!showCargo) return null;
-
-  const used = player.cargo.reduce((a: number, c: any) => a + c.qty, 0);
-  const cls = SHIP_CLASSES[player.shipClass];
-  const maxCargo = cls.cargoMax;
-
-  return (
-    <div
-      className="fixed z-50"
-      style={{ top: 92, right: 20, width: 360, pointerEvents: "auto" }}
-    >
-      <div className="panel-framed" style={{ position: "relative", maxHeight: "calc(100vh - 180px)", display: "flex", flexDirection: "column", filter: "drop-shadow(0 8px 30px rgba(0,0,0,0.75))" }}>
-        {/* title in the window's amber glass band */}
-        <div
-          style={{
-            position: "absolute", top: -37, left: "10%", right: "10%", height: 28,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontFamily: "var(--font-display)", fontSize: 14, fontWeight: 800,
-            letterSpacing: "0.28em", color: "#3a2000",
-            textShadow: "0 1px 0 rgba(255,255,255,0.25)", userSelect: "none",
-          }}
-        >
-          CARGO HOLD
-        </div>
-        <button
-          className="gbtn gbtn-red"
-          title="Close (J)"
-          style={{ position: "absolute", top: -38, right: -14, padding: "2px 8px", fontSize: 11 }}
-          onClick={() => { state.showCargo = false; bump(); }}
-        >
-          ✕
-        </button>
-        <div className="flex items-center justify-between px-2 pb-2 border-b" style={{ borderColor: "var(--border-soft)" }}>
-          <div className="text-mute text-[12px] tracking-widest">{used}/{maxCargo} UNITS</div>
-          <div className="text-amber font-bold text-[14px]">{player.cargo.reduce((s: number, c: any) => s + ((RESOURCES as any)[c.resourceId]?.basePrice ?? 0) * c.qty, 0).toLocaleString()}cr</div>
-        </div>
-        <div style={{ flex: 1, overflowY: "auto", padding: 8 }}>
-          {player.cargo.length === 0 ? (
-            <div className="text-mute text-sm italic text-center py-6">
-              Cargo bay empty
-            </div>
-          ) : player.cargo.map((c: any) => {
-            const r = (RESOURCES as any)[c.resourceId];
-            if (!r) return null;
-            return (
-              <div key={c.resourceId} className="flex items-center gap-2 px-2 py-1.5 hover:bg-white/5 border-b" style={{ borderColor: "var(--border-soft)" }}>
-                <div
-                  className="flex items-center justify-center flex-shrink-0"
-                  style={{ width: 28, height: 28, background: r.color + "22", border: "1px solid " + r.color, color: r.color, fontSize: 14 }}
-                >{r.glyph}</div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-bright text-[12px] font-bold truncate">{r.name}</div>
-                </div>
-                <div className="text-cyan text-[13px] font-bold tabular-nums">x{c.qty}</div>
-                <div className="text-amber text-[12px] tabular-nums" style={{ minWidth: 50, textAlign: "right" }}>{(c.qty * r.basePrice).toLocaleString()}cr</div>
+        <div style={{ padding: "0 16px 12px" }}>
+          {totalCost > 0 && (
+            <>
+              <div className="mt-3 mb-2" style={{ height: 1, background: "linear-gradient(90deg,transparent,rgba(78,226,255,0.4),transparent)" }} />
+              <div className="flex justify-between text-[12px]">
+                <span style={{ color: "#7a9cbf" }}>Total spent</span>
+                <span style={{ color: "#facc15" }}>-{totalCost}cr</span>
               </div>
-            );
-          })}
-        </div>
-        <div className="px-3 py-2 border-t text-mute text-[11px] tracking-widest" style={{ borderColor: "var(--border-soft)" }}>
-          {used > 0 ? "DOCK TO SELL" : "MINE OR TRADE"}
+            </>
+          )}
+          <div className="text-[9px] tracking-widest mt-3" style={{ color: "#3a5a7a" }}>CLICK TO DISMISS</div>
         </div>
       </div>
     </div>
   );
 }
-
 
 function LoadingScreen({ onReady }: { onReady: () => void }) {
   const [progress, setProgress] = useState(0);
@@ -721,6 +959,50 @@ function LoadingScreen({ onReady }: { onReady: () => void }) {
 }
 
 function GameApp() {
+  // ── Isolated docking flow (Milestone 1) — flag-gated, no-op when disabled ──
+  // Registers the scene manager states and a window.__docking debug handle so
+  // SPACE ⇄ HANGAR can be switched from the console for testing. Touches nothing
+  // else. When ENABLE_NEW_DOCKING_FLOW is false this effect returns immediately.
+  useEffect(() => {
+    if (!ENABLE_NEW_DOCKING_FLOW) return;
+    let cancelled = false;
+    (async () => {
+      const { sceneManager, GameState } = await import("./game/scene/GameSceneManager");
+      if (cancelled) return;
+      // Register minimal handlers that only log for now (no visual changes yet).
+      for (const s of Object.values(GameState)) {
+        sceneManager.register(s as any, {
+          enter: (ctx, prev) => console.log(`[docking] enter ${s} (from ${prev})`, ctx),
+          exit: (next) => console.log(`[docking] exit ${s} → ${next}`),
+        });
+      }
+      // M4/M6: the real DOCKING, HANGAR_LOADING and HANGAR handlers (approach
+      // path, blackout, dock commit). Registered AFTER the placeholder loop
+      // above so they win — register() overwrites by state key.
+      const { installDockingScene, dockingProgress, bootIntoStoredLocation } =
+        await import("./game/scene/DockingController");
+      installDockingScene();
+      // M8: boot into wherever the player logged out — the hangar if they were
+      // docked, space otherwise. This effect runs only after auth succeeded and
+      // loadServerPlayer() has applied the server's zone, which the restore
+      // validates the stored station against.
+      bootIntoStoredLocation();
+      (window as any).__docking = {
+        progress: () => dockingProgress(),
+        state: () => sceneManager.state,
+        toSpace: () => sceneManager.transitionTo(GameState.SPACE, { reason: "debug" }),
+        dock: (id = "helix") => sceneManager.transitionTo(GameState.DOCKING, { stationId: id, reason: "debug" }),
+        toHangarLoading: (id = "helix") => sceneManager.transitionTo(GameState.HANGAR_LOADING, { stationId: id }),
+        toHangar: (id = "helix") => sceneManager.transitionTo(GameState.HANGAR, { stationId: id }),
+        undock: () => sceneManager.transitionTo(GameState.UNDOCKING, { reason: "debug" }),
+        manager: sceneManager,
+        GameState,
+      };
+      console.log("[docking] Milestone 6 ready. Use window.__docking.dock() / .progress() / .undock() / .state()");
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // Wire socket listeners to game state
   useEffect(() => {
     setSocketListeners({
@@ -777,7 +1059,9 @@ function GameApp() {
       onEnemyHit: (event: EnemyHitEvent) => onEnemyHit(event),
       onEnemyAttack: (event: EnemyAttackEvent) => onEnemyAttack(event),
       onPlayerHit: (data) => onPlayerHitFromServer(data),
+      onPlayerHitRemote: (data) => onPlayerHitRemoteFromServer(data),
       onPlayerDie: (data) => onPlayerDieFromServer(data),
+      onPlayerHonor: (data) => onPlayerHonorFromServer(data),
       onAsteroidMine: (data) => onAsteroidMine(data),
       onAsteroidDestroy: (data) => onAsteroidDestroy(data),
       onAsteroidRespawn: (asteroid: ServerAsteroid) => onAsteroidRespawn(asteroid),
@@ -891,41 +1175,53 @@ function GameApp() {
       miningTargetId: null as string | null,
       laserAmmo: "",
       rocketAmmo: "",
+      aimAngle: null as number | null,
       sentAt: 0,
     };
     const HEARTBEAT_MS = 1000;
     const MOVE_EPSILON = 1.5;
 
-    const id = setInterval(() => {
+    const sendNow = () => {
       const cur = {
         targetX: state.cameraTarget.x,
         targetY: state.cameraTarget.y,
         firing: state.isLaserFiring,
         rocketFiring: state.isRocketFiring,
         attackTargetId: state.attackTargetId,
+        pvpTargetId: state.selectedPlayerId,
         miningTargetId: state.miningTargetId,
         laserAmmo: state.player.activeAmmoType ?? "x1",
         rocketAmmo: state.player.activeRocketAmmoType ?? "cl1",
+        aimAngle: state.aimAngle,
       };
       const now = performance.now();
       const moved =
         Math.abs(cur.targetX - last.targetX) > MOVE_EPSILON ||
         Math.abs(cur.targetY - last.targetY) > MOVE_EPSILON;
+      const aimChanged =
+        (cur.aimAngle === null) !== (last.aimAngle === null) ||
+        (cur.aimAngle !== null && last.aimAngle !== null && Math.abs(cur.aimAngle - last.aimAngle) > 0.02);
       const combatChanged =
         cur.firing !== last.firing ||
         cur.rocketFiring !== last.rocketFiring ||
         cur.attackTargetId !== last.attackTargetId ||
+        cur.pvpTargetId !== last.pvpTargetId ||
         cur.laserAmmo !== last.laserAmmo ||
         cur.rocketAmmo !== last.rocketAmmo;
       const miningChanged = cur.miningTargetId !== last.miningTargetId;
       const heartbeat = now - last.sentAt > HEARTBEAT_MS;
 
-      if (!moved && !combatChanged && !miningChanged && !heartbeat) return;
+      if (!moved && !combatChanged && !miningChanged && !aimChanged && !heartbeat) return;
 
       sendInput(cur);
       Object.assign(last, cur, { sentAt: now });
-    }, 50);
-    return () => clearInterval(id);
+    };
+    const id = setInterval(sendNow, 50);
+    // Input edges (WASD press/release, fire buttons) flush IMMEDIATELY
+    // instead of waiting up to 50ms for the next interval tick — shaves the
+    // largest client-side chunk off the start/stop reaction time.
+    window.addEventListener("cr-input-flush", sendNow);
+    return () => { clearInterval(id); window.removeEventListener("cr-input-flush", sendNow); };
   }, []);
 
   // Keyboard shortcuts
@@ -937,43 +1233,40 @@ function GameApp() {
         if (state.dockedAt) return;
         const sid = checkStationDock();
         if (sid) {
-          state.dockedAt = sid; sendDockEnter();
-          { const _st = STATIONS.find(s => s.id === sid); if (_st?.kind === "factory") state.hangarTab = "refinery"; else state.hangarTab = "bounties"; }
-          state.player.vel = { x: 0, y: 0 };
-          pushNotification("Docking...", "good");
-          save(); bump();
-          const stats = effectiveStats();
-          runDockingServices(stats.hullMax, stats.shieldMax);
+          // New docking flow (M2): begin a DOCKING transition first, which locks
+          // player controls via isControlLocked(). The actual dock (dockedAt +
+          // hangar) is committed by requestDock() once the (future) cinematic
+          // completes. When the flag is off, keep the original instant dock.
+          if (ENABLE_NEW_DOCKING_FLOW) {
+            requestDock(sid);
+          } else {
+            state.dockedAt = sid; sendDockEnter();
+            { const _st = STATIONS.find(s => s.id === sid); if (_st?.kind === "factory") state.hangarTab = "refinery"; else state.hangarTab = "bounties"; }
+            state.player.vel = { x: 0, y: 0 };
+            pushNotification("Docking...", "good");
+            save(); bump();
+            const stats = effectiveStats();
+            runDockingServices(stats.hullMax, stats.shieldMax);
+          }
         }
-      } else if (e.key === "m" || e.key === "M") {
-        state.showFullZoneMap = !state.showFullZoneMap; bump();
       } else if (e.key === "+" || e.key === "=") {
         state.minimapScale = Math.min(3, state.minimapScale + 0.25); bump();
       } else if (e.key === "-" || e.key === "_") {
         state.minimapScale = Math.max(0.5, state.minimapScale - 0.25); bump();
-      } else if (e.key === "c" || e.key === "C") {
-        state.showClan = !state.showClan; bump();
-      } else if (e.key === "h" || e.key === "H") {
-        state.showSocial = !state.showSocial; bump();
-      } else if (e.key === "j" || e.key === "J") {
-        state.showCargo = !state.showCargo; bump();
-      } else if (e.key === "i" || e.key === "I") {
-        state.showInventory = !state.showInventory; bump();
+      } else if (e.key === "m" || e.key === "M") {
+        if (!state.dockedAt) { state.showZoneMap = !state.showZoneMap; bump(); }
       } else if (e.key === "Escape") {
         if (state.showSettings) {
           state.showSettings = false;
-        } else if (state.showMap || state.showClan || state.showAmmoSelector || state.showRocketAmmoSelector || state.showFullZoneMap || state.showInventory || state.showSkillTree || state.showPlayerStats) {
+        } else if (state.showZoneMap) {
+          state.showZoneMap = false;
+        } else if (state.showMap || state.showAmmoSelector || state.showRocketAmmoSelector) {
           state.showMap = false;
-          state.showClan = false;
           state.showAmmoSelector = false;
           state.showRocketAmmoSelector = false;
-          state.showFullZoneMap = false;
-          state.showInventory = false;
-          state.showSkillTree = false;
-          state.showPlayerStats = false;
-        } else {
-          state.showSettings = true;
         }
+        // Inventory/Cargo/Skills/Dossier/ZoneMap/Clan/Social/Settings now live in
+        // the Cosmic Kit PixiJS panelHost (I C K P J N M G O L, its own Esc).
         bump();
       } else if (e.key === "Tab") {
         e.preventDefault();
@@ -1026,7 +1319,8 @@ function GameApp() {
         bump();
       } else if (e.key === "1") {
         if (!state.dockedAt) {
-          if (state.selectedWorldTarget?.kind === "enemy") {
+          // Fire at an enemy OR at a selected player (PvP).
+          if (state.selectedWorldTarget?.kind === "enemy" || state.selectedWorldTarget?.kind === "player") {
             state.isLaserFiring = !state.isLaserFiring;
             state.isAttacking = state.isLaserFiring || state.isRocketFiring;
             bump();
@@ -1034,7 +1328,7 @@ function GameApp() {
         }
       } else if (e.key === "2") {
         if (!state.dockedAt) {
-          if (state.selectedWorldTarget?.kind === "enemy") {
+          if (state.selectedWorldTarget?.kind === "enemy" || state.selectedWorldTarget?.kind === "player") {
             state.isRocketFiring = !state.isRocketFiring;
             state.isAttacking = state.isLaserFiring || state.isRocketFiring;
             bump();
@@ -1060,7 +1354,10 @@ function GameApp() {
   }, []);
 
   const docked = useGame((s) => s.dockedAt);
-  const showSocial = useGame((s) => s.showSocial);
+  const hangarIntroDone = useGame((s) => s.hangarIntroDone);
+  // With the 3D hangar, hold the 2D menu until the fly-in intro finishes. With it
+  // off, dockedAt alone drives the menu (unchanged behaviour).
+  const showHangarMenu = docked && (!ENABLE_HANGAR_3D_SCENE || hangarIntroDone);
   const showAdmin = useGame((s) => s.showAdmin);
   const showSettings = useGame((s) => s.showSettings);
 
@@ -1077,27 +1374,93 @@ function GameApp() {
   const [assetsReady, setAssetsReady] = useState(false);
   const handleAssetsReady = useRef(() => setAssetsReady(true)).current;
 
+
   return (
     <div className="relative w-full h-full overflow-hidden" style={{ background: "#02040c" }}>
       {!assetsReady && <LoadingScreen onReady={handleAssetsReady} />}
       <GameCanvas />
-      <div style={{ transform: `scale(${currentUiScale})`, transformOrigin: "top left", width: `${100 / (currentUiScale || 1)}%`, height: `${100 / (currentUiScale || 1)}%`, position: "absolute", top: 0, left: 0, pointerEvents: "none", zIndex: 10 }}>
+      {/* World-anchored boss HP plates — same layer family as the canvas'
+          own labels (CLAUDE.md canvas layering: Pixi z0, ship z1, labels
+          z2), rendered here BEFORE the zIndex:10 HUD wrapper below so no
+          fixed-position HUD panel (Hotbar's HULL/SHIELD readout, chat,
+          etc.) can ever render underneath a boss bar that happens to drift
+          over it on screen. Previously mounted inside the HUD wrapper,
+          where its own zIndex:5 read as a sibling z-index INSIDE that
+          wrapper's stacking context instead of actually sitting above the
+          world — it won the fixed-panel HUD elements just by DOM order,
+          which is what let a boss bar visibly cut through the Hotbar's
+          vitals track. */}
+      <BossBar />
+      <div style={{
+        // Only apply the scale transform when actually scaling (<1). At 1:1 a
+        // `transform` still creates a containing block that DISABLES the
+        // backdrop-filter of HUD windows (they could no longer blur the game
+        // canvas behind them, which sits outside this wrapper). Omitting the
+        // transform at scale 1 lets the frosted-glass panels blur the map.
+        ...(currentUiScale !== 1
+          ? { transform: `scale(${currentUiScale})`, transformOrigin: "top left", width: `${100 / (currentUiScale || 1)}%`, height: `${100 / (currentUiScale || 1)}%` }
+          : { width: "100%", height: "100%" }),
+        position: "absolute", top: 0, left: 0, pointerEvents: "none", zIndex: 10,
+      }}>
       <div style={{ pointerEvents: "auto" }}>
       <GameHud />
       <WorldTargetHud />
+      <TargetLockPanel />
       <LogoutFlow />
       <Notifications />
       <RiftConfirmDialog />
       <DungeonHud />
       <QuestTracker />
-      {showSocial && <SocialPanel />}
-      <ClanPanel />
-      <GalaxyMap />
-      <ZoneMapOverlay />
+      {/* The React panels below ARE the current Cosmic Kit port (added on this
+          branch, PrintPortal open/close animation, ClanTabBar for the
+          directory<->hall tabs). The older PixiJS kit2 windows in
+          game/hud/kit2/windows-legacy are what they replace — kit2's hotkeys
+          are disabled in kitHost2 so a keypress opens one window, not two. */}
+      {/* Mounted unconditionally, like every other panel here: each one reads
+          its own store flag and keeps itself on screen via mounted/closing
+          until PrintPortal's close animation finishes (onPortalClosed).
+          Gating this one on `showSocial` destroyed it the instant the flag
+          flipped, so the close animation never played and the open animation
+          started on a cold component (first paint also ran getSocial() and
+          built the whole list) — that was the stutter. */}
+      <SocialPanel />
+      <ClanDirectoryPanel />
+      <ClanHallPanel />
+      <ExchangePanel />
+      <LeaderboardPanel />
+      <GalaxyMapPanel />
+      <ZoneMapPanel />
       <EventBanners />
       <GameTooltip />
-      <Title />
-      {docked && <Hangar stationId={docked} />}
+      {showHangarMenu && docked && <Hangar stationId={docked} />}
+      {/* S-01 Hangar Dock Overlay — the migrated design handoff, layered over the
+          3D hangar scene. Only mounted with the 3D scene active; the 2D hangar
+          keeps its own chrome. Tab clicks set state.hangarTab, so the existing
+          Hangar panel renders the section contents underneath. */}
+      {docked && ENABLE_HANGAR_3D_SCENE && <HangarDockOverlayHost />}
+      {/* Fail-safe undock: if we're docked in the 3D hangar but the menu hasn't
+          appeared yet (intro still running, or a stalled preload left us with no
+          menu at all), give the player a standalone escape hatch so they can never
+          be trapped DOCKED. Hidden once the real menu (with its own undock) is up.
+          The S-01 overlay carries its own UNDOCK control and mounts whenever we
+          are docked with the 3D scene on, so this corner button would duplicate
+          it — that stray ✕ UNDOCK in the top-right is what it was. It stays in
+          the tree for the 2D path (no overlay there) rather than being deleted,
+          so the "never trapped docked" guarantee survives. */}
+      {docked && !ENABLE_HANGAR_3D_SCENE && !showHangarMenu && (
+        <button
+          onClick={() => { try { requestUndock(); } catch { forceUndock("failsafe button"); } }}
+          style={{
+            position: "fixed", top: 18, right: 18, zIndex: 70, pointerEvents: "auto",
+            padding: "10px 20px", fontSize: 13, letterSpacing: "0.08em",
+            color: "#ffb4b4", fontFamily: "var(--font-display, monospace)",
+            border: "1px solid rgba(255,120,120,0.5)", background: "rgba(40,8,12,0.7)",
+            backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)", cursor: "pointer",
+          }}
+        >
+          ✕ UNDOCK
+        </button>
+      )}
       <DockingSummary />
       <div
         style={{
@@ -1111,17 +1474,16 @@ function GameApp() {
       >
         <DockPrompt />
       </div>
-      <CargoOverlay />
+      <CargoPanel />
       <InventoryPanel />
-      <SkillTreePanel />
+      <SkillsPanel />
       <PlayerStatsPanel />
-      <BossBar />
       <IdleRewardModal />
       <FactionPicker />
       </div>
       </div>
       {showSettings && <SettingsMenu onClose={() => { state.showSettings = false; bump(); }} />}
-      {showAdmin && <AdminPanel onClose={() => { state.showAdmin = false; bump(); }} />}
+      {showAdmin && <AdminConsole onClose={() => { state.showAdmin = false; bump(); }} />}
       <div className="crt-overlay" />
     </div>
   );

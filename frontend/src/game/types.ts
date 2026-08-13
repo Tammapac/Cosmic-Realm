@@ -1,3 +1,5 @@
+import { PET_DRONE_UPGRADE_COST as SHARED_PET_DRONE_UPGRADE_COST } from "../../../lib/game-constants";
+
 export type Vec2 = { x: number; y: number };
 
 export type ZoneId =
@@ -20,7 +22,7 @@ export type Zone = {
   unlockLevel: number;
 };
 
-export type EnemyType = "scout" | "raider" | "destroyer" | "voidling" | "dread" | "sentinel" | "wraith" | "titan" | "overlord" | "interceptor" | "corvette" | "specter" | "phantom" | "juggernaut" | "leviathan";
+export type EnemyType = "scout" | "raider" | "destroyer" | "voidling" | "dread" | "sentinel" | "wraith" | "titan" | "overlord" | "interceptor" | "corvette" | "specter" | "phantom" | "juggernaut" | "leviathan" | "erix" | "angin" | "crobium" | "draug" | "knoton" | "maron" | "nabas" | "silikum" | "simonit";
 export type EnemyBehavior = "fast" | "chaser" | "tank" | "ranged";
 
 export type ShipClassId =
@@ -89,10 +91,40 @@ export type ModuleDef = {
   glyph: string;
   stats: ModuleStats;
   price: number;
-  tier: number; // 1..5 power level
+  tier: number; // power level. lasers 0..10, rockets 0..5, gen/module 1..5
   weaponKind?: WeaponKind; // only for weapon slot modules
   firingPattern?: string;
+  spriteKey?: string; // "<family>-t<tier>" -> /assets/ui/items/<key>.png icon
 };
+
+// ── ITEM SPRITE SYSTEM (per family + tier) ───────────────────────────────
+// Every catalog item carries a `spriteKey` of the form "<family>-t<tier>":
+//   laser-t0 … laser-t10   (11)   rocket-t0 … rocket-t5   (6)
+//   gen-t1 … gen-t5        (5)    mod-t1 … mod-t5         (5)
+// PNGs live in /assets/ui/items/<spriteKey>.png. Missing files fall back to
+// the def's Unicode glyph. Mining lasers have no sprite (keep the ⛏ glyph).
+export const ITEM_SPRITE_KEYS = new Set<string>([
+  ...Array.from({ length: 11 }, (_, t) => `laser-t${t}`),   // lasers 0-10
+  ...Array.from({ length: 6 }, (_, t) => `rocket-t${t}`),   // rockets 0-5 (art pending)
+  ...Array.from({ length: 6 }, (_, t) => `genspeed-t${t}`), // speed gens 0-5
+  ...Array.from({ length: 6 }, (_, t) => `genshield-t${t}`),// shield gens 0-5
+  // modules: 9 types (0-8) x tier 0-4
+  ...Array.from({ length: 9 }, (_, ty) => Array.from({ length: 5 }, (_, t) => `mod${ty}-t${t}`)).flat(),
+]);
+
+/** Sprite PNG URL for a def's spriteKey, else null (caller shows the glyph). */
+export function itemSpriteUrl(spriteKey: string | undefined): string | null {
+  return spriteKey && ITEM_SPRITE_KEYS.has(spriteKey)
+    ? `/assets/ui/items/${spriteKey}.png`
+    : null;
+}
+
+// Back-compat shim: old callers passed a weapon id. Now defs carry spriteKey,
+// so resolve via the catalog. Kept so existing WeaponIcon call sites work.
+export function weaponSpriteUrl(defId: string): string | null {
+  const def = MODULE_DEFS[defId];
+  return def ? itemSpriteUrl(def.spriteKey) : null;
+}
 
 export type ModuleItem = {
   instanceId: string;
@@ -118,7 +150,16 @@ export type Quest = {
   id: string;
   title: string;
   description: string;
+  /** The "board" zone — where the quest is offered/accepted (Hangar bounty
+      board grouping, per-zone quest cap). NOT necessarily where the kill
+      has to happen; see `targetZone`. */
   zone: ZoneId;
+  /** The zone the kill must actually occur in. Defaults to `zone` when
+      omitted (every pre-existing pool entry keeps its old same-zone
+      behavior). Set this to a DIFFERENT zone to make a quest send the
+      player elsewhere — the deliberate "contracts push you into other
+      maps" design instead of always grinding the zone you're already in. */
+  targetZone?: ZoneId;
   killType: EnemyType;
   killCount: number;
   rewardCredits: number;
@@ -225,6 +266,61 @@ export type Drone = {
   fireCd: number;
 };
 
+// ── PET DRONE ───────────────────────────────────────────────────────────────
+// Every pilot has ONE companion drone. It levels 0→6 by spending Bebcell (a
+// rare boss-only upgrade material, dropped far less often than normal loot).
+// A new model is loaded per level (see DRONE_3D_MODELS) — the drone visibly
+// grows more elaborate as it levels. Slots unlock every OTHER level, not every
+// level: slot 1 at lvl 2, slot 2 at lvl 4, slot 3 at lvl 6. Slots hold the SAME
+// laser/module items as the ship (bound to the drone while equipped).
+//   Lvl 0-1: no slots   Lvl 2-3: 1 slot (weapon)
+//   Lvl 4-5: 2 slots (+ module)   Lvl 6: 3 slots (+ free)
+export type PetDroneSlot = "weapon" | "module" | "extra";
+export type PetDroneLevel = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+
+export type PetDrone = {
+  level: PetDroneLevel;
+  mode: DroneMode;
+  hp: number;
+  hpMax: number;
+  orbitPhase: number;
+  fireCd: number;
+  // instanceId of the equipped inventory item per slot, or null when empty.
+  equipped: { weapon: string | null; module: string | null; extra: string | null };
+};
+
+/** Bebcell cost to reach each level (index = target level). Steep — Bebcell is
+ *  a rare boss drop, much scarcer than normal currency. Re-exported from the
+ *  shared lib so client display and server validation can never drift. */
+export const PET_DRONE_UPGRADE_COST = SHARED_PET_DRONE_UPGRADE_COST;
+/** How many equipment slots are active at a given pet-drone level. A slot
+ *  unlocks every OTHER level (2/4/6), not every level. */
+export function petDroneSlotCount(level: number): number {
+  return Math.max(0, Math.min(3, Math.floor(level / 2)));
+}
+/** Which slot each unlock unlocks, in order. */
+export const PET_DRONE_SLOT_ORDER: PetDroneSlot[] = ["weapon", "module", "extra"];
+export function newPetDrone(): PetDrone {
+  return { level: 0, mode: "orbit", hp: 400, hpMax: 400, orbitPhase: 0, fireCd: 0,
+    equipped: { weapon: null, module: null, extra: null } };
+}
+
+/** GLB model per drone level. Level 0 (freshly acquired, no upgrades yet)
+ *  reuses the level-1 model — there is no "level 0" asset, and a bare drone
+ *  still needs to render as something before its first upgrade. */
+export const DRONE_3D_MODELS: Record<Exclude<PetDroneLevel, 0>, string> = {
+  1: "/models/drones/pet-drone-lv1.glb",
+  2: "/models/drones/pet-drone-lv2.glb",
+  3: "/models/drones/pet-drone-lv3.glb",
+  4: "/models/drones/pet-drone-lv4.glb",
+  5: "/models/drones/pet-drone-lv5.glb",
+  6: "/models/drones/pet-drone-lv6.glb",
+};
+/** Resolve the model path for any level, including 0 (falls back to lv1). */
+export function droneModelForLevel(level: PetDroneLevel): string {
+  return DRONE_3D_MODELS[level === 0 ? 1 : level];
+}
+
 export type HonorRank = {
   index: number;
   name: string;
@@ -232,7 +328,75 @@ export type HonorRank = {
   color: string;
   symbol: string;        // small ASCII glyph
   pips: number;          // number of icon pips
+  /** Basename of the rank art in /assets/ui/ranks (without ".png").
+   *  Explicit rather than derived from `index`: the callers used to build the
+   *  filename as rank_(index+1), which breaks the moment a rank is not the
+   *  (index+1)-th badge on the sheet — Outlaw is index 0 but uses the LAST
+   *  badge. Use rankIcon() instead of recomputing this anywhere. */
+  icon: string;
 };
+
+/** Art path for a rank. Single source of truth for rank imagery — the HUD
+ *  render sites used to each build this string themselves. */
+export function rankIcon(r: HonorRank): string {
+  return `/assets/ui/ranks/${r.icon}.png`;
+}
+
+/** Intrinsic width/height of each rank badge, measured from the PNG headers.
+ *
+ *  Needed because the art is cropped tight per badge and the shapes differ
+ *  wildly — a wide chevron is 135x64 (2.11), a narrow one 37x64 (0.58). Kept as
+ *  data rather than read at runtime: the nameplate is rebuilt every frame, so
+ *  it cannot wait on image loads to decide a size. */
+const RANK_ART_RATIO: Record<string, number> = {
+  rank_01: 1.59, rank_02: 0.86, rank_03: 0.69, rank_04: 0.58, rank_05: 2.11,
+  rank_06: 1.44, rank_07: 1.30, rank_08: 1.22, rank_09: 0.94, rank_10: 0.94,
+  rank_11: 0.88, rank_12: 0.86, rank_13: 0.95, rank_14: 0.95, rank_15: 0.92,
+  rank_16: 0.92, rank_17: 1.05, rank_18: 1.09, rank_19: 1.08, rank_20: 1.11,
+  rank_21: 1.45, rank_22: 1.48, rank_23: 1.05,
+};
+
+/** Side of the square `object-fit: contain` box a rank badge should render in.
+ *
+ *  Equal-AREA rather than equal-box. A shared box looks wrong because `contain`
+ *  fits by the longest side: at box 32 the near-square General (1.11) paints
+ *  32x29, while the wider Chief General (1.45) paints only 32x22 — a third less
+ *  ink for the higher rank, which reads as "Chief General is smaller".
+ *
+ *  Solving `w*h = box^2 / max(r, 1/r)` for a constant area gives the box below,
+ *  so every badge ends up with the same amount of visible art regardless of
+ *  shape. `targetArea` lets the entry ranks (1-6) be deliberately quieter than
+ *  the star and wreath insignia without reintroducing the same distortion. */
+export function rankBoxPx(r: HonorRank, targetArea: number): number {
+  const ratio = RANK_ART_RATIO[r.icon] ?? 1;
+  return Math.round(Math.sqrt(targetArea * Math.max(ratio, 1 / ratio)));
+}
+
+/** `srcset` for a rank badge: the 1x file plus its @2x sibling.
+ *
+ *  The badges are only 66-140px in the source sheet, so there is no detail to
+ *  be won by shipping one big file — the art is exported twice instead, each
+ *  copy sharpened for the density it will be drawn at (64px tall for 1x,
+ *  128px for 2x). Handing the browser both via srcset means neither screen
+ *  resamples a file that was sharpened for the other one. */
+export function rankIconSrcSet(r: HonorRank): string {
+  const base = `/assets/ui/ranks/${r.icon}`;
+  return `${base}.png 1x, ${base}@2x.png 2x`;
+}
+
+// ── REPUTATION ──────────────────────────────────────────────────────────────
+// Standing derived purely from a player's honor. Shown as a colored pill in
+// the top panel. Thresholds (5 tiers): Adversary ≤ -100k, Rival < 0,
+// Neutral 0–100k, Honorable 100k–500k, Exalted ≥ 500k.
+export type Reputation = { name: string; color: string; glyph: string };
+
+export function reputationForHonor(honor: number): Reputation {
+  if (honor <= -100000) return { name: "Adversary", color: "#ff4d5e", glyph: "◆" };
+  if (honor < 0)        return { name: "Rival",     color: "#ff8a4e", glyph: "◆" };
+  if (honor < 100000)   return { name: "Neutral",   color: "#b9cbe6", glyph: "◆" };
+  if (honor < 500000)   return { name: "Honorable", color: "#5cff8a", glyph: "◆" };
+  return { name: "Exalted", color: "#e8d9b0", glyph: "★" };
+}
 
 // ── CONSUMABLES ────────────────────────────────────────────────────────────
 export type ConsumableId =
@@ -277,14 +441,24 @@ export type Player = {
   exp: number;
   credits: number;
   honor: number;
+  mcoins: number;        // premium (real-money) currency; display-only for now
+  inventoryExtraPage?: boolean; // 3rd inventory page unlocked via mcoins purchase
   cargo: CargoItem[];
   zone: ZoneId;
   ownedShips: ShipClassId[];
   activeQuests: ActiveQuest[];
   completedQuests: string[];
   clan: string | null;
+  clanId: number | null;
   party: string[];
-  drones: Drone[];
+  petDrone: PetDrone;   // single upgradable companion drone (replaces the old drone array)
+  bebcell: number;      // boss-only material for upgrading the pet drone
+  // Premium account status — gates cargo drone, expedited jump, and bonus
+  // skill-point purchases in the Pixi HUD panels (see hud/sections/cargoActions.ts
+  // hasPremium()). Either field is sufficient; premiumUntil takes precedence
+  // for time-boxed grants. Both optional: absent/false/expired = no premium.
+  premium?: boolean;
+  premiumUntil?: number;
   // Phase 2 additions
   faction: FactionId | null;
   skills: Partial<Record<SkillId, number>>;  // skillId → ranks
@@ -300,6 +474,8 @@ export type Player = {
   activeAmmoType: RocketAmmoType;        // active laser ammo type
   rocketAmmo: Record<RocketMissileType, number>; // rocket ammo pool per type
   activeRocketAmmoType: RocketMissileType;       // active rocket ammo type
+  droneAmmo: number;              // separate, weaker ammo pool for the pet drone's weapon
+  droneAmmoMax: number;
   autoRestock: boolean;
   autoRepairHull: boolean;
   autoShieldRecharge: boolean;
@@ -359,7 +535,27 @@ export type SkillId =
   | "ut-cargo" | "ut-thrust" | "ut-salvage" | "ut-droneops"
   | "ut-trade" | "ut-scan" | "ut-warp" | "ut-drone2"
   | "eng-coolant" | "eng-capacitor" | "eng-targeting" | "eng-warp-core"
-  | "eng-overdrive" | "eng-singularity";
+  | "eng-overdrive" | "eng-singularity"
+  // ── expansion: offense (16) ──
+  | "off-caliber" | "off-steady" | "off-weakpoint" | "off-firstblood"
+  | "off-coldbore" | "off-headhunter" | "off-sustain" | "off-cadence"
+  | "off-attrition" | "off-barrage" | "off-splash" | "off-shrapnel"
+  | "off-chain" | "off-saturation" | "off-render" | "off-apex"
+  // ── expansion: defense (15) ──
+  | "def-lattice" | "def-diffuse" | "def-overshield" | "def-aegis"
+  | "def-coolant" | "def-triage" | "def-secondwind" | "def-phoenix"
+  | "def-ablative" | "def-hardened" | "def-lastditch" | "def-immovable"
+  | "def-spines" | "def-backlash" | "def-nemesis"
+  // ── expansion: utility (15) ──
+  | "ut-hold" | "ut-broker" | "ut-contraband" | "ut-magnate"
+  | "ut-vector" | "ut-slipstream" | "ut-evasion" | "ut-phaserunner"
+  | "ut-swarm" | "ut-repairbay" | "ut-hivemind" | "ut-survey"
+  | "ut-refinery" | "ut-assay" | "ut-prospector"
+  // ── expansion: engineering (16) ──
+  | "eng-plasma" | "eng-fusion" | "eng-surge" | "eng-meltdown"
+  | "eng-radiator" | "eng-cryoflow" | "eng-heatsink" | "eng-runaway"
+  | "eng-regulator" | "eng-harmonics" | "eng-transfer" | "eng-resonance"
+  | "eng-equilibrium" | "eng-recursion" | "eng-eventhorizon" | "eng-zeropoint";
 
 export type SkillNode = {
   id: SkillId;
@@ -411,6 +607,76 @@ export const SKILL_NODES: SkillNode[] = [
   { id: "eng-warp-core",  branch: "engineering", name: "Warp Core Shunt",    description: "+15% speed per rank from generator overclock.",  maxRank: 3, cost: 2, pos: { row: 3, col: 0 }, icon: "⌬", requires: "eng-targeting" },
   { id: "eng-overdrive",  branch: "engineering", name: "Overdrive Module",   description: "+18% all stats (damage, shield, speed) per rank.", maxRank: 3, cost: 2, pos: { row: 4, col: 0 }, icon: "⚙", requires: "eng-warp-core" },
   { id: "eng-singularity",branch: "engineering", name: "Singularity Core",   description: "Endgame: +30% damage, +25% fire rate, +15% speed.", maxRank: 1, cost: 3, pos: { row: 5, col: 0 }, icon: "✸", requires: "eng-overdrive" },
+
+  // ── OFFENSE (expansion) ──────────────────────────────────────────────────
+  { id: "off-caliber",    branch: "offense", name: "Heavy Caliber",      description: "+4 laser damage per rank.",                          maxRank: 5, cost: 1, pos: { row: 4, col: 0 }, icon: "⚡", requires: "off-power" },
+  { id: "off-steady",     branch: "offense", name: "Steady Aim",         description: "+2% crit chance per rank.",                          maxRank: 5, cost: 1, pos: { row: 4, col: 1 }, icon: "◎", requires: "off-caliber" },
+  { id: "off-weakpoint",  branch: "offense", name: "Weak Point",         description: "+8% crit damage per rank.",                          maxRank: 5, cost: 1, pos: { row: 4, col: 2 }, icon: "✦", requires: "off-steady" },
+  { id: "off-firstblood", branch: "offense", name: "First Blood",        description: "+25% damage per rank to enemies at full hull.",      maxRank: 3, cost: 2, pos: { row: 4, col: 3 }, icon: "⚔", requires: "off-weakpoint" },
+  { id: "off-coldbore",   branch: "offense", name: "Cold Bore",          description: "Crits grant +6% damage for 4s per rank.",            maxRank: 3, cost: 2, pos: { row: 4, col: 4 }, icon: "❄", requires: "off-firstblood" },
+  { id: "off-headhunter", branch: "offense", name: "Headhunter",         description: "+60% crit damage, but -25% fire rate.",              maxRank: 1, cost: 3, pos: { row: 4, col: 5 }, icon: "✺", requires: "off-coldbore" },
+  { id: "off-sustain",    branch: "offense", name: "Sustained Fire",     description: "+0.04 fire rate per rank.",                          maxRank: 5, cost: 1, pos: { row: 5, col: 0 }, icon: "≫", requires: "off-rapid" },
+  { id: "off-cadence",    branch: "offense", name: "Cadence Lock",       description: "Every 3rd shot deals +50% damage per rank.",         maxRank: 3, cost: 2, pos: { row: 5, col: 1 }, icon: "⋙", requires: "off-sustain" },
+  { id: "off-attrition",  branch: "offense", name: "Attrition",          description: "+4% damage per rank while above 70% hull.",          maxRank: 3, cost: 2, pos: { row: 5, col: 2 }, icon: "◈", requires: "off-cadence" },
+  { id: "off-barrage",    branch: "offense", name: "Barrage Doctrine",   description: "+0.25 fire rate, but -15% damage.",                  maxRank: 1, cost: 3, pos: { row: 5, col: 3 }, icon: "↯", requires: "off-attrition" },
+  { id: "off-splash",     branch: "offense", name: "Fragmentation",      description: "+5 splash radius per rank.",                         maxRank: 5, cost: 1, pos: { row: 6, col: 0 }, icon: "✸", requires: "off-pierce" },
+  { id: "off-shrapnel",   branch: "offense", name: "Shrapnel Load",      description: "Splash damage +10% per rank.",                       maxRank: 3, cost: 2, pos: { row: 6, col: 1 }, icon: "❖", requires: "off-splash" },
+  { id: "off-chain",      branch: "offense", name: "Chain Detonation",   description: "Kills trigger a blast (radius 40 per rank).",        maxRank: 3, cost: 2, pos: { row: 6, col: 2 }, icon: "⊕", requires: "off-shrapnel" },
+  { id: "off-saturation", branch: "offense", name: "Saturation",         description: "+50% splash radius, but -20% direct damage.",        maxRank: 1, cost: 3, pos: { row: 6, col: 3 }, icon: "⌬", requires: "off-chain" },
+  { id: "off-render",     branch: "offense", name: "Armour Render",      description: "+6% damage vs bosses per rank.",                     maxRank: 3, cost: 2, pos: { row: 7, col: 0 }, icon: "◆", requires: "off-execute" },
+  { id: "off-apex",       branch: "offense", name: "Apex Predator",      description: "+35% damage below 30% hull; kills refund 15% shield.", maxRank: 1, cost: 3, pos: { row: 7, col: 1 }, icon: "◉", requires: "off-render" },
+
+  // ── DEFENSE (expansion) ──────────────────────────────────────────────────
+  { id: "def-lattice",    branch: "defense", name: "Shield Lattice",     description: "+20 max shield per rank.",                           maxRank: 5, cost: 1, pos: { row: 4, col: 0 }, icon: "◈", requires: "def-shield" },
+  { id: "def-diffuse",    branch: "defense", name: "Diffusion Field",    description: "+4% shield absorb per rank.",                        maxRank: 5, cost: 1, pos: { row: 4, col: 1 }, icon: "◇", requires: "def-lattice" },
+  { id: "def-overshield", branch: "defense", name: "Overshield",         description: "+5% damage reduction per rank while shield is full.", maxRank: 3, cost: 2, pos: { row: 4, col: 2 }, icon: "⛨", requires: "def-diffuse" },
+  { id: "def-aegis",      branch: "defense", name: "Aegis Protocol",     description: "+40% max shield, but -50% shield regen.",            maxRank: 1, cost: 3, pos: { row: 4, col: 3 }, icon: "❖", requires: "def-overshield" },
+  { id: "def-coolant",    branch: "defense", name: "Cryo Cells",         description: "+2 shield regen per rank.",                          maxRank: 5, cost: 1, pos: { row: 5, col: 0 }, icon: "❄", requires: "def-regen" },
+  { id: "def-triage",     branch: "defense", name: "Triage Systems",     description: "+50% shield regen per rank while below 40% shield.", maxRank: 3, cost: 2, pos: { row: 5, col: 1 }, icon: "↺", requires: "def-coolant" },
+  { id: "def-secondwind", branch: "defense", name: "Second Wind",        description: "Kills restore 4 shield per rank.",                   maxRank: 3, cost: 2, pos: { row: 5, col: 2 }, icon: "⬡", requires: "def-triage" },
+  { id: "def-phoenix",    branch: "defense", name: "Phoenix Circuit",    description: "Once per 90s, survive a lethal hit at 20% hull.",    maxRank: 1, cost: 3, pos: { row: 5, col: 3 }, icon: "✺", requires: "def-secondwind" },
+  { id: "def-ablative",   branch: "defense", name: "Ablative Plating",   description: "+25 max hull per rank.",                             maxRank: 5, cost: 1, pos: { row: 6, col: 0 }, icon: "▣", requires: "def-armor" },
+  { id: "def-hardened",   branch: "defense", name: "Hardened Frame",     description: "+2% damage reduction per rank.",                     maxRank: 5, cost: 1, pos: { row: 6, col: 1 }, icon: "⬛", requires: "def-ablative" },
+  { id: "def-lastditch",  branch: "defense", name: "Last Ditch",         description: "+8% damage reduction per rank while below 30% hull.", maxRank: 3, cost: 2, pos: { row: 6, col: 2 }, icon: "◆", requires: "def-hardened" },
+  { id: "def-immovable",  branch: "defense", name: "Immovable",          description: "+25% max hull and +8% damage reduction, but -20% speed.", maxRank: 1, cost: 3, pos: { row: 6, col: 3 }, icon: "⌬", requires: "def-lastditch" },
+  { id: "def-spines",     branch: "defense", name: "Static Spines",      description: "Reflect 8% of incoming damage per rank.",            maxRank: 3, cost: 2, pos: { row: 7, col: 0 }, icon: "⟲", requires: "def-reflect" },
+  { id: "def-backlash",   branch: "defense", name: "Backlash",           description: "Reflected damage +30% per rank.",                    maxRank: 3, cost: 2, pos: { row: 7, col: 1 }, icon: "↯", requires: "def-spines" },
+  { id: "def-nemesis",    branch: "defense", name: "Nemesis Field",      description: "Taking a hit grants +10% damage for 5s.",            maxRank: 1, cost: 3, pos: { row: 7, col: 2 }, icon: "◉", requires: "def-backlash" },
+
+  // ── UTILITY (expansion) ──────────────────────────────────────────────────
+  { id: "ut-hold",        branch: "utility", name: "Reinforced Hold",    description: "+12% cargo capacity per rank.",                      maxRank: 5, cost: 1, pos: { row: 4, col: 0 }, icon: "▤", requires: "ut-cargo" },
+  { id: "ut-broker",      branch: "utility", name: "Broker Licence",     description: "+4% sell price per rank.",                           maxRank: 5, cost: 1, pos: { row: 4, col: 1 }, icon: "$", requires: "ut-trade" },
+  { id: "ut-contraband",  branch: "utility", name: "Contraband Runs",    description: "+3% loot bonus per rank, but -8% cargo.",            maxRank: 3, cost: 2, pos: { row: 4, col: 2 }, icon: "❖", requires: "ut-broker" },
+  { id: "ut-magnate",     branch: "utility", name: "Magnate",            description: "+30% credits, but -15% experience.",                 maxRank: 1, cost: 3, pos: { row: 4, col: 3 }, icon: "◈", requires: "ut-contraband" },
+  { id: "ut-vector",      branch: "utility", name: "Vector Thrusters",   description: "+6 top speed per rank.",                             maxRank: 5, cost: 1, pos: { row: 5, col: 0 }, icon: "➤", requires: "ut-thrust" },
+  { id: "ut-slipstream",  branch: "utility", name: "Slipstream",         description: "+8% speed per rank while shield is full.",           maxRank: 3, cost: 2, pos: { row: 5, col: 1 }, icon: "▶", requires: "ut-vector" },
+  { id: "ut-evasion",     branch: "utility", name: "Evasive Pattern",    description: "+3% chance per rank to avoid a hit.",                maxRank: 3, cost: 2, pos: { row: 5, col: 2 }, icon: "⟲", requires: "ut-slipstream" },
+  { id: "ut-phaserunner", branch: "utility", name: "Phase Runner",       description: "+25% speed, but -20% max hull.",                     maxRank: 1, cost: 3, pos: { row: 5, col: 3 }, icon: "✺", requires: "ut-evasion" },
+  { id: "ut-swarm",       branch: "utility", name: "Swarm Logic",        description: "+15% drone damage per rank.",                        maxRank: 5, cost: 1, pos: { row: 6, col: 0 }, icon: "◆", requires: "ut-drone2" },
+  { id: "ut-repairbay",   branch: "utility", name: "Repair Bay",         description: "Drones repair 2 hull/s per rank out of combat.",     maxRank: 3, cost: 2, pos: { row: 6, col: 1 }, icon: "⬡", requires: "ut-swarm" },
+  { id: "ut-hivemind",    branch: "utility", name: "Hive Mind",          description: "Drones gain your crit chance and splash.",           maxRank: 1, cost: 3, pos: { row: 6, col: 2 }, icon: "⌬", requires: "ut-repairbay" },
+  { id: "ut-survey",      branch: "utility", name: "Survey Array",       description: "+3% loot bonus per rank.",                           maxRank: 5, cost: 1, pos: { row: 7, col: 0 }, icon: "◎", requires: "ut-scan" },
+  { id: "ut-refinery",    branch: "utility", name: "Refinery Module",    description: "+10% mining yield per rank.",                        maxRank: 5, cost: 1, pos: { row: 7, col: 1 }, icon: "⚙", requires: "ut-survey" },
+  { id: "ut-assay",       branch: "utility", name: "Assay Protocol",     description: "+5% rare-drop chance per rank.",                     maxRank: 3, cost: 2, pos: { row: 7, col: 2 }, icon: "⊕", requires: "ut-refinery" },
+  { id: "ut-prospector",  branch: "utility", name: "Prospector",         description: "+50% mining yield, but -25% cargo.",                 maxRank: 1, cost: 3, pos: { row: 7, col: 3 }, icon: "◇", requires: "ut-assay" },
+
+  // ── ENGINEERING (expansion) ──────────────────────────────────────────────
+  { id: "eng-plasma",      branch: "engineering", name: "Plasma Injectors",     description: "+3 damage per rank.",                                 maxRank: 5, cost: 1, pos: { row: 0, col: 1 }, icon: "⚡", requires: "eng-capacitor" },
+  { id: "eng-fusion",      branch: "engineering", name: "Fusion Feed",          description: "+6% damage per rank.",                                maxRank: 5, cost: 1, pos: { row: 1, col: 1 }, icon: "✺", requires: "eng-plasma" },
+  { id: "eng-surge",       branch: "engineering", name: "Power Surge",          description: "+12% damage per rank for 5s after a kill.",           maxRank: 3, cost: 2, pos: { row: 2, col: 1 }, icon: "↯", requires: "eng-fusion" },
+  { id: "eng-meltdown",    branch: "engineering", name: "Controlled Meltdown",  description: "+35% damage, but -20% max shield.",                   maxRank: 1, cost: 3, pos: { row: 3, col: 1 }, icon: "⚔", requires: "eng-surge" },
+  { id: "eng-radiator",    branch: "engineering", name: "Radiator Array",       description: "+0.03 fire rate per rank.",                           maxRank: 5, cost: 1, pos: { row: 0, col: 2 }, icon: "≫", requires: "eng-coolant" },
+  { id: "eng-cryoflow",    branch: "engineering", name: "Cryo Flow",            description: "+5% fire rate per rank.",                             maxRank: 5, cost: 1, pos: { row: 1, col: 2 }, icon: "⋙", requires: "eng-radiator" },
+  { id: "eng-heatsink",    branch: "engineering", name: "Heat Sink",            description: "Crits grant +0.08 fire rate for 3s per rank.",        maxRank: 3, cost: 2, pos: { row: 2, col: 2 }, icon: "❄", requires: "eng-cryoflow" },
+  { id: "eng-runaway",     branch: "engineering", name: "Thermal Runaway",      description: "+40% fire rate, but heat builds twice as fast.",      maxRank: 1, cost: 3, pos: { row: 3, col: 2 }, icon: "✸", requires: "eng-heatsink" },
+  { id: "eng-regulator",   branch: "engineering", name: "Flux Regulator",       description: "+1 shield regen per rank.",                           maxRank: 5, cost: 1, pos: { row: 0, col: 3 }, icon: "↺", requires: "eng-capacitor" },
+  { id: "eng-harmonics",   branch: "engineering", name: "Field Harmonics",      description: "+10 max shield and +10 max hull per rank.",           maxRank: 5, cost: 1, pos: { row: 1, col: 3 }, icon: "⬡", requires: "eng-regulator" },
+  { id: "eng-transfer",    branch: "engineering", name: "Energy Transfer",      description: "Crits restore 2 shield per rank.",                    maxRank: 3, cost: 2, pos: { row: 2, col: 3 }, icon: "⊕", requires: "eng-harmonics" },
+  { id: "eng-resonance",   branch: "engineering", name: "Resonance Cascade",    description: "+4% damage per rank while shield is above 50%.",      maxRank: 3, cost: 2, pos: { row: 3, col: 3 }, icon: "◈", requires: "eng-transfer" },
+  { id: "eng-equilibrium", branch: "engineering", name: "Equilibrium",          description: "Convert 20% of max shield into damage.",              maxRank: 1, cost: 3, pos: { row: 4, col: 3 }, icon: "◇", requires: "eng-resonance" },
+  { id: "eng-recursion",   branch: "engineering", name: "Recursive Loop",       description: "+5% to all Engineering bonuses per rank.",            maxRank: 3, cost: 2, pos: { row: 4, col: 1 }, icon: "⟲", requires: "eng-overdrive" },
+  { id: "eng-eventhorizon",branch: "engineering", name: "Event Horizon",        description: "+20% damage, +15% fire rate, +20% max shield.",       maxRank: 1, cost: 3, pos: { row: 5, col: 1 }, icon: "⌬", requires: "eng-singularity" },
+  { id: "eng-zeropoint",   branch: "engineering", name: "Zero Point",           description: "Below 25% shield, +50% damage and +50% shield regen.", maxRank: 1, cost: 3, pos: { row: 6, col: 1 }, icon: "◉", requires: "eng-eventhorizon" },
 ];
 
 // ── MISSIONS & MILESTONES ────────────────────────────────────────────────
@@ -448,6 +714,11 @@ export type Milestones = {
   totalWarps: number;
   totalDeaths: number;
   bossKills: number;
+  // Lifetime counters backing the Pilot Dossier's CONTRACTS and SALVAGE
+  // career tracks — added alongside those tracks since no equivalent
+  // running total existed anywhere in the codebase before.
+  totalContracts: number;
+  totalSalvaged: number;
 };
 
 export const MILESTONE_TIERS: { kind: keyof Milestones; name: string; tiers: number[]; rewardPerTier: number; color: string; icon: string }[] = [
@@ -456,6 +727,8 @@ export const MILESTONE_TIERS: { kind: keyof Milestones; name: string; tiers: num
   { kind: "totalCreditsEarned", name: "Tycoon",          tiers: [1000, 10000, 100000, 1000000, 10000000], rewardPerTier: 600, color: "#ffd24a", icon: "$" },
   { kind: "totalWarps",         name: "Pathfinder",      tiers: [5, 25, 100, 500, 2000], rewardPerTier: 300, color: "#ff5cf0", icon: "▶" },
   { kind: "bossKills",          name: "Dread Hunter",    tiers: [1, 5, 20, 50, 200], rewardPerTier: 1500, color: "#ff8a4e", icon: "✪" },
+  { kind: "totalContracts",     name: "Contractor",      tiers: [5, 25, 100, 400, 1200], rewardPerTier: 350, color: "#b866ff", icon: "▣" },
+  { kind: "totalSalvaged",      name: "Salvager",        tiers: [10, 50, 200, 800, 3000], rewardPerTier: 250, color: "#ff5cf0", icon: "⬡" },
 ];
 
 export const DAILY_MISSION_POOL: Mission[] = [
@@ -596,6 +869,21 @@ export const ROCKET_AMMO_TYPE_DEFS: Record<RocketAmmoType, RocketAmmoTypeDef> = 
 
 export const LASER_AMMO_TYPE_ORDER: RocketAmmoType[] = ["x1", "x2", "x3", "x4"];
 
+// ── DRONE AMMO ────────────────────────────────────────────────────────────
+// A separate, weaker pool from the player's own laser/rocket ammo. Fires
+// whatever weapon is equipped in the drone's weapon slot (laser OR rocket —
+// the drone has one slot), but always draws from this pool, not the ship's
+// ammo. Cheaper per round than even the weakest player tier (x1), but the
+// drone's own 0.6x damage multiplier (loop.ts/engine.ts) already weakens the
+// shot further — this pool is about SUPPLY, not a second damage penalty.
+export const DRONE_AMMO_COST_PER = 3;
+export const DRONE_AMMO_BASE_MAX = 500;
+/** droneAmmoMax bonus is NOT module-driven (unlike rocketAmmoMax) — capacity
+ *  scales with drone level instead, since the drone itself is the "module". */
+export function droneAmmoMaxForLevel(level: number): number {
+  return DRONE_AMMO_BASE_MAX + level * 150;
+}
+
 export type RocketMissileType = "cl1" | "cl2" | "bm3" | "drock";
 
 export type RocketMissileTypeDef = {
@@ -650,6 +938,13 @@ export type Projectile = {
   armorPiercing?: boolean;  // AP ammo marker
   weaponKind?: WeaponKind;
   renderOnly?: boolean;
+  // Set by the Pixi renderer (syncProjectiles) the first frame it draws this
+  // projectile. Remote/renderOnly shots must survive collision removal until
+  // this is true, so the layered LaserSystem (CPU per-frame, unlike the old
+  // self-propelled GPU mesh) gets at least one ensure()/move() pass and the
+  // bolt is actually visible instead of being culled in the same game tick it
+  // spawned in (separate RAF loops for tick vs render).
+  rendered?: boolean;
   // The enemy this shot was fired at (captured at fire time). Purely for
   // overkill culling: when the target dies, in-flight shots get their ttl
   // capped to a short grace window instead of flying on for seconds.
@@ -659,6 +954,9 @@ export type Projectile = {
   // enemy for the first ~0.3s of flight so remote lasers converge from the
   // shooter's muzzles onto the enemy sprite, matching local behavior.
   remoteTargetId?: string;
+  /** For renderOnly projectiles: server id of the player who fired (debug/
+   *  measurement — distinguishes remote-player shots from NPC shots). */
+  remoteFromPlayerId?: number;
 };
 
 export type Floater = {
@@ -805,124 +1103,124 @@ export const ZONES: Record<ZoneId, Zone> = {
   alpha: {
     id: "alpha", name: "Alpha Sector", label: "1-1", faction: "earth",
     bgHueA: "#0a1240", bgHueB: "#020414", enemyTier: 1,
-    enemyTypes: ["scout", "raider", "interceptor"],
+    enemyTypes: ["scout", "interceptor", "erix"],
     description: "Frontier territory. Pirates and scouts patrol the lanes.", unlockLevel: 1,
   },
   nebula: {
     id: "nebula", name: "Veil Nebula", label: "1-2", faction: "earth",
     bgHueA: "#3a0a4a", bgHueB: "#0a0220", enemyTier: 2,
-    enemyTypes: ["raider", "destroyer", "corvette"],
+    enemyTypes: ["raider", "corvette"],
     description: "Glowing dust clouds hide raider strongholds.", unlockLevel: 8,
   },
   crimson: {
     id: "crimson", name: "Crimson Reach", label: "1-3", faction: "earth",
     bgHueA: "#4a0a18", bgHueB: "#1a0208", enemyTier: 3,
-    enemyTypes: ["destroyer", "sentinel", "specter"],
+    enemyTypes: ["destroyer", "specter", "voidling"],
     description: "Blood-red expanse. Destroyers hunt in packs.", unlockLevel: 16,
   },
   void: {
     id: "void", name: "The Void", label: "1-4", faction: "earth",
     bgHueA: "#001a1a", bgHueB: "#000508", enemyTier: 4,
-    enemyTypes: ["sentinel", "wraith", "phantom"],
+    enemyTypes: ["sentinel", "phantom", "wraith"],
     description: "An empty stretch where reality bends. Voidlings dwell here.", unlockLevel: 24,
   },
   forge: {
     id: "forge", name: "Iron Forge", label: "1-5", faction: "earth",
     bgHueA: "#3a2210", bgHueB: "#1a0c04", enemyTier: 5,
-    enemyTypes: ["wraith", "titan", "juggernaut"],
+    enemyTypes: ["titan", "overlord", "juggernaut"],
     description: "Industrial hellscape. Only Dreadnoughts remain here.", unlockLevel: 32,
   },
   // ── MARS FACTION (2-1 → 2-5) ─────────────────────────────────────────────
   corona: {
     id: "corona", name: "Mars Frontier", label: "2-1", faction: "mars",
     bgHueA: "#3a1800", bgHueB: "#1a0800", enemyTier: 1,
-    enemyTypes: ["scout", "raider", "interceptor"],
+    enemyTypes: ["scout", "interceptor", "erix"],
     description: "The outer Martian reaches. Raiders rule the rust-colored lanes.", unlockLevel: 1,
   },
   fracture: {
     id: "fracture", name: "Dust Expanse", label: "2-2", faction: "mars",
     bgHueA: "#4a1a0a", bgHueB: "#1e0804", enemyTier: 2,
-    enemyTypes: ["raider", "destroyer", "corvette"],
+    enemyTypes: ["raider", "corvette"],
     description: "Swirling iron dust storms hide outlaw strongholds.", unlockLevel: 8,
   },
   abyss: {
     id: "abyss", name: "Red Reaches", label: "2-3", faction: "mars",
     bgHueA: "#5a0a0a", bgHueB: "#220404", enemyTier: 3,
-    enemyTypes: ["destroyer", "sentinel", "specter"],
+    enemyTypes: ["destroyer", "specter", "voidling"],
     description: "Combat-torn Martian space. Destroyer fleets fight for control.", unlockLevel: 16,
   },
   marsdepth: {
     id: "marsdepth", name: "Mars Deep Field", label: "2-4", faction: "mars",
     bgHueA: "#400010", bgHueB: "#180006", enemyTier: 4,
-    enemyTypes: ["sentinel", "wraith", "phantom"],
+    enemyTypes: ["sentinel", "phantom", "wraith"],
     description: "The deep unknown of Martian space. Void entities breach the hull lines.", unlockLevel: 24,
   },
   maelstrom: {
     id: "maelstrom", name: "The Maelstrom", label: "2-5", faction: "mars",
     bgHueA: "#2a0020", bgHueB: "#0e0008", enemyTier: 5,
-    enemyTypes: ["wraith", "titan", "juggernaut"],
+    enemyTypes: ["titan", "overlord", "juggernaut"],
     description: "A perpetual storm of wreckage and dread. The ultimate Martian challenge.", unlockLevel: 32,
   },
   // ── VENUS FACTION (3-1 → 3-5) ────────────────────────────────────────────
   venus1: {
     id: "venus1", name: "Venus Cloud Gate", label: "3-1", faction: "venus",
     bgHueA: "#2a1a00", bgHueB: "#0e0800", enemyTier: 1,
-    enemyTypes: ["scout", "raider", "interceptor"],
+    enemyTypes: ["scout", "interceptor", "erix"],
     description: "The upper cloud layers. Strange energy-based pirates lurk in the mist.", unlockLevel: 1,
   },
   venus2: {
     id: "venus2", name: "Sulphur Winds", label: "3-2", faction: "venus",
     bgHueA: "#3a2800", bgHueB: "#160e00", enemyTier: 2,
-    enemyTypes: ["raider", "destroyer", "corvette"],
+    enemyTypes: ["raider", "corvette"],
     description: "Corrosive winds and raider fleets adapted to Venus's brutal atmosphere.", unlockLevel: 8,
   },
   venus3: {
     id: "venus3", name: "Acidic Deep", label: "3-3", faction: "venus",
     bgHueA: "#400a30", bgHueB: "#1a0418", enemyTier: 3,
-    enemyTypes: ["destroyer", "sentinel", "specter"],
+    enemyTypes: ["destroyer", "specter", "voidling"],
     description: "The pressure increases. Heavy destroyer fleets guard Venusian secrets.", unlockLevel: 16,
   },
   venus4: {
     id: "venus4", name: "Pressure Core", label: "3-4", faction: "venus",
     bgHueA: "#2a003a", bgHueB: "#0e0018", enemyTier: 4,
-    enemyTypes: ["sentinel", "wraith", "phantom"],
+    enemyTypes: ["sentinel", "phantom", "wraith"],
     description: "Near the crushing core of Venus. Reality warps under immense force.", unlockLevel: 24,
   },
   venus5: {
     id: "venus5", name: "Eye of Venus", label: "3-5", faction: "venus",
     bgHueA: "#1a0030", bgHueB: "#080010", enemyTier: 5,
-    enemyTypes: ["wraith", "titan", "juggernaut"],
+    enemyTypes: ["titan", "overlord", "juggernaut"],
     description: "The heart of Venusian mystery. Legendary endgame territory.", unlockLevel: 32,
   },
   // ── DANGER ZONES (4-1 → 4-5) — center, free PvP, no faction ─────────────
   danger1: {
     id: "danger1", name: "Outer Rift", label: "4-1", faction: "earth",
     bgHueA: "#1a0000", bgHueB: "#0a0000", enemyTier: 4,
-    enemyTypes: ["sentinel", "wraith", "titan"],
+    enemyTypes: ["nabas", "dread"],
     description: "Contested space. All factions fight here. PvP enabled.", unlockLevel: 20,
   },
   danger2: {
     id: "danger2", name: "Dead Zone", label: "4-2", faction: "mars",
     bgHueA: "#200008", bgHueB: "#0c0004", enemyTier: 5,
-    enemyTypes: ["wraith", "titan", "dread"],
+    enemyTypes: ["angin", "crobium"],
     description: "Wrecked fleets drift here. Extreme danger, extreme loot.", unlockLevel: 26,
   },
   danger3: {
     id: "danger3", name: "Pirate Haven", label: "4-3", faction: "venus",
     bgHueA: "#180018", bgHueB: "#08000a", enemyTier: 5,
-    enemyTypes: ["titan", "dread", "overlord", "leviathan"],
+    enemyTypes: ["draug", "knoton"],
     description: "Pirate stronghold. High-value loot crates and deadly ambushes.", unlockLevel: 30,
   },
   danger4: {
     id: "danger4", name: "Null Sector", label: "4-4", faction: "earth",
     bgHueA: "#0a0a1a", bgHueB: "#020208", enemyTier: 6,
-    enemyTypes: ["titan", "overlord", "juggernaut", "leviathan"],
+    enemyTypes: ["leviathan", "silikum"],
     description: "Reality collapses. Only the strongest survive. Premium loot.", unlockLevel: 36,
   },
   danger5: {
     id: "danger5", name: "The Abyss Gate", label: "4-5", faction: "mars",
     bgHueA: "#100005", bgHueB: "#050002", enemyTier: 7,
-    enemyTypes: ["overlord", "leviathan", "juggernaut"],
+    enemyTypes: ["maron", "simonit"],
     description: "The deepest point. Legendary enemies and endgame rewards.", unlockLevel: 42,
   },
   // ── DEBUG ZONE ────────────────────────────────────────────────────────────
@@ -1192,7 +1490,61 @@ export const ENEMY_DEFS: Record<
     color: "#e11d48", size: 40,
     loot: { resourceId: "dread", qty: 8 },
   },
-
+  erix: {
+    type: "erix", behavior: "chaser",
+    hullMax: 150, damage: 18, speed: 95, exp: 15, credits: 40, honor: 1,
+    color: "#5ce1ff", size: 14,
+    loot: { resourceId: "scrap", qty: 3 },
+  },
+  // ── New-generation NPCs (GLB models) — mirrors backend data.ts exactly.
+  angin: {
+    type: "angin", behavior: "ranged",
+    hullMax: 460, damage: 50, speed: 105, exp: 68, credits: 230, honor: 8,
+    color: "#7dd3fc", size: 15,
+    loot: { resourceId: "quantum", qty: 2 },
+  },
+  crobium: {
+    type: "crobium", behavior: "chaser",
+    hullMax: 400, damage: 62, speed: 115, exp: 88, credits: 295, honor: 11,
+    color: "#84cc16", size: 14,
+    loot: { resourceId: "quantum", qty: 3 },
+  },
+  draug: {
+    type: "draug", behavior: "fast",
+    hullMax: 340, damage: 62, speed: 155, exp: 85, credits: 290, honor: 10,
+    color: "#94a3b8", size: 13,
+    loot: { resourceId: "void", qty: 3 },
+  },
+  knoton: {
+    type: "knoton", behavior: "tank",
+    hullMax: 1700, damage: 82, speed: 60, exp: 175, credits: 600, honor: 21,
+    color: "#fb923c", size: 30,
+    loot: { resourceId: "dread", qty: 5 },
+  },
+  maron: {
+    type: "maron", behavior: "tank",
+    hullMax: 1450, damage: 72, speed: 85, exp: 145, credits: 480, honor: 17,
+    color: "#b45309", size: 28,
+    loot: { resourceId: "dread", qty: 4 },
+  },
+  nabas: {
+    type: "nabas", behavior: "ranged",
+    hullMax: 800, damage: 58, speed: 90, exp: 105, credits: 360, honor: 12,
+    color: "#f472b6", size: 22,
+    loot: { resourceId: "dread", qty: 3 },
+  },
+  silikum: {
+    type: "silikum", behavior: "tank",
+    hullMax: 2100, damage: 92, speed: 72, exp: 240, credits: 780, honor: 29,
+    color: "#e2e8f0", size: 33,
+    loot: { resourceId: "dread", qty: 6 },
+  },
+  simonit: {
+    type: "simonit", behavior: "tank",
+    hullMax: 3300, damage: 115, speed: 48, exp: 380, credits: 1150, honor: 43,
+    color: "#14b8a6", size: 38,
+    loot: { resourceId: "dread", qty: 7 },
+  },
 };
 
 // Faction-specific stat/color overrides applied at enemy spawn time.
@@ -1747,6 +2099,64 @@ export const FAKE_CLANS = [
   "Iron Wake","Crimson Veil","Pale Horizon","Null Sector","Aegis Pact","Starforge",
 ];
 
+export type ClanAdmission = "open" | "apply" | "invite";
+
+// Matches the shape returned by GET /api/clan (backend/src/routes/clan.ts).
+export type Clan = {
+  id: number;
+  name: string;
+  tag: string;
+  faction: "earth" | "mars" | "venus" | null;
+  memberCount: number;
+  motto: string;
+  tags: string[];
+  minLevel: number;
+  minHonor: number;
+  admission: ClanAdmission;
+  crestShape: string;
+  crestSymbol: string;
+  crestOuter: string;
+  crestInner: string;
+  crestSymbolColor: string;
+  maxMembers: number;
+  openSlots: number;
+  seasonRank: number;
+  totalHonor: number;
+  level: number;
+};
+
+export type ClanMember = {
+  id: number;
+  name: string;
+  level: number;
+  honor: number;
+  shipClass: string;
+  clanRole: "leader" | "officer" | "member";
+  clanContribution: number;
+};
+
+export type ClanResearchProject = {
+  id: string;
+  name: string;
+  description: string;
+  tier: number;
+  maxTier: number;
+  unit: "%" | " units";
+  perTier: number;
+  hex: string;
+  nextCost: number | null;
+};
+
+export type ClanDetail = Clan & {
+  leaderId: number;
+  members: ClanMember[];
+  treasuryCredits: number;
+  treasuryMcoins: number;
+  xp: number;
+  xpNext: number;
+  research: ClanResearchProject[];
+};
+
 export const ENEMY_NAMES: Record<EnemyType, string[]> = {
   scout:       ["Scout"],
   raider:      ["Raider"],
@@ -1763,6 +2173,15 @@ export const ENEMY_NAMES: Record<EnemyType, string[]> = {
   phantom:     ["Phantom"],
   juggernaut:  ["Juggernaut"],
   leviathan:   ["Leviathan"],
+  erix:        ["Erix"],
+  angin:       ["Angin"],
+  crobium:     ["Crobium"],
+  draug:       ["Draug"],
+  knoton:      ["Knoton"],
+  maron:       ["Maron"],
+  nabas:       ["Nabas"],
+  silikum:     ["Silikum"],
+  simonit:     ["Simonit"],
 };
 
 // ── DRONES ────────────────────────────────────────────────────────────────
@@ -1775,26 +2194,144 @@ export const DRONE_DEFS: Record<DroneKind, DroneDef> = {
 };
 
 // ── HONOR RANKS ───────────────────────────────────────────────────────────
+// The 21 regular ranks are the ones drawn on the rank sheet
+// (CosmicRealm Assets/assets/ranks/CosmicRealm_Ranks.png), in sheet order, so
+// `icon` runs rank_01..rank_21 straight down the list. Honor thresholds keep
+// the previous curve's endpoints (0 .. 20M) and are redistributed across 21
+// steps instead of 13 — no player loses or gains honor, some just sit under a
+// differently-named rank than before.
+//
+// Colour progression follows the sheet's own material tiers: steel/white for
+// the chevron ranks (1-12), gold for the Major/Colonel plates (13-16), bronze
+// with stars for the command ranks (17-21).
 export const HONOR_RANKS: HonorRank[] = [
-  { index: 0,  name: "Recruit",          minHonor: 0,        color: "#7a8ad8", symbol: "·",  pips: 0 },
-  { index: 1,  name: "Space Pilot",      minHonor: 500,      color: "#7ad8ff", symbol: "▿",  pips: 1 },
-  { index: 2,  name: "Basic Pilot",      minHonor: 2000,     color: "#5cff8a", symbol: "◇",  pips: 1 },
-  { index: 3,  name: "Pilot",            minHonor: 5000,     color: "#aaff5c", symbol: "◆",  pips: 2 },
-  { index: 4,  name: "Chief Pilot",      minHonor: 12000,    color: "#ffd24a", symbol: "★",  pips: 2 },
-  { index: 5,  name: "Lieutenant",       minHonor: 30000,    color: "#ff8a4e", symbol: "★",  pips: 3 },
-  { index: 6,  name: "Commander",        minHonor: 80000,    color: "#ff5c6c", symbol: "✪",  pips: 3 },
-  { index: 7,  name: "Captain",          minHonor: 200000,   color: "#ff5cf0", symbol: "✪",  pips: 4 },
-  { index: 8,  name: "Admiral",          minHonor: 500000,   color: "#b06cff", symbol: "✸",  pips: 4 },
-  { index: 9,  name: "General",          minHonor: 1200000,  color: "#fff75c", symbol: "✺",  pips: 5 },
-  { index: 10, name: "Marshal",          minHonor: 3000000,  color: "#ff4444", symbol: "✸",  pips: 5 },
-  { index: 11, name: "Grand Marshal",    minHonor: 8000000,  color: "#ffd700", symbol: "✺",  pips: 6 },
-  { index: 12, name: "Legend",           minHonor: 20000000, color: "#ffffff", symbol: "✸",  pips: 7 },
+  // ── Outlaw. Not a progression rank: it is what a pilot falls to by killing
+  // their OWN faction (see honorForFriendlyKill / OUTLAW_HONOR). Sorted first
+  // so rankFor()'s "highest threshold that honor clears" scan lands here for
+  // anyone deep in the negative, and its icon is the LAST badge on the sheet —
+  // which is exactly why HonorRank carries an explicit `icon`.
+  { index: 0,  name: "Outlaw",            minHonor: -Infinity, color: "#ff3344", symbol: "☠",  pips: 0, icon: "rank_23" },
+
+  { index: 1,  name: "Basic Space Pilot", minHonor: 0,        color: "#9fb4d8", symbol: "·",  pips: 0, icon: "rank_01" },
+  { index: 2,  name: "Space Pilot",       minHonor: 500,      color: "#a8bcd8", symbol: "▿",  pips: 1, icon: "rank_02" },
+  { index: 3,  name: "Chief Space Pilot", minHonor: 1500,     color: "#b4c6dc", symbol: "▿",  pips: 1, icon: "rank_03" },
+  { index: 4,  name: "Basic Sergeant",    minHonor: 3500,     color: "#7ad8ff", symbol: "◇",  pips: 1, icon: "rank_04" },
+  { index: 5,  name: "Sergeant",          minHonor: 7000,     color: "#7ad8ff", symbol: "◇",  pips: 2, icon: "rank_05" },
+  { index: 6,  name: "Chief Sergeant",    minHonor: 13000,    color: "#5ce0ff", symbol: "◆",  pips: 2, icon: "rank_06" },
+  { index: 7,  name: "Basic Lieutenant",  minHonor: 24000,    color: "#5cff8a", symbol: "◆",  pips: 2, icon: "rank_07" },
+  { index: 8,  name: "Lieutenant",        minHonor: 42000,    color: "#5cff8a", symbol: "★",  pips: 3, icon: "rank_08" },
+  { index: 9,  name: "Chief Lieutenant",  minHonor: 72000,    color: "#aaff5c", symbol: "★",  pips: 3, icon: "rank_09" },
+  { index: 10, name: "Basic Captain",     minHonor: 120000,   color: "#aaff5c", symbol: "★",  pips: 3, icon: "rank_10" },
+  { index: 11, name: "Captain",           minHonor: 200000,   color: "#d8ff5c", symbol: "✪",  pips: 4, icon: "rank_11" },
+  { index: 12, name: "Chief Captain",     minHonor: 330000,   color: "#d8ff5c", symbol: "✪",  pips: 4, icon: "rank_12" },
+  { index: 13, name: "Basic Major",       minHonor: 540000,   color: "#ffd24a", symbol: "✪",  pips: 4, icon: "rank_13" },
+  { index: 14, name: "Major",             minHonor: 880000,   color: "#ffd24a", symbol: "✸",  pips: 5, icon: "rank_14" },
+  { index: 15, name: "Chief Major",       minHonor: 1400000,  color: "#ffc63a", symbol: "✸",  pips: 5, icon: "rank_15" },
+  { index: 16, name: "Basic Colonel",     minHonor: 2300000,  color: "#ffb830", symbol: "✸",  pips: 5, icon: "rank_16" },
+  { index: 17, name: "Colonel",           minHonor: 3700000,  color: "#ff9a4e", symbol: "✺",  pips: 6, icon: "rank_17" },
+  { index: 18, name: "Chief Colonel",     minHonor: 5800000,  color: "#ff8a4e", symbol: "✺",  pips: 6, icon: "rank_18" },
+  { index: 19, name: "Basic General",     minHonor: 9000000,  color: "#ff7a44", symbol: "✺",  pips: 6, icon: "rank_19" },
+  { index: 20, name: "General",           minHonor: 13500000, color: "#ff6a3a", symbol: "✺",  pips: 7, icon: "rank_20" },
+  { index: 21, name: "Chief General",     minHonor: 20000000, color: "#ffd700", symbol: "✺",  pips: 7, icon: "rank_21" },
+
+  // Administrator, index 22. Appended rather than inserted so every other
+  // rank keeps the index it already had. Its threshold (ADMIN_HONOR, below) is
+  // unreachable by playing, so rankFor() only ever returns it for an account
+  // that was set there deliberately.
+  { index: 22, name: "Administrator",     minHonor: 999000000, color: "#e8b94d", symbol: "✦",  pips: 0, icon: "rank_22" },
 ];
 
+/** Administrator — a staff badge. Not something a pilot earns by playing, but
+ *  it still has to be assignable, and this project has no admin column in the
+ *  players table (admin is a hardcoded player id in the socket handler).
+ *  Adding a schema column for it would be a database change.
+ *
+ *  So it is granted the same way every other rank is: by honor, at a threshold
+ *  set far above Chief General's 20M. Nobody reaches ADMIN_HONOR through
+ *  normal play — the highest honor any activity awards is in the tens per
+ *  kill — so in practice it is only ever set deliberately from /admin. */
+export const ADMIN_HONOR = 999000000;
+
+/** Index of the Administrator entry in HONOR_RANKS. Used to exclude it from
+ *  the progression ladder (rank counts, next-rank lookups). */
+export const ADMIN_INDEX = 22;
+
+/** The Administrator entry, read back out of HONOR_RANKS rather than declared
+ *  a second time — a separate literal would be a copy that can drift. */
+export const ADMIN_RANK: HonorRank = HONOR_RANKS[HONOR_RANKS.length - 1];
+
+/** Honor at or below which a pilot is branded an Outlaw: attackable by
+ *  everyone, including their own faction. Reached by killing allies.
+ *  MUST stay in sync with OUTLAW_HONOR in backend/src/game/engine.ts — the
+ *  server decides who may be shot, the client only picks the badge. */
+export const OUTLAW_HONOR = -10000;
+
+/** The first real rank — what a fresh pilot starts at, and the floor that
+ *  honor loss stops at before Outlaw territory begins. */
+export const FIRST_RANK = HONOR_RANKS[1];
+
+/** How many climbable ranks exist. Outlaw (index 0) is a penalty state and
+ *  Administrator (index 22) is a staff badge — neither is a rung on the
+ *  ladder, so "RANK n/MAX" must not count them. Derived, so these labels
+ *  cannot go stale the way the hardcoded "/20" did when the ladder grew. */
+export const MAX_RANK_INDEX = HONOR_RANKS.filter(
+  (r) => r.index !== 0 && r.index !== ADMIN_INDEX,
+).length;
+
 export function rankFor(honor: number): HonorRank {
-  let r = HONOR_RANKS[0];
-  for (const x of HONOR_RANKS) if (honor >= x.minHonor) r = x;
+  // Outlaw is a floor, not a step on the ladder: only a pilot who has sunk to
+  // OUTLAW_HONOR gets it. Anyone merely negative (a few friendly-fire
+  // accidents) stays at the entry rank and can climb back out.
+  if (honor <= OUTLAW_HONOR) return HONOR_RANKS[0];
+  let r = FIRST_RANK;
+  for (const x of HONOR_RANKS) {
+    if (x.index === 0) continue;         // skip Outlaw in the normal scan
+    if (honor >= x.minHonor) r = x;
+  }
   return r;
+}
+
+/** True when a pilot is flagged Outlaw — attackable everywhere, by anyone. */
+export function isOutlaw(honor: number): boolean {
+  return honor <= OUTLAW_HONOR;
+}
+
+/** True for the staff badge. Not a rung on the ladder. */
+export function isAdminRank(r: HonorRank): boolean {
+  return r.index === ADMIN_INDEX;
+}
+
+/** Short label for a rank, e.g. "RANK 14" — or the bare name for the two
+ *  states that are not ladder positions. Centralised because three panels
+ *  each wrote their own version of this conditional, and each one had to be
+ *  found and fixed again every time the ladder changed.
+ *
+ *  `total` appends "/n" (PlayerPanelCompact's style); omit it for the short
+ *  form. `withName` appends " · NAME" (the dossier's style). */
+export function rankLabel(
+  r: HonorRank,
+  opts: { total?: number; withName?: boolean } = {},
+): string {
+  if (r.index === 0 || isAdminRank(r)) return r.name.toUpperCase();
+  const n = opts.total ? `RANK ${r.index}/${opts.total}` : `RANK ${r.index}`;
+  return opts.withName ? `${n} · ${r.name.toUpperCase()}` : n;
+}
+
+/** The rank a pilot is climbing toward, or null at the cap. Outlaw is excluded
+ *  as both a source and a destination: an Outlaw's next goal is to get back to
+ *  the entry rank, not to "progress" out of index 0.
+ *
+ *  Callers used to do this inline — `HONOR_RANKS[rank.index + 1]` and
+ *  `HONOR_RANKS.find(r => r.minHonor > honor)`. Both broke once Outlaw took
+ *  index 0 with a -Infinity threshold, so the lookup lives here now. */
+export function nextRankFor(honor: number): HonorRank | null {
+  if (isOutlaw(honor)) return FIRST_RANK;
+  // Administrator is excluded as a destination: it is a staff badge, not the
+  // rung above Chief General, and offering it as "next rank" would show every
+  // maxed pilot an unreachable 999,000,000 goal instead of "MAXIMUM RANK".
+  return HONOR_RANKS.find(
+    (r) => r.index !== 0 && r.index !== ADMIN_INDEX && r.minHonor > honor,
+  ) ?? null;
 }
 
 // ── MODULE CATALOG ────────────────────────────────────────────────────────
@@ -1802,85 +2339,210 @@ export const RARITY_COLOR: Record<ModuleRarity, string> = {
   common: "#8aa0c0", uncommon: "#5cff8a", rare: "#4ee2ff", epic: "#ff5cf0", legendary: "#ffd24a",
 };
 
+// Tier → base rarity (kept alongside tier for the ARPG feel). Weapons span
+// tier 0-10, so tiers are bucketed into the 5-rarity scale; gen/module 1-5
+// map 1:1.
+function rarityForWeaponTier(t: number): ModuleRarity {
+  if (t <= 1) return "common";
+  if (t <= 3) return "uncommon";
+  if (t <= 5) return "rare";
+  if (t <= 7) return "epic";
+  return "legendary"; // 8-10
+}
+function rarityForTier5(t: number): ModuleRarity {
+  return (["common", "uncommon", "rare", "epic", "legendary"] as const)[Math.max(0, Math.min(4, t - 1))];
+}
+// Per-tier accent color (low = cool steel, high = hot/gold/void).
+const WEAPON_TIER_COLOR = [
+  "#8aa0c0", "#9ab4d0", "#5cff8a", "#7ad8ff", "#4ee2ff", "#55ddff",
+  "#ff5cf0", "#d06cff", "#ffd24a", "#ff8a4e", "#ff5c6c",
+];
+const GEN_TIER_COLOR = ["#8aa0c0", "#5cff8a", "#4ee2ff", "#ff5cf0", "#ffd24a"];
+const MOD_TIER_COLOR = ["#8aa0c0", "#5cff8a", "#4ee2ff", "#ff5cf0", "#ffd24a"];
+
 export const MODULE_DEFS: Record<string, ModuleDef> = {
-  // ── LASER WEAPONS ────────────────────────────────────────────────────────
-
-  // ── TIER 1 STARTER VARIANTS ─────────────────────────────────────────────
-  "wp-sniper-0":  { id: "wp-sniper-0",  slot: "weapon", weaponKind: "laser",  firingPattern: "sniper",  name: "Focus Beam",           description: "Entry-level beam weapon. One shot, big hit.",             rarity: "common",    color: "#aaddff", glyph: "\u2014", tier: 1, price: 4000,   stats: { damage: 8,  fireRate: 0.6 } },
-  "wp-scatter-0": { id: "wp-scatter-0", slot: "weapon", weaponKind: "laser",  firingPattern: "scatter", name: "Pellet Blaster",        description: "Basic shotgun laser. Short range, wide spread.",          rarity: "common",    color: "#7ad8ff", glyph: "\u22d9", tier: 1, price: 4500,   stats: { damage: 10,  fireRate: 1.1, aoeRadius: 6 } },
-  "wp-rail-0":    { id: "wp-rail-0",    slot: "weapon", weaponKind: "laser",  firingPattern: "rail",    name: "Tri-Shot",              description: "Entry burst cannon. 3 quick shots per trigger.",          rarity: "common",    color: "#ffaa44", glyph: "\u2261", tier: 1, price: 4200,   stats: { damage: 9,  fireRate: 0.95 } },
-
-  "wp-pulse-1":   { id: "wp-pulse-1",   slot: "weapon", weaponKind: "laser",  name: "Pulse Laser Mk-I",     description: "Basic laser. Reliable starter weapon.",                   rarity: "common",    color: "#4ee2ff", glyph: "▶", tier: 1, price: 5000,   stats: { damage: 6,  fireRate: 1.0 } },
-  "wp-pulse-2":   { id: "wp-pulse-2",   slot: "weapon", weaponKind: "laser",  name: "Pulse Laser Mk-II",    description: "Tuned pulse array. More damage, faster fire.",             rarity: "uncommon",  color: "#5cff8a", glyph: "▶", tier: 2, price: 22000,  stats: { damage: 12, fireRate: 1.15 } },
-  "wp-pulse-3":   { id: "wp-pulse-3",   slot: "weapon", weaponKind: "laser",  name: "Pulse Laser Mk-III",   description: "Military-grade pulse array. High output.",                 rarity: "rare",      color: "#4ee2ff", glyph: "▶", tier: 3, price: 85000,  stats: { damage: 20, fireRate: 1.3, critChance: 0.03 } },
-  "wp-ion":       { id: "wp-ion",       slot: "weapon", weaponKind: "laser",  firingPattern: "sniper",  name: "Ion Cannon",           description: "Heavy ion burst. Solid damage at mid range.",              rarity: "uncommon",  color: "#aaff5c", glyph: "≫", tier: 2, price: 34000,  stats: { damage: 16, fireRate: 0.95 } },
-  "wp-scatter":   { id: "wp-scatter",   slot: "weapon", weaponKind: "laser",  firingPattern: "scatter",  name: "Scatter Laser",        description: "Fires 3 thin beams at once. Great vs groups.",             rarity: "uncommon",  color: "#7ad8ff", glyph: "⋙", tier: 2, price: 38000,  stats: { damage: 18,  fireRate: 1.4, aoeRadius: 8 } },
-  "wp-plasma":    { id: "wp-plasma",    slot: "weapon", weaponKind: "laser",  name: "Plasma Cannon",        description: "Heavy plasma slug. High damage, slower cycle.",            rarity: "rare",      color: "#ff5cf0", glyph: "◆", tier: 3, price: 78000,  stats: { damage: 22, fireRate: 0.85, critChance: 0.04 } },
-  "wp-phase":     { id: "wp-phase",     slot: "weapon", weaponKind: "laser",  firingPattern: "rail",  name: "Phase Repeater",       description: "Rapid-fire phase array. Crit-leaning.",                    rarity: "rare",      color: "#ff5cf0", glyph: "≫", tier: 3, price: 90000,  stats: { damage: 14, fireRate: 1.5, critChance: 0.08 } },
-  "wp-arc":       { id: "wp-arc",       slot: "weapon", weaponKind: "laser",  firingPattern: "rail",  name: "Arc Disruptor",        description: "Chain-arc lightning. Splash effect on hit.",               rarity: "rare",      color: "#c8ffaa", glyph: "⚡", tier: 3, price: 110000, stats: { damage: 18, fireRate: 1.1, aoeRadius: 14, critChance: 0.05 } },
-  "wp-sniper":    { id: "wp-sniper",    slot: "weapon", weaponKind: "laser",  firingPattern: "sniper",  name: "Precision Sniper",     description: "Long-range beam. Extreme damage, very slow fire.",         rarity: "epic",      color: "#ffffff", glyph: "—", tier: 4, price: 180000, stats: { damage: 48, fireRate: 0.45, critChance: 0.18 } },
-  "wp-solar":     { id: "wp-solar",     slot: "weapon", weaponKind: "laser",  name: "Solar Lance",          description: "Star-grade lance. Splash damage, brutal output.",          rarity: "epic",      color: "#ffd24a", glyph: "✺", tier: 4, price: 240000, stats: { damage: 34, fireRate: 1.0, aoeRadius: 18, critChance: 0.06 } },
-  "wp-void-lance":{ id: "wp-void-lance",slot: "weapon", weaponKind: "laser",  name: "Void Lance",           description: "Phase-shifted lance. Endgame laser weapon.",               rarity: "legendary", color: "#b06cff", glyph: "✸", tier: 5, price: 550000, stats: { damage: 44, fireRate: 1.3, aoeRadius: 22, critChance: 0.10 } },
-  "wp-singular":  { id: "wp-singular",  slot: "weapon", weaponKind: "laser",  name: "Singularity Driver",   description: "Endgame weapon. Massive splash + crit.",                   rarity: "legendary", color: "#ff5c6c", glyph: "✸", tier: 5, price: 800000, stats: { damage: 52, fireRate: 1.1, aoeRadius: 28, critChance: 0.12 } },
-
-
-  // ── SNIPER WEAPONS (beam) ───────────────────────────────────────────────
-  "wp-sniper-1":  { id: "wp-sniper-1",  slot: "weapon", weaponKind: "laser",  firingPattern: "sniper",  name: "Marksman Beam Mk-I",   description: "Focused beam. High damage, slow fire.",                   rarity: "uncommon",  color: "#aaddff", glyph: "—", tier: 2, price: 32000,  stats: { damage: 18, fireRate: 0.55, critChance: 0.08 } },
-  "wp-sniper-2":  { id: "wp-sniper-2",  slot: "weapon", weaponKind: "laser",  firingPattern: "sniper",  name: "Marksman Beam Mk-II",  description: "Enhanced beam. Devastating single-shot power.",            rarity: "rare",      color: "#88ccff", glyph: "—", tier: 3, price: 95000,  stats: { damage: 32, fireRate: 0.5, critChance: 0.12 } },
-
-  // ── SCATTER WEAPONS (shotgun) ───────────────────────────────────────────
-  "wp-scatter-2": { id: "wp-scatter-2", slot: "weapon", weaponKind: "laser",  firingPattern: "scatter", name: "Spread Cannon Mk-II",  description: "Wide cone of pellets. Devastating at close range.",        rarity: "rare",      color: "#88eeff", glyph: "\u22d9", tier: 3, price: 82000,  stats: { damage: 28, fireRate: 1.2, aoeRadius: 10 } },
-  "wp-scatter-3": { id: "wp-scatter-3", slot: "weapon", weaponKind: "laser",  firingPattern: "scatter", name: "Storm Blaster",        description: "Military-grade shotgun array. Shreds close targets.",      rarity: "epic",      color: "#55ddff", glyph: "\u22d9", tier: 4, price: 200000, stats: { damage: 40, fireRate: 1.1, aoeRadius: 14, critChance: 0.06 } },
-
-  // ── RAIL WEAPONS (burst/salvo) ──────────────────────────────────────────
-  "wp-rail-1":    { id: "wp-rail-1",    slot: "weapon", weaponKind: "laser",  firingPattern: "rail",    name: "Burst Cannon Mk-I",    description: "Fires 3 rapid shots per burst. Good sustained damage.",    rarity: "uncommon",  color: "#ffaa44", glyph: "\u2261", tier: 2, price: 35000,  stats: { damage: 17, fireRate: 0.9 } },
-  "wp-rail-2":    { id: "wp-rail-2",    slot: "weapon", weaponKind: "laser",  firingPattern: "rail",    name: "Burst Cannon Mk-II",   description: "Triple-shot rail system. Fast and lethal.",                rarity: "rare",      color: "#ff8844", glyph: "\u2261", tier: 3, price: 88000,  stats: { damage: 25, fireRate: 0.85, critChance: 0.04 } },
-  "wp-rail-3":    { id: "wp-rail-3",    slot: "weapon", weaponKind: "laser",  firingPattern: "rail",    name: "Railstorm Driver",     description: "Endgame burst weapon. Rapid triple-shot devastation.",     rarity: "epic",      color: "#ff6622", glyph: "\u2261", tier: 4, price: 220000, stats: { damage: 42, fireRate: 0.8, critChance: 0.08 } },
-
-  // ── ROCKET WEAPONS ───────────────────────────────────────────────────────
-  "wp-rocket-1":  { id: "wp-rocket-1",  slot: "weapon", weaponKind: "rocket", name: "Rocket Launcher Mk-I", description: "Fires slow homing rockets. High damage, low fire rate.",    rarity: "uncommon",  color: "#ff8a4e", glyph: "↑", tier: 2, price: 55000,  stats: { damage: 30, fireRate: 0.5,  aoeRadius: 20 } },
-  "wp-rocket-2":  { id: "wp-rocket-2",  slot: "weapon", weaponKind: "rocket", name: "Heavy Rocket Pod",     description: "Twin heavy rockets. More blast, slower reload.",           rarity: "rare",      color: "#ff5c6c", glyph: "↑", tier: 3, price: 140000, stats: { damage: 55, fireRate: 0.4,  aoeRadius: 30, critChance: 0.04 } },
-  "wp-torpedo":   { id: "wp-torpedo",   slot: "weapon", weaponKind: "rocket", name: "Void Torpedo",         description: "Endgame guided torpedo. Massive AoE destruction.",         rarity: "epic",      color: "#ffd24a", glyph: "⬆", tier: 4, price: 380000, stats: { damage: 90, fireRate: 0.3,  aoeRadius: 45, critChance: 0.08 } },
-  "wp-hellfire":  { id: "wp-hellfire",  slot: "weapon", weaponKind: "rocket", name: "Hellfire Barrage",     description: "Rapid-fire mini rockets. Trades damage for fire rate.",     rarity: "epic",      color: "#ff5cf0", glyph: "⇑", tier: 4, price: 420000, stats: { damage: 35, fireRate: 0.85, aoeRadius: 18, critChance: 0.06 } },
-
-  // ── GENERATORS (shields + regen, speed-focused, hybrid) ──────────────────
-  "gn-core-1":    { id: "gn-core-1",    slot: "generator", name: "Core Generator Mk-I",   description: "Stock reactor. Modest shield + regen. 55% absorb.",    rarity: "common",    color: "#8aa0c0", glyph: "◈", tier: 1, price: 2500,   stats: { shieldMax: 30,  shieldRegen: 2, shieldAbsorb: 0.05 } },
-  "gn-core-2":    { id: "gn-core-2",    slot: "generator", name: "Core Generator Mk-II",  description: "Improved reactor. Better shield & regen. 60% absorb.", rarity: "uncommon",  color: "#5cff8a", glyph: "◈", tier: 2, price: 12000,  stats: { shieldMax: 80,  shieldRegen: 5, shieldAbsorb: 0.10 } },
-  "gn-sprint":    { id: "gn-sprint",    slot: "generator", name: "Sprint Drive",          description: "Speed-focused reactor. Light shield, 55% absorb.",     rarity: "uncommon",  color: "#aaff5c", glyph: "➤", tier: 2, price: 16000,  stats: { speed: 45,      shieldMax: 30,   shieldRegen: 2, shieldAbsorb: 0.05 } },
-  "gn-aegis":     { id: "gn-aegis",     slot: "generator", name: "Aegis Reactor",         description: "Shield-focused core. 65% absorb.",                    rarity: "rare",      color: "#4ee2ff", glyph: "◇", tier: 3, price: 45000,  stats: { shieldMax: 140, shieldRegen: 7, shieldAbsorb: 0.15 } },
-  "gn-fortify":   { id: "gn-fortify",   slot: "generator", name: "Fortify Reactor",       description: "High shield capacity with strong absorb. 70% absorb.", rarity: "rare",      color: "#ff8a4e", glyph: "▣", tier: 3, price: 45000,  stats: { shieldMax: 160, shieldRegen: 6, shieldAbsorb: 0.20 } },
-  "gn-hyper":     { id: "gn-hyper",     slot: "generator", name: "Hyperdrive Core",       description: "Massive speed boost. 58% absorb.",                    rarity: "rare",      color: "#5cff8a", glyph: "≫", tier: 3, price: 60000, stats: { speed: 90,      shieldMax: 50,   shieldRegen: 3, shieldAbsorb: 0.08 } },
-  "gn-prism":     { id: "gn-prism",     slot: "generator", name: "Prism Reactor",         description: "Balanced: speed + shield. 60% absorb.",               rarity: "rare",      color: "#ffd24a", glyph: "◉", tier: 3, price: 55000, stats: { speed: 60,      shieldMax: 100,  shieldRegen: 5, shieldAbsorb: 0.10 } },
-  "gn-quantum":   { id: "gn-quantum",   slot: "generator", name: "Quantum Reactor",       description: "Endgame core. Massive shield & regen. 75% absorb.",   rarity: "epic",      color: "#ff5cf0", glyph: "⌬", tier: 4, price: 130000, stats: { shieldMax: 280, shieldRegen: 14, shieldAbsorb: 0.25 } },
-  "gn-warp-drive":{ id: "gn-warp-drive",slot: "generator", name: "Warp Drive Core",       description: "Speed-endgame: fastest gen. 62% absorb.",             rarity: "epic",      color: "#aaff5c", glyph: "⇒", tier: 4, price: 150000, stats: { speed: 130,     shieldMax: 100,  shieldRegen: 6, shieldAbsorb: 0.12 } },
-  "gn-leviathan": { id: "gn-leviathan", slot: "generator", name: "Leviathan Core",        description: "Legendary generator. Maximum shield power. 80% absorb.", rarity: "legendary", color: "#ff5c6c", glyph: "✸", tier: 5, price: 475000, stats: { shieldMax: 500, shieldRegen: 25, shieldAbsorb: 0.30 } },
-  "gn-phase-drive":{ id:"gn-phase-drive",slot:"generator", name: "Phase Drive",           description: "Legendary speed gen. 65% absorb.",                    rarity: "legendary", color: "#b06cff", glyph: "✺", tier: 5, price: 450000, stats: { speed: 200,     shieldMax: 180,  shieldRegen: 10, shieldAbsorb: 0.15 } },
-
-  // ── MODULES (utility: speed, cargo, loot, crit, AoE, armor, etc.) ────────
-  "md-thrust-1":  { id: "md-thrust-1",  slot: "module", name: "Ion Thruster Mk-I",      description: "Boosts top speed by 30.",                               rarity: "common",    color: "#5cff8a", glyph: "➤", tier: 1, price: 3000,   stats: { speed: 30 } },
-  "md-thrust-2":  { id: "md-thrust-2",  slot: "module", name: "Ion Thruster Mk-II",     description: "Substantial speed boost.",                              rarity: "uncommon",  color: "#5cff8a", glyph: "➤", tier: 2, price: 14000,  stats: { speed: 70 } },
-  "md-afterburn": { id: "md-afterburn", slot: "module", name: "Afterburner",             description: "Speed +110, no other bonuses. Pure velocity.",          rarity: "rare",      color: "#aaff5c", glyph: "⇒", tier: 3, price: 47500,  stats: { speed: 110 } },
-  "md-cargo":     { id: "md-cargo",     slot: "module", name: "Expanded Cargo Bay",     description: "+25% cargo capacity.",                                  rarity: "uncommon",  color: "#c69060", glyph: "▤", tier: 2, price: 16000,  stats: { cargoBonus: 0.25 } },
-  "md-cargo-2":   { id: "md-cargo-2",   slot: "module", name: "Bulk Cargo Bay",         description: "+50% cargo capacity.",                                  rarity: "rare",      color: "#c69060", glyph: "▤", tier: 3, price: 40000,  stats: { cargoBonus: 0.50 } },
-  "md-ammo-bay":  { id: "md-ammo-bay",  slot: "module", name: "Munitions Bay",          description: "+10 max ammo capacity for rocket weapons.",             rarity: "uncommon",  color: "#ff8a4e", glyph: "⟁", tier: 2, price: 17500,  stats: { ammoCapacity: 10 } },
-  "md-ammo-bay-2":{ id: "md-ammo-bay-2",slot: "module", name: "Expanded Munitions Bay", description: "+25 max ammo capacity for rocket weapons.",             rarity: "rare",      color: "#ff5c6c", glyph: "⟁", tier: 3, price: 47500,  stats: { ammoCapacity: 25 } },
-  "md-targeter":  { id: "md-targeter",  slot: "module", name: "Targeter Array",         description: "+10% crit chance.",                                     rarity: "rare",      color: "#ff5cf0", glyph: "✦", tier: 3, price: 40000,  stats: { critChance: 0.10 } },
-  "md-targeter-2":{ id: "md-targeter-2",slot: "module", name: "Advanced Targeter",      description: "+18% crit chance.",                                     rarity: "epic",      color: "#ff5cf0", glyph: "⊕", tier: 4, price: 110000, stats: { critChance: 0.18 } },
-  "md-plating":   { id: "md-plating",   slot: "module", name: "Reactive Plating",       description: "-8% incoming damage, +40 hull.",                        rarity: "rare",      color: "#ff8a4e", glyph: "⛨", tier: 3, price: 47500,  stats: { damageReduction: 0.08, hullMax: 40 } },
-  "md-heavy-armor":{ id:"md-heavy-armor",slot:"module", name: "Heavy Combat Armor",     description: "-15% damage taken, +80 hull.",                          rarity: "epic",      color: "#ff8a4e", glyph: "⬛", tier: 4, price: 130000, stats: { damageReduction: 0.15, hullMax: 80 } },
-  "md-shield-boost":{ id:"md-shield-boost",slot:"module",name: "Shield Booster",        description: "+120 max shield, +3 shield regen.",                     rarity: "rare",      color: "#4ee2ff", glyph: "◈", tier: 3, price: 42500,  stats: { shieldMax: 120, shieldRegen: 3 } },
-  "md-scavenger": { id: "md-scavenger", slot: "module", name: "Scavenger Module",       description: "+1 loot per kill.",                                     rarity: "rare",      color: "#ffd24a", glyph: "$", tier: 3, price: 37500,  stats: { lootBonus: 1 } },
-  "md-loot-2":    { id: "md-loot-2",    slot: "module", name: "Syndicate Scanner",      description: "+2 loot per kill.",                                     rarity: "epic",      color: "#ffd24a", glyph: "❖", tier: 4, price: 100000, stats: { lootBonus: 2 } },
-  "md-overcharge":{ id: "md-overcharge",slot: "module", name: "Overcharge Capacitor",   description: "+14 damage to all weapons, +10% fire rate.",             rarity: "epic",      color: "#ff5c6c", glyph: "⚡", tier: 4, price: 140000, stats: { damage: 14, fireRate: 1.1 } },
-  "md-overclock": { id: "md-overclock", slot: "module", name: "Overclock Module",       description: "+25% fire rate, +8 damage, -30 hull (trade-off).",      rarity: "epic",      color: "#ffaa22", glyph: "⚙", tier: 4, price: 150000, stats: { fireRate: 1.25, damage: 8, hullMax: -30 } },
-  "md-nano-rep":  { id: "md-nano-rep",  slot: "module", name: "Nano-Repair Bot",        description: "+5 shield regen & +30 hull.",                           rarity: "uncommon",  color: "#5cff8a", glyph: "⬡", tier: 2, price: 22500,  stats: { shieldRegen: 5, hullMax: 30 } },
-  "md-voidframe": { id: "md-voidframe", slot: "module", name: "Voidframe Stabilizer",   description: "Endgame: speed + DR + shield + crit.",                   rarity: "legendary", color: "#b06cff", glyph: "✺", tier: 5, price: 450000, stats: { speed: 60, damageReduction: 0.12, shieldMax: 120, critChance: 0.05 } },
-  "md-singularity":{ id:"md-singularity",slot:"module", name: "Singularity Field",      description: "Legendary utility module. All stats boosted.",           rarity: "legendary", color: "#ff5c6c", glyph: "✸", tier: 5, price: 600000,stats: { damage: 20, speed: 50, shieldMax: 150, shieldRegen: 8, critChance: 0.08, damageReduction: 0.10 } },
+  ...buildCatalog(),
 };
 
+// ── NEW TIER-BASED CATALOG ────────────────────────────────────────────────
+// One item per tier per family. Lasers T0-T10, Rockets T0-T5, Generators
+// T1-T5, Modules T1-T5. Stats scale smoothly with tier. Each carries a
+// spriteKey resolving to /assets/ui/items/<key>.png.
+function buildCatalog(): Record<string, ModuleDef> {
+  const out: Record<string, ModuleDef> = {};
+  const round = (n: number, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
+
+  // LASERS - tier 0..10. Rotating firing pattern so tiers feel distinct.
+  const laserPatterns = ["standard", "rail", "scatter", "sniper"];
+  const laserNames = ["Pulse Laser", "Burst Laser", "Scatter Laser", "Beam Laser",
+    "Ion Laser", "Plasma Laser", "Phase Laser", "Arc Laser", "Solar Laser",
+    "Void Laser", "Singularity Laser"];
+  for (let t = 0; t <= 10; t++) {
+    const damage = round(5 + t * 4.7);
+    const fireRate = round(0.9 + t * 0.045, 2);
+    const crit = t >= 3 ? round((t - 2) * 0.015, 3) : 0;
+    const aoe = t >= 4 ? round(6 + (t - 4) * 3) : 0;
+    const stats: ModuleStats = { damage, fireRate };
+    if (crit) stats.critChance = crit;
+    if (aoe) stats.aoeRadius = aoe;
+    out[`wp-laser-t${t}`] = {
+      id: `wp-laser-t${t}`, slot: "weapon", weaponKind: "laser",
+      firingPattern: laserPatterns[t % laserPatterns.length],
+      name: `${laserNames[t]} T${t}`, description: `Tier ${t} laser weapon.`,
+      rarity: rarityForWeaponTier(t), color: WEAPON_TIER_COLOR[t], glyph: "▶",
+      tier: t, spriteKey: `laser-t${t}`,
+      price: t === 0 ? 0 : Math.round(3000 * 1.9 ** t), stats,
+    };
+  }
+
+  // ROCKETS - tier 0..5. Homing AoE launchers.
+  const rocketNames = ["Rocket Pod", "Missile Rack", "Heavy Rockets",
+    "Torpedo Launcher", "Hellfire Array", "Void Torpedo"];
+  const rocketCol = ["#c69060", "#ff8a4e", "#ff5c6c", "#ff5cf0", "#ffd24a", "#b06cff"];
+  for (let t = 0; t <= 5; t++) {
+    out[`wp-rocket-t${t}`] = {
+      id: `wp-rocket-t${t}`, slot: "weapon", weaponKind: "rocket",
+      name: `${rocketNames[t]} T${t}`,
+      description: `Tier ${t} rocket launcher. Homing, area damage.`,
+      rarity: rarityForTier5(Math.min(5, t + 1)), color: rocketCol[t],
+      glyph: "↑", tier: t, spriteKey: `rocket-t${t}`,
+      price: t === 0 ? 0 : Math.round(18000 * 2.2 ** t),
+      stats: {
+        damage: round(22 + t * 14), fireRate: round(0.55 - t * 0.04, 2),
+        aoeRadius: round(18 + t * 6),
+        ...(t >= 2 ? { critChance: round((t - 1) * 0.02, 3) } : {}),
+      },
+    };
+  }
+
+  // rarity for a 0-based tier over `max` steps (spread across the 5 rarities)
+  const rarity0 = (t: number, max: number): ModuleRarity =>
+    (["common", "uncommon", "rare", "epic", "legendary"] as const)[
+      Math.max(0, Math.min(4, Math.round((t / max) * 4)))];
+  const tierColor0 = (t: number, max: number): string =>
+    ["#8aa0c0", "#5cff8a", "#4ee2ff", "#ff5cf0", "#ffd24a"][
+      Math.max(0, Math.min(4, Math.round((t / max) * 4)))];
+
+  // SHIELD GENERATORS - tier 0..5. Shield capacity, regen & absorb.
+  for (let t = 0; t <= 5; t++) {
+    out[`gn-shield-t${t}`] = {
+      id: `gn-shield-t${t}`, slot: "generator", name: `Shield Reactor T${t}`,
+      description: `Tier ${t} shield generator. High shield capacity, regen & absorb.`,
+      rarity: rarity0(t, 5), color: tierColor0(t, 5), glyph: "◈",
+      tier: t, spriteKey: `genshield-t${t}`, price: t === 0 ? 0 : Math.round(2500 * 2.6 ** t),
+      stats: {
+        shieldMax: round(30 + t * 95), shieldRegen: round(2 + t * 4.6),
+        shieldAbsorb: round(0.05 + t * 0.05, 2),
+      },
+    };
+  }
+
+  // SPEED GENERATORS - tier 0..5. Speed-focused, lighter shield.
+  for (let t = 0; t <= 5; t++) {
+    out[`gn-speed-t${t}`] = {
+      id: `gn-speed-t${t}`, slot: "generator", name: `Sprint Drive T${t}`,
+      description: `Tier ${t} speed generator. Big velocity boost, light shield.`,
+      rarity: rarity0(t, 5), color: tierColor0(t, 5), glyph: "➤",
+      tier: t, spriteKey: `genspeed-t${t}`, price: t === 0 ? 0 : Math.round(2800 * 2.6 ** t),
+      stats: {
+        speed: round(30 + t * 36), shieldMax: round(20 + t * 40),
+        shieldRegen: round(2 + t * 1.6), shieldAbsorb: round(0.04 + t * 0.02, 2),
+      },
+    };
+  }
+
+  // MODULES - 9 types (0-8) x tier 0..4. Each type has a distinct stat role;
+  // tier scales its magnitude. (Types assigned sensible roles; tweak freely.)
+  const modRoles: { name: string; glyph: string; stat: (t: number) => ModuleStats }[] = [
+    { name: "Thruster",   glyph: "➤", stat: (t) => ({ speed: round(25 + t * 22) }) },
+    { name: "Armor",      glyph: "⛨", stat: (t) => ({ hullMax: round(30 + t * 45), damageReduction: round(0.03 + t * 0.03, 3) }) },
+    { name: "Targeter",   glyph: "✦", stat: (t) => ({ critChance: round(0.04 + t * 0.035, 3) }) },
+    { name: "Shield Cell",glyph: "◈", stat: (t) => ({ shieldMax: round(40 + t * 55), shieldRegen: round(1 + t * 2) }) },
+    { name: "Cargo Bay",  glyph: "▤", stat: (t) => ({ cargoBonus: round(0.15 + t * 0.15, 2) }) },
+    { name: "Scanner",    glyph: "$", stat: (t) => ({ lootBonus: t >= 2 ? Math.floor((t - 1) / 1.5) + 1 : 1 }) },
+    { name: "Munitions",  glyph: "⟁", stat: (t) => ({ ammoCapacity: round(8 + t * 8) }) },
+    { name: "Overclock",  glyph: "⚡", stat: (t) => ({ fireRate: round(1.05 + t * 0.06, 2), damage: round(4 + t * 4) }) },
+    { name: "Voidframe",  glyph: "✺", stat: (t) => ({ speed: round(15 + t * 12), critChance: round(0.02 + t * 0.015, 3), damageReduction: round(0.02 + t * 0.02, 3), shieldMax: round(20 + t * 30) }) },
+  ];
+  modRoles.forEach((role, ty) => {
+    for (let t = 0; t <= 4; t++) {
+      out[`md${ty}-t${t}`] = {
+        id: `md${ty}-t${t}`, slot: "module", name: `${role.name} T${t}`,
+        description: `Tier ${t} ${role.name.toLowerCase()} module.`,
+        rarity: rarity0(t, 4), color: tierColor0(t, 4), glyph: role.glyph,
+        tier: t, spriteKey: `mod${ty}-t${t}`, price: t === 0 ? 1500 : Math.round(3000 * 3 ** t),
+        stats: role.stat(t),
+      };
+    }
+  });
+
+  // Mining lasers keep their own progression + mining glyph (no sprite).
+  const miningNames = ["Mining Laser Mk-I", "Mining Laser Mk-II", "Deep Core Drill", "Plasma Core Extractor"];
+  const miningCol = ["#e8a050", "#ffcc44", "#44ddff", "#ff8844"];
+  const miningPrice = [2000, 15000, 50000, 120000];
+  for (let t = 1; t <= 4; t++) {
+    out[`wp-mining-${t}`] = {
+      id: `wp-mining-${t}`, slot: "weapon", weaponKind: "laser", firingPattern: "mining",
+      name: miningNames[t - 1], description: `Tier ${t} mining beam. Extracts ore faster.`,
+      rarity: rarityForTier5(t), color: miningCol[t - 1],
+      glyph: "⛏", tier: t, price: miningPrice[t - 1],
+      stats: { damage: 3 + t, fireRate: 1.0, miningBonus: t * 1.2 },
+    };
+  }
+
+  return out;
+}
+
+// Legacy id → new tier id. Existing saved inventories / equipped slots and
+// old drop tables reference the retired variant ids; map them to the closest
+// new tier item so nothing 404s or disappears. (Maps by the old item's tier.)
+export const LEGACY_ITEM_ALIAS: Record<string, string> = {
+  // lasers (old tier 1-5 → new tier scale, spread across 0-10)
+  "wp-sniper-0": "wp-laser-t0", "wp-scatter-0": "wp-laser-t0", "wp-rail-0": "wp-laser-t1",
+  "wp-pulse-1": "wp-laser-t1", "wp-pulse-2": "wp-laser-t3", "wp-pulse-3": "wp-laser-t5",
+  "wp-ion": "wp-laser-t3", "wp-scatter": "wp-laser-t3", "wp-sniper-1": "wp-laser-t3",
+  "wp-rail-1": "wp-laser-t3", "wp-plasma": "wp-laser-t5", "wp-phase": "wp-laser-t5",
+  "wp-arc": "wp-laser-t5", "wp-sniper-2": "wp-laser-t5", "wp-scatter-2": "wp-laser-t5",
+  "wp-rail-2": "wp-laser-t5", "wp-sniper": "wp-laser-t7", "wp-solar": "wp-laser-t7",
+  "wp-scatter-3": "wp-laser-t7", "wp-rail-3": "wp-laser-t7",
+  "wp-void-lance": "wp-laser-t9", "wp-singular": "wp-laser-t10",
+  // rockets (old tier 2-4 → new 0-5)
+  "wp-rocket-1": "wp-rocket-t1", "wp-rocket-2": "wp-rocket-t2",
+  "wp-torpedo": "wp-rocket-t3", "wp-hellfire": "wp-rocket-t3",
+  // generators → shield/speed families (0-5). Shield-focused → gn-shield,
+  // speed-focused → gn-speed.
+  "gn-core-1": "gn-shield-t1", "gn-core-2": "gn-shield-t2",
+  "gn-aegis": "gn-shield-t3", "gn-fortify": "gn-shield-t3", "gn-prism": "gn-shield-t3",
+  "gn-quantum": "gn-shield-t4", "gn-leviathan": "gn-shield-t5",
+  "gn-sprint": "gn-speed-t2", "gn-hyper": "gn-speed-t3",
+  "gn-warp-drive": "gn-speed-t4", "gn-phase-drive": "gn-speed-t5",
+  // short-lived intermediate gn-t* ids (from the first overhaul pass)
+  "gn-t1": "gn-shield-t1", "gn-t2": "gn-shield-t2", "gn-t3": "gn-shield-t3",
+  "gn-t4": "gn-shield-t4", "gn-t5": "gn-shield-t5",
+  // modules → new type-based ids (mdN-tT). Map old roles to matching types:
+  // 0 thruster,1 armor,2 targeter,3 shield,4 cargo,5 scanner,6 munitions,7 overclock,8 voidframe
+  "md-thrust-1": "md0-t1", "md-thrust-2": "md0-t3", "md-afterburn": "md0-t4",
+  "md-plating": "md1-t2", "md-heavy-armor": "md1-t4",
+  "md-targeter": "md2-t2", "md-targeter-2": "md2-t4",
+  "md-shield-boost": "md3-t3",
+  "md-cargo": "md4-t1", "md-cargo-2": "md4-t3",
+  "md-scavenger": "md5-t2", "md-loot-2": "md5-t4",
+  "md-ammo-bay": "md6-t1", "md-ammo-bay-2": "md6-t3",
+  "md-overcharge": "md7-t3", "md-overclock": "md7-t4", "md-nano-rep": "md3-t1",
+  "md-voidframe": "md8-t3", "md-singularity": "md8-t4",
+  // short-lived intermediate md-t* ids
+  "md-t1": "md8-t1", "md-t2": "md8-t2", "md-t3": "md8-t3", "md-t4": "md8-t4", "md-t5": "md8-t4",
+};
+
+/** Map any (possibly legacy) def id to a valid current catalog id. */
+export function resolveItemId(id: string): string {
+  if (MODULE_DEFS[id]) return id;
+  return LEGACY_ITEM_ALIAS[id] ?? id;
+}
+
 export function moduleDef(idOrItem: string | ModuleItem): ModuleDef {
-  const id = typeof idOrItem === "string" ? idOrItem : idOrItem.defId;
-  return MODULE_DEFS[id];
+  const raw = typeof idOrItem === "string" ? idOrItem : idOrItem.defId;
+  return MODULE_DEFS[resolveItemId(raw)];
 }
 
 // ── DUNGEONS ──────────────────────────────────────────────────────────────
@@ -2058,13 +2720,7 @@ export const DUNGEONS: Record<DungeonId, DungeonDef> = {
     enemyTypes: ["dread"], enemyHpMul: 3.5, enemyDmgMul: 2.9,
     waves: 7, enemiesPerWave: 8,
     rewardCredits: 290000, rewardExp: 82000,
-    rewardModules: ["wp-singular", "wp-void-lance", "wp-hellfire", "gn-leviathan", "gn-phase-drive", "md-singularity", "md-voidframe"],
-
-  // ── Mining Lasers ──
-  "wp-mining-1": { id: "wp-mining-1", slot: "weapon", weaponKind: "laser", firingPattern: "mining", name: "Mining Laser Mk-I",    description: "Basic mining beam. Doubles asteroid mining speed.",                rarity: "common",    color: "#e8a050", glyph: "⛏", tier: 1, price: 2000,   stats: { damage: 3,  fireRate: 1.0, miningBonus: 1.0 } },
-  "wp-mining-2": { id: "wp-mining-2", slot: "weapon", weaponKind: "laser", firingPattern: "mining", name: "Mining Laser Mk-II",   description: "Improved mining beam with focused ore extraction.",                rarity: "uncommon",  color: "#ffcc44", glyph: "⛏", tier: 2, price: 15000,  stats: { damage: 5,  fireRate: 1.0, miningBonus: 2.0 } },
-  "wp-mining-3": { id: "wp-mining-3", slot: "weapon", weaponKind: "laser", firingPattern: "mining", name: "Deep Core Drill",      description: "Industrial-grade mining beam. Chews through asteroids.",           rarity: "rare",      color: "#44ddff", glyph: "⛏", tier: 3, price: 50000,  stats: { damage: 8,  fireRate: 1.0, miningBonus: 3.5 } },
-  "wp-mining-4": { id: "wp-mining-4", slot: "weapon", weaponKind: "laser", firingPattern: "mining", name: "Plasma Core Extractor", description: "Top-tier mining beam. Extracts ore at incredible speed.",           rarity: "epic",      color: "#ff8844", glyph: "⛏", tier: 4, price: 120000, stats: { damage: 12, fireRate: 1.0, miningBonus: 5.0 } },
+    rewardModules: ["wp-laser-t10", "wp-laser-t9", "wp-rocket-t5", "gn-t5", "md-t5"],
     rewardMaterials: [{ resourceId: "void", qty: 20 }, { resourceId: "dread", qty: 14 }, { resourceId: "quantum", qty: 18 }],
     color: "#7722cc", unlockLevel: 30,
   },

@@ -14,15 +14,18 @@ import {
   getOnlineCount,
   getAllZones,
 } from "./state.js";
-import { GameEngine, computeStats, type GameEvent } from "../game/engine.js";
+import { GameEngine, computeStats, registerEngine, type GameEvent } from "../game/engine.js";
 import { sanitizeInventory } from "../game/lootService.js";
-import { MOVEMENT } from "../../../lib/game-constants.js";
+import { spendCurrency } from "../game/currency.js";
+import { playerFields, coerceUpdates } from "../admin/fields.js";
+import { MOVEMENT, PET_DRONE_UPGRADE_COST } from "../../../lib/game-constants.js";
 
 const CULL_RADIUS = 2000;
 const FIXED_DT = 1 / MOVEMENT.SERVER_TICK_RATE;
 
 export function setupSocket(io: Server) {
   const engine = new GameEngine();
+  registerEngine(engine);
   const instanceMgr = new InstanceManager();
 
   io.use((socket, next) => {
@@ -63,6 +66,17 @@ export function setupSocket(io: Server) {
       return;
     }
 
+    // Clan research (Clan Hall bonuses — see game/clanData.ts) is looked up
+    // once here and cached alongside the rest of playerData so computeStats
+    // and the loot/kill event handlers (engine.ts) can read it synchronously
+    // without a DB round trip per kill. Refreshed on join/leave/research-fund
+    // via refreshClanResearchCache below.
+    let clanResearch: any = null;
+    if (dbPlayer.clanId) {
+      const [clanRow] = await db.select({ research: schema.clans.research }).from(schema.clans).where(eq(schema.clans.id, dbPlayer.clanId)).limit(1);
+      clanResearch = clanRow?.research ?? null;
+    }
+
     // Cache player data for stat computation
     const playerData = {
       shipClass: dbPlayer.shipClass,
@@ -70,8 +84,12 @@ export function setupSocket(io: Server) {
       equipped: dbPlayer.equipped,
       skills: dbPlayer.skills,
       drones: dbPlayer.drones,
+      petDrone: dbPlayer.petDrone,
+      bebcell: dbPlayer.bebcell,
       faction: dbPlayer.faction,
       level: dbPlayer.level,
+      clanResearch,
+      leaderboardAllTimeBuff: dbPlayer.leaderboardAllTimeBuff,
     };
     engine.cachePlayerData(dbPlayer.id, playerData);
     const stats = computeStats(playerData);
@@ -97,14 +115,17 @@ export function setupSocket(io: Server) {
       honor: dbPlayer.honor,
       targetX: null,
       targetY: null,
+      aimAngle: null,
       speed: stats.speed,
       isLaserFiring: false,
       isRocketFiring: false,
       attackTargetId: null,
+      pvpTargetId: null,
       laserAmmoType: "x1",
       rocketAmmoType: "cl1",
       laserFireCd: 0,
       rocketFireCd: 0,
+      droneFireCd: 0,
       miningTargetId: null,
       lastHitTick: 0,
       shieldRegen: stats.shieldRegen,
@@ -123,6 +144,13 @@ export function setupSocket(io: Server) {
 
     socket.emit("welcome", {
       playerId: dbPlayer.id,
+      // Staff flag, so the client can show/hide admin affordances. This is a
+      // CONVENIENCE ONLY — every admin socket handler re-checks the database
+      // itself, so a tampered client gains nothing by faking it.
+      // `?? false` because the column may not exist yet on databases that have
+      // not run the is_admin migration; the admin handlers re-check anyway and
+      // fail closed, so defaulting to "not staff" is the safe direction.
+      isAdmin: dbPlayer.isAdmin ?? false,
       tickRate: MOVEMENT.SERVER_TICK_RATE,
       friction: MOVEMENT.FRICTION_PER_60FPS_FRAME,
       frictionRefFps: 60,
@@ -136,6 +164,13 @@ export function setupSocket(io: Server) {
     socket.emit("zone:enemies", engine.getZoneEnemies(online.zone));
     socket.emit("zone:npcs", engine.getZoneNpcs(online.zone));
 
+    // ── PING: round-trip latency probe for the client's SYSTEM readout
+    // (Settings panel). Pure echo — no state read/written — client measures
+    // Date.now() - sentAt itself once the ack fires.
+    socket.on("ping", (sentAt: number, cb?: (t: number) => void) => {
+      cb?.(sentAt);
+    });
+
     // ── INPUT: MOVE (click target) ────────────────────────────────
     socket.on("input:move", (data: { x: number; y: number }) => {
       const p = getPlayer(user.playerId);
@@ -144,11 +179,19 @@ export function setupSocket(io: Server) {
       p.targetY = clamp(data.y, -8000, 8000);
     });
 
+    // ── INPUT: AIM (WASD scheme — cursor owns the heading) ─────────
+    socket.on("input:aim", (data: { angle: number | null }) => {
+      const p = getPlayer(user.playerId);
+      if (!p) return;
+      p.aimAngle = typeof data?.angle === "number" && Number.isFinite(data.angle) ? data.angle : null;
+    });
+
     // ── INPUT: ATTACK (start/stop firing) ─────────────────────────
-    socket.on("input:attack", (data: { enemyId: string | null; laser: boolean; rocket: boolean; laserAmmo: string; rocketAmmo: string }) => {
+    socket.on("input:attack", (data: { enemyId: string | null; pvpTargetId?: string | null; laser: boolean; rocket: boolean; laserAmmo: string; rocketAmmo: string }) => {
       const p = getPlayer(user.playerId);
       if (!p) return;
       p.attackTargetId = data.enemyId;
+      p.pvpTargetId = data.pvpTargetId ?? null;
       p.isLaserFiring = data.laser;
       p.isRocketFiring = data.rocket;
       if (data.laserAmmo) p.laserAmmoType = data.laserAmmo;
@@ -213,6 +256,25 @@ export function setupSocket(io: Server) {
       const p = getPlayer(user.playerId);
       if (!p) return;
 
+      // Admin world-broadcast: same playerId===3 convention the client's
+      // /admin command already uses. Lands the message in ALL FOUR
+      // channels for EVERY connected client, unlike a normal "system"
+      // send (which only reaches whoever is currently viewing that tab
+      // client-side, since the client filters by channel). Not exposed
+      // through the normal channel selector — only reachable via the
+      // dedicated "broadcast" pseudo-channel from the client.
+      if (data.channel === "broadcast") {
+        if (user.playerId !== 3) return;
+        for (const channel of ["local", "party", "clan", "system"]) {
+          const msg = { from: "ADMIN", text: data.text, channel, time: Date.now() };
+          io.emit("chat:message", msg);
+          await db.insert(schema.chatMessages).values({
+            channel, fromPlayerId: p.playerId, fromName: "ADMIN", text: data.text, zone: p.zone,
+          }).catch(() => { });
+        }
+        return;
+      }
+
       const msg = {
         from: p.name,
         text: data.text,
@@ -224,6 +286,11 @@ export function setupSocket(io: Server) {
         io.to(`zone:${p.zone}`).emit("chat:message", msg);
       } else if (data.channel === "system") {
         io.emit("chat:message", msg);
+      } else if (data.channel === "party" || data.channel === "clan") {
+        // Not yet scoped to an actual party/clan roster — broadcast
+        // zone-wide like "local" so messages sent on these tabs are at
+        // least visible to someone, rather than silently vanishing.
+        io.to(`zone:${p.zone}`).emit("chat:message", msg);
       }
 
       await db.insert(schema.chatMessages).values({
@@ -332,14 +399,20 @@ export function setupSocket(io: Server) {
       hull: number; shield: number; level: number;
       shipClass: string; honor: number;
       inventory?: any[]; equipped?: any; skills?: any;
-      drones?: any[]; faction?: string;
+      drones?: any[]; faction?: string; petDrone?: any;
     }) => {
       const p = getPlayer(user.playerId);
       if (!p) return;
       // hull/shield are server-authoritative - don't accept client values
       p.level = data.level;
       p.shipClass = data.shipClass;
-      p.honor = data.honor;
+      // Honor is server-authoritative too, but only DOWNWARD: the friendly-fire
+      // penalty (engine.ts, FRIENDLY_KILL_HONOR_PENALTY) is applied server-side,
+      // and blindly taking the client's number here would let a traitor undo
+      // their Outlaw brand on the next stats tick — the client still owns honor
+      // GAINS from kills/missions, so accept a rise, never accept a fall back
+      // to a value the server already reduced past.
+      if (data.honor > p.honor) p.honor = data.honor;
 
       const cached = engine.playerDataCache.get(user.playerId);
       if (cached) {
@@ -357,6 +430,21 @@ export function setupSocket(io: Server) {
         if (data.equipped) cached.equipped = data.equipped;
         if (data.skills) cached.skills = data.skills;
         if (data.drones) cached.drones = data.drones;
+        // petDrone.level/hp/hpMax are server-authoritative (set only by
+        // drone:upgrade above) — never accept them from the client here, or
+        // a forged stats:update payload could grant free levels by writing
+        // straight into the combat cache. Only equipped/mode (loadout
+        // choices, not progression) pass through.
+        if (data.petDrone && cached.petDrone) {
+          cached.petDrone = {
+            ...cached.petDrone,
+            equipped: data.petDrone.equipped ?? cached.petDrone.equipped,
+            mode: data.petDrone.mode ?? cached.petDrone.mode,
+          };
+          engine.refreshPlayerStats(user.playerId);
+        }
+        // bebcell is server-authoritative (currency.ts) — never accept it
+        // from the client; the DB row is the only source of truth.
         if (data.faction) cached.faction = data.faction;
         if (data.level) cached.level = data.level;
       }
@@ -380,11 +468,131 @@ export function setupSocket(io: Server) {
     });
 
 
+    // ── PET DRONE UPGRADE (server-authoritative bebcell spend) ───────
+    // Replaces the old client-side `state.player.bebcell -= cost` in
+    // store.ts's upgradePetDrone(). The client now only REQUESTS an
+    // upgrade; the server reads the player's current level + bebcell
+    // balance straight from the DB, validates the cost against the
+    // shared PET_DRONE_UPGRADE_COST table (never a client-sent cost),
+    // and atomically spends + levels up in one transaction so a crash
+    // mid-upgrade can never charge bebcell without granting the level
+    // (or vice versa).
+    socket.on("drone:upgrade", async (_data: unknown, cb?: (res: { ok: boolean; error?: string; petDrone?: any; bebcell?: number }) => void) => {
+      try {
+        const result = await db.transaction(async (tx) => {
+          const [row] = await tx
+            .select({ petDrone: schema.players.petDrone, bebcell: schema.players.bebcell })
+            .from(schema.players)
+            .where(eq(schema.players.id, user.playerId))
+            .limit(1);
+          if (!row) return { ok: false as const, error: "Player not found" };
+
+          const pet = (row.petDrone ?? {}) as any;
+          const level = Number(pet.level ?? 0);
+          if (level >= 6) return { ok: false as const, error: "Drone already at max level" };
+          const nextLevel = level + 1;
+          const cost = PET_DRONE_UPGRADE_COST[nextLevel as 1 | 2 | 3 | 4 | 5 | 6];
+
+          const newBebcell = await spendCurrency(user.playerId, "bebcell", cost, tx);
+          if (newBebcell === null) {
+            return { ok: false as const, error: `Need ${cost} Bebcell (have ${row.bebcell})`, bebcell: row.bebcell };
+          }
+
+          const newPet = {
+            ...pet,
+            level: nextLevel,
+            hpMax: 400 + nextLevel * 200,
+            hp: 400 + nextLevel * 200,
+          };
+          await tx
+            .update(schema.players)
+            .set({ petDrone: newPet })
+            .where(eq(schema.players.id, user.playerId));
+
+          return { ok: true as const, petDrone: newPet, bebcell: newBebcell };
+        });
+
+        if (result.ok) {
+          // Keep the in-tick cache + live OnlinePlayer state consistent so
+          // combat (server-side drone fire in engine.ts) sees the new level
+          // immediately, without waiting for the next stats:update round trip.
+          const cached = engine.playerDataCache.get(user.playerId);
+          if (cached) { cached.petDrone = result.petDrone; engine.refreshPlayerStats(user.playerId); }
+        }
+        cb?.(result);
+      } catch (err) {
+        console.error("[drone:upgrade] error:", err);
+        cb?.({ ok: false, error: "Upgrade failed" });
+      }
+    });
+
+    // ── INVENTORY EXTRA PAGE (server-authoritative mcoins spend) ─────
+    // Same shape as drone:upgrade: the client only requests the purchase;
+    // the server reads the current flag + mcoins balance from the DB,
+    // validates against the fixed cost, and spends + unlocks atomically.
+    const INVENTORY_EXTRA_PAGE_COST = 750;
+    socket.on("inventory:buyPage", async (_data: unknown, cb?: (res: { ok: boolean; error?: string; mcoins?: number; unlocked?: boolean }) => void) => {
+      try {
+        const result = await db.transaction(async (tx) => {
+          const [row] = await tx
+            .select({ inventoryExtraPage: schema.players.inventoryExtraPage, mcoins: schema.players.mcoins })
+            .from(schema.players)
+            .where(eq(schema.players.id, user.playerId))
+            .limit(1);
+          if (!row) return { ok: false as const, error: "Player not found" };
+          if (row.inventoryExtraPage) return { ok: false as const, error: "Already unlocked", unlocked: true };
+
+          const newMcoins = await spendCurrency(user.playerId, "mcoins", INVENTORY_EXTRA_PAGE_COST, tx);
+          if (newMcoins === null) {
+            return { ok: false as const, error: `Need ${INVENTORY_EXTRA_PAGE_COST} MC (have ${row.mcoins})`, mcoins: row.mcoins };
+          }
+
+          await tx
+            .update(schema.players)
+            .set({ inventoryExtraPage: true })
+            .where(eq(schema.players.id, user.playerId));
+
+          return { ok: true as const, mcoins: newMcoins, unlocked: true };
+        });
+
+        if (result.ok) {
+          const cached = engine.playerDataCache.get(user.playerId);
+          if (cached) (cached as any).inventoryExtraPage = true;
+        }
+        cb?.(result);
+      } catch (err) {
+        console.error("[inventory:buyPage] error:", err);
+        cb?.({ ok: false, error: "Purchase failed" });
+      }
+    });
+
     // ── ADMIN PANEL ─────────────────────────────────────────────────
-    const ADMIN_PLAYER_ID = 3;
+    // Staff status comes from players.is_admin, never from a hardcoded id.
+    // The previous `playerId === 3` gate meant admin was a property of one
+    // row number: it could not be granted, could not be revoked, and silently
+    // followed whoever happened to occupy id 3.
+    //
+    // Checked against the database on every call rather than cached at
+    // connect time, so revoking admin takes effect immediately instead of
+    // lasting until that socket happens to reconnect.
+    const requireAdmin = async (cb?: Function): Promise<boolean> => {
+      try {
+        const [row] = await db
+          .select({ isAdmin: schema.players.isAdmin })
+          .from(schema.players)
+          .where(eq(schema.players.id, user.playerId))
+          .limit(1);
+        if (!row?.isAdmin) { cb?.({ error: 'Unauthorized' }); return false; }
+        return true;
+      } catch {
+        // Fail CLOSED: a database hiccup must not hand out admin access.
+        cb?.({ error: 'Authorization check failed' });
+        return false;
+      }
+    };
 
     socket.on('admin:list', async (_data: any, cb: Function) => {
-      if (user.playerId !== ADMIN_PLAYER_ID) { cb?.({ error: 'Unauthorized' }); return; }
+      if (!(await requireAdmin(cb))) return;
       try {
         const rows = await db.select({
           id: schema.players.id,
@@ -399,77 +607,167 @@ export function setupSocket(io: Server) {
     });
 
     socket.on('admin:get', async (data: { playerId: number }, cb: Function) => {
-      if (user.playerId !== ADMIN_PLAYER_ID) { cb?.({ error: 'Unauthorized' }); return; }
+      if (!(await requireAdmin(cb))) return;
       try {
         const [p] = await db.select().from(schema.players)
           .where(eq(schema.players.id, data.playerId)).limit(1);
         if (!p) { cb?.({ error: 'Not found' }); return; }
-        cb?.({ player: {
-          id: p.id, name: p.name, shipClass: p.shipClass,
-          level: p.level, exp: Number(p.exp), credits: Number(p.credits),
-          honor: p.honor, hull: p.hull, shield: p.shield,
-          zone: p.zone, faction: p.faction,
-          skillPoints: p.skillPoints, skills: p.skills,
-          ownedShips: p.ownedShips, inventory: p.inventory,
-          equipped: p.equipped, cargo: p.cargo,
-          drones: p.drones, consumables: p.consumables,
-          milestones: p.milestones,
-        }});
+        // The WHOLE row, not a curated subset. The old version hand-listed
+        // ~19 of the 55 columns, so anything outside that list was invisible
+        // to the console and therefore uneditable — the opposite of what an
+        // admin console is for. Dates are sent as ISO strings so they survive
+        // the socket's JSON encoding intact.
+        const out: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(p as Record<string, unknown>)) {
+          out[k] = v instanceof Date ? v.toISOString() : v;
+        }
+        cb?.({ player: out });
+      } catch (e) { cb?.({ error: 'DB error' }); }
+    });
+
+    // Column metadata for the console's editor: which fields exist, what type
+    // each is, which are protected and why. Sent from the server so the UI is
+    // built from the same source of truth the write path validates against —
+    // a client-side copy would drift and start offering fields that fail.
+    socket.on('admin:fields', async (_data: any, cb: Function) => {
+      if (!(await requireAdmin(cb))) return;
+      try {
+        cb?.({ fields: playerFields() });
+      } catch (e: any) {
+        cb?.({ error: e?.message ?? 'Field metadata unavailable' });
+      }
+    });
+
+    // Grant/revoke staff. Deliberately SEPARATE from admin:update, which
+    // refuses isAdmin outright: promoting an account is not the same kind of
+    // action as editing credits and should not ride along in a bulk field
+    // save that an admin might not read closely.
+    socket.on('admin:setAdmin', async (data: { playerId: number; isAdmin: boolean }, cb: Function) => {
+      if (!(await requireAdmin(cb))) return;
+      try {
+        const target = Number(data?.playerId);
+        const grant = Boolean(data?.isAdmin);
+        if (!Number.isInteger(target)) { cb?.({ error: 'Bad player id' }); return; }
+
+        // Refuse self-revoke. An admin removing their own flag would have no
+        // way to restore it through the UI, and if they are the last one the
+        // server has no admins at all — recoverable only by hand-editing the
+        // database.
+        if (target === user.playerId && !grant) {
+          cb?.({ error: 'Cannot revoke your own admin access' });
+          return;
+        }
+
+        await db.update(schema.players)
+          .set({ isAdmin: grant })
+          .where(eq(schema.players.id, target));
+
+        const [row] = await db
+          .select({ id: schema.players.id, name: schema.players.name, isAdmin: schema.players.isAdmin })
+          .from(schema.players).where(eq(schema.players.id, target)).limit(1);
+        if (!row) { cb?.({ error: 'Not found' }); return; }
+
+        console.log(`[admin] ${user.username} (${user.playerId}) set is_admin=${grant} on ${row.name} (${target})`);
+        cb?.({ ok: true, player: row });
       } catch (e) { cb?.({ error: 'DB error' }); }
     });
 
     socket.on('admin:update', async (data: { playerId: number; updates: any }, cb: Function) => {
-      if (user.playerId !== ADMIN_PLAYER_ID) { cb?.({ error: 'Unauthorized' }); return; }
+      if (!(await requireAdmin(cb))) return;
       try {
-        const u = data.updates;
-        const setObj: any = {};
-        if (u.credits !== undefined) setObj.credits = u.credits;
-        if (u.honor !== undefined) setObj.honor = u.honor;
-        if (u.exp !== undefined) setObj.exp = u.exp;
-        if (u.level !== undefined) setObj.level = u.level;
-        if (u.hull !== undefined) setObj.hull = u.hull;
-        if (u.shield !== undefined) setObj.shield = u.shield;
-        if (u.shipClass !== undefined) setObj.shipClass = u.shipClass;
-        if (u.ownedShips !== undefined) setObj.ownedShips = u.ownedShips;
-        if (u.skillPoints !== undefined) setObj.skillPoints = u.skillPoints;
-        if (u.zone !== undefined) setObj.zone = u.zone;
-        if (u.faction !== undefined) setObj.faction = u.faction;
-        if (u.inventory !== undefined) setObj.inventory = u.inventory;
-        if (u.equipped !== undefined) setObj.equipped = u.equipped;
-        if (u.skills !== undefined) setObj.skills = u.skills;
-        if (u.drones !== undefined) setObj.drones = u.drones;
-        if (u.consumables !== undefined) setObj.consumables = u.consumables;
-        if (Object.keys(setObj).length === 0) { cb?.({ error: 'No fields' }); return; }
-        await db.update(schema.players).set(setObj)
+        // Generic write path. The previous version hand-listed 18 assignments
+        // per column and then repeated them for the in-memory copy, so every
+        // new field needed edits in two places and anything not listed was
+        // simply unwritable. Now the whitelist, the type coercion and the
+        // protection rules all come from the schema-derived registry in
+        // admin/fields.ts, which cannot fall behind the table.
+        let setObj: Record<string, unknown>;
+        try {
+          setObj = coerceUpdates(data?.updates ?? {});
+        } catch (e: any) {
+          // Field-level problems are the admin's typo, not a server fault —
+          // report them verbatim so the console can point at the field.
+          cb?.({ error: e?.message ?? 'Invalid field' });
+          return;
+        }
+
+        await db.update(schema.players).set(setObj as any)
           .where(eq(schema.players.id, data.playerId));
-        // Also update in-memory if player is online
+
+        // Mirror into the live in-memory player so the change is visible
+        // without a relog. Only the fields OnlinePlayer actually carries are
+        // copied; the rest live in the engine's cache, refreshed below.
         const online = getPlayer(data.playerId);
         if (online) {
-          if (u.level !== undefined) online.level = u.level;
-          if (u.shipClass !== undefined) online.shipClass = u.shipClass;
-          if (u.honor !== undefined) online.honor = u.honor;
-          if (u.hull !== undefined) online.hull = u.hull;
-          if (u.shield !== undefined) online.shield = u.shield;
-          if (u.zone !== undefined) online.zone = u.zone;
-          if (u.faction !== undefined) online.faction = u.faction;
-          if (u.credits !== undefined) (online as any).credits = u.credits;
-          if (u.exp !== undefined) (online as any).exp = u.exp;
-          if (u.skillPoints !== undefined) (online as any).skillPoints = u.skillPoints;
-          if (u.skills !== undefined) (online as any).skills = u.skills;
-          if (u.ownedShips !== undefined) (online as any).ownedShips = u.ownedShips;
-          if (u.inventory !== undefined) (online as any).inventory = u.inventory;
-          if (u.equipped !== undefined) (online as any).equipped = u.equipped;
-          if (u.drones !== undefined) (online as any).drones = u.drones;
-          if (u.consumables !== undefined) (online as any).consumables = u.consumables;
+          const LIVE_KEYS = [
+            'level', 'shipClass', 'honor', 'hull', 'shield', 'zone', 'faction',
+            'credits', 'exp', 'skillPoints', 'skills', 'ownedShips',
+            'inventory', 'equipped', 'drones', 'consumables',
+          ] as const;
+          for (const k of LIVE_KEYS) {
+            if (k in setObj) (online as any)[k] = setObj[k];
+          }
+          if ('honor' in setObj) {
+            // Push the new honor to every client in the zone. Without this an
+            // admin DEMOTION silently reverts: the target's client still holds
+            // the old (higher) honor and sends it on the next stats:update,
+            // which the handler accepts because it only refuses decreases —
+            // a raise back to the stale value passes straight through.
+            io.to(`zone:${online.zone}`).emit("player:honor", {
+              playerId: data.playerId, honor: setObj.honor,
+            });
+          }
+          // Anything that feeds computeStats (ship, gear, skills, drones,
+          // faction, level) must invalidate the engine's cached stat block,
+          // or an admin can hand someone a better ship and their speed and
+          // damage stay on the old values until they reconnect.
+          const STAT_KEYS = [
+            'shipClass', 'inventory', 'equipped', 'skills', 'drones',
+            'petDrone', 'bebcell', 'faction', 'level',
+          ];
+          if (STAT_KEYS.some((k) => k in setObj)) {
+            const cached = engine.playerDataCache.get(data.playerId);
+            if (cached) {
+              for (const k of STAT_KEYS) {
+                if (k in setObj) (cached as any)[k] = setObj[k];
+              }
+              engine.refreshPlayerStats(data.playerId);
+            }
+          }
         }
-        console.log('[ADMIN] ' + user.username + ' updated player ' + data.playerId + ': ' + JSON.stringify(u));
+
+        console.log('[ADMIN] ' + user.username + ' updated player ' + data.playerId + ': ' + Object.keys(setObj).join(', '));
         // Force-sync target player's client if they're online
         const targetSocket = activeSockets.get(data.playerId);
         if (targetSocket) {
-          targetSocket.emit('admin:sync', u);
+          targetSocket.emit('admin:sync', setObj);
         }
-        cb?.({ ok: true });
+        cb?.({ ok: true, applied: Object.keys(setObj) });
       } catch (e) { cb?.({ error: 'DB error: ' + (e as Error).message }); }
+    });
+
+    // Admin: spawn N enemies of a type into the admin's current zone, near the
+    // admin, and broadcast enemy:spawn to EVERYONE in that zone (same pipeline
+    // as the auto-spawner). Server uses player.zone authoritatively.
+    // async because requireAdmin now checks the database instead of comparing
+    // against a hardcoded id.
+    socket.on('admin:spawnEnemy', async (data: { type: string; count?: number }, cb: Function) => {
+      if (!(await requireAdmin(cb))) return;
+      try {
+        const p = getPlayer(user.playerId);
+        if (!p) { cb?.({ error: 'Player not online' }); return; }
+        const zone = p.zone;
+        const near = { x: p.posX, y: p.posY };
+        const count = Math.min(Math.max(1, Math.floor(data.count ?? 1)), 50);
+        let spawned = 0;
+        for (let i = 0; i < count; i++) {
+          const ce = engine.spawnEnemyOfType(zone, data.type, near);
+          if (ce) { io.to(`zone:${zone}`).emit('enemy:spawn', ce); spawned++; }
+        }
+        if (spawned === 0) { cb?.({ error: 'Unknown type or zone' }); return; }
+        console.log(`[ADMIN] ${user.username} spawned ${spawned}x ${data.type} in ${zone}`);
+        cb?.({ ok: true, spawned });
+      } catch (e) { cb?.({ error: 'Spawn error: ' + (e as Error).message }); }
     });
 
     // ── DISCONNECT ──────────────────────────────────────────────────
@@ -498,9 +796,17 @@ export function setupSocket(io: Server) {
   type EntitySnapshot = { id: string; x: number; y: number; vx: number; vy: number; version: number; [key: string]: any };
   const playerPreviousEntities = new Map<number, Map<string, EntitySnapshot>>();
 
+  // ── tick-duration instrumentation (perf task): logs engine-vs-broadcast
+  // cost + entity counts every 10s so server load at 100+ NPCs is measurable
+  // from `pm2 logs`. Pure measurement, no behavior change.
+  let _perfEngAcc = 0, _perfEngMax = 0, _perfAllAcc = 0, _perfAllMax = 0, _perfN = 0;
+
   const runTick = () => {
+    const _t0 = performance.now();
+    let _tEng = 0;
     try {
       const events = engine.tick(FIXED_DT, (zone: string) => getPlayersInZone(zone).filter(p => !instanceMgr.isInInstance(p.playerId)));
+      _tEng = performance.now() - _t0;
       broadcastEvents(io, events);
 
       // Tick all active instances
@@ -771,6 +1077,22 @@ export function setupSocket(io: Server) {
       console.error("[tick] error:", err);
     }
 
+    {
+      const _tAll = performance.now() - _t0;
+      _perfEngAcc += _tEng; if (_tEng > _perfEngMax) _perfEngMax = _tEng;
+      _perfAllAcc += _tAll; if (_tAll > _perfAllMax) _perfAllMax = _tAll;
+      if (++_perfN >= 300) {
+        let _enemies = 0;
+        for (const zs of engine.zones.values()) _enemies += zs.enemies.size;
+        console.log(
+          `[perf] tick avg ${(_perfAllAcc / _perfN).toFixed(2)}ms max ${_perfAllMax.toFixed(1)}ms ` +
+          `(engine avg ${(_perfEngAcc / _perfN).toFixed(2)}ms max ${_perfEngMax.toFixed(1)}ms) ` +
+          `enemies ${_enemies} players ${io.engine?.clientsCount ?? "?"}`
+        );
+        _perfEngAcc = _perfEngMax = _perfAllAcc = _perfAllMax = 0; _perfN = 0;
+      }
+    }
+
     nextTickAt += TICK_MS;
     const now = Date.now();
     let delay = nextTickAt - now;
@@ -793,6 +1115,7 @@ function broadcastEvents(io: Server, events: GameEvent[]): void {
       case "enemy:die":
         io.to(`zone:${ev.zone}`).emit("enemy:die", {
           enemyId: ev.enemyId,
+          enemyType: ev.enemyType,
           killerId: ev.killerId,
           loot: ev.loot,
           pos: ev.pos,
@@ -811,9 +1134,39 @@ function broadcastEvents(io: Server, events: GameEvent[]): void {
       case "player:hit": {
         const p = getPlayer(ev.playerId);
         if (p) {
+          // Victim: authoritative HP update (drives their own hit VFX + death).
           const sock = io.sockets.sockets.get(p.socketId);
           sock?.emit("player:hit", { damage: ev.damage, hp: p.hull, shield: p.shield });
         }
+        // Everyone else in the zone: spark/flash the victim's remote ship so
+        // the attacker and bystanders actually SEE the hit land.
+        io.to(`zone:${ev.zone}`).emit("player:hit:remote", {
+          playerId: ev.playerId, damage: ev.damage, pos: ev.pos, killerId: ev.killerId,
+        });
+        break;
+      }
+      case "player:die": {
+        // Zone-wide so every client plays the death explosion at the death
+        // point (the victim respawns server-side; getCulledState re-syncs pos).
+        io.to(`zone:${ev.zone}`).emit("player:die", {
+          playerId: ev.playerId, pos: ev.pos, killerId: ev.killerId,
+        });
+        break;
+      }
+      case "player:honor": {
+        // Server-side honor correction (currently: the friendly-fire penalty).
+        // Zone-wide, not just to the offender: everyone's OtherPlayer.honor
+        // needs to update too, since that is what drives the Outlaw badge and
+        // the "attackable by anyone" colouring on remote pilots.
+        io.to(`zone:${ev.zone}`).emit("player:honor", {
+          playerId: ev.playerId, honor: ev.honor,
+        });
+        // Persist immediately. Honor normally rides along on the client's
+        // stats:update, but that path now refuses decreases, so a penalty that
+        // is not written here would vanish on reconnect.
+        db.update(schema.players).set({ honor: ev.honor })
+          .where(eq(schema.players.id, ev.playerId))
+          .catch((e) => console.error("[honor] persist failed", e));
         break;
       }
       case "asteroid:mine":

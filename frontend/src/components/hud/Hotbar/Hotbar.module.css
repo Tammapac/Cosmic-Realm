@@ -8,14 +8,14 @@
 .consoleWrap {
   position: relative;
   width: fit-content;
-  filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.6));
+  /* no `filter` — would break .console's frosted backdrop-filter. */
 }
 
 .glowRim {
   position: absolute;
   inset: -3px;
   background: linear-gradient(180deg, #baf3ff 0%, var(--hud-cyan) 55%, var(--hud-shield-deep) 100%);
-  opacity: 0.8;
+  opacity: 0.34;
   filter: blur(6px);
   clip-path: polygon(
     22px 0, 25% 0, 38% 14px, 62% 14px, 75% 0, calc(100% - 14px) 0,
@@ -31,7 +31,7 @@
 .crispEdge {
   position: absolute;
   inset: -1px;
-  background: linear-gradient(180deg, #d6f6ff 0%, var(--hud-cyan) 60%, var(--hud-shield-deep) 100%);
+  background: linear-gradient(180deg, #f2f8ff 0%, #c3d5ea 22%, #8098b5 50%, #3f5c7c 74%, var(--hud-shield-deep) 100%);
   clip-path: polygon(
     22px 0, 25% 0, 38% 14px, 62% 14px, 75% 0, calc(100% - 14px) 0,
     100% 7px, 100% calc(100% - 20px),
@@ -43,30 +43,18 @@
     linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
-  padding: 1.5px;
+  padding: 2.5px;
   pointer-events: none;
 }
 
+/* Frame + fill now come from the shared global .panel / .panel-rim. This class
+   only carries layout. */
 .console {
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 16px 36px 22px;
-  background:
-    radial-gradient(120% 90% at 50% -10%, rgba(120, 175, 220, 0.16) 0%, transparent 55%),
-    linear-gradient(180deg, #283a58 0%, #17233c 32%, #0d1626 62%, #060a14 100%);
-  box-shadow:
-    inset 0 2px 5px rgba(180, 220, 255, 0.14),
-    inset 0 -14px 22px rgba(0, 0, 0, 0.55),
-    0 0 22px rgba(78, 226, 255, 0.18);
-  clip-path: polygon(
-    22px 0, 25% 0, 38% 14px, 62% 14px, 75% 0, calc(100% - 14px) 0,
-    100% 7px, 100% calc(100% - 20px),
-    calc(100% - 26px) 100%, 30px 100%,
-    0 calc(100% - 16px), 0 5px
-  );
-  overflow: hidden;
+  padding: 16px 30px 20px;
 }
 
 /* Soft top-to-bottom lightening fade, layered above the base gradient so
@@ -107,7 +95,7 @@
   z-index: 0;
   pointer-events: none;
   padding: 3px;
-  background: linear-gradient(180deg, rgba(210, 235, 255, 0.22) 0%, rgba(0, 0, 0, 0.35) 100%);
+  background: linear-gradient(180deg, rgba(235, 245, 255, 0.5) 0%, rgba(140, 175, 210, 0.15) 40%, rgba(0, 0, 0, 0.5) 100%);
   clip-path: polygon(
     22px 0, 25% 0, 38% 14px, 62% 14px, 75% 0, calc(100% - 14px) 0,
     100% 7px, 100% calc(100% - 20px),
@@ -202,4 +190,42 @@
   background: rgba(3, 5, 10, 0.55);
   box-shadow: inset 0 3px 6px rgba(0, 0, 0, 0.65), inset 0 0 0 1px rgba(140, 190, 220, 0.08);
   border-radius: 10px;
+}
+
+/* Phase 10 — slow light travel across the console metal (~24s, a few %). */
+@keyframes lt_Hotbar_Hotbar {
+  0%   { transform: translateX(-140%) skewX(-14deg); opacity: 0; }
+  9%   { opacity: 0.18; }
+  14%  { opacity: 0; }
+  100% { transform: translateX(240%) skewX(-14deg); opacity: 0; }
+}
+.console::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  clip-path: inherit;
+  background: linear-gradient(100deg, transparent 42%, rgba(200, 230, 255, 0.8) 50%, transparent 58%);
+  mix-blend-mode: screen;
+  opacity: 0;
+  animation: lt_Hotbar_Hotbar 13s ease-in-out infinite;
+  animation-delay: 8s;
+  will-change: transform, opacity;
+}
+@media (prefers-reduced-motion: reduce) { .console::after { animation: none; } }
+
+/* Phase 9 — micro-detail: tiny milled screws in the corners of the plate. */
+.console::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  --scr: radial-gradient(circle at center,
+      rgba(0,0,0,0.7) 0 1.5px, rgba(190,215,245,0.7) 1.5px 3px, rgba(20,40,60,0.6) 3px 4.2px, transparent 4.2px);
+  background-image: var(--scr), var(--scr), var(--scr), var(--scr);
+  background-repeat: no-repeat;
+  background-position: 11px 11px, calc(100% - 11px) 11px, 11px calc(100% - 11px), calc(100% - 11px) calc(100% - 11px);
+  background-size: 9px 9px;
 }

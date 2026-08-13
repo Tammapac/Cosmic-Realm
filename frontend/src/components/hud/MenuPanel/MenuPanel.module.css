@@ -9,7 +9,7 @@
 .consoleWrap {
   position: relative;
   width: fit-content;
-  filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.6));
+  /* no `filter` — would break .console's frosted backdrop-filter. */
   --mp-cut: 18px;
 }
 
@@ -17,7 +17,7 @@
   position: absolute;
   inset: -3px;
   background: linear-gradient(180deg, #baf3ff 0%, var(--hud-cyan) 55%, var(--hud-shield-deep) 100%);
-  opacity: 0.8;
+  opacity: 0.34;
   filter: blur(6px);
   clip-path: polygon(var(--mp-cut) 0, 100% 0, 100% 100%, 0 100%, 0 var(--mp-cut));
   pointer-events: none;
@@ -26,12 +26,12 @@
 .crispEdge {
   position: absolute;
   inset: -1px;
-  background: linear-gradient(180deg, #d6f6ff 0%, var(--hud-cyan) 60%, var(--hud-shield-deep) 100%);
+  background: linear-gradient(180deg, #f2f8ff 0%, #c3d5ea 22%, #8098b5 50%, #3f5c7c 74%, var(--hud-shield-deep) 100%);
   clip-path: polygon(var(--mp-cut) 0, 100% 0, 100% 100%, 0 100%, 0 var(--mp-cut));
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
-  padding: 1.5px;
+  padding: 2.5px;
   pointer-events: none;
 }
 
@@ -40,12 +40,15 @@
   width: fit-content;
   padding: 10px 14px;
   background:
-    linear-gradient(180deg, rgba(120, 175, 220, 0.14) 0%, transparent 40%),
-    linear-gradient(180deg, #283a58 0%, #17233c 32%, #0d1626 62%, #060a14 100%);
+    linear-gradient(180deg, rgba(150, 195, 235, 0.18) 0%, transparent 38%),
+    linear-gradient(180deg, rgba(40, 56, 88, 0.5) 0%, rgba(26, 39, 64, 0.52) 40%, rgba(13, 22, 38, 0.56) 100%);
+  -webkit-backdrop-filter: blur(7px) saturate(1.05);
+  backdrop-filter: blur(7px) saturate(1.05);
   box-shadow:
     inset 0 2px 5px rgba(180, 220, 255, 0.14),
     inset 0 -10px 16px rgba(0, 0, 0, 0.55),
-    0 0 22px rgba(78, 226, 255, 0.18);
+    0 10px 22px rgba(0, 0, 0, 0.6),
+    0 0 12px rgba(78, 226, 255, 0.08);
   clip-path: polygon(var(--mp-cut) 0, 100% 0, 100% 100%, 0 100%, 0 var(--mp-cut));
   overflow: hidden;
 }
@@ -72,7 +75,7 @@
   z-index: 0;
   pointer-events: none;
   padding: 3px;
-  background: linear-gradient(180deg, rgba(210, 235, 255, 0.22) 0%, rgba(0, 0, 0, 0.35) 100%);
+  background: linear-gradient(180deg, rgba(235, 245, 255, 0.5) 0%, rgba(140, 175, 210, 0.15) 40%, rgba(0, 0, 0, 0.5) 100%);
   clip-path: polygon(var(--mp-cut) 0, 100% 0, 100% 100%, 0 100%, 0 var(--mp-cut));
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
@@ -114,8 +117,8 @@
 .button {
   all: unset;
   position: relative;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   cursor: pointer;
   clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
@@ -157,9 +160,44 @@
   transition: color var(--hud-t-fast), box-shadow var(--hud-t-fast);
 }
 
+/* PNG icon filling the inner slot. Slightly inset so the recessed frame
+   still shows around it; crisp pixels, dimmed a touch at rest and lit on
+   hover to match the glyph buttons' cyan hover. */
+.buttonIcon {
+  /* Centred in the slot and overflowing it a bit so it reads bigger. Opt OUT
+     of the global `image-rendering: pixelated` (index.css:53) that was
+     crushing these detailed icons. Brightened + a cyan glow so they pop off
+     the dark slot and are easy to recognise. */
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 128%;
+  height: 128%;
+  transform: translate(-50%, -50%);
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+  image-rendering: auto;
+  image-rendering: -webkit-optimize-contrast;
+  filter:
+    brightness(1.12) saturate(1.12) contrast(1.05)
+    drop-shadow(0 0 5px rgba(78, 226, 255, 0.5))
+    drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+  transition: filter var(--hud-t-fast), transform var(--hud-t-fast);
+}
+
 .button:hover .buttonInner {
   color: var(--hud-cyan);
   box-shadow: inset 0 0 0 1px var(--hud-border-bright), inset 0 3px 10px rgba(0, 0, 0, 0.5), inset 0 0 16px rgba(78, 226, 255, 0.16);
+}
+.button:hover .buttonIcon {
+  filter:
+    brightness(1.28) saturate(1.2) contrast(1.05)
+    drop-shadow(0 0 9px rgba(78, 226, 255, 0.75))
+    drop-shadow(0 0 3px rgba(150, 230, 255, 0.6));
+}
+.button:active .buttonIcon {
+  transform: translate(-50%, -50%) scale(0.94);
 }
 
 .button:hover {
@@ -209,3 +247,26 @@
 .logoutButton:hover {
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 9px rgba(255, 77, 94, 0.7));
 }
+
+/* Phase 10 — slow light travel across the console metal (~24s, a few %). */
+@keyframes lt_MenuPanel_MenuPanel {
+  0%   { transform: translateX(-140%) skewX(-14deg); opacity: 0; }
+  9%   { opacity: 0.18; }
+  14%  { opacity: 0; }
+  100% { transform: translateX(240%) skewX(-14deg); opacity: 0; }
+}
+.console::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  clip-path: inherit;
+  background: linear-gradient(100deg, transparent 42%, rgba(200, 230, 255, 0.8) 50%, transparent 58%);
+  mix-blend-mode: screen;
+  opacity: 0;
+  animation: lt_MenuPanel_MenuPanel 13s ease-in-out infinite;
+  animation-delay: 20s;
+  will-change: transform, opacity;
+}
+@media (prefers-reduced-motion: reduce) { .console::after { animation: none; } }

@@ -6,6 +6,53 @@ import { signToken } from "../middleware/auth.js";
 
 const router = Router();
 
+// The exact player columns register/login need — precisely the fields
+// sanitizePlayer() hands back to the client.
+//
+// Spelled out rather than using a bare `db.select()`, which makes Drizzle
+// expand the FULL schema into the SELECT list. That coupling means a schema
+// column the database does not have yet (players.is_admin, pending its
+// migration) breaks authentication outright with 42703, even though neither
+// route ever looks at the flag. Naming the columns keeps auth working
+// independently of columns it does not use.
+const PLAYER_FIELDS = {
+  id: schema.players.id,
+  name: schema.players.name,
+  shipClass: schema.players.shipClass,
+  level: schema.players.level,
+  exp: schema.players.exp,
+  credits: schema.players.credits,
+  honor: schema.players.honor,
+  hull: schema.players.hull,
+  shield: schema.players.shield,
+  zone: schema.players.zone,
+  posX: schema.players.posX,
+  posY: schema.players.posY,
+  faction: schema.players.faction,
+  skillPoints: schema.players.skillPoints,
+  skills: schema.players.skills,
+  ownedShips: schema.players.ownedShips,
+  inventory: schema.players.inventory,
+  equipped: schema.players.equipped,
+  cargo: schema.players.cargo,
+  drones: schema.players.drones,
+  consumables: schema.players.consumables,
+  hotbar: schema.players.hotbar,
+  ammo: schema.players.ammo,
+  rocketAmmoType: schema.players.rocketAmmoType,
+  ammoByType: schema.players.ammoByType,
+  autoRestock: schema.players.autoRestock,
+  autoRepairHull: schema.players.autoRepairHull,
+  autoShieldRecharge: schema.players.autoShieldRecharge,
+  activeQuests: schema.players.activeQuests,
+  completedQuests: schema.players.completedQuests,
+  dailyMissions: schema.players.dailyMissions,
+  lastDailyReset: schema.players.lastDailyReset,
+  milestones: schema.players.milestones,
+  dungeonClears: schema.players.dungeonClears,
+  dungeonBestTimes: schema.players.dungeonBestTimes,
+} as const;
+
 router.post("/register", async (req, res) => {
   try {
     const { username, email, password, pilotName } = req.body;
@@ -48,7 +95,7 @@ router.post("/register", async (req, res) => {
     }
 
     const existingPilot = await db
-      .select()
+      .select({ id: schema.players.id })
       .from(schema.players)
       .where(eq(schema.players.name, pilotName))
       .limit(1);
@@ -75,9 +122,9 @@ router.post("/register", async (req, res) => {
         name: pilotName,
         credits: 10000,
         inventory: [
-          { instanceId: wpId, defId: "wp-pulse-1" },
-          { instanceId: gnId, defId: "gn-core-1" },
-          { instanceId: mdId, defId: "md-thrust-1" },
+          { instanceId: wpId, defId: "wp-laser-t0" },
+          { instanceId: gnId, defId: "gn-shield-t0" },
+          { instanceId: mdId, defId: "md0-t0" },
         ],
         equipped: {
           weapon: [wpId, null, null],
@@ -89,7 +136,7 @@ router.post("/register", async (req, res) => {
         consumables: { "repair-bot": 2, "shield-charge": 1 },
         hotbar: ["repair-bot", "shield-charge", null, null, null, null, null, null],
       })
-      .returning();
+      .returning(PLAYER_FIELDS);
 
     await db.insert(schema.leaderboard).values({
       playerId: player.id,
@@ -140,7 +187,7 @@ router.post("/login", async (req, res) => {
     }
 
     const [player] = await db
-      .select()
+      .select(PLAYER_FIELDS)
       .from(schema.players)
       .where(eq(schema.players.accountId, account.id))
       .limit(1);

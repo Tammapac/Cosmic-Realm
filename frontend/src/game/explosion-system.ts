@@ -59,12 +59,12 @@ function ensureFlipbookLoaded(): void {
     const img = new Image();
     img.src = src;
     img.onload = () => {
-      const baseTex = PIXI.BaseTexture.from(img);
+      const baseTex = PIXI.Texture.from(img);
       const cols = 8, rows = 6, fw = 256, fh = 256;
       const frames: PIXI.Texture[] = [];
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
-          frames.push(new PIXI.Texture(baseTex, new PIXI.Rectangle(c * fw, r * fh, fw, fh)));
+          frames.push(new PIXI.Texture({ source: baseTex.source, frame: new PIXI.Rectangle(c * fw, r * fh, fw, fh) }));
         }
       }
       flipbookSets.push(frames);
@@ -84,7 +84,8 @@ function cachedTex(key: string, size: number, draw: (ctx: CanvasRenderingContext
   const c = document.createElement("canvas");
   c.width = c.height = size;
   draw(c.getContext("2d")!, size);
-  t = PIXI.Texture.from(c, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  t = PIXI.Texture.from(c);
+  (t.source as PIXI.TextureSource).scaleMode = "linear";
   texCache.set(key, t);
   return t;
 }
@@ -435,7 +436,7 @@ export class ExplosionSystem {
       this.initP(flash, "coreFlash", x, y, 0.07);
       flash.sprite.texture = glowTex();
       flash.sprite.tint = COLOR_FLASH_HALO;
-      flash.sprite.blendMode = PIXI.BLEND_MODES.ADD;
+      flash.sprite.blendMode = "add";
       flash.baseScale = (R * 1.2) / 128;
       flash.endScale = (R * 2.0) / 128;
       flash.startAlpha = 0.9;
@@ -456,7 +457,7 @@ export class ExplosionSystem {
       p.drag = 2.4;
       p.sprite.texture = sparkTex();
       p.sprite.tint = i < 2 ? 0xffffff : COLOR_SPARKS[Math.floor(Math.random() * COLOR_SPARKS.length)];
-      p.sprite.blendMode = PIXI.BLEND_MODES.ADD;
+      p.sprite.blendMode = "add";
       p.sprite.rotation = a;
       p.baseScale = (R * (0.5 + Math.random() * 0.4)) / 64;
       p.endScale = p.baseScale * 0.3;
@@ -478,7 +479,7 @@ export class ExplosionSystem {
       p.drag = 2.0;
       p.sprite.texture = sparkTex();
       p.sprite.tint = COLOR_SPARKS[Math.floor(Math.random() * COLOR_SPARKS.length)];
-      p.sprite.blendMode = PIXI.BLEND_MODES.ADD;
+      p.sprite.blendMode = "add";
       p.sprite.rotation = a;
       p.baseScale = (R * (0.35 + Math.random() * 0.25)) / 64;
       p.endScale = p.baseScale * 0.25;
@@ -497,7 +498,7 @@ export class ExplosionSystem {
       p.drag = 1.2;
       p.sprite.texture = glowTex();
       p.sprite.tint = COLOR_EMBERS[Math.floor(Math.random() * COLOR_EMBERS.length)];
-      p.sprite.blendMode = PIXI.BLEND_MODES.ADD;
+      p.sprite.blendMode = "add";
       p.baseScale = (R * 0.18) / 128;
       p.endScale = p.baseScale * 0.3;
       p.startAlpha = 0.7;
@@ -518,7 +519,7 @@ export class ExplosionSystem {
         this.initP(p, "light", x, y, cfg.lightLife);
         p.sprite.texture = glowTex();
         p.sprite.tint = COLOR_LIGHT;
-        p.sprite.blendMode = PIXI.BLEND_MODES.ADD;
+        p.sprite.blendMode = "add";
         p.baseScale = (R * cfg.lightScale * 2) / 128;
         p.endScale = p.baseScale * 1.15;
         p.startAlpha = cfg.lightAlpha;
@@ -533,7 +534,7 @@ export class ExplosionSystem {
         this.initP(core, "coreFlash", x, y, cfg.flashLife);
         core.sprite.texture = glowTex();
         core.sprite.tint = COLOR_FLASH_CORE;
-        core.sprite.blendMode = PIXI.BLEND_MODES.ADD;
+        core.sprite.blendMode = "add";
         core.baseScale = (R * 0.9) / 128;
         core.endScale = (R * 2.3) / 128;
         core.startAlpha = 1;
@@ -544,7 +545,7 @@ export class ExplosionSystem {
         this.initP(halo, "coreFlash", x, y, cfg.flashLife * 1.6);
         halo.sprite.texture = glowTex();
         halo.sprite.tint = COLOR_FLASH_HALO;
-        halo.sprite.blendMode = PIXI.BLEND_MODES.ADD;
+        halo.sprite.blendMode = "add";
         halo.baseScale = (R * 1.5) / 128;
         halo.endScale = (R * 2.9) / 128;
         halo.startAlpha = 0.65;
@@ -571,7 +572,7 @@ export class ExplosionSystem {
         p.frames = frames;
         p.sprite.texture = frames[0];
         p.sprite.tint = 0xffffff;
-        p.sprite.blendMode = PIXI.BLEND_MODES.ADD;
+        p.sprite.blendMode = "add";
         p.sprite.rotation = Math.random() * Math.PI * 2;
         p.flipX = Math.random() < 0.5 ? -1 : 1;
         p.flipY = Math.random() < 0.5 ? -1 : 1;
@@ -589,7 +590,7 @@ export class ExplosionSystem {
         this.initP(p, "ring", x, y, cfg.ringLife);
         p.sprite.texture = ringTex(Math.floor(Math.random() * 4));
         p.sprite.tint = COLOR_RING;
-        p.sprite.blendMode = PIXI.BLEND_MODES.ADD;
+        p.sprite.blendMode = "add";
         p.sprite.rotation = Math.random() * Math.PI * 2;
         p.baseScale = (R * 0.5) / 256;
         p.endScale = (R * 2.4) / 256;
@@ -605,7 +606,7 @@ export class ExplosionSystem {
         this.initP(p, "shockwave", x, y, cfg.shockLife);
         p.sprite.texture = shockTex();
         p.sprite.tint = COLOR_SHOCK;
-        p.sprite.blendMode = PIXI.BLEND_MODES.NORMAL;
+        p.sprite.blendMode = "normal";
         p.baseScale = (R * 0.6) / 256;
         p.endScale = (R * 3.4) / 256;
         p.startAlpha = 0.22;
@@ -627,7 +628,7 @@ export class ExplosionSystem {
         p.drag = 2.1; // low drag: sparks travel visibly far from the blast
         p.sprite.texture = sparkTex();
         p.sprite.tint = COLOR_SPARKS[Math.floor(Math.random() * COLOR_SPARKS.length)];
-        p.sprite.blendMode = PIXI.BLEND_MODES.ADD;
+        p.sprite.blendMode = "add";
         p.sprite.rotation = a;
         p.baseScale = (R * (0.35 + Math.random() * 0.3)) / 64;
         p.endScale = p.baseScale * 0.35;
@@ -652,7 +653,7 @@ export class ExplosionSystem {
         p.trailTimer = 0.02 * Math.random(); // desync stamp cadence
         p.sprite.texture = glowTex();
         p.sprite.tint = COLOR_EMBERS[Math.floor(Math.random() * COLOR_EMBERS.length)];
-        p.sprite.blendMode = PIXI.BLEND_MODES.ADD;
+        p.sprite.blendMode = "add";
         p.baseScale = (R * (0.14 + Math.random() * 0.08)) / 128;
         p.endScale = p.baseScale * 0.35;
         p.startAlpha = 0.95;
@@ -675,7 +676,7 @@ export class ExplosionSystem {
         p.spin = (Math.random() - 0.5) * 12;
         p.sprite.texture = debrisTex(Math.floor(Math.random() * 4));
         p.sprite.tint = COLOR_DEBRIS[Math.floor(Math.random() * COLOR_DEBRIS.length)];
-        p.sprite.blendMode = PIXI.BLEND_MODES.NORMAL;
+        p.sprite.blendMode = "normal";
         p.sprite.rotation = Math.random() * Math.PI * 2;
         p.baseScale = (R * (0.1 + Math.random() * 0.12)) / 32;
         p.endScale = p.baseScale * 0.8;
@@ -698,7 +699,7 @@ export class ExplosionSystem {
         p.drag = 1.6;
         p.sprite.texture = glowTex();
         p.sprite.tint = COLOR_EMBERS[Math.floor(Math.random() * COLOR_EMBERS.length)];
-        p.sprite.blendMode = PIXI.BLEND_MODES.ADD;
+        p.sprite.blendMode = "add";
         p.baseScale = (R * (0.12 + Math.random() * 0.1)) / 128;
         p.endScale = p.baseScale * 0.3;
         p.startAlpha = 0.8;
@@ -721,7 +722,7 @@ export class ExplosionSystem {
         p.spin = (Math.random() - 0.5) * 0.8;
         p.sprite.texture = smokeTex(Math.floor(Math.random() * 4));
         p.sprite.tint = COLOR_SMOKE;
-        p.sprite.blendMode = PIXI.BLEND_MODES.NORMAL;
+        p.sprite.blendMode = "normal";
         p.sprite.rotation = Math.random() * Math.PI * 2;
         p.baseScale = (R * (0.5 + Math.random() * 0.4)) / 128;
         p.endScale = p.baseScale * 1.9;
@@ -840,7 +841,7 @@ export class ExplosionSystem {
                 this.initP(puff, "trailPuff", p.x, p.y, 0.28 + Math.random() * 0.2);
                 puff.sprite.texture = glowTex();
                 puff.sprite.tint = p.sprite.tint;
-                puff.sprite.blendMode = PIXI.BLEND_MODES.ADD;
+                puff.sprite.blendMode = "add";
                 puff.baseScale = p.baseScale * (0.7 + Math.random() * 0.3);
                 puff.endScale = puff.baseScale * 0.2;
                 puff.startAlpha = 0.5;

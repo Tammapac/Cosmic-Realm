@@ -5,6 +5,7 @@ through a pixelation/outline pipeline, server-authoritative combat, ARPG
 loot, and a persistent multiplayer world of 20 hand-composed maps.
 
 **Start here:** [`GAME_OVERVIEW.md`](GAME_OVERVIEW.md)
+**AI agents start here:** [`CLAUDE.md`](CLAUDE.md) — orientation, VPS/SSH, deploy, rules
 
 ## Feature snapshot
 
@@ -57,8 +58,10 @@ Production build: `cd frontend && npm run build` → deploy `dist/` (see
 - [`LOOT_SYSTEM.md`](LOOT_SYSTEM.md) — rarities, affixes, legendaries, item audit
 
 **Technical**
+- [`CLAUDE.md`](CLAUDE.md) — AI agent entry point (VPS/SSH, deploy, hard rules, key files)
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) · [`RENDERING_PIPELINE.md`](RENDERING_PIPELINE.md) ·
   [`NETCODE_SYNC_NOTES.md`](NETCODE_SYNC_NOTES.md) · [`ASSET_STRUCTURE.md`](ASSET_STRUCTURE.md)
+- [`HUD_UI_SYSTEM.md`](HUD_UI_SYSTEM.md) — unified HUD/popup design system, tokens, components
 - [`DEPLOYMENT.md`](DEPLOYMENT.md) — build & VPS deployment
 - [`ASSET_LICENSES.md`](ASSET_LICENSES.md) — license/provenance of every third-party asset
 - [`PROJECT_CONTEXT.md`](PROJECT_CONTEXT.md) · [`AI_HANDOFF.md`](AI_HANDOFF.md) · [`CURRENT_ISSUES.md`](CURRENT_ISSUES.md)

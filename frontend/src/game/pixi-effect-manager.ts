@@ -64,6 +64,15 @@ interface PooledParticle {
   kind: string;
   blendAdd: boolean;
   trailTimer: number;
+  // Non-uniform stretch for beam/flame sprites (1 = round). scaleStart/End
+  // drive the base size; these multiply x/y independently so a sprite can be
+  // elongated along the thrust axis. Reset to 1 on every acquire().
+  scaleX: number;
+  scaleY: number;
+  // Sprite anchor along its local x (0.5 = centered). The flame texture anchors
+  // its bright nozzle end at 1.0 so the plume extends backward from the emit
+  // point. Reset to 0.5 on acquire().
+  anchorX: number;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -71,6 +80,17 @@ interface PooledParticle {
 // ══════════════════════════════════════════════════════════════════════════
 
 const fxTexCache = new Map<string, PIXI.Texture>();
+
+// Blend two 0xRRGGBB colors, t=0 → a, t=1 → b. Used to push flame cores toward
+// white-hot while keeping a hint of the faction color.
+function lerpColor(a: number, b: number, t: number): number {
+  const ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
+  const br = (b >> 16) & 0xff, bg = (b >> 8) & 0xff, bb = b & 0xff;
+  const r = Math.round(ar + (br - ar) * t);
+  const g = Math.round(ag + (bg - ag) * t);
+  const bl = Math.round(ab + (bb - ab) * t);
+  return (r << 16) | (g << 8) | bl;
+}
 
 function makeTex(key: string, size: number, drawFn: (ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number) => void): PIXI.Texture {
   let tex = fxTexCache.get(key);
@@ -80,7 +100,8 @@ function makeTex(key: string, size: number, drawFn: (ctx: CanvasRenderingContext
   c.height = size;
   const ctx = c.getContext("2d")!;
   drawFn(ctx, size / 2, size / 2, size / 2 - 2);
-  tex = PIXI.Texture.from(c, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  tex = PIXI.Texture.from(c);
+  (tex.source as PIXI.TextureSource).scaleMode = "linear";
   fxTexCache.set(key, tex);
   return tex;
 }
@@ -98,6 +119,69 @@ function getSoftGlowTex(r: number): PIXI.Texture {
     ctx.arc(cx, cy, rad, 0, Math.PI * 2);
     ctx.fill();
   });
+}
+
+// Engine-flame texture: a teardrop plume that is brightest/rounded at the
+// nozzle end (right side, local +x) and tapers to a soft point at the tail
+// (left, -x). Drawn once and stretched per-particle along the thrust axis to
+// read as a real exhaust beam rather than a round puff. The sprite's anchor is
+// set so the nozzle end sits at the emit point and the plume extends backward.
+function getFlameTex(): PIXI.Texture {
+  const w = 256, h = 96;
+  return makeTex2("engineflame", w, h, (ctx) => {
+    // Bright rounded head at the right (nozzle), fading to a point at the left.
+    // Horizontal gradient for length falloff…
+    const lg = ctx.createLinearGradient(0, 0, w, 0);
+    lg.addColorStop(0.0, "rgba(255,255,255,0)");
+    lg.addColorStop(0.35, "rgba(255,255,255,0.28)");
+    lg.addColorStop(0.72, "rgba(255,255,255,0.85)");
+    lg.addColorStop(0.9, "rgba(255,255,255,1)");
+    lg.addColorStop(1.0, "rgba(255,255,255,0.55)");
+    ctx.fillStyle = lg;
+    // …shaped as a teardrop: a smooth cone that swells toward the nozzle.
+    ctx.beginPath();
+    const cy = h / 2;
+    ctx.moveTo(2, cy);
+    for (let i = 0; i <= 60; i++) {
+      const tX = i / 60;
+      const x = 2 + tX * (w - 4);
+      // half-height profile: near 0 at tail, max near nozzle, slight round-off
+      const prof = Math.pow(tX, 0.65) * (1 - 0.15 * Math.pow(tX, 6));
+      ctx.lineTo(x, cy - prof * (h / 2 - 2));
+    }
+    for (let i = 60; i >= 0; i--) {
+      const tX = i / 60;
+      const x = 2 + tX * (w - 4);
+      const prof = Math.pow(tX, 0.65) * (1 - 0.15 * Math.pow(tX, 6));
+      ctx.lineTo(x, cy + prof * (h / 2 - 2));
+    }
+    ctx.closePath();
+    ctx.fill();
+    // Hot vertical falloff so edges are soft (multiply a vertical gradient).
+    const vg = ctx.createLinearGradient(0, 0, 0, h);
+    vg.addColorStop(0, "rgba(0,0,0,1)");
+    vg.addColorStop(0.5, "rgba(255,255,255,0)");
+    vg.addColorStop(1, "rgba(0,0,0,1)");
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalCompositeOperation = "source-over";
+  });
+}
+
+// Non-square texture helper (getFlameTex needs a wide canvas). Mirrors makeTex
+// but takes explicit width/height and no radius arg.
+function makeTex2(key: string, w: number, h: number, drawFn: (ctx: CanvasRenderingContext2D) => void): PIXI.Texture {
+  let tex = fxTexCache.get(key);
+  if (tex) return tex;
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  const ctx = c.getContext("2d")!;
+  drawFn(ctx);
+  tex = PIXI.Texture.from(c);
+  (tex.source as PIXI.TextureSource).scaleMode = "linear";
+  fxTexCache.set(key, tex);
+  return tex;
 }
 
 function getFireballTex(r: number): PIXI.Texture {
@@ -312,13 +396,13 @@ export class EffectManager {
       const img = new Image();
       img.src = src;
       img.onload = () => {
-        const baseTex = PIXI.BaseTexture.from(img);
+        const baseTex = PIXI.Texture.from(img);
         const cols = 8, rows = 6, fw = 256, fh = 256;
         const textures: PIXI.Texture[] = [];
         for (let r = 0; r < rows; r++) {
           for (let c = 0; c < cols; c++) {
             textures.push(
-              new PIXI.Texture(baseTex, new PIXI.Rectangle(c * fw, r * fh, fw, fh))
+              new PIXI.Texture({ source: baseTex.source, frame: new PIXI.Rectangle(c * fw, r * fh, fw, fh) })
             );
           }
         }
@@ -346,22 +430,25 @@ export class EffectManager {
         p.active = true;
         p.sprite.visible = true;
         p.sprite.texture = tex;
-        p.sprite.blendMode = blendAdd ? PIXI.BLEND_MODES.ADD : PIXI.BLEND_MODES.NORMAL;
+        p.sprite.blendMode = blendAdd ? "add" : "normal";
+        p.sprite.anchor.set(0.5); // default; callers override via p.anchorX
         p.kind = kind;
         p.blendAdd = blendAdd;
+        p.scaleX = 1; p.scaleY = 1; p.anchorX = 0.5;
         this.activeCount++;
         return p;
       }
     }
     const sprite = new PIXI.Sprite(tex);
     sprite.anchor.set(0.5);
-    sprite.blendMode = blendAdd ? PIXI.BLEND_MODES.ADD : PIXI.BLEND_MODES.NORMAL;
+    sprite.blendMode = blendAdd ? "add" : "normal";
     layer.addChild(sprite);
     const p: PooledParticle = {
       active: true, sprite, x: 0, y: 0, vx: 0, vy: 0,
       life: 0, maxLife: 1, alpha: 1, startAlpha: 1,
       scaleStart: 1, scaleEnd: 0, rotation: 0, angularVel: 0,
       tint: 0xffffff, kind, blendAdd, trailTimer: 0,
+      scaleX: 1, scaleY: 1, anchorX: 0.5,
     };
     pool.push(p);
     this.activeCount++;
@@ -406,7 +493,11 @@ export class EffectManager {
         const alpha = p.startAlpha * (1 - t);
 
         p.sprite.position.set(p.x, p.y);
-        p.sprite.scale.set(Math.max(0.01, scale));
+        // Non-uniform stretch (scaleX/scaleY default to 1 = round). Lets beam
+        // sprites elongate along the thrust axis without affecting other VFX.
+        const s = Math.max(0.01, scale);
+        p.sprite.scale.set(s * p.scaleX, s * p.scaleY);
+        if (p.sprite.anchor.x !== p.anchorX) p.sprite.anchor.set(p.anchorX, 0.5);
         p.sprite.alpha = Math.max(0, alpha);
         p.sprite.rotation = p.rotation;
         p.sprite.tint = p.tint;
@@ -495,50 +586,106 @@ export class EffectManager {
 
   // ── THRUSTER TRAIL ──────────────────────────────────────────────────
   spawnThrusterTrail(x: number, y: number, angle: number, speed: number, color: number, alphaMultiplier: number = 1, sizeMultiplier: number = 1): void {
+    // `speed` here is the store's raw speed (tiny units); normalize to 0..1.
     const intensity = Math.min(1, speed / 4);
     if (intensity < 0.05) return;
 
-    const count = intensity > 0.4 ? 2 : 1;
-    for (let i = 0; i < count; i++) {
-      const texR = Math.max(4, Math.round(6 * sizeMultiplier));
-      const p = this.acquire("trail", this.behindLayer, getSoftGlowTex(texR), true);
-      if (!p) return;
-      const back = angle + Math.PI;
-      const spread = (Math.random() - 0.5) * 0.4;
-      const offset = (2 + Math.random() * 1) * sizeMultiplier;
-      p.x = x + Math.cos(back + spread) * offset;
-      p.y = y + Math.sin(back + spread) * offset;
-      p.vx = Math.cos(back) * (25 + Math.random() * 20) * intensity;
-      p.vy = Math.sin(back) * (25 + Math.random() * 20) * intensity;
-      p.life = VFX.THRUSTER_PARTICLE_LIFETIME * (0.7 + Math.random() * 0.6) * sizeMultiplier;
-      p.maxLife = p.life;
-      p.startAlpha = 0.7 * intensity * alphaMultiplier;
-      p.scaleStart = (0.18 + intensity * 0.35) * (0.8 + Math.random() * 0.4) * sizeMultiplier;
-      p.scaleEnd = 0;
-      p.tint = color;
-      p.rotation = 0;
-      p.angularVel = 0;
+    // Deliberately minimal: a tiny STATIC glow dot at each nozzle — no long
+    // beam, no stretch, no per-frame flicker, no random size/position (which
+    // read as swinging/pulsing). Re-spawned every frame with identical values,
+    // so it sits as a steady ~5px point that just brightens with thrust.
+    const sm = sizeMultiplier;
+    const bx = Math.cos(angle + Math.PI), by = Math.sin(angle + Math.PI); // slight backward nudge
+
+    // Outer soft glow (colored) — small, fixed size.
+    const glow = this.acquire("beam", this.behindLayer, getSoftGlowTex(5), true);
+    if (glow) {
+      glow.x = x + bx * 1.5; glow.y = y + by * 1.5;
+      glow.vx = 0; glow.vy = 0;
+      glow.life = 0.05; glow.maxLife = glow.life;
+      glow.startAlpha = 0.7 * intensity * alphaMultiplier;
+      glow.scaleStart = 0.55 * sm; glow.scaleEnd = 0.55 * sm; // ~8px, no shrink → no pulse
+      glow.scaleX = 1; glow.scaleY = 1;                      // round, not stretched
+      glow.anchorX = 0.5;
+      glow.tint = color;
+      glow.rotation = 0; glow.angularVel = 0;
+    }
+
+    // White-hot inner dot — even smaller, on top.
+    const core = this.acquire("beam", this.behindLayer, getSoftGlowTex(4), true);
+    if (core) {
+      core.x = x + bx * 1.5; core.y = y + by * 1.5;
+      core.vx = 0; core.vy = 0;
+      core.life = 0.05; core.maxLife = core.life;
+      core.startAlpha = 0.85 * intensity * alphaMultiplier;
+      core.scaleStart = 0.4 * sm; core.scaleEnd = 0.4 * sm; // ~5px
+      core.scaleX = 1; core.scaleY = 1;
+      core.anchorX = 0.5;
+      core.tint = lerpColor(color, 0xffffff, 0.7);
+      core.rotation = 0; core.angularVel = 0;
+    }
+
+    // ── Thruster TRAIL — separate from the static nozzle glow above. Small
+    //    soft puffs born at the nozzle that drift backward, gently expand and
+    //    fade, forming the ribbon that streams out behind the ship. These are
+    //    long-lived MOVING particles (unlike the re-spawned static glow), so
+    //    they accumulate into a proper trailing wake. ──
+    const px = Math.cos(angle + Math.PI / 2), py = Math.sin(angle + Math.PI / 2);
+    const puffs = intensity > 0.5 ? 2 : 1;
+    for (let i = 0; i < puffs; i++) {
+      const puff = this.acquire("trail", this.behindLayer, getSoftGlowTex(7), true);
+      if (!puff) break;
+      const dist = (3 + Math.random() * 5) * sm;                 // start right at the nozzle
+      const lat = (Math.random() - 0.5) * (3 + intensity * 4) * sm;
+      puff.x = x + bx * dist + px * lat;
+      puff.y = y + by * dist + py * lat;
+      // Drift backward (the trail streams out behind the ship).
+      puff.vx = bx * (28 + Math.random() * 28) * intensity + px * lat * 0.4;
+      puff.vy = by * (28 + Math.random() * 28) * intensity + py * lat * 0.4;
+      puff.life = VFX.THRUSTER_PARTICLE_LIFETIME * (1.0 + Math.random() * 0.7) * sm;
+      puff.maxLife = puff.life;
+      puff.startAlpha = 0.34 * intensity * alphaMultiplier;
+      puff.scaleStart = (0.28 + intensity * 0.3) * (0.85 + Math.random() * 0.3) * sm;
+      puff.scaleEnd = puff.scaleStart * 2.0;                     // expands as it cools (billow)
+      puff.scaleX = 1; puff.scaleY = 1;
+      puff.anchorX = 0.5;
+      puff.tint = lerpColor(color, 0xffffff, 0.12);
+      puff.rotation = 0; puff.angularVel = 0;
     }
   }
 
 
   spawnEngineGlow(x: number, y: number, intensity: number, color: number, inFront: boolean = false): void {
     const layer = inFront ? this.frontLayer : this.behindLayer;
-    const p = this.acquire(inFront ? "muzzle" : "trail", layer, getSoftGlowTex(12), true);
+    // Outer soft bloom — bigger + brighter than before so the nozzle reads as
+    // genuinely hot, with a white-hot inner dot on top.
+    const p = this.acquire(inFront ? "muzzle" : "trail", layer, getSoftGlowTex(20), true);
     if (!p) return;
     const jitter = (Math.random() - 0.5) * 2;
     p.x = x + jitter;
     p.y = y + jitter;
     p.vx = (Math.random() - 0.5) * 4;
     p.vy = (Math.random() - 0.5) * 4;
-    p.life = 0.05 + Math.random() * 0.03;
+    p.life = 0.06 + Math.random() * 0.03;
     p.maxLife = p.life;
-    p.startAlpha = intensity * (0.45 + Math.random() * 0.25);
-    p.scaleStart = 0.5 + intensity * 0.35 + Math.random() * 0.15;
-    p.scaleEnd = p.scaleStart * 0.7;
+    p.startAlpha = intensity * (0.6 + Math.random() * 0.25);
+    p.scaleStart = 0.8 + intensity * 0.7 + Math.random() * 0.15;
+    p.scaleEnd = p.scaleStart * 0.75;
     p.tint = color;
     p.rotation = Math.random() * Math.PI * 2;
     p.angularVel = (Math.random() - 0.5) * 3;
+
+    // White-hot core dot on top of the bloom.
+    const core = this.acquire(inFront ? "muzzle" : "trail", layer, getSoftGlowTex(10), true);
+    if (!core) return;
+    core.x = p.x; core.y = p.y;
+    core.vx = p.vx * 0.5; core.vy = p.vy * 0.5;
+    core.life = p.life; core.maxLife = p.life;
+    core.startAlpha = intensity * 0.85;
+    core.scaleStart = 0.5 + intensity * 0.4;
+    core.scaleEnd = core.scaleStart * 0.7;
+    core.tint = lerpColor(color, 0xffffff, 0.75);
+    core.rotation = 0; core.angularVel = 0;
   }
 
 
@@ -1315,7 +1462,7 @@ export class EffectManager {
     anim.alpha = 0.7 + Math.random() * 0.3;
 
     // Additive blending for fire look
-    anim.blendMode = PIXI.BLEND_MODES.ADD;
+    anim.blendMode = "add";
 
     // Random flip
     if (Math.random() > 0.5) anim.scale.x *= -1;

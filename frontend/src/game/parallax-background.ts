@@ -115,8 +115,9 @@ function nebulaTex(): PIXI.Texture {
       ctx.fillRect(0, 0, S, S);
     }
   }
-  nebulaTexCache = PIXI.Texture.from(c, { scaleMode: PIXI.SCALE_MODES.LINEAR });
-  nebulaTexCache.baseTexture.wrapMode = PIXI.WRAP_MODES.REPEAT;
+  nebulaTexCache = PIXI.Texture.from(c);
+  (nebulaTexCache.source as PIXI.TextureSource).scaleMode = "linear";
+  (nebulaTexCache.source as PIXI.TextureSource).wrapMode = "repeat";
   return nebulaTexCache;
 }
 
@@ -132,7 +133,8 @@ function moteTex(): PIXI.Texture {
   g.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 32, 32);
-  moteTexCache = PIXI.Texture.from(c, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  moteTexCache = PIXI.Texture.from(c);
+  (moteTexCache.source as PIXI.TextureSource).scaleMode = "linear";
   return moteTexCache;
 }
 
@@ -149,13 +151,25 @@ function buildStarfieldTexture(label: string, tiles: PIXI.Texture[]): PIXI.Textu
   for (let gy = 0; gy < N; gy++) {
     for (let gx = 0; gx < N; gx++) {
       const t = tiles[Math.floor(rnd() * tiles.length)];
-      const src = (t.baseTexture.resource as any)?.source as CanvasImageSource | undefined;
+      const src = (t.source as any)?.resource as CanvasImageSource | undefined;
       if (src) ctx.drawImage(src, t.frame.x, t.frame.y, CELL, CELL, gx * CELL, gy * CELL, CELL, CELL);
     }
   }
-  const tex = PIXI.Texture.from(rt, { scaleMode: PIXI.SCALE_MODES.LINEAR });
-  tex.baseTexture.wrapMode = PIXI.WRAP_MODES.REPEAT;
+  const tex = PIXI.Texture.from(rt);
+  (tex.source as PIXI.TextureSource).scaleMode = "linear";
+  (tex.source as PIXI.TextureSource).wrapMode = "repeat";
   return tex;
+}
+
+// v8's Texture.fromURL was removed (Texture.from(url) now only checks the
+// cache, per atlas.ts's makeNineSlice comment) — PIXI.Assets.load is the v8
+// replacement, with scaleMode applied to the loaded texture's source after
+// the fact instead of as a load option.
+function loadLinearTexture(url: string): Promise<PIXI.Texture> {
+  return PIXI.Assets.load(url).then((tex: PIXI.Texture) => {
+    (tex.source as PIXI.TextureSource).scaleMode = "linear";
+    return tex;
+  });
 }
 
 export interface ParallaxStats {
@@ -254,7 +268,7 @@ export class ParallaxBackground {
     this.fillSpr = new PIXI.Sprite(fillTex);
     this.far.addChild(this.fillSpr);
 
-    (PIXI.Texture as any).fromURL(`/bg/do/${def.bg}?v=3`, { scaleMode: PIXI.SCALE_MODES.LINEAR })
+    loadLinearTexture(`/bg/do/${def.bg}?v=3`)
       .then((tex: PIXI.Texture) => {
         if (token !== this.buildToken) { tex.destroy(true); return; }
         this.zoneTextures.push(tex);
@@ -267,7 +281,7 @@ export class ParallaxBackground {
     // ── layer 2: mid space — starfield + planets ───────────────────────
     if (def.starfield.length > 0) {
       Promise.all(def.starfield.map((f) =>
-        (PIXI.Texture as any).fromURL(`/bg/do/${f}?v=3`, { scaleMode: PIXI.SCALE_MODES.LINEAR }).catch(() => null)
+        loadLinearTexture(`/bg/do/${f}?v=3`).catch(() => null)
       )).then((texs: (PIXI.Texture | null)[]) => {
         if (token !== this.buildToken) return;
         const valid = texs.filter((t): t is PIXI.Texture => !!t);
@@ -275,14 +289,14 @@ export class ParallaxBackground {
         const sfTex = buildStarfieldTexture(label, valid);
         this.zoneTextures.push(sfTex);
         this.sfTile = new PIXI.TilingSprite(sfTex, 100, 100);
-        this.sfTile.blendMode = PIXI.BLEND_MODES.ADD; // black-backed tiles -> black vanishes
+        this.sfTile.blendMode = "add"; // black-backed tiles -> black vanishes
         this.sfTile.alpha = 0.75;
         this.mid.addChildAt(this.sfTile, 0);
       });
     }
 
     for (const p of def.planets) {
-      (PIXI.Texture as any).fromURL(`/bg/do/${p.file}?v=3`, { scaleMode: PIXI.SCALE_MODES.LINEAR })
+      loadLinearTexture(`/bg/do/${p.file}?v=3`)
         .then((tex: PIXI.Texture) => {
           if (token !== this.buildToken) { tex.destroy(true); return; }
           this.zoneTextures.push(tex);
@@ -303,27 +317,27 @@ export class ParallaxBackground {
     // ── layer 3: atmosphere — gas bands, lens flares, motes ────────────
     const nt = nebulaTex();
     this.nebB = new PIXI.TilingSprite(nt, 100, 100);
-    this.nebB.tint = PIXI.utils.string2hex(def.hueB);
-    this.nebB.blendMode = PIXI.BLEND_MODES.SCREEN;
+    this.nebB.tint = new PIXI.Color(def.hueB).toNumber();
+    this.nebB.blendMode = "screen";
     this.nebB.alpha = 0.15;
     this.nebB.tileScale.set(1.7);
     this.atmo.addChild(this.nebB);
     this.nebA = new PIXI.TilingSprite(nt, 100, 100);
-    this.nebA.tint = PIXI.utils.string2hex(def.hueA);
-    this.nebA.blendMode = PIXI.BLEND_MODES.SCREEN;
+    this.nebA.tint = new PIXI.Color(def.hueA).toNumber();
+    this.nebA.blendMode = "screen";
     this.nebA.alpha = 0.2;
     this.nebA.tileScale.set(1.1);
     this.atmo.addChild(this.nebA);
 
     for (const f of def.flares) {
       f.files.forEach((file, i) => {
-        (PIXI.Texture as any).fromURL(`/bg/do/${file}?v=3`, { scaleMode: PIXI.SCALE_MODES.LINEAR })
+        loadLinearTexture(`/bg/do/${file}?v=3`)
           .then((tex: PIXI.Texture) => {
             if (token !== this.buildToken) { tex.destroy(true); return; }
             this.zoneTextures.push(tex);
             const spr = new PIXI.Sprite(tex);
             spr.anchor.set(0.5);
-            spr.blendMode = PIXI.BLEND_MODES.ADD;
+            spr.blendMode = "add";
             const baseA = i === 0 ? 0.85 : 0.5;
             spr.alpha = baseA;
             this.atmo.addChild(spr);
@@ -333,11 +347,11 @@ export class ParallaxBackground {
       });
     }
 
-    const moteTint = PIXI.utils.string2hex(def.hueA);
+    const moteTint = new PIXI.Color(def.hueA).toNumber();
     for (let i = 0; i < 18; i++) {
       const spr = new PIXI.Sprite(moteTex());
       spr.anchor.set(0.5);
-      spr.blendMode = PIXI.BLEND_MODES.ADD;
+      spr.blendMode = "add";
       spr.tint = moteTint;
       spr.alpha = 0.05 + rnd() * 0.09;
       spr.scale.set(0.3 + rnd() * 0.8);
@@ -352,7 +366,7 @@ export class ParallaxBackground {
     if (label.startsWith("4-") && def.planets.length > 0) {
       const picks = def.planets.slice(0, 2);
       picks.forEach((p, i) => {
-        (PIXI.Texture as any).fromURL(`/bg/do/${p.file}?v=3`, { scaleMode: PIXI.SCALE_MODES.LINEAR })
+        loadLinearTexture(`/bg/do/${p.file}?v=3`)
           .then((tex: PIXI.Texture) => {
             if (token !== this.buildToken) { tex.destroy(true); return; }
             this.zoneTextures.push(tex);

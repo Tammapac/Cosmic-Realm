@@ -1,7 +1,37 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { ThreeNebulaBackground } from "./three-nebula-background";
+import { applySpaceMaterial, makeEnemyCore, makeEnemyFlowShell, ENEMY_ACCENTS, setMaterialAnisotropyMax, type SpaceRole } from "./space-material";
+import { perfRegisterThree } from "./perf";
+import { getRendererSettings } from "./RendererSettings";
+import { installStudioEnv } from "./three-environment";
+import { createPostFX, type PostFX } from "./three-postfx";
+
+// Stable string hash → seed for reproducible per-class surface aging.
+function shipSeedHash(s: string): number {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+
+// Does a material's dominant color match the accent hue (so we know it's the
+// enemy's "core" part, e.g. the overlord's blue crystal)? Compares hue and
+// requires the color to be reasonably saturated + not near-black, so plain
+// grey/dark hull plates never match.
+function materialMatchesAccentColor(m: THREE.MeshStandardMaterial, accentHex: number, matchAny = false): boolean {
+  const src = (m.emissive && (m.emissive.r + m.emissive.g + m.emissive.b) > 0.15)
+    ? m.emissive : m.color;
+  if (!src) return false;
+  const hsl = { h: 0, s: 0, l: 0 };
+  src.getHSL(hsl);
+  // Grey / black / white → never the core (leave plain hull plates alone).
+  if (hsl.s < 0.22 || hsl.l < 0.1 || hsl.l > 0.92) return false;
+  if (matchAny) return true; // any reasonably-colored material is the core
+  const acc = new THREE.Color(accentHex);
+  const ah = { h: 0, s: 0, l: 0 }; acc.getHSL(ah);
+  let dh = Math.abs(hsl.h - ah.h); if (dh > 0.5) dh = 1 - dh; // circular hue distance
+  return dh < 0.14; // within ~50° of the accent hue (a bit looser)
+}
 import {
   ENABLE_THREE_NEBULA_SHADER,
   THREE_NEBULA_RENDER_SCALE,
@@ -14,7 +44,13 @@ import {
   THREE_NEBULA_SCALE_B,
   PIXELATE_3D,
   PIXELATE_3D_SCALE,
+  ENABLE_SHARED_3D_SCENE,
 } from "./renderer-config";
+import {
+  ensureWorldLayer, claimWorldRenderDriver, isWorldRenderDriver,
+  playerShipsGroup, enemyShipsGroup, setShipLift, getShipLiftFactor,
+  normalizeSharedDepth, destroyWorldLayer,
+} from "./three-world-layer";
 
 // Effective downscale factor for the fake pixel-art render mode (1 = off)
 const PIX_SCALE = PIXELATE_3D ? Math.max(1, PIXELATE_3D_SCALE) : 1;
@@ -105,11 +141,11 @@ const SHIP_3D_MODELS: Record<string, string> = {
   wasp: "/models/Wasp_Interceptor.glb",
   // Enemy NPC models — one GLB per enemy type (nose = -Z, up = +Y, size
   // normalization via maxDim so ENEMY_DEFS.size drives small→big scaling)
-  enemy_scout: "/models/enemies/enemy_scout.glb?v=18",
-  enemy_interceptor: "/models/enemies/enemy_interceptor.glb?v=18",
-  enemy_raider: "/models/enemies/enemy_raider.glb?v=18",
-  enemy_corvette: "/models/enemies/enemy_corvette.glb?v=18",
-  enemy_destroyer: "/models/enemies/enemy_destroyer.glb?v=18",
+  enemy_scout: "/models/enemies/enemy_scout.glb?v=19",
+  enemy_interceptor: "/models/enemies/enemy_interceptor.glb?v=19",
+  enemy_raider: "/models/enemies/enemy_raider.glb?v=19",
+  enemy_corvette: "/models/enemies/enemy_corvette.glb?v=19",
+  enemy_destroyer: "/models/enemies/enemy_destroyer.glb?v=19",
   enemy_sentinel: "/models/enemies/enemy_sentinel.glb?v=18",
   enemy_specter: "/models/enemies/enemy_specter.glb?v=18",
   enemy_phantom: "/models/enemies/enemy_phantom.glb?v=18",
@@ -118,11 +154,50 @@ const SHIP_3D_MODELS: Record<string, string> = {
   enemy_dread: "/models/enemies/enemy_dread.glb?v=18",
   enemy_titan: "/models/enemies/enemy_titan.glb?v=18",
   enemy_juggernaut: "/models/enemies/enemy_juggernaut.glb?v=18",
-  enemy_overlord: "/models/enemies/enemy_overlord.glb?v=18",
+  enemy_overlord: "/models/enemies/enemy_overlord.glb?v=19",
   enemy_leviathan: "/models/enemies/enemy_leviathan.glb?v=18",
   // Zengas — x-4 tier ship, registered and render-ready (not yet mapped to a type)
   enemy_zengas: "/models/enemies/enemy_zengas.glb?v=18",
+  // Erix — new NPC on all x-1 maps
+  enemy_erix: "/models/enemies/enemy_erix.glb?v=19",
+  enemy_angin: "/models/enemies/enemy_angin.glb?v=1",
+  enemy_crobium: "/models/enemies/enemy_crobium.glb?v=1",
+  enemy_draug: "/models/enemies/enemy_draug.glb?v=1",
+  enemy_knoton: "/models/enemies/enemy_knoton.glb?v=1",
+  enemy_maron: "/models/enemies/enemy_maron.glb?v=1",
+  enemy_nabas: "/models/enemies/enemy_nabas.glb?v=1",
+  enemy_silikum: "/models/enemies/enemy_silikum.glb?v=1",
+  enemy_simonit: "/models/enemies/enemy_simonit.glb?v=1",
 };
+
+// Per-model heading offset (radians), added to the computed yaw so a GLB whose
+// nose is NOT authored along -Z still flies/aims the right way. The existing
+// enemies are all nose=-Z (offset 0, the default). New NPCs exported from a
+// different tool may need a quarter/half turn — set it here instead of
+// re-exporting the GLB. Baked into the model at load (see loadModel).
+export const MODEL_YAW_OFFSET: Record<string, number> = {
+  // Per-model heading correction, dialled in from live in-game observation.
+  // Convention: +Y rotation is COUNTER-clockwise (turn LEFT); clockwise (turn
+  // RIGHT) is negative. So "90° right" = -π/2, "90° left" = +π/2.
+  enemy_nabas: -Math.PI / 2,    // 90° right
+  enemy_silikum: Math.PI / 2,   // 90° left
+  enemy_erix: -Math.PI / 2,     // 90° right
+  enemy_angin: -Math.PI / 2,    // 90° right
+  enemy_crobium: Math.PI / 2,   // 90° left
+  enemy_draug: -Math.PI / 2,    // 90° right
+  // maron/knoton/simonit are radially symmetric — no meaningful facing.
+};
+
+// Models whose AUTHORED texture look must be preserved: no space-metal
+// override (which darkens the albedo ~45% and swaps the normal map). These
+// Tripo-generated NPC GLBs carry their whole identity in the baseColor
+// texture (red energy lines, crystal whites) and ship WITHOUT an emissive
+// channel — so we derive a glow from the albedo instead: bright/saturated
+// texel areas self-illuminate (bloom picks them up), dark hull stays dark.
+const KEEP_AUTHORED_MODELS = new Set([
+  "enemy_angin", "enemy_crobium", "enemy_draug", "enemy_knoton",
+  "enemy_maron", "enemy_nabas", "enemy_silikum", "enemy_simonit",
+]);
 
 interface ShipHardpoints {
   thrusters: THREE.Object3D[];
@@ -160,11 +235,29 @@ interface ModelLocalHardpoints {
 
 interface Ship3D {
   lastYRot: number;
+  yawFix?: number;   // per-model heading offset (nose not authored on -Z)
+  /** Class this instance was BUILT from. updateShip3D() only creates a model
+   *  when the entity has none, so without remembering the class here a player
+   *  who buys or equips a different ship kept flying the old mesh until the
+   *  entity was removed (i.e. until a zone change or reload). */
+  shipClass: string;
   wrapper: THREE.Group;
   model: THREE.Group;
+  // Starblast-style flight lean: banking roll into turns + pitch on
+  // accel/decel, applied to model.rotation.x/z (heading stays on .y). Purely
+  // visual; the analytic muzzle transform uses lastYRot + wrapper tilt only,
+  // so projectile spawns are unaffected. Smoothed toward a target each frame.
+  bank: number;     // current roll (rad, +/- ~0.5)
+  pitch: number;    // current pitch (rad) — always 0 now, kept for the debug hook
+  prevYRot?: number; // last heading, to derive turn rate
+  prevWorldX?: number;
+  prevWorldY?: number;
+  prevMoveAng?: number; // last MOVEMENT-direction angle, to derive turn rate for bank
+  smoothSpeed?: number; // low-pass filtered speed
   hardpoints: ShipHardpoints;
   engineGlows: THREE.Sprite[];
   mixer: THREE.AnimationMixer | null;
+  selectionOutline?: THREE.Group | null; // red backface-hull, built lazily on select
   lastCamX: number;
   lastCamY: number;
   lastWorldX: number;
@@ -179,6 +272,38 @@ let renderer: THREE.WebGLRenderer | null = null;
 let scene: THREE.Scene | null = null;
 let camera: THREE.OrthographicCamera | null = null;
 let initialized = false;
+
+// Optional EffectComposer post-processing (GTAO + UnrealBloom + FXAA + vignette),
+// enabled per quality tier. When active it renders the scene into outlineRT so
+// the existing selection-outline + FX passes still composite on top. When null,
+// the cheap inline bloom pipeline below runs instead.
+let postFX: PostFX | null = null;
+// Debug (depth-test harness): when true, render3DLayer skips the postFX composer
+// and takes the cheap inline path, so an A/B grab can isolate whether the
+// GTAO/Bloom/FXAA/Vignette chain is what makes the merged station read wrong.
+let _debugBypassPostFX = false;
+export function __setBypassPostFX(v: boolean): void { _debugBypassPostFX = v; }
+// depth-test harness: reach the individual composer passes so each can be
+// toggled to find which one washes the merged station out.
+export function __getPostFX(): PostFX | null { return postFX; }
+// Plain copy material to blit the composer's result (outlineRT) to screen,
+// preserving transparency. Used only when postFX is active.
+//
+// NO colorspace conversion here. The composer's final OutputPass already encodes
+// linear→sRGB; the target it writes (outlineRT) therefore holds sRGB pixels. A
+// `#include <colorspace_fragment>` here (which honours renderer.outputColorSpace =
+// sRGB) would encode a SECOND time — a double sRGB curve that lifts every mid-
+// tone toward white. On a small dark ship it read as a faint haze and went
+// unnoticed; on the big bright station in the merged scene it was an obvious
+// grey, washed-out veil that flattened all the hull detail. Straight copy fixes
+// it: sRGB in, sRGB out, once.
+let copyMat: THREE.ShaderMaterial | null = null;
+const COPY_FRAG = `
+uniform sampler2D tDiffuse;
+varying vec2 vUv;
+void main() {
+  gl_FragColor = texture2D(tDiffuse, vUv);
+}`;
 
 // Silhouette outline pass: ships render into an offscreen target, then a
 // fullscreen blit paints 1 buffer-pixel of black wherever a transparent pixel
@@ -196,13 +321,8 @@ uniform vec2 texel;
 varying vec2 vUv;
 void main() {
   vec4 c = texture2D(tDiffuse, vUv);
-  if (c.a < 0.5) {
-    float n = texture2D(tDiffuse, vUv + vec2(texel.x, 0.0)).a;
-    n = max(n, texture2D(tDiffuse, vUv - vec2(texel.x, 0.0)).a);
-    n = max(n, texture2D(tDiffuse, vUv + vec2(0.0, texel.y)).a);
-    n = max(n, texture2D(tDiffuse, vUv - vec2(0.0, texel.y)).a);
-    if (n > 0.5) c = vec4(0.0, 0.0, 0.0, 1.0);
-  }
+  // Black silhouette outline REMOVED — it made every model read as a flat
+  // cut-out sticker. Ships now sit directly in the scene with no hard rim.
   // Emissive bloom: bulbs, cores and strips bleed light like real lamps
   vec3 b = texture2D(tBloom, vUv).rgb * 0.85;
   c.rgb += b;
@@ -236,11 +356,43 @@ void main() {
 
 const QUAD_VERT = `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
 
+// Red SELECTION outline: the selected ship is rendered (flat white) into a mask
+// target; this pass draws a red rim on the mask's silhouette edge — a clean
+// thin line, NOT a filled area. Blended over the final image.
+const SELECT_FRAG = `
+uniform sampler2D tMask;
+uniform vec2 texel;
+uniform float thickness;
+varying vec2 vUv;
+void main() {
+  float inside = texture2D(tMask, vUv).a;
+  if (inside > 0.5) { discard; }     // never cover the ship (no red fill)
+  // Nearest silhouette hit within a radius → distance-based falloff. A THIN
+  // bright core (dist 1-2) + a soft MINI glow further out (up to ~5px).
+  float best = 999.0;
+  for (float dx = -5.0; dx <= 5.0; dx += 1.0) {
+    for (float dy = -5.0; dy <= 5.0; dy += 1.0) {
+      if (texture2D(tMask, vUv + vec2(dx, dy) * texel * thickness).a > 0.5) {
+        best = min(best, length(vec2(dx, dy)));
+      }
+    }
+  }
+  if (best > 6.0) discard;                 // too far from the ship → nothing
+  float core = 1.0 - smoothstep(0.0, 2.6, best);   // thin crisp line
+  float glow = 1.0 - smoothstep(0.0, 6.0, best);   // soft outer halo
+  float a = core * 0.85 + glow * 0.4;              // line + mini glow, semi-transparent
+  gl_FragColor = vec4(1.0, 0.2, 0.22, min(0.9, a));
+}`;
+
 let bloomRTA: THREE.WebGLRenderTarget | null = null;
 let bloomRTB: THREE.WebGLRenderTarget | null = null;
 let brightMat: THREE.ShaderMaterial | null = null;
 let blurMat: THREE.ShaderMaterial | null = null;
 let fsQuad: THREE.Mesh | null = null;
+let _anySelected = false;
+let selectRT: THREE.WebGLRenderTarget | null = null;
+let selectMat: THREE.ShaderMaterial | null = null;
+let selectMaskMat: THREE.MeshBasicMaterial | null = null;
 
 function setupOutlinePass(bufW: number, bufH: number): void {
   const hw = Math.max(1, Math.floor(bufW / 2));
@@ -284,6 +436,29 @@ function setupOutlinePass(bufW: number, bufH: number): void {
   fsQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), outlineMat);
   fsQuad.frustumCulled = false;
   outlineScene.add(fsQuad);
+
+  // Copy material for the post-processing path (blit composer result to screen).
+  copyMat = new THREE.ShaderMaterial({
+    uniforms: { tDiffuse: { value: outlineRT.texture } },
+    vertexShader: QUAD_VERT,
+    fragmentShader: COPY_FRAG,
+    blending: THREE.NoBlending, depthTest: false, depthWrite: false, transparent: true,
+  });
+
+  // Selection mask target + red-edge material.
+  selectRT = new THREE.WebGLRenderTarget(bufW, bufH, { depthBuffer: true, format: THREE.RGBAFormat });
+  selectMaskMat = new THREE.MeshBasicMaterial({ color: 0xffffff }); // flat mask
+  selectMat = new THREE.ShaderMaterial({
+    uniforms: {
+      tMask: { value: selectRT.texture },
+      texel: { value: new THREE.Vector2(1 / bufW, 1 / bufH) },
+      thickness: { value: 1.0 },
+    },
+    vertexShader: QUAD_VERT,
+    fragmentShader: SELECT_FRAG,
+    blending: THREE.NormalBlending,
+    depthTest: false, depthWrite: false, transparent: true,
+  });
 }
 
 function resizeOutlinePass(bufW: number, bufH: number): void {
@@ -294,18 +469,33 @@ function resizeOutlinePass(bufW: number, bufH: number): void {
   if (bloomRTA) bloomRTA.setSize(hw, hh);
   if (bloomRTB) bloomRTB.setSize(hw, hh);
   (outlineMat.uniforms.texel.value as THREE.Vector2).set(1 / bufW, 1 / bufH);
+  if (selectRT) selectRT.setSize(bufW, bufH);
+  if (selectMat) (selectMat.uniforms.texel.value as THREE.Vector2).set(1 / bufW, 1 / bufH);
 }
 
 const loadedModels = new Map<string, THREE.Group>();
 const loadingModels = new Set<string>();
 const failedModels = new Set<string>();
 const activeShips = new Map<string, Ship3D>();
+
+// Entity ids currently selected (clicked) → drawn with a red outline. Set each
+// frame from the renderer. Format matches updateShip3D's entityId ("player",
+// remote player o.id, or "enemy:<id>").
+let _selectedShipIds = new Set<string>();
+export function setSelectedShipIds(ids: Set<string>): void { _selectedShipIds = ids; }
+
+// Selection outline is drawn as a POST-PROCESS silhouette edge (see the red
+// outline pass in render3DLayer) — NOT a backface-hull (that filled the whole
+// ship red instead of a clean rim). We just track which ships are selected and
+// mark their meshes so the selection pass can render only them into a mask.
+const SELECT_LAYER = 2; // layer used to isolate selected meshes for the mask
 const activeThisFrame = new Set<string>();
 
 let cameraZoom = 1;
 let renderFrameCount = 0;
 let lastFrameTime = 0;
 let frameDt = 1 / 60;
+let _lastEmissivePulseUpdate = 0;
 
 // Station rendering moved to three-station-layer.ts (own canvas at zIndex 0)
 export function initStationLayer(_canvas: HTMLCanvasElement): void {}
@@ -321,6 +511,29 @@ export function init3DLayer(canvas: HTMLCanvasElement): void {
 
   const w = canvas.clientWidth || window.innerWidth;
   const h = canvas.clientHeight || window.innerHeight;
+
+  // ── Shared scene ──────────────────────────────────────────────────────
+  // Everything below this block — renderer, camera, lights, environment — is
+  // exactly what three-world-layer.ts now owns for ALL four object groups.
+  // Adopt its objects instead of making a second set, and keep only what is
+  // genuinely this layer's: the post chain and the outline/FX passes, which
+  // still run on the shared scene at the end of the frame.
+  if (ENABLE_SHARED_3D_SCENE) {
+    const world = ensureWorldLayer(canvas, w, h);
+    renderer = world.renderer;
+    scene = world.scene;
+    camera = world.camera;
+    claimWorldRenderDriver("ships");
+
+    const dbShared = renderer.getDrawingBufferSize(new THREE.Vector2());
+    setupOutlinePass(dbShared.x, dbShared.y);
+    if (outlineRT) {
+      postFX = createPostFX(renderer, scene, camera, dbShared.x, dbShared.y, outlineRT);
+    }
+    window.addEventListener("resize", onResize);
+    console.log("[Three.js] INIT OK (shared world scene)", w, "x", h, "postFX:", !!postFX);
+    return;
+  }
 
   renderer = new THREE.WebGLRenderer({
     canvas,
@@ -341,9 +554,21 @@ export function init3DLayer(canvas: HTMLCanvasElement): void {
   }
   renderer.setClearColor(0x000000, 0);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  // Quality settings (per-GPU tier) — one source of truth in RendererSettings.
+  const rs = getRendererSettings();
+  // Physically-correct light falloff (r155+ default; set explicitly for clarity).
+  (renderer as any).useLegacyLights = false;
+  // Feed the material system the GPU-clamped anisotropy cap for this tier.
+  setMaterialAnisotropyMax(renderer.capabilities.getMaxAnisotropy());
+  // Perf overlay: register this renderer's draw-call info. This module is
+  // loaded twice (ship layer + `?instance=enemy` duplicate); the enemy
+  // instance tags its offscreen canvas with data-perf-name (query strings on
+  // import.meta.url don't survive the production bundle).
+  perfRegisterThree(canvas.dataset?.perfName ?? "3d-ships", renderer.info);
 
-  // Self-shadowing: plates/limbs cast onto the hull for a lived-in look
-  renderer.shadowMap.enabled = true;
+  // Self-shadowing: plates/limbs cast onto the hull for a lived-in look. Soft
+  // PCF filtering; stable bias per tier to avoid acne/peter-panning + flicker.
+  renderer.shadowMap.enabled = rs.shadowsEnabled;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   const dbSize = renderer.getDrawingBufferSize(new THREE.Vector2());
@@ -373,46 +598,96 @@ export function init3DLayer(canvas: HTMLCanvasElement): void {
     nebulaBackground.init(scene, camera, renderer);
   }
 
-  // Filmic tone mapping + environment reflections: hulls pick up soft
-  // sky/sun reflections and specular highlights roll off naturally, so the
-  // ships read as objects lit BY the scene instead of cut-in renders.
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.92; // dimmer than the 2D scene, never brighter
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-  (scene as any).environmentIntensity = 0.42;
+  // Tone mapping + environment reflections: hulls pick up soft sky/sun
+  // reflections and specular highlights roll off naturally, so the ships read
+  // as objects lit BY the scene instead of cut-in renders.
+  //
+  // AgX, matching HangarScene — the same hull has to look like the same hull in
+  // both places. ACESFilmic (the previous value here) saturates and crushes
+  // highlights differently, so a ship inspected in the hangar visibly changed
+  // character the moment it undocked.
+  renderer.toneMapping = THREE.AgXToneMapping;
+  // HangarScene.toneExposure verbatim, NOT the tier value.
+  //
+  // The tier presets (0.86-0.9) were calibrated against ACESFilmic; scaling them
+  // for AgX only ever approximated the hangar. Since the whole point is that a
+  // hull looks identical in both places, the exposure has to be the same number,
+  // not a tier-relative one — the tier still controls resolution, shadows and
+  // anisotropy, which is where it belongs.
+  renderer.toneMappingExposure = 0.62;
+  // IBL: the HANGAR's environment, not the generic one. installStudioEnv with
+  // kind:"hdr" installs the same blurred Space HDRI (with the brightened
+  // overhead pole) that HangarScene uses, so a hull reflects the same thing in
+  // both places — which is the bulk of "why does my ship look different out
+  // here". loadEnvironment() used to install RoomEnvironment/a different HDR at
+  // the tier's environmentIntensity, a visibly different reflection.
+  //
+  // 0.30 = HangarScene.envIntensity verbatim. Reflection strength is
+  // envMapIntensity * this, so matching it is what puts world gloss on the same
+  // scale as the hangar's.
+  const pmrem = installStudioEnv(renderer, scene, { kind: "hdr", intensity: 0.30 });
   // Grade the DOM-presented canvas to match the Pixi scene lighting (the
   // player layer sits ABOVE the Pixi vignette/ambient and would otherwise
   // read brighter than everything else — the "cut-in" look).
-  canvas.style.filter = "brightness(0.94) saturate(0.96)";
+  // NOTE: the old `canvas.style.filter = brightness(0.94) saturate(0.96)` CSS
+  // grade was REMOVED (forbidden canvas filter). The equivalent dimming is now
+  // done properly in-scene via tone-mapping exposure (set above) + the deeper
+  // low ambient below, so nothing outside WebGL touches the pixels.
 
-  // Lighting - enhanced dramatic contrast for stronger shading
-  // Ambient: very low intensity for deeper shadows
-  const ambient = new THREE.AmbientLight(0x303050, 0.2);
+  // ── Directional world lighting (deep shadow side, no flat ambient) ──
+  // Very low, cool ambient so the side facing away from the sun goes genuinely
+  // dark instead of being lifted flat — the main cause of the "flat/cut-out"
+  // read. The material's own AO map darkens recesses on top of this.
+  // 0.05 (was 0.12) — same reasoning that fixed the hangar: a shadowless light
+  // lands INSIDE the key's shadow too, so ambient sets the floor a shadow can
+  // reach. No key intensity can darken a shade that ambient keeps re-lighting.
+  const ambient = new THREE.AmbientLight(0x232a42, 0.05);
   scene.add(ambient);
 
-  // Main sun: brighter warm light from upper-right for strong highlights
-  const sun = new THREE.DirectionalLight(0xfff8f0, 1.9);
-  sun.position.set(100, 300, -80);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(4096, 4096);
+  // Main sun: strong warm key from the upper-right → clear lit side.
+  // 5.5 (was 2.2), matching the hangar's key. Raising the KEY rather than
+  // lowering everything widens the gap between lit and shadowed, which is what
+  // actually reads as contrast instead of just making the scene darker.
+  const sun = new THREE.DirectionalLight(0xfff2e0, 5.5);
+  sun.position.set(120, 320, -90);
+  sun.castShadow = rs.shadowsEnabled;
+  sun.shadow.mapSize.set(rs.shadowMapSize, rs.shadowMapSize);
   sun.shadow.camera.left = -900;
   sun.shadow.camera.right = 900;
   sun.shadow.camera.top = 900;
   sun.shadow.camera.bottom = -900;
   sun.shadow.camera.near = 1;
   sun.shadow.camera.far = 1500;
-  sun.shadow.bias = -0.0004;
-  sun.shadow.normalBias = 0.6;
+  sun.shadow.bias = rs.shadowBias;
+  sun.shadow.normalBias = rs.shadowNormalBias;
   scene.add(sun);
 
-  // Rim/fill: cooler blue light from opposite side for edge definition
-  const fill = new THREE.DirectionalLight(0x6699ff, 0.55);
-  fill.position.set(-80, 150, 100);
+  // Cool fill: weak, opposite side — defines the dark side's edge without
+  // lifting it to grey.
+  // 0.15 (was 0.4) — shadowless, so it erodes the sun's shadow like the ambient
+  // above. Enough is left to keep the dark side's edge readable.
+  const fill = new THREE.DirectionalLight(0x5c86d6, 0.15);
+  fill.position.set(-90, 140, 110);
   scene.add(fill);
 
+  // Grazing rim from behind/below → catches top edges (fresnel-like) so hulls
+  // read against the dark background instead of blending into a flat blob.
+  // 0.25 (was 0.55) — kept, but trimmed with the rest of the shadowless set. It
+  // only has to catch top edges, not contribute to overall brightness.
+  const rim = new THREE.DirectionalLight(0x9ec2ff, 0.25);
+  rim.position.set(-30, -70, 210);
+  scene.add(rim);
+
+  // Post-processing composer (GTAO + UnrealBloom + FXAA + vignette), rendering
+  // INTO outlineRT so the selection/FX passes still composite over it. null on
+  // low tier → the inline pipeline runs instead.
+  if (outlineRT) {
+    const dbS = renderer.getDrawingBufferSize(new THREE.Vector2());
+    postFX = createPostFX(renderer, scene, camera, dbS.x, dbS.y, outlineRT);
+  }
+
   window.addEventListener("resize", onResize);
-  console.log("[Three.js] INIT OK canvas:", w, "x", h);
+  console.log("[Three.js] INIT OK canvas:", w, "x", h, "postFX:", !!postFX);
 }
 
 function onResize(): void {
@@ -427,6 +702,7 @@ function onResize(): void {
   }
   const dbSize = renderer.getDrawingBufferSize(new THREE.Vector2());
   resizeOutlinePass(dbSize.x, dbSize.y);
+  if (postFX) postFX.setSize(dbSize.x, dbSize.y);
   camera.left = -w / 2;
   camera.right = w / 2;
   camera.top = h / 2;
@@ -525,68 +801,216 @@ function loadModel(shipClass: string): void {
       // Enemy models author their own emissive glow + PBR values in Blender —
       // preserve them. Player ships keep the legacy clamps below.
       const isEnemy = shipClass.startsWith("enemy_");
+      const role: SpaceRole = isEnemy ? "npc" : "player";
+      const seed = shipSeedHash(shipClass);
+      // Per-enemy signature accent. "cracks"/"both" apply an emissive fracture
+      // map to the hull here; "core"/"both" attach a glowing crystal/orb per
+      // instance in updateShip3D (see makeEnemyCore).
+      const accent = ENEMY_ACCENTS[shipClass];
+      const energyCracks = accent && accent.kind === "cracks"
+        ? { color: accent.color, intensity: accent.intensity }
+        : undefined;
+      // "aura" accent (e.g. Erix) is applied per-instance in updateShip3D as a
+      // separate glow halo — the hull material stays normal/solid here.
+      // For "core" enemies, the accent-colored material on the model is made
+      // shiny + self-lit (so only the interior/core glows, not a decal over
+      // the whole ship).
+      const coreAccent = accent && accent.kind === "core"
+        ? { color: accent.color, intensity: accent.intensity, matchAny: !!accent.matchAnyColored }
+        : undefined;
+      let hullMatCount = 0, glowSkipCount = 0;
+      let dbgMeshes = 0, dbgMats = 0, dbgStrongEmis = 0, dbgGlow = 0, dbgCore = 0, dbgNoStd = 0;
       model.traverse((child) => {
-        if ((child as THREE.Mesh).isMesh) {
-          const mesh = child as THREE.Mesh;
-          if (mesh.material) {
-            // Convert MeshBasicMaterial (unlit) to MeshStandardMaterial (lit)
-            if (mesh.material.type === 'MeshBasicMaterial') {
-              const oldMat = mesh.material as THREE.MeshBasicMaterial;
-              const newMat = new THREE.MeshStandardMaterial({
-                map: oldMat.map,
-                color: oldMat.color,
-                transparent: oldMat.transparent,
-                opacity: oldMat.opacity,
-                side: oldMat.side,
-                roughness: 0.45, // shiny hull — env reflections pick this up
-                metalness: 0.35, // clear metallic response
-              });
-              mesh.material = newMat;
-              oldMat.dispose();
-            }
+        const mesh = child as THREE.Mesh;
+        if (!mesh.isMesh || !mesh.material) return;
+        dbgMeshes++;
 
-            // Ensure proper color space and shading properties
-            const mat = mesh.material as THREE.MeshStandardMaterial;
-            if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace;
+        // Handle BOTH single materials and material ARRAYS (multi-material
+        // meshes were silently skipped before → some models never changed).
+        const matList: THREE.Material[] = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        const newList: THREE.Material[] = [];
+        let anyTransparentGlow = false;
 
-            if (!isEnemy) {
-              // Set good default shading properties if they exist
-              if (mat.roughness !== undefined) mat.roughness = Math.max(0.3, Math.min(0.6, mat.roughness));
-              if (mat.metalness !== undefined) mat.metalness = Math.max(0.25, Math.min(0.6, mat.metalness));
-              if ((mat as any).envMapIntensity !== undefined) (mat as any).envMapIntensity = 1.0;
-
-              // Remove excessive emissive glow that can wash out lighting
-              if (mat.emissive) mat.emissive.set(0x000000);
-              if (mat.emissiveIntensity !== undefined) mat.emissiveIntensity = 0;
-            }
-
-            mat.needsUpdate = true;
-
-            // Self-shadowing (transparent halo shells don't cast)
-            mesh.castShadow = !mat.transparent;
-            mesh.receiveShadow = true;
-
-            // Transparent glow shells (enemy halos): hide the sphere geometry
-            // (material-level, so child sprites stay visible) and mark the
-            // node as a glow anchor — updateShip3D attaches layered billboard
-            // sprites to it per instance. Color/size/alpha come from the
-            // authored shell; its pulse animation drives the sprites.
-            if (isEnemy && mat.transparent) {
-              mat.visible = false;
-              const col = (mat.emissive && (mat.emissive.r + mat.emissive.g + mat.emissive.b) > 0.05)
-                ? mat.emissive.clone() : (mat.color ? mat.color.clone() : new THREE.Color(GLOW_DEFAULT_COLOR));
-              if (!mesh.geometry.boundingSphere) mesh.geometry.computeBoundingSphere();
-              const r = mesh.geometry.boundingSphere ? mesh.geometry.boundingSphere.radius : 1;
-              mesh.userData.glowAnchor = {
-                color: "#" + col.getHexString(),
-                intensity: (mat.opacity ?? GLOW_BASE_ALPHA) / GLOW_BASE_ALPHA,
-                size: r * 2,
-              };
-              mesh.layers.set(FX_LAYER);
-            }
-          }
+        // aoMap needs a 2nd UV channel — set once per mesh.
+        const geo = mesh.geometry as THREE.BufferGeometry;
+        if (geo && geo.attributes.uv && !geo.attributes.uv2) {
+          geo.setAttribute("uv2", geo.attributes.uv);
         }
+
+        for (let mi = 0; mi < matList.length; mi++) {
+          let m = matList[mi] as THREE.MeshStandardMaterial;
+          dbgMats++;
+          const dbgType = (m as any).type;
+
+          // Unlit → lit upgrade.
+          if ((m as any).type === "MeshBasicMaterial") {
+            const om = m as any;
+            const up = new THREE.MeshStandardMaterial({
+              map: om.map, color: om.color, transparent: om.transparent,
+              opacity: om.opacity, side: om.side, roughness: 0.5, metalness: 0.4,
+            });
+            om.dispose?.();
+            m = up;
+          }
+          if (m.map) m.map.colorSpace = THREE.SRGBColorSpace;
+
+          // Diagnostic: log EVERY material (all ships) so we can see type,
+          // color, emissive + which branch it will take.
+          if ((window as any).__DEBUG_MAT) {
+            const em = m.emissive ? m.emissive.getHexString() : "000000";
+            const emSum = m.emissive ? (m.emissive.r + m.emissive.g + m.emissive.b) : 0;
+            console.log(`[SpaceMat] ${shipClass} mat[${mi}] type=${dbgType} "${m.name || "?"}" color=#${m.color?.getHexString() ?? "?"} emissive=#${em}(sum=${emSum.toFixed(2)},I=${(m.emissiveIntensity ?? 1).toFixed(1)}) transp=${m.transparent} op=${(m.opacity ?? 1).toFixed(2)} hasMap=${!!m.map}`);
+          }
+
+          // A GLOW SHELL is an enemy halo: transparent AND essentially unlit /
+          // emissive-driven. Only these are skipped + hidden. A merely
+          // alpha-flagged HULL material is NOT a glow shell and still gets the
+          // space-metal treatment (this over-broad skip was the bug).
+          const glowByEmissive = !!m.emissive &&
+            (m.emissive.r + m.emissive.g + m.emissive.b) > 0.05;
+          const isGlowShell = isEnemy && m.transparent && (m.opacity ?? 1) < 0.9 && glowByEmissive;
+
+          // MANY of these GLBs ship a BROKEN export: emissive set to WHITE with
+          // the albedo map plugged into the emissive slot (emissive≈#ffffff,
+          // sum≈3). That makes the whole hull self-lit and unlit-flat — the real
+          // cause of the "too bright / flat / cut-out" look. Detect it (near-
+          // white / desaturated emissive) and KILL it so the material becomes a
+          // normal lit hull that the space-metal treatment then darkens.
+          const emHsl = { h: 0, s: 0, l: 0 };
+          if (m.emissive) m.emissive.getHSL(emHsl);
+          const emSum = m.emissive ? (m.emissive.r + m.emissive.g + m.emissive.b) : 0;
+          const brokenWhiteEmissive = emSum > 0.35 && emHsl.s < 0.25; // white/grey glow = bug
+          if (brokenWhiteEmissive) {
+            m.emissive = new THREE.Color(0x000000);
+            m.emissiveIntensity = 0;
+            m.emissiveMap = null;
+          }
+
+          // A GENUINE emissive part (engine core, weapon strip) glows in a real
+          // COLOR — keep it. White/grey was handled above.
+          const strongEmissive = !brokenWhiteEmissive && !!m.emissive &&
+            emSum > 0.35 && emHsl.s >= 0.25 &&
+            (m.emissiveIntensity ?? 1) > 0.3;
+
+          if (KEEP_AUTHORED_MODELS.has(shipClass)) {
+            // Authored-look NPC: keep the GLB's own baseColor/normal maps, but the
+            // Tripo exports ship as MATTE (high roughness / low metalness) so they
+            // never catch the environment — they read as flat next to the glossy
+            // ships. Push them toward reflective metal (without discarding the
+            // authored albedo) so they glisten + mirror the studio env like the
+            // rest of the fleet, and keep the albedo-derived glow on the bright
+            // accent areas (red lines, crystal white).
+            // Albedo-derived glow, kept but turned WAY down (was 0.38).
+            //
+            // Removing it outright drained these hulls' colour — the Knoton in
+            // particular went from deep green to near-black, because on a dark
+            // authored albedo the emissive term was carrying most of the visible
+            // hue. But at 0.38 it also made the hull self-lit: it ignored the key
+            // light and could not go dark on its shadow side.
+            //
+            // 0.12 is the middle: enough for the accent areas (red lines,
+            // crystal white, the Knoton's green) to read as glowing, faint
+            // enough that the studio HDRI and the sun still do the actual
+            // lighting and the shadow side still falls off.
+            if (m.map) {
+              m.emissiveMap = m.map;
+              m.emissive = new THREE.Color(0xffffff);
+              m.emissiveIntensity = 0.12;
+            }
+            // Close to the "npc" role in space-material.ts, but metalness held
+            // at 0.62 rather than 0.78. In PBR a metal has no diffuse term —
+            // its colour survives only in the reflection — so pushing these
+            // organic, strongly-coloured hulls that far toward metal desaturated
+            // them, which is the other half of the Knoton losing its green.
+            // 0.62 keeps enough diffuse for the authored colour to show while
+            // still catching the studio HDRI.
+            m.metalness = Math.max(m.metalness ?? 0, 0.62);
+            m.roughness = Math.min(m.roughness ?? 1, 0.42);
+            (m as any).envMapIntensity = 1.9;
+            // A broken/empty packed metalness channel would multiply the value
+            // above back to ~0 — the same export artefact fixed for the player
+            // hulls and in the hangar.
+            if (m.metalnessMap) m.metalnessMap = null;
+            m.needsUpdate = true;
+            hullMatCount++;
+            newList.push(m);
+            continue;
+          }
+
+          if (isGlowShell) {
+            dbgGlow++;
+            // Enemy halo → hidden + turned into a glow anchor (unchanged behavior).
+            m.visible = false;
+            anyTransparentGlow = true;
+            const col = glowByEmissive ? m.emissive!.clone()
+              : (m.color ? m.color.clone() : new THREE.Color(GLOW_DEFAULT_COLOR));
+            if (!mesh.geometry.boundingSphere) mesh.geometry.computeBoundingSphere();
+            const r = mesh.geometry.boundingSphere ? mesh.geometry.boundingSphere.radius : 1;
+            mesh.userData.glowAnchor = {
+              color: "#" + col.getHexString(),
+              intensity: (m.opacity ?? GLOW_BASE_ALPHA) / GLOW_BASE_ALPHA,
+              size: r * 2,
+            };
+            mesh.layers.set(FX_LAYER);
+          } else if (coreAccent && materialMatchesAccentColor(m, coreAccent.color, coreAccent.matchAny)) {
+            if ((window as any).__DEBUG_MAT) {
+              const hsl = { h: 0, s: 0, l: 0 }; (m.color ?? new THREE.Color()).getHSL(hsl);
+              console.log(`[SpaceMat] ${shipClass} CORE material "${m.name || "?"}" color=#${m.color?.getHexString()} hsl=(${hsl.h.toFixed(2)},${hsl.s.toFixed(2)},${hsl.l.toFixed(2)}) → made shiny+glowing`);
+            }
+            // This material is the enemy's core part (accent-colored, or — for
+            // matchAny models like the overlord — any non-grey colored material)
+            // → make it shiny + self-lit so ONLY the interior/core glows. The
+            // rest of the hull stays dark (falls to the space-metal branch).
+            // Keep the material's OWN hue (so bluish-green stays bluish-green),
+            // just make it glow that color.
+            const own = m.color ? m.color.clone() : new THREE.Color(coreAccent.color);
+            m.emissive = own.clone();
+            m.color = own.clone().multiplyScalar(0.55);
+            m.emissiveIntensity = coreAccent.intensity ?? 2.0;
+            m.metalness = 0.9;
+            m.roughness = 0.12;          // very shiny
+            (m as any).envMapIntensity = 1.6;
+            m.userData.pulseEmissive = {
+              base: coreAccent.intensity ?? 2.0,
+              amp: (coreAccent.intensity ?? 2.0) * 0.4, speed: 1.5,
+            };
+            m.needsUpdate = true;
+            hullMatCount++; dbgCore++;
+          } else if (strongEmissive) {
+            dbgStrongEmis++;
+            // Keep the glow, but still darken the base + add reflectivity so it
+            // reads as lit metal with an emissive detail, not a flat bright blob.
+            m.metalness = Math.max(m.metalness ?? 0, 0.5);
+            m.roughness = Math.min(m.roughness ?? 1, 0.55);
+            (m as any).envMapIntensity = 0.8;
+            m.needsUpdate = true;
+          } else {
+            if (dbgType !== "MeshStandardMaterial" && dbgType !== "MeshPhysicalMaterial") dbgNoStd++;
+            applySpaceMaterial(m, role, { seed, energyCracks });
+            hullMatCount++;
+          }
+          newList.push(m);
+        }
+
+        mesh.material = Array.isArray(mesh.material) ? newList : newList[0];
+        mesh.castShadow = !anyTransparentGlow;
+        mesh.receiveShadow = true;
+        // shadowSide=BackSide on DoubleSide materials — the same fix the hangar
+        // needed. For a DoubleSide material three writes BOTH faces into the
+        // shadow map; on thin hull panels the two sit within a shadow-map texel
+        // of each other and cancel out, so the ship casts almost nothing.
+        // Writing only the far face makes the cast solid. FrontSide materials
+        // are closed solids and must keep three's default (null), or they
+        // shadow their own front face and go black.
+        for (const mm of newList) {
+          const m = mm as THREE.Material;
+          if (m && m.side === THREE.DoubleSide) m.shadowSide = THREE.BackSide;
+        }
+        if (anyTransparentGlow) glowSkipCount++;
       });
+      if ((window as any).__DEBUG_MAT) {
+        console.log(`[SpaceMat] ${shipClass}: meshes=${dbgMeshes} mats=${dbgMats} → textured=${hullMatCount} core=${dbgCore} strongEmissive=${dbgStrongEmis} glowShell=${dbgGlow} nonStd=${dbgNoStd}`);
+      }
       const box = new THREE.Box3().setFromObject(model);
       const size = box.getSize(new THREE.Vector3());
       const center = box.getCenter(new THREE.Vector3());
@@ -694,8 +1118,30 @@ export function setCameraZoom(zoom: number): void {
   cameraZoom = zoom;
 }
 
+// Debug/measurement hook: current flight-lean of an entity's ship model.
+// Both three-ship-layer instances (ships + ?instance=enemy) register; the
+// combined lookup returns whichever instance actually owns that entity so
+// "player" resolves against the ship instance, enemies against theirs.
+export function getShipLean(entityId: string): { bank: number; pitch: number } | null {
+  const s = activeShips.get(entityId);
+  return s ? { bank: s.bank, pitch: s.pitch } : null;
+}
+if (typeof window !== "undefined") {
+  const w = window as any;
+  const prev = typeof w.__SHIP_LEAN === "function" ? w.__SHIP_LEAN : null;
+  w.__SHIP_LEAN = (id: string) => getShipLean(id) ?? (prev ? prev(id) : null);
+}
+
 // Reusable vector to avoid allocation
 const tempVec3 = new THREE.Vector3();
+
+
+// Reusable quaternions/axes for the heading+roll composition (no alloc/frame)
+const _qHeading = new THREE.Quaternion();
+const _qRoll = new THREE.Quaternion();
+const _axisX = new THREE.Vector3(1, 0, 0);
+const _axisY = new THREE.Vector3(0, 1, 0);
+const _axisZfwd = new THREE.Vector3(0, 0, 1); // model fore-aft axis (roll axis)
 
 export function getShipHardpointPositions(
   entityId: string,
@@ -787,30 +1233,33 @@ export function getShipMuzzleWorldPositionsAt(
   if (!ship) return null;
   const localHp = ship.model.userData.localHardpoints as ModelLocalHardpoints | undefined;
   if (!localHp) return null;
-  const s = ship.worldUnitsPerModelUnit;
-  const theta = ship.lastYRot;
-  const ca = Math.cos(theta);
-  const sa = Math.sin(theta);
   const originX = ship.lastWorldX;
   const originY = ship.lastWorldY;
-  const dbg = (window as any).__DEBUG_HARDPOINTS;
+
+  // Project a model-local hardpoint through the ACTUAL rendered model matrix
+  // (heading + bank + wrapper camera-tilt + scale, exactly as Three.js drew
+  // it this frame), then map screen space back to world. Using the real matrix
+  // instead of re-deriving the rotations by hand guarantees muzzles/thrusters
+  // coincide with the visible weapon at ANY bank/heading — the previous manual
+  // reconstruction drifted up to ~20px once the ship leaned.
+  ship.wrapper.updateWorldMatrix(true, false);
+  ship.model.updateWorldMatrix(true, false);
+  const mMat = ship.model.matrixWorld;
 
   const project = (mx: number, my: number, mz: number, label: string, idx: number, nodeName: string): { x: number; y: number } => {
-    // Step 1: Y-axis (heading) rotation.
-    const x1 =  mx * ca + mz * sa;
-    const y1 =  my;
-    const z1 = -mx * sa + mz * ca;
-    // Step 2: X-axis (tilt) rotation. Only z2 is needed (camera drops y2).
-    const x2 = x1;
-    const z2 = y1 * SIN_TILT + z1 * COS_TILT;
-    // Step 3: scale to world units and translate to ship world position.
-    const dx = x2 * s;
-    const dy = z2 * s;
-    const wx = originX + dx;
-    const wy = originY + dy;
-    if (dbg) {
-      console.log(`[HP:analytic] entityId=${entityId} ${label}[${idx}] name=${nodeName} modelLocal=(${mx.toFixed(3)},${my.toFixed(3)},${mz.toFixed(3)}) lastYRot=${theta.toFixed(3)} tilt=${SHIP_WRAPPER_TILT_X.toFixed(3)} scale=${s.toFixed(3)} shipWorld=(${originX.toFixed(1)},${originY.toFixed(1)}) muzzleWorld=(${wx.toFixed(1)},${wy.toFixed(1)}) delta=(${dx.toFixed(1)},${dy.toFixed(1)})`);
-    }
+    // local hardpoint -> world (in the three.js scene, which is screen-space:
+    // x = screen px offset, z = screen px offset, y = depth the camera drops).
+    tempVec3.set(mx, my, mz).applyMatrix4(mMat);
+    // model.matrixWorld already includes wrapper.position (the ship's screen
+    // pos) and scale; screen offset from ship centre = local scene coords.
+    // The ship centre in scene space is wrapper.position (x, 0, z).
+    const dxScene = tempVec3.x - ship.wrapper.position.x;
+    const dzScene = tempVec3.z - ship.wrapper.position.z;
+    // scene px -> world units: the wrapper scale already turned model units
+    // into screen px (targetPixels * zoom). Divide by zoom to get world units.
+    const wx = originX + dxScene / cameraZoom;
+    const wy = originY + dzScene / cameraZoom;
+    void label; void idx; void nodeName;
     return { x: wx, y: wy };
   };
 
@@ -943,13 +1392,31 @@ export function updateShip3D(
   sizeScale: number,
   camX: number,
   camY: number,
+  // Optional authoritative velocity (server-smoothed). When provided, the
+  // flight-lean pitch uses THIS instead of differentiating the interpolated
+  // world position — the position is nudged by netcode reconciliation every
+  // frame, which made the derived accel (and thus the pitch) jitter. vel is
+  // already low-passed by applyServerSmoothing, so it's stable.
+  velX?: number,
+  velY?: number,
 ): void {
   if (!scene || !loadedModels.has(shipClass)) return;
+
+  // Ship swapped class (bought/equipped a different hull)? Drop the old mesh so
+  // the block below rebuilds from the new template. Without this the entity kept
+  // its original model for the rest of the session — the caller passes the
+  // current class every frame, but the instance was only ever built once.
+  // Guarded on the model being loaded (checked above), so a not-yet-loaded new
+  // class leaves the old ship on screen instead of blinking it out.
+  const existing = activeShips.get(entityId);
+  if (existing && existing.shipClass !== shipClass) removeShip3D(entityId);
 
   let ship = activeShips.get(entityId);
   if (!ship) {
     const template = loadedModels.get(shipClass)!;
     const model = template.clone();
+    // Per-model heading correction for GLBs not authored nose=-Z.
+    const yawFix = MODEL_YAW_OFFSET[shipClass] ?? 0;
 
     // Clone hardpoint references (they move with the cloned model)
     const templateHardpoints = template.userData.hardpoints as ShipHardpoints;
@@ -1005,7 +1472,36 @@ export function updateShip3D(
     const wrapper = new THREE.Group();
     wrapper.rotation.x = SHIP_WRAPPER_TILT_X;
     wrapper.add(model);
-    scene.add(wrapper);
+    if (ENABLE_SHARED_3D_SCENE) {
+      // Which of the two ship groups this belongs to is decided by the id the
+      // renderer already uses to tell them apart — no new plumbing, and the
+      // grouping is the only difference between them. Both groups sit in the
+      // same scene, under the same camera, in the same depth buffer.
+      const isEnemy = entityId.startsWith("enemy:");
+      // Enemies get the dark-hull lift (their metallic near-black hull stays a
+      // silhouette even under the bright viewport env); player ships don't need
+      // it and stations opt out.
+      normalizeSharedDepth(model, shipClass, isEnemy);
+      (isEnemy ? enemyShipsGroup : playerShipsGroup).add(wrapper);
+    } else {
+      scene.add(wrapper);
+    }
+
+    // "aura" enemies (e.g. Erix): a translucent red LIQUID FLOW that runs over
+    // the solid model like water — a shell clone with a scrolling flow texture
+    // (animated in the render loop). The hull itself is untouched/solid.
+    const auraAcc = ENEMY_ACCENTS[shipClass];
+    if (auraAcc && auraAcc.kind === "aura") {
+      // Attaches flow shells directly under each hull mesh (they sit ON the
+      // surface). No add() needed; the render loop finds them by userData tag.
+      makeEnemyFlowShell(model, auraAcc.color, auraAcc.intensity ?? 1.6);
+    }
+
+    // NOTE: the separate glowing "core" object was removed — it always read as
+    // a glow OVER the whole model. Instead, the enemy's OWN accent-colored
+    // material is made shiny + self-lit in the material traversal above (see
+    // the accent.kind === "core" branch there), so only the parts that are
+    // already that color (the interior/core) light up; the rest stays dark.
 
     // Billboard glow sprites: attach to authored halo anchors (hidden shells)
     // and to any explicitly named "Glow_*" empties. Parenting means the
@@ -1044,7 +1540,10 @@ export function updateShip3D(
 
     ship = {
       wrapper, model, hardpoints, engineGlows, mixer,
+      shipClass,
+      yawFix,
       lastYRot: -angle + Math.PI,
+      bank: 0, pitch: 0,
       lastCamX: camX, lastCamY: camY,
       lastWorldX: worldX, lastWorldY: worldY,
       worldUnitsPerModelUnit: 1,
@@ -1086,7 +1585,78 @@ export function updateShip3D(
     const rotLerp = 1 - Math.exp(-4.5 * frameDt);
     ship.lastYRot += rotDiff * rotLerp;
   }
-  ship.model.rotation.set(0, ship.lastYRot, 0);
+
+  // ── Flight lean (visual only): SCREEN-SIDE BANK ───────────────────────
+  // When the ship curves left, the LEFT screen side dips (and vice versa) —
+  // a bank about the camera depth axis, applied to the wrapper below. The
+  // bank amount comes from how fast the MOVEMENT DIRECTION is turning (not
+  // the aim/heading — in WASD mode heading follows the cursor and would bank
+  // when you only look around). Scaled by speed so a slow drift barely rolls.
+  const dt = Math.max(1 / 240, Math.min(frameDt, 1 / 20));
+  let bankTarget = 0;
+
+  // Movement direction + speed from the authoritative velocity (server-
+  // smoothed); fall back to position deltas only if no velocity was passed.
+  let mvx: number, mvy: number, rawSpeed: number;
+  if (velX != null && velY != null) {
+    mvx = velX; mvy = velY; rawSpeed = Math.hypot(velX, velY);
+  } else if (ship.prevWorldX != null && ship.prevWorldY != null) {
+    mvx = (worldX - ship.prevWorldX) / dt; mvy = (worldY - ship.prevWorldY) / dt;
+    rawSpeed = Math.hypot(mvx, mvy);
+  } else { mvx = 0; mvy = 0; rawSpeed = 0; }
+  const speedLerp = 1 - Math.exp(-10 * dt);
+  const prevSpeed = ship.smoothSpeed ?? rawSpeed;
+  const speed = prevSpeed + (rawSpeed - prevSpeed) * speedLerp;
+  ship.smoothSpeed = speed;
+
+  // BANK (Starblast model): the ship banks while its HEADING is turning — roll
+  // into the turn, level out when flying straight. Derived from the turn rate
+  // of the rendered heading (lastYRot), scaled by speed so a stationary pivot
+  // doesn't roll. Because the nose points where you steer and movement follows
+  // it, this reads as a natural bank into the curve.
+  void mvx; void mvy; // (movement dir not needed for the heading-turn bank)
+  // Only PLAYER ships bank into turns (own ship "player" + other players by
+  // numeric id). Enemy/NPC ships (entityId prefixed "enemy:") never lean —
+  // they fly flat like before.
+  const isEnemyShip = entityId.startsWith("enemy:");
+  if (!isEnemyShip && ship.prevYRot != null) {
+    let dYaw = ship.lastYRot - ship.prevYRot;
+    while (dYaw > Math.PI) dYaw -= Math.PI * 2;
+    while (dYaw < -Math.PI) dYaw += Math.PI * 2;
+    const turnRate = dYaw / dt;            // rad/s
+    const MAX_BANK = 0.35;                 // ~20° max lean (halved from 0.7)
+    const moveFrac = Math.min(1, speed / 60);
+    // sign: roll INTO the turn (left turn -> left side dips). Verified live.
+    // gain halved too so the whole lean is half as strong at every turn rate.
+    bankTarget = Math.max(-MAX_BANK, Math.min(MAX_BANK, turnRate * 0.25 * moveFrac));
+  }
+
+  // ease toward target — well-damped so nothing snaps or shivers.
+  const bankLerp = 1 - Math.exp(-7 * dt);
+  ship.bank += (bankTarget - ship.bank) * bankLerp;
+  ship.pitch = 0; // no nose pitch
+  ship.prevYRot = ship.lastYRot;
+  ship.prevWorldX = worldX;
+  ship.prevWorldY = worldY;
+
+  // Heading on the model (drives the muzzle transform via lastYRot). The bank
+  // is a roll about the model's OWN forward axis (nose, local -Z), composed
+  // AFTER the heading — a true wing-dip roll. With the ship-camera tilted
+  // slightly toward the horizon (see camera init) this reads as a real
+  // side-lean the way Starblast does, instead of nose/tail lift. The muzzle
+  // transform still uses lastYRot only, so projectile spawns are unaffected.
+  // Heading about world Y, THEN bank about the model's local X axis. Under
+  // the fixed -0.85rad wrapper camera tilt, model-local X is what points along
+  // the SCREEN VERTICAL, so a roll about it dips one screen SIDE (a true side-
+  // lean) while the nose/tail stay level — verified empirically vs Z (which
+  // pitched the nose fore/aft) and Y (which twisted it in-plane). Composed as
+  // quaternions so the bank rides on top of the heading regardless of facing.
+  _qHeading.setFromAxisAngle(_axisY, ship.lastYRot + (ship.yawFix ?? 0));
+  _qRoll.setFromAxisAngle(_axisX, ship.bank);
+  ship.model.quaternion.copy(_qHeading).multiply(_qRoll);
+
+  // Wrapper keeps ONLY the fixed camera-depth tilt.
+  ship.wrapper.rotation.set(SHIP_WRAPPER_TILT_X, 0, 0);
   ship.lastCamX = camX;
   ship.lastCamY = camY;
   ship.lastWorldX = worldX;
@@ -1099,9 +1669,11 @@ export function updateShip3D(
 
 export function removeShip3D(entityId: string): void {
   const ship = activeShips.get(entityId);
-  if (ship && scene) {
+  if (ship) {
     if (ship.mixer) ship.mixer.stopAllAction();
-    scene.remove(ship.wrapper);
+    // Detach from whatever actually holds it — the scene in the legacy layout,
+    // playerShipsGroup/enemyShipsGroup in the shared one.
+    ship.wrapper.parent?.remove(ship.wrapper);
     activeShips.delete(entityId);
   }
 }
@@ -1144,40 +1716,145 @@ export function endFrame(): void {
 
 export function render3DLayer(): void {
   if (!renderer || !scene || !camera) return;
+  // In the shared layout this single call draws stations, players, enemies and
+  // NPCs together. If some other module claimed the driver role (the isolated
+  // ?station-test harness does), stay out of its way rather than drawing the
+  // same scene twice.
+  if (ENABLE_SHARED_3D_SCENE) {
+    if (!isWorldRenderDriver("ships")) return;
+    // Ships float above the world plane so a station's hull cannot bury them
+    // during normal flight; the docking sequence ramps the factor to 0 and the
+    // ship sinks into the station, occluded by roof and door for real.
+    setShipLift(getShipLiftFactor(), cameraZoom);
+  }
   const now = performance.now() / 1000;
   if (lastFrameTime > 0) frameDt = Math.min(0.1, now - lastFrameTime);
   lastFrameTime = now;
-  for (const ship of activeShips.values()) {
+  let anySelected = false;
+  for (const [id, ship] of activeShips) {
     if (ship.mixer) ship.mixer.update(frameDt);
+    // Mark selected ships' meshes onto SELECT_LAYER so the post-process pass
+    // can render just them into a silhouette mask → a clean red edge. The main
+    // pass renders layer 0, so this is additive (meshes stay on layer 0 too).
+    const selected = _selectedShipIds.has(id);
+    if (selected) anySelected = true;
+    let markedMeshes = 0;
+    ship.model.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      if (selected) { mesh.layers.enable(SELECT_LAYER); markedMeshes++; }
+      else mesh.layers.disable(SELECT_LAYER);
+    });
+    if (selected && (window as any).__DEBUG_SEL) {
+      console.log(`[SelOutline] "${id}" selected, ${markedMeshes} meshes marked on SELECT_LAYER`);
+    }
+  }
+  if (anySelected && !_anySelected && (window as any).__DEBUG_SEL) console.log("[SelOutline] pass ACTIVE");
+  _anySelected = anySelected;
+  // Emissive pulse (e.g. Leviathan energy cracks): materials tagged with
+  // userData.pulseEmissive breathe their emissiveIntensity around a base.
+  if (now - _lastEmissivePulseUpdate > 0.03) {
+    _lastEmissivePulseUpdate = now;
+    for (const ship of activeShips.values()) {
+      // Hull crack emissive pulse.
+      ship.model.traverse((child) => {
+        const mesh = child as THREE.Mesh;
+        if (!mesh.isMesh || !mesh.material) return;
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const m of mats) {
+          const p = (m as any).userData?.pulseEmissive;
+          if (p) (m as THREE.MeshStandardMaterial).emissiveIntensity = p.base + Math.sin(now * p.speed) * p.amp;
+        }
+        // Liquid FLOW SHELL (Erix): scroll the emissive/colour map over the
+        // hull so the red glow runs across it like water, and breathe opacity.
+        const fs = (mesh.userData as any)?.flowShell;
+        if (fs && fs.tex) {
+          fs.tex.offset.x = (now * 0.08) % 1;
+          fs.tex.offset.y = (Math.sin(now * 0.35) * 0.5) % 1;
+          const bm = mesh.material as THREE.MeshBasicMaterial;
+          if (bm) bm.opacity = 0.4 + (0.5 + 0.5 * Math.sin(now * 1.6)) * 0.35;
+        }
+      });
+      // Signature core (inner gem) pulse — emissive breathing + a slow spin.
+      const core = (ship.wrapper.userData as any).enemyCore as THREE.Group | undefined;
+      if (core) {
+        const ps = (core.userData as any).pulseSprite;
+        if (ps && ps.coreMat) {
+          const s = Math.sin(now * ps.speed);
+          ps.coreMat.emissiveIntensity = ps.base + s * ps.amp;
+          if (ps.haloMat) ps.haloMat.opacity = 0.4 + s * 0.15;
+        }
+        core.rotation.y += frameDt * 0.6; // gentle gem turn
+      }
+    }
   }
   if (outlineRT && outlineScene && outlineCamera && fsQuad && brightMat && blurMat && outlineMat && bloomRTA && bloomRTB) {
-    // Pass 1: solid hulls only (default layer) → offscreen target
     camera.layers.set(0);
-    renderer.setRenderTarget(outlineRT);
-    renderer.clear();
-    renderer.render(scene, camera);
 
-    // Pass 2: bloom — extract bright emissives, blur H+V twice at half res
-    fsQuad.material = brightMat;
-    renderer.setRenderTarget(bloomRTA);
-    renderer.render(outlineScene, outlineCamera);
-    fsQuad.material = blurMat;
-    const bw = bloomRTA.width, bh = bloomRTA.height;
-    for (let i = 0; i < 2; i++) {
-      blurMat.uniforms.tDiffuse.value = bloomRTA.texture;
-      (blurMat.uniforms.dir.value as THREE.Vector2).set(1 / bw, 0);
-      renderer.setRenderTarget(bloomRTB);
+    if (postFX && copyMat && !_debugBypassPostFX) {
+      // Post-processing path: the composer renders the scene + GTAO + UnrealBloom
+      // + FXAA + vignette INTO outlineRT, then we blit that to screen. The
+      // selection/FX passes below still composite on top, unchanged.
+      postFX.render(frameDt);
+      fsQuad.material = copyMat;
+      // Read the composer's ACTUAL output buffer, not outlineRT. EffectComposer
+      // ping-pongs between two targets; with the current pass count the result
+      // lands in the OTHER one on alternate frames, so a fixed outlineRT read
+      // showed last frame's image every other frame — the material flicker seen
+      // on undock (and everywhere, just most noticeable there). outputTexture()
+      // always returns the buffer render() actually left the image in.
+      copyMat.uniforms.tDiffuse.value = postFX.outputTexture();
+      renderer.setRenderTarget(null);
       renderer.render(outlineScene, outlineCamera);
-      blurMat.uniforms.tDiffuse.value = bloomRTB.texture;
-      (blurMat.uniforms.dir.value as THREE.Vector2).set(0, 1 / bh);
+    } else {
+      // Legacy inline path (low tier): scene → outlineRT, custom bloom, composite.
+      // Pass 1: solid hulls only (default layer) → offscreen target
+      renderer.setRenderTarget(outlineRT);
+      renderer.clear();
+      renderer.render(scene, camera);
+
+      // Pass 2: bloom — extract bright emissives, blur H+V twice at half res
+      fsQuad.material = brightMat;
       renderer.setRenderTarget(bloomRTA);
+      renderer.render(outlineScene, outlineCamera);
+      fsQuad.material = blurMat;
+      const bw = bloomRTA.width, bh = bloomRTA.height;
+      for (let i = 0; i < 2; i++) {
+        blurMat.uniforms.tDiffuse.value = bloomRTA.texture;
+        (blurMat.uniforms.dir.value as THREE.Vector2).set(1 / bw, 0);
+        renderer.setRenderTarget(bloomRTB);
+        renderer.render(outlineScene, outlineCamera);
+        blurMat.uniforms.tDiffuse.value = bloomRTB.texture;
+        (blurMat.uniforms.dir.value as THREE.Vector2).set(0, 1 / bh);
+        renderer.setRenderTarget(bloomRTA);
+        renderer.render(outlineScene, outlineCamera);
+      }
+
+      // Pass 3: blit with additive bloom (black outline removed)
+      fsQuad.material = outlineMat;
+      renderer.setRenderTarget(null);
       renderer.render(outlineScene, outlineCamera);
     }
 
-    // Pass 3: blit with 1px black outline + additive bloom
-    fsQuad.material = outlineMat;
-    renderer.setRenderTarget(null);
-    renderer.render(outlineScene, outlineCamera);
+    // Pass 3b: RED SELECTION OUTLINE. Render only the selected ship(s) (on
+    // SELECT_LAYER) into a flat-white mask, then draw a thin red rim on the
+    // mask's silhouette edge over the screen. A clean line, not a filled area.
+    if (_anySelected && selectRT && selectMat && selectMaskMat && fsQuad) {
+      camera.layers.set(SELECT_LAYER);
+      scene.overrideMaterial = selectMaskMat;
+      renderer.setRenderTarget(selectRT);
+      renderer.setClearColor(0x000000, 0);
+      renderer.clear();
+      renderer.render(scene, camera);
+      scene.overrideMaterial = null;
+      camera.layers.set(0);
+      // draw red rim over the final image
+      fsQuad.material = selectMat;
+      renderer.setRenderTarget(null);
+      renderer.autoClear = false;
+      renderer.render(outlineScene, outlineCamera);
+      renderer.autoClear = true;
+    }
 
     // Pass 4: glow FX (halos, engine sprites) on top, no outline/bloom
     camera.layers.set(FX_LAYER);
@@ -1195,6 +1872,11 @@ export function render3DLayer(): void {
 }
 
 export function destroy3DLayer(): void {
+  if (postFX) {
+    postFX.dispose();
+    postFX = null;
+  }
+  if (copyMat) { copyMat.dispose(); copyMat = null; }
   if (nebulaBackground) {
     nebulaBackground.destroy();
     nebulaBackground = null;
@@ -1212,7 +1894,16 @@ export function destroy3DLayer(): void {
   brightMat = null;
   blurMat = null;
   fsQuad = null;
-  if (renderer) {
+  if (ENABLE_SHARED_3D_SCENE) {
+    // The renderer is not ours to dispose piecemeal — the station layer is
+    // attached to the same one. destroyWorldLayer empties every group, drops
+    // the driver claim and disposes it once.
+    destroyWorldLayer();
+    renderer = null;
+    scene = null;
+    camera = null;
+    initialized = false;
+  } else if (renderer) {
     renderer.dispose();
     renderer = null;
     scene = null;
@@ -1220,7 +1911,6 @@ export function destroy3DLayer(): void {
     initialized = false;
   }
   activeShips.clear();
-  activeStations.clear();
   loadedModels.clear();
   loadingModels.clear();
   failedModels.clear();

@@ -1,0 +1,268 @@
+{
+  "name": "cosmic-ui",
+  "version": 1,
+  "root": "assets/ui",
+  "fonts": [
+    {
+      "family": "Kenney Future",
+      "src": "assets/fonts/Kenney Future.ttf"
+    },
+    {
+      "family": "Kenney Future Narrow",
+      "src": "assets/fonts/Kenney Future Narrow.ttf"
+    }
+  ],
+  "bundles": [
+    {
+      "name": "cosmic-ui",
+      "assets": [
+        {
+          "alias": "items/genshield-t2",
+          "src": "assets/ui/items/genshield-t2.png"
+        },
+        {
+          "alias": "items/genshield-t3",
+          "src": "assets/ui/items/genshield-t3.png"
+        },
+        {
+          "alias": "items/genshield-t4",
+          "src": "assets/ui/items/genshield-t4.png"
+        },
+        {
+          "alias": "items/genspeed-t2",
+          "src": "assets/ui/items/genspeed-t2.png"
+        },
+        {
+          "alias": "items/genspeed-t3",
+          "src": "assets/ui/items/genspeed-t3.png"
+        },
+        {
+          "alias": "items/genspeed-t5",
+          "src": "assets/ui/items/genspeed-t5.png"
+        },
+        {
+          "alias": "items/laser-t2",
+          "src": "assets/ui/items/laser-t2.png"
+        },
+        {
+          "alias": "items/laser-t4",
+          "src": "assets/ui/items/laser-t4.png"
+        },
+        {
+          "alias": "items/laser-t5",
+          "src": "assets/ui/items/laser-t5.png"
+        },
+        {
+          "alias": "items/laser-t6",
+          "src": "assets/ui/items/laser-t6.png"
+        },
+        {
+          "alias": "items/laser-t8",
+          "src": "assets/ui/items/laser-t8.png"
+        },
+        {
+          "alias": "items/laser-t9",
+          "src": "assets/ui/items/laser-t9.png"
+        },
+        {
+          "alias": "items/laser-t10",
+          "src": "assets/ui/items/laser-t10.png"
+        },
+        {
+          "alias": "items/mod0-t3",
+          "src": "assets/ui/items/mod0-t3.png"
+        },
+        {
+          "alias": "items/mod1-t2",
+          "src": "assets/ui/items/mod1-t2.png"
+        },
+        {
+          "alias": "items/mod2-t3",
+          "src": "assets/ui/items/mod2-t3.png"
+        },
+        {
+          "alias": "items/mod2-t4",
+          "src": "assets/ui/items/mod2-t4.png"
+        },
+        {
+          "alias": "items/mod3-t3",
+          "src": "assets/ui/items/mod3-t3.png"
+        },
+        {
+          "alias": "atlas/glow-bar",
+          "src": "assets/ui/atlas/glow-bar.png"
+        },
+        {
+          "alias": "atlas/hex-plate",
+          "src": "assets/ui/atlas/hex-plate.png"
+        },
+        {
+          "alias": "atlas/oct-panel",
+          "src": "assets/ui/atlas/oct-panel.png"
+        },
+        {
+          "alias": "atlas/plate-dark",
+          "src": "assets/ui/atlas/plate-dark.png"
+        },
+        {
+          "alias": "atlas/slot",
+          "src": "assets/ui/atlas/slot.png"
+        },
+        {
+          "alias": "atlas/strip-notch",
+          "src": "assets/ui/atlas/strip-notch.png"
+        },
+        {
+          "alias": "atlas/ic-clan",
+          "src": "assets/ui/atlas/ic-clan.png"
+        },
+        {
+          "alias": "atlas/ic-journal",
+          "src": "assets/ui/atlas/ic-journal.png"
+        },
+        {
+          "alias": "atlas/ic-logout",
+          "src": "assets/ui/atlas/ic-logout.png"
+        },
+        {
+          "alias": "atlas/ic-map",
+          "src": "assets/ui/atlas/ic-map.png"
+        },
+        {
+          "alias": "atlas/ic-quests",
+          "src": "assets/ui/atlas/ic-quests.png"
+        },
+        {
+          "alias": "atlas/ic-send",
+          "src": "assets/ui/atlas/ic-send.png"
+        },
+        {
+          "alias": "atlas/ic-settings",
+          "src": "assets/ui/atlas/ic-settings.png"
+        },
+        {
+          "alias": "atlas/ic-social",
+          "src": "assets/ui/atlas/ic-social.png"
+        },
+        {
+          "alias": "frames/panel-frame",
+          "src": "assets/ui/frames/panel-frame.png",
+          "nineSlice": {
+            "left": 34,
+            "top": 34,
+            "right": 34,
+            "bottom": 34
+          }
+        },
+        {
+          "alias": "frames/panel-frame-gold",
+          "src": "assets/ui/frames/panel-frame-gold.png",
+          "nineSlice": {
+            "left": 34,
+            "top": 34,
+            "right": 34,
+            "bottom": 34
+          }
+        },
+        {
+          "alias": "buttons/btn-9s",
+          "src": "assets/ui/buttons/btn-9s.png",
+          "nineSlice": {
+            "left": 12,
+            "top": 12,
+            "right": 12,
+            "bottom": 12
+          }
+        },
+        {
+          "alias": "buttons/btn-9s-hover",
+          "src": "assets/ui/buttons/btn-9s-hover.png",
+          "nineSlice": {
+            "left": 12,
+            "top": 12,
+            "right": 12,
+            "bottom": 12
+          }
+        },
+        {
+          "alias": "redesign/master_panel",
+          "src": "assets/ui/redesign/master_panel.png",
+          "nineSlice": {
+            "left": 40,
+            "top": 40,
+            "right": 40,
+            "bottom": 40
+          }
+        },
+        {
+          "alias": "redesign/master_slot_normal",
+          "src": "assets/ui/redesign/master_slot_normal.png",
+          "nineSlice": {
+            "left": 10,
+            "top": 10,
+            "right": 10,
+            "bottom": 10
+          }
+        },
+        {
+          "alias": "redesign/master_button_normal",
+          "src": "assets/ui/redesign/master_button_normal.png",
+          "nineSlice": {
+            "left": 14,
+            "top": 14,
+            "right": 14,
+            "bottom": 14
+          }
+        },
+        {
+          "alias": "redesign/corner_tl",
+          "src": "assets/ui/redesign/corner_tl.png"
+        },
+        {
+          "alias": "redesign/endcap_bolt",
+          "src": "assets/ui/redesign/endcap_bolt.png"
+        },
+        {
+          "alias": "redesign/separator_h",
+          "src": "assets/ui/redesign/separator_h.png"
+        },
+        {
+          "alias": "icons/galaxy-map",
+          "src": "assets/ui/icons/galaxy-map.png"
+        },
+        {
+          "alias": "icons/inventory",
+          "src": "assets/ui/icons/inventory.png"
+        },
+        {
+          "alias": "icons/skills",
+          "src": "assets/ui/icons/skills.png"
+        },
+        {
+          "alias": "ranks/rank_07",
+          "src": "assets/ui/ranks/rank_07.png"
+        },
+        {
+          "alias": "ranks/rank_11",
+          "src": "assets/ui/ranks/rank_11.png"
+        },
+        {
+          "alias": "factions/eic",
+          "src": "assets/ui/factions/eic.png"
+        },
+        {
+          "alias": "kit/slot_cyan",
+          "src": "assets/ui/kit/slot_cyan.png"
+        },
+        {
+          "alias": "sheet/items-atlas",
+          "src": "assets/ui/items-atlas.json"
+        },
+        {
+          "alias": "sheet/armor-atlas",
+          "src": "assets/ui/armor-atlas.json"
+        }
+      ]
+    }
+  ]
+}

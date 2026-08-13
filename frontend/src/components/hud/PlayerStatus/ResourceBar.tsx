@@ -94,6 +94,9 @@ export function ResourceBar({
               <div className={styles.shimmer} />
             </div>
           </div>
+          {/* Recharge sweep — rides the whole track, so it reads even when the
+              fill itself is short. */}
+          {regenerating && <div className={styles.regenWave} />}
           {boosted && <div className={styles.boostOverlay} />}
           {compact && showNumbers && (
             <span className={styles.numbersInline}>

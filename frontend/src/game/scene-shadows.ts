@@ -35,7 +35,8 @@ function shadowTex(): PIXI.Texture {
   g.addColorStop(1, "rgba(2,5,12,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, S, S);
-  shadowTexCache = PIXI.Texture.from(c, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  shadowTexCache = PIXI.Texture.from(c);
+  (shadowTexCache.source as PIXI.TextureSource).scaleMode = "linear";
   return shadowTexCache;
 }
 

@@ -1,0 +1,97 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Rank badge sizing — 32x32 box vs height-only</title>
+<style>
+  body{margin:0;padding:28px;color:#d6e0f0;
+       background:radial-gradient(120% 90% at 25% 0,#16203a,#0a0f18 60%,#05080e);
+       font-family:'Kenney Future Narrow','Courier New',monospace}
+  h2{font-size:15px;letter-spacing:.12em;margin:0 0 4px;color:#7ad8ff}
+  p.note{font-size:11px;line-height:1.5;color:#8fa3c0;margin:0 0 18px;max-width:760px;font-family:system-ui,sans-serif}
+  .cols{display:flex;gap:34px;align-items:flex-start;flex-wrap:wrap}
+  .col{flex:1 1 380px;min-width:340px}
+  .row{display:flex;align-items:center;gap:14px;padding:5px 8px;border-bottom:1px solid rgba(255,255,255,.05)}
+  .idx{font-size:10px;color:#5c6b85;width:22px;text-align:right;font-family:system-ui,sans-serif}
+  .ratio{font-size:10px;color:#5c6b85;width:34px;font-family:system-ui,sans-serif}
+  /* The real nameplate markup from shipLabelHtml() in
+     pixi-renderer-v2-integrated.ts — same flex row, font, glow and gap. */
+  .plate{display:flex;align-items:center;justify-content:center;gap:5px;
+         font-family:'Kenney Future Narrow','Courier New',monospace;font-size:13px;font-weight:bold;
+         white-space:nowrap;letter-spacing:.05em}
+  .dot{flex:none;width:8px;height:8px;border-radius:50%;background:#4ea6ff;box-shadow:0 0 4px #4ea6ff}
+  .badge{filter:drop-shadow(0 1px 2px #000) drop-shadow(0 0 3px rgba(0,0,0,.8))}
+  /* NEW: equal-AREA sizing — the box is computed per badge from its ratio
+     (see rankBoxPx in types.ts), so the inline width/height set by the script
+     wins. Only object-fit is shared here. */
+  .new .badge{flex:none;object-fit:contain}
+  /* OLD: height fixed, width free — wide chevrons ran to 44px. */
+  .old .badge{flex:none;height:32px;width:auto;max-width:44px;object-fit:contain}
+  .tag{display:inline-block;font-size:10px;padding:2px 7px;border-radius:3px;margin-bottom:10px;
+       font-family:system-ui,sans-serif;letter-spacing:.06em}
+  .tag.n{background:rgba(90,255,140,.14);color:#7dffa8;border:1px solid rgba(90,255,140,.3)}
+  .tag.o{background:rgba(255,140,90,.14);color:#ffb08a;border:1px solid rgba(255,140,90,.3)}
+</style>
+
+<h2>RANK BADGE SIZING</h2>
+<p class="note">
+  Same nameplate markup as in-game. Left = new sizing, right = the previous height-only
+  sizing. The source art runs from 37×64 (ratio 0.58) to 135×64 (ratio 2.11) — with
+  height-only sizing every badge was 32px tall but the wide low ranks grew to 44px across,
+  which is why they looked oversized next to the narrow high ranks.
+  <br><br>
+  New: <b>equal painted area</b>, not an equal box. The box is derived per badge from its
+  ratio, so a wide insignia gets a bigger box and ends up showing the same amount of art as
+  a near-square one. Two targets: <b>930px²</b> for rank 0 and 7-22, <b>400px²</b> for the
+  entry ranks <b>1-6</b>. This is what makes Chief General (1.45) match General (1.11).
+</p>
+
+<div class="cols">
+  <div class="col new">
+    <span class="tag n">NEW — width:32px; height:32px; contain</span>
+    <div id="listNew"></div>
+  </div>
+  <div class="col old">
+    <span class="tag o">OLD — height:32px; width:auto; max-width:44px</span>
+    <div id="listOld"></div>
+  </div>
+</div>
+
+<script>
+const RANKS = [
+  [0,"Outlaw","rank_23","#ff3344"],[1,"Basic Space Pilot","rank_01","#9fb4d8"],
+  [2,"Space Pilot","rank_02","#a8bcd8"],[3,"Chief Space Pilot","rank_03","#b4c6dc"],
+  [4,"Basic Sergeant","rank_04","#7ad8ff"],[5,"Sergeant","rank_05","#7ad8ff"],
+  [6,"Chief Sergeant","rank_06","#5ce0ff"],[7,"Basic Lieutenant","rank_07","#5cff8a"],
+  [8,"Lieutenant","rank_08","#5cff8a"],[9,"Chief Lieutenant","rank_09","#aaff5c"],
+  [10,"Basic Captain","rank_10","#aaff5c"],[11,"Captain","rank_11","#d8ff5c"],
+  [12,"Chief Captain","rank_12","#d8ff5c"],[13,"Basic Major","rank_13","#ffd24a"],
+  [14,"Major","rank_14","#ffd24a"],[15,"Chief Major","rank_15","#ffc63a"],
+  [16,"Basic Colonel","rank_16","#ffb830"],[17,"Colonel","rank_17","#ff9a4e"],
+  [18,"Chief Colonel","rank_18","#ff8a4e"],[19,"Basic General","rank_19","#ff7a44"],
+  [20,"General","rank_20","#ff6a3a"],[21,"Chief General","rank_21","#ffd700"],
+  [22,"Administrator","rank_22","#e8b94d"],
+];
+const RATIO = {rank_01:1.59,rank_02:0.86,rank_03:0.69,rank_04:0.58,rank_05:2.11,rank_06:1.44,
+  rank_07:1.30,rank_08:1.22,rank_09:0.94,rank_10:0.94,rank_11:0.88,rank_12:0.86,rank_13:0.95,
+  rank_14:0.95,rank_15:0.92,rank_16:0.92,rank_17:1.05,rank_18:1.09,rank_19:1.08,rank_20:1.11,
+  rank_21:1.45,rank_22:1.48,rank_23:1.05};
+
+// Mirrors rankBoxPx() in game/types.ts.
+const boxFor = (icon, i) => {
+  const r = RATIO[icon];
+  const target = i >= 1 && i <= 6 ? 400 : 930;
+  return Math.round(Math.sqrt(target * Math.max(r, 1 / r)));
+};
+
+for (const [i, name, icon, color] of RANKS) {
+  const glow = `0 0 6px ${color}99, 0 1px 2px #000`;
+  const box = boxFor(icon, i);
+  const plate = (sizeCss) =>
+    `<div class="row"><span class="idx">${i}</span><span class="ratio">${RATIO[icon].toFixed(2)}</span>` +
+    `<div class="plate" style="color:${color};text-shadow:${glow}">` +
+    `<span class="dot"></span><span>TAMMAPAC</span>` +
+    `<img class="badge" style="${sizeCss}" src="/assets/ui/ranks/${icon}.png" title="${name}">` +
+    `</div></div>`;
+  listNew.insertAdjacentHTML("beforeend", plate(`width:${box}px;height:${box}px`));
+  listOld.insertAdjacentHTML("beforeend", plate(""));
+}
+</script>

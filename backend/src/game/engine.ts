@@ -12,19 +12,26 @@ import {
 import type { OnlinePlayer } from "../socket/state.js";
 import { MOVEMENT } from "../../../lib/game-constants.js";
 import { rollEnemyEquipDrop } from "./lootService.js";
+import { creditCurrency } from "./currency.js";
 import { resolveAffixStats, type ItemInstance } from "../../../lib/loot/loot.js";
 import { shipHitTestSwept, enemyModelKey, enemySizeScale, PLAYER_SIZE_SCALE } from "../../../lib/hitbox.js";
+import { clanResearchMultipliers } from "./clanData.js";
+import { leaderboardBuffMultipliers } from "./leaderboardData.js";
 
 // Silhouette hit test for a projectile's travel this tick vs an enemy hull;
 // falls back to the legacy circle when a hull is missing.
 function projHitsEnemy(proj: ServerProjectile, e: ServerEnemy, dt: number): boolean {
   const key = enemyModelKey(e.type, e.id);
-  if (!key) return dist(proj.pos, e.pos) < e.size + 4;
+  // Free-aim shots aim at the RENDERED enemy position (client interpolation
+  // runs ~2-3 ticks behind the server), so their hit test is more generous —
+  // otherwise straight shots that visibly cross a moving ship miss server-side.
+  const inflate = proj.freeAim ? 1.35 : 1.06;
+  if (!key) return dist(proj.pos, e.pos) < (e.size + 4) * (proj.freeAim ? 1.3 : 1);
   return shipHitTestSwept(
     key, e.pos.x, e.pos.y, e.angle, enemySizeScale(e.size),
     proj.pos.x - proj.vel.x * dt, proj.pos.y - proj.vel.y * dt,
     proj.pos.x, proj.pos.y,
-    1.06, // slightly generous toward the shooter
+    inflate,
   );
 }
 
@@ -43,6 +50,26 @@ function projHitsPlayer(proj: ServerProjectile, p: OnlinePlayer, dt: number): bo
 // ── STATION SAFE ZONES ───────────────────────────────────────────────────
 // No enemies may spawn within this radius of any station.
 const STATION_SAFE_RADIUS = 1500;
+// PvP no-fire bubble around a station core — much smaller than the enemy-spawn
+// exclusion, so cross-faction combat is possible across the open zone and only
+// the immediate docking area (where players are often idle) is protected.
+const PVP_SAFE_RADIUS = 500;
+
+// ── FRIENDLY-FIRE HONOR PENALTY ──────────────────────────────────────────
+// Honor lost for killing a pilot of your OWN faction. Repeat offenders sink
+// toward OUTLAW_HONOR, at which point they are branded an Outlaw: attackable
+// by everyone, own faction included.
+//
+// 1000 per kill against a -10000 floor = 10 betrayals from a standing start.
+// The penalty moved with the threshold: at the old 4000 it would now take
+// only 3 kills, which turns a couple of heated moments into a permanent
+// brand. Deliberate treachery should get you there; a stray shot should not.
+const FRIENDLY_KILL_HONOR_PENALTY = 1000;
+// Honor at or below which a pilot is an Outlaw. MUST stay in sync with
+// OUTLAW_HONOR in frontend/src/game/types.ts — the server enforces who may be
+// shot, the client only decides which badge to draw, and the two disagreeing
+// would show a pilot as safe while the server lets everyone shoot them.
+export const OUTLAW_HONOR = -10000;
 
 const STATIONS_BY_ZONE: Record<string, Vec2[]> = {};
 for (const st of STATIONS) {
@@ -106,8 +133,6 @@ function inView(px: number, py: number, ex: number, ey: number): boolean {
 
 // ── SERVER PROJECTILE ───────────────────────────────────────────────────
 
-export type WeaponKind = "laser" | "rocket" | "energy" | "plasma" | "orb" | "spinner" | "flash";
-
 export type ServerProjectile = {
   id: string;
   zone: string;
@@ -121,12 +146,19 @@ export type ServerProjectile = {
   color: string;
   size: number;
   crit: boolean;
-  weaponKind: WeaponKind;
+  weaponKind: "laser" | "rocket" | "energy" | "plasma" | "orb" | "spinner" | "flash";
   homing: boolean;
   homingTargetId: string | null;
   aoeRadius: number;
   empStun: number;
   armorPiercing: boolean;
+  // Free-aim (WASD) shot: hit test uses a slightly larger inflate to
+  // compensate the client's interpolation delay (the shooter aims at where
+  // the enemy is RENDERED, ~2-3 ticks behind the server position).
+  freeAim?: boolean;
+  // off-cadence: set at fire time on every 3rd trigger pull so the hit path
+  // can apply the empowered multiplier. Absent/undefined = normal shot.
+  cadenceMul?: number;
 };
 
 // ── SERVER ENTITY TYPES ──────────────────────────────────────────────────
@@ -161,6 +193,13 @@ export type ServerEnemy = {
   spawnPos: Vec2;
   stunUntil: number;
   combo: Map<number, { stacks: number; ttl: number }>;
+  /** Current patrol waypoint. DarkOrbit NPCs drift between a few points near
+   *  their spawn — they do not re-roll a heading every second. Null until the
+   *  first one is picked. */
+  patrolTarget?: Vec2 | null;
+  /** Seconds to sit still once a waypoint is reached, before picking the next.
+   *  The pauses are what make idle NPCs read as calm rather than skittish. */
+  patrolPause?: number;
   // bullet-hell pattern state
   spiralAng?: number;
   volleyCount?: number;
@@ -201,6 +240,8 @@ export type LootDrop = {
   honor: number;
   bonusResource?: { resourceId: ResourceId; qty: number };
   resource?: { resourceId: ResourceId; qty: number };
+  /** Boss-only pet-drone upgrade material. */
+  bebcell?: number;
   /** Server-rolled equipment drop (ARPG loot). Only ever minted server-side. */
   item?: ItemInstance;
 };
@@ -208,7 +249,7 @@ export type LootDrop = {
 // Events emitted by the engine for the socket handler to broadcast
 export type GameEvent =
   | { type: "enemy:spawn"; zone: string; enemy: ClientEnemy }
-  | { type: "enemy:die"; zone: string; enemyId: string; killerId: number; loot: LootDrop; pos: Vec2 }
+  | { type: "enemy:die"; zone: string; enemyId: string; enemyType: string; killerId: number; loot: LootDrop; pos: Vec2 }
   | { type: "enemy:hit"; zone: string; enemyId: string; damage: number; hp: number; hpMax: number; crit: boolean; attackerId: number }
   | { type: "enemy:attack"; zone: string; enemyId: string; enemyType: string; targetId: number; damage: number; pos: Vec2; targetPos: Vec2 }
   | { type: "player:damage"; playerId: number; damage: number; shieldDmg: number; hullDmg: number }
@@ -218,8 +259,10 @@ export type GameEvent =
   | { type: "boss:warn"; zone: string }
   | { type: "npc:spawn"; zone: string; npc: ClientNpc }
   | { type: "npc:die"; zone: string; npcId: string }
-  | { type: "player:hit"; playerId: number; damage: number; zone: string }
-  | { type: "projectile:spawn"; zone: string; fromPlayerId: number; x: number; y: number; vx: number; vy: number; damage: number; color: string; size: number; crit: boolean; weaponKind: WeaponKind; homing: boolean; ammoType?: string; ttl: number; hardpointIndex?: number; hardpointRing?: "muzzle" | "weapon"; shipClass?: string; targetId?: string };
+  | { type: "player:hit"; playerId: number; damage: number; zone: string; pos: Vec2; killerId: number | null }
+  | { type: "player:die"; playerId: number; zone: string; pos: Vec2; killerId: number | null }
+  | { type: "player:honor"; playerId: number; honor: number; zone: string }
+  | { type: "projectile:spawn"; zone: string; fromPlayerId: number; x: number; y: number; vx: number; vy: number; damage: number; color: string; size: number; crit: boolean; weaponKind: "laser" | "rocket" | "energy" | "plasma"; homing: boolean; ammoType?: string; ttl: number; hardpointIndex?: number; hardpointRing?: "muzzle" | "weapon" | "drone"; shipClass?: string; targetId?: string; fromDrone?: boolean };
 
 export type ClientEnemy = {
   id: string;
@@ -237,7 +280,6 @@ export type ClientEnemy = {
   size: number;
   isBoss: boolean;
   bossPhase: number;
-  aggro: boolean;
 };
 
 export type ClientAsteroid = {
@@ -271,7 +313,7 @@ export type ClientProjectile = {
   size: number;
   fromPlayer: boolean;
   crit: boolean;
-  weaponKind: WeaponKind;
+  weaponKind: "laser" | "rocket" | "energy" | "plasma";
   homing: boolean;
 };
 
@@ -290,8 +332,36 @@ export type EffectiveStats = {
   aoeRadius: number;
   lootBonus: number;
   cargoMax: number;
-  miningBonus?: number;
 };
+
+// ── TIMED BUFF STACKS ───────────────────────────────────────────────────
+// Server-authoritative, short-lived stat buffs granted by the expansion
+// skills. Stored on the cached playerData (`playerData.buffs`) so computeStats
+// folds them in on the next refresh, and pruned by tickPlayerBuffs().
+//   expiry — absolute ms timestamp (Date.now() based)
+//   mag    — per-stack magnitude (already scaled by skill rank at grant time)
+export type PlayerBuff = {
+  id: "off-coldbore" | "eng-surge" | "eng-heatsink" | "def-nemesis";
+  mag: number;
+  expiry: number;
+  stacks: number;
+};
+
+// TODO — CLIENT-SIDE SKILLS (no server effect implemented on purpose)
+// The following expansion skills are purely visual / UI / client-simulation
+// concerns, or depend on systems that do not exist server-side yet. They are
+// deliberately NOT stubbed here so nobody mistakes a no-op for a real effect:
+//   ut-swarm      — extra drone slot / drone swarm behaviour (client drone sim)
+//   ut-repairbay  — out-of-combat hull repair UI flow
+//   ut-hivemind   — drone coordination bonus (client drone sim)
+//   ut-broker     — market/trade price improvement (trade routes, not engine)
+//   ut-magnate    — market/trade capstone (trade routes, not engine)
+//   ut-assay      — ore-quality readout (mining UI; needs miningBonus)
+//   eng-transfer  — manual shield<->hull transfer, player-triggered ability
+//   off-shrapnel  — secondary shrapnel projectiles (client VFX + spawn pattern)
+//   def-triage    — low-hull healing UI flow
+// ut-refinery and the mining-yield half of ut-prospector are likewise skipped:
+// EffectiveStats has no miningBonus field (see computeStats).
 
 export function computeStats(playerData: any): EffectiveStats {
   const cls = SHIP_CLASSES[playerData.shipClass as ShipClassId];
@@ -304,7 +374,7 @@ export function computeStats(playerData: any): EffectiveStats {
     };
   }
 
-  const mod = sumEquippedStats(playerData.inventory, playerData.equipped);
+  const mod = sumEquippedStats(playerData.inventory, playerData.equipped, playerData.petDrone);
   const sk = (id: SkillId) => (playerData.skills?.[id] ?? 0) as number;
 
   // Debug: log when skills are non-empty
@@ -359,6 +429,102 @@ export function computeStats(playerData: any): EffectiveStats {
 
   shieldRegen += sk("def-regen") * 2;
 
+  // ── EXPANSION SKILLS (62 new nodes) ────────────────────────────────────
+  // All of these are additive on top of the 30 original nodes above; none of
+  // the original formulas were touched. Unknown ids still read 0 via sk(), so
+  // old savegames are unaffected.
+
+  // Offense — flat / rate lines
+  damage += sk("off-caliber") * 4;
+  critChance += sk("off-steady") * 0.02;
+  fireRate += sk("off-sustain") * 0.04;
+  aoeRadius += sk("off-splash") * 5;
+
+  // Offense — capstones (maxRank 1 each)
+  if (sk("off-headhunter") > 0) fireRate *= 0.75;
+  if (sk("off-barrage") > 0) { fireRate += 0.25; damage *= 0.85; }
+  if (sk("off-saturation") > 0) { aoeRadius *= 1.5; damage *= 0.8; }
+
+  // Defense — flat lines
+  shieldMax += sk("def-lattice") * 20;
+  shieldAbsorb += sk("def-diffuse") * 0.04;
+  shieldRegen += sk("def-coolant") * 2;
+  hullMax += sk("def-ablative") * 25;
+  damageReduction += sk("def-hardened") * 0.02;
+
+  // Defense — capstones
+  if (sk("def-aegis") > 0) { shieldMax *= 1.4; shieldRegen *= 0.5; }
+  if (sk("def-immovable") > 0) { hullMax *= 1.25; damageReduction += 0.08; speed *= 0.8; }
+
+  // Utility
+  cargoMax *= (1 + sk("ut-hold") * 0.12);
+  lootBonus += sk("ut-contraband") * 0.03;
+  cargoMax *= (1 - sk("ut-contraband") * 0.08);
+  speed += sk("ut-vector") * 6;
+  lootBonus += sk("ut-survey") * 0.03;
+  if (sk("ut-phaserunner") > 0) { speed *= 1.25; hullMax *= 0.8; }
+  if (sk("ut-prospector") > 0) cargoMax *= 0.75;
+  // ut-prospector's mining-yield half and ut-refinery: EffectiveStats has no
+  // miningBonus field (engine.ts already reads `stats.miningBonus` at the two
+  // mining sites, but it is not declared and always undefined). Adding the
+  // field would change mining economy, which is out of scope for this task.
+  // → not yet supported; intentionally skipped rather than faked.
+
+  // Engineering — damage
+  damage += sk("eng-plasma") * 3;
+  damage *= (1 + sk("eng-fusion") * 0.06);
+  if (sk("eng-meltdown") > 0) { damage *= 1.35; shieldMax *= 0.8; }
+
+  // Engineering — fire rate
+  fireRate += sk("eng-radiator") * 0.03;
+  fireRate *= (1 + sk("eng-cryoflow") * 0.05);
+  if (sk("eng-runaway") > 0) fireRate *= 1.4;
+
+  // Engineering — sustain / hybrid
+  shieldRegen += sk("eng-regulator") * 1;
+  shieldMax += sk("eng-harmonics") * 10;
+  hullMax += sk("eng-harmonics") * 10;
+  if (sk("eng-eventhorizon") > 0) { damage *= 1.2; fireRate *= 1.15; shieldMax *= 1.2; }
+
+  // eng-recursion: the spec wants the ENGINEERING-derived subtotal amplified.
+  // The engineering contributions are interleaved with the base/other-branch
+  // terms throughout this function (damage/fireRate/shieldMax are single
+  // running accumulators, not per-branch subtotals), so isolating a true
+  // "engineering subtotal" would mean restructuring the whole computation —
+  // too invasive for live combat code. FALLBACK PER SPEC: a modest global
+  // (1 + rank*0.02) on damage + fireRate + shieldMax instead of the
+  // engineering-only (1 + rank*0.05). This is deliberate and NOT the
+  // requested formula.
+  const recursion = sk("eng-recursion");
+  if (recursion > 0) {
+    const rmul = 1 + recursion * 0.02;
+    damage *= rmul;
+    fireRate *= rmul;
+    shieldMax *= rmul;
+  }
+
+  // Timed buff stacks (off-coldbore / eng-surge / eng-heatsink / def-nemesis).
+  // Folded in here so every stat read goes through the same authoritative path.
+  // Expired entries are pruned by tickPlayerBuffs(); reading them again here is
+  // harmless because expiry is re-checked.
+  {
+    const nowMs = Date.now();
+    const buffs: PlayerBuff[] = Array.isArray(playerData.buffs) ? playerData.buffs : [];
+    let buffDamageMul = 1;
+    let buffFireRateAdd = 0;
+    for (const b of buffs) {
+      if (!b || b.expiry <= nowMs) continue;
+      const stacks = Math.max(1, b.stacks ?? 1);
+      if (b.id === "off-coldbore" || b.id === "eng-surge" || b.id === "def-nemesis") {
+        buffDamageMul *= (1 + b.mag * stacks);
+      } else if (b.id === "eng-heatsink") {
+        buffFireRateAdd += b.mag * stacks;
+      }
+    }
+    damage *= buffDamageMul;
+    fireRate += buffFireRateAdd;
+  }
+
   // Drone bonuses
   const drones = playerData.drones ?? [];
   for (const drone of drones) {
@@ -393,22 +559,140 @@ export function computeStats(playerData: any): EffectiveStats {
   shieldMax *= 1 + atv("attr-shd") * 0.015 * atScale;
   speed *= 1 + atv("attr-thr") * 0.005 * atScale;
 
+  // eng-equilibrium (maxRank 1) — FINAL PASS. Converts 20% of the fully
+  // resolved shieldMax into damage, so it must sit after every shieldMax
+  // modifier (skills, drones, faction, attribute points) has been applied.
+  if (sk("eng-equilibrium") > 0) damage += shieldMax * 0.20;
+
+  // Clan Hall research — cached on playerData by socket/handler.ts whenever
+  // the player's clan or its research changes (see engine.refreshClanCache).
+  // null/undefined (no clan, or clan lookup not yet warm) means no bonus.
+  // Matches the Kit's 6 CL_RES projects exactly: Reinforced Plating (hull%),
+  // Focused Emitters (damage%), Drive Calibration (speed%), Hold Expansion
+  // (flat cargo units), Salvage Rights (credits% off kill/loot sell value),
+  // Banner of Honor (honor% — applied at the loot/kill event call sites).
+  const clanMul = clanResearchMultipliers(playerData.clanResearch ?? null);
+  hullMax *= clanMul.hullMul;
+  damage *= clanMul.damageMul;
+  speed *= clanMul.speedMul;
+  cargoMax += clanMul.cargoFlatBonus;
+
+  // cargoMax is floored above but the expansion utility skills multiply it
+  // afterwards; re-floor so the wire value stays an integer.
+  cargoMax = Math.max(1, Math.floor(cargoMax));
+
   return {
     damage, speed, hullMax, shieldMax, shieldRegen,
     fireRate, critChance, damageReduction: Math.min(0.8, damageReduction),
-    shieldAbsorb: 0.5 + shieldAbsorb,
+    shieldAbsorb: Math.min(0.5, shieldAbsorb) + 0.5,
     aoeRadius, lootBonus, cargoMax,
   };
 }
 
-function sumEquippedStats(inventory: any[], equipped: any): Record<string, number> {
+// ── OFFENSIVE MULTIPLIER CHAIN (shared by laser + rocket paths) ──────────
+// Single source of truth for skill-driven outgoing-damage multipliers. The
+// laser (tickProjectiles) and rocket (playerAttackEnemy) paths used to
+// duplicate the off-execute / off-void chain; both now call this.
+//
+// IMPORTANT: the first two terms reproduce the previous behaviour EXACTLY —
+// off-execute and off-void keep their original thresholds and coefficients.
+// Everything after them is new (expansion skills).
+//
+// `attacker` may be undefined when the shooter left the zone; conditions that
+// need attacker hull/shield then simply don't fire.
+export function applyOffensiveMultipliers(
+  playerData: any,
+  enemy: { hull: number; hullMax: number; type: string; isBoss?: boolean },
+  attacker?: { hull: number; hullMax: number; shield: number; shieldMax: number } | null,
+): number {
+  const sk = (id: SkillId) => (playerData?.skills?.[id] ?? 0) as number;
+
+  // — existing behaviour (must stay bit-identical) —
+  const execMul = (enemy.hull / enemy.hullMax < 0.25 && sk("off-execute") > 0)
+    ? (1 + sk("off-execute") * 0.20) : 1;
+  const voidMul = ((enemy.type === "dread" || enemy.type === "voidling") && sk("off-void") > 0)
+    ? (1 + sk("off-void") * 0.08) : 1;
+
+  let mul = execMul * voidMul;
+
+  // — expansion: target-state conditions —
+  // off-firstblood: enemy still at full hull.
+  if (sk("off-firstblood") > 0 && enemy.hull >= enemy.hullMax) {
+    mul *= 1 + sk("off-firstblood") * 0.25;
+  }
+  // off-render: target is a boss.
+  if (sk("off-render") > 0 && enemy.isBoss) {
+    mul *= 1 + sk("off-render") * 0.06;
+  }
+
+  // — expansion: attacker-state conditions —
+  if (attacker && attacker.hullMax > 0) {
+    const hullPct = attacker.hull / attacker.hullMax;
+    // off-attrition: healthy pilot pressing the advantage.
+    if (sk("off-attrition") > 0 && hullPct > 0.70) {
+      mul *= 1 + sk("off-attrition") * 0.04;
+    }
+    // off-apex (maxRank 1): desperation burst below 30% hull.
+    if (sk("off-apex") > 0 && hullPct < 0.30) mul *= 1.35;
+  }
+  if (attacker && attacker.shieldMax > 0) {
+    const shieldPct = attacker.shield / attacker.shieldMax;
+    // eng-resonance: shields holding.
+    if (sk("eng-resonance") > 0 && shieldPct > 0.50) {
+      mul *= 1 + sk("eng-resonance") * 0.04;
+    }
+    // eng-zeropoint (maxRank 1): shields nearly gone.
+    if (sk("eng-zeropoint") > 0 && shieldPct < 0.25) mul *= 1.5;
+  }
+
+  return mul;
+}
+
+// ── BUFF HELPERS ────────────────────────────────────────────────────────
+
+// Grant (or refresh) a timed buff on the cached playerData. Stacking buffs
+// (def-nemesis) accumulate up to maxStacks and refresh their expiry; the
+// others simply refresh.
+export function grantBuff(
+  playerData: any,
+  id: PlayerBuff["id"],
+  mag: number,
+  durationSec: number,
+  maxStacks = 1,
+): void {
+  if (!playerData) return;
+  if (!Array.isArray(playerData.buffs)) playerData.buffs = [];
+  const buffs: PlayerBuff[] = playerData.buffs;
+  const expiry = Date.now() + durationSec * 1000;
+  const existing = buffs.find(b => b.id === id && b.expiry > Date.now());
+  if (existing) {
+    existing.mag = mag;
+    existing.expiry = expiry;
+    existing.stacks = Math.min(maxStacks, (existing.stacks ?? 1) + 1);
+  } else {
+    // Drop any stale entry for this id before pushing a fresh one.
+    const stale = buffs.findIndex(b => b.id === id);
+    if (stale >= 0) buffs.splice(stale, 1);
+    buffs.push({ id, mag, expiry, stacks: 1 });
+  }
+}
+
+function sumEquippedStats(inventory: any[], equipped: any, petDrone?: any): Record<string, number> {
   const result: Record<string, number> = {};
   if (!inventory || !equipped) return result;
+
+  // The pet drone's module + aux (extra) slots buff the ship — its weapon slot
+  // instead drives the drone's own fire and is NOT summed here. Must match the
+  // client's effectiveStats() so authoritative combat and prediction agree.
+  const petIds: string[] = petDrone?.equipped
+    ? [petDrone.equipped.module, petDrone.equipped.extra].filter(Boolean)
+    : [];
 
   const allSlotIds: string[] = [
     ...(equipped.weapon ?? []),
     ...(equipped.generator ?? []),
     ...(equipped.module ?? []),
+    ...petIds,
   ].filter(Boolean);
 
   for (const instanceId of allSlotIds) {
@@ -447,7 +731,6 @@ type ZoneState = {
   bossTimer: number;
   bossActive: boolean;
   npcSpawnTimer: number;
-  pirateTimer?: number;
 };
 
 // ── GAME ENGINE ──────────────────────────────────────────────────────────
@@ -540,11 +823,43 @@ function pickLoot(enemyType: string): { resourceId: ResourceId; qty: number } {
   return { resourceId: pool[0].resourceId, qty: pool[0].qty };
 }
 
+// Module-level registry for the single live GameEngine instance (there is
+// only ever one, created in socket/handler.ts's setupSocket). Lets HTTP
+// routes (routes/clan.ts) reach into playerDataCache to refresh an online
+// player's cached clanResearch after a donate/fund/join/leave — those
+// requests arrive over Express, outside the socket handler's closure, and
+// this is the smallest bridge between the two without threading the engine
+// instance through every route module.
+let liveEngine: GameEngine | null = null;
+export function registerEngine(engine: GameEngine): void { liveEngine = engine; }
+export function getEngine(): GameEngine | null { return liveEngine; }
+
 export class GameEngine {
   zones = new Map<string, ZoneState>();
   playerDataCache = new Map<number, any>();
   playerStatsCache = new Map<number, EffectiveStats>();
-  tickCount = 0;
+  // Live OnlinePlayer objects seen during the last tick, keyed by playerId.
+  // Lets out-of-tick entry points (playerAttackEnemy) read the attacker's
+  // current hull/shield for the conditional offensive skills without changing
+  // any public method signature.
+  private livePlayers = new Map<number, OnlinePlayer>();
+  // off-cadence shot counters, keyed by playerId. Incremented on every laser
+  // trigger pull; every 3rd shot is empowered.
+  private shotCounters = new Map<number, number>();
+  // def-phoenix cooldown (absolute ms timestamp of the next allowed proc).
+  private phoenixReady = new Map<number, number>();
+
+  // Fire-and-forget bebcell credit for a boss-kill payout. tick() is
+  // synchronous (30Hz loop — must never await a DB round trip), so this
+  // kicks the DB write off in the background and only logs on failure; the
+  // event already sent to the client for the floater/UI is cosmetic only,
+  // the DB row from creditCurrency() is what actually persists the balance.
+  private creditBossBebcell(playerId: number | null | undefined, amount: number | undefined): void {
+    if (!playerId || !amount || amount <= 0) return;
+    creditCurrency(playerId, "bebcell", amount).catch((err) => {
+      console.error(`[currency] failed to credit ${amount} bebcell to player ${playerId}:`, err);
+    });
+  }
 
   constructor() {
     for (const zone of Object.values(ZONES)) {
@@ -572,6 +887,9 @@ export class GameEngine {
   removePlayerData(playerId: number): void {
     this.playerDataCache.delete(playerId);
     this.playerStatsCache.delete(playerId);
+    this.livePlayers.delete(playerId);
+    this.shotCounters.delete(playerId);
+    this.phoenixReady.delete(playerId);
   }
 
   refreshPlayerStats(playerId: number): EffectiveStats | undefined {
@@ -589,7 +907,6 @@ export class GameEngine {
   // Main tick — call at 20Hz
   tick(dt: number, getPlayersInZone: (zone: string) => OnlinePlayer[]): GameEvent[] {
     const events: GameEvent[] = [];
-    this.tickCount++;
 
     for (const [zoneId, zs] of this.zones) {
       const players = getPlayersInZone(zoneId);
@@ -602,6 +919,11 @@ export class GameEngine {
         }
         continue;
       }
+
+      // Register the live player objects so out-of-tick entry points can read
+      // current hull/shield, and expire any timed buff stacks.
+      for (const p of players) this.livePlayers.set(p.playerId, p);
+      this.tickPlayerBuffs(players);
 
       // Server-authoritative player movement
       this.tickPlayerMovement(players, dt);
@@ -737,6 +1059,11 @@ export class GameEngine {
           }
         }
       }
+
+      // WASD control scheme: cursor aim owns the heading — overrides both
+      // the movement-direction and face-target angles above. Purely visual
+      // orientation; projectile targeting is unaffected.
+      if (p.aimAngle != null) p.angle = p.aimAngle;
     }
   }
 
@@ -749,20 +1076,73 @@ export class GameEngine {
       p.laserFireCd -= dt;
       p.rocketFireCd -= dt;
 
-      const target = p.attackTargetId ? zs.enemies.get(p.attackTargetId) : null;
-      if (!target) {
-        if (p.attackTargetId) p.attackTargetId = null;
-        continue;
+      // Resolve the fire target: an enemy (attackTargetId) OR another player
+      // (pvpTargetId, set when the pilot clicked a player). Players aren't in
+      // zs.enemies, so a player target is looked up in the zone player list and
+      // exposed as a {pos} the rest of the fire code can aim at unchanged.
+      let target: { pos: { x: number; y: number } } | null =
+        p.attackTargetId ? (zs.enemies.get(p.attackTargetId) ?? null) : null;
+      if (!target && p.pvpTargetId) {
+        const victim = players.find(pl => String(pl.playerId) === p.pvpTargetId);
+        if (victim && !victim.isDocked) target = { pos: { x: victim.posX, y: victim.posY } };
       }
 
-      const atkDist = dist({ x: p.posX, y: p.posY }, target.pos);
-      if (atkDist > 400) continue;
+      // Free-aim (WASD scheme): when the client drives the heading via
+      // input:aim, shots fly straight down the cursor ray — no lock needed,
+      // and an existing lock does NOT bend the shots. Projectile collision
+      // (silhouette hulls / PvP rules) decides what gets hit, damage math
+      // is identical to locked fire.
+      const freeAim = p.aimAngle != null && (p.isLaserFiring || p.isRocketFiring);
+
+      if (!target) {
+        if (p.attackTargetId) p.attackTargetId = null;
+        if (!freeAim) continue;
+      } else if (!freeAim) {
+        const atkDist = dist({ x: p.posX, y: p.posY }, target.pos);
+        if (atkDist > 400) continue;
+      }
 
       const pData = this.playerDataCache.get(p.playerId);
       if (!pData) continue;
       const stats = this.playerStatsCache.get(p.playerId);
       if (!stats) continue;
-      const ang = angleFromTo({ x: p.posX, y: p.posY }, target.pos);
+      const ang = freeAim ? p.aimAngle! : angleFromTo({ x: p.posX, y: p.posY }, target!.pos);
+
+      // Free-aim assist ("soft lock"): straight shots can't hit orbiting
+      // enemies — measured aim error vs the server position is up to
+      // ~0.26rad (client interpolation delay + input latency), plus the
+      // enemy moves 50-80u during projectile flight. If an enemy lies
+      // within the assist cone of the cursor ray, compute the firing
+      // solution against IT (same travel-time prediction locked fire
+      // uses). Aiming at empty space still fires perfectly straight.
+      let assistEnemy: ServerEnemy | null = null;
+      if (freeAim) {
+        // Distance-to-ray criterion (NOT an angular cone — a 16deg cone is
+        // ±123u wide at max range, which made clearly-missed shots still
+        // snap onto enemies). The cursor ray must pass within ~70u of the
+        // enemy's center, i.e. you have to aim AT the ship.
+        let bestPerp = 70;
+        for (const e of zs.enemies.values()) {
+          const d = dist({ x: p.posX, y: p.posY }, e.pos);
+          if (d > 440) continue;
+          let diff = angleFromTo({ x: p.posX, y: p.posY }, e.pos) - ang;
+          while (diff > Math.PI) diff -= 2 * Math.PI;
+          while (diff < -Math.PI) diff += 2 * Math.PI;
+          if (Math.abs(diff) > Math.PI / 2) continue; // behind the ray
+          const perp = d * Math.sin(Math.abs(diff));
+          if (perp < bestPerp) { bestPerp = perp; assistEnemy = e; }
+        }
+      }
+      // Firing solution from a muzzle toward the assist enemy's intercept
+      // point at the given projectile speed; raw aim when no assist target.
+      const freeAimAng = (ox: number, oy: number, spd: number): number => {
+        if (!assistEnemy) return ang;
+        const t = Math.hypot(assistEnemy.pos.x - ox, assistEnemy.pos.y - oy) / spd;
+        return Math.atan2(
+          assistEnemy.pos.y + assistEnemy.vel.y * t - oy,
+          assistEnemy.pos.x + assistEnemy.vel.x * t - ox,
+        );
+      };
 
       // Fire laser
       if (p.isLaserFiring && p.laserFireCd <= 0) {
@@ -772,6 +1152,17 @@ export class GameEngine {
         const perpAng = ang + Math.PI / 2;
         const crit = Math.random() < stats.critChance;
         const laserColor = "#4ee2ff";
+
+        // off-cadence: every 3rd trigger pull deals +50%/rank. The counter is
+        // per trigger pull (not per muzzle), so a multi-shot firing pattern
+        // empowers the whole volley — matching how the skill reads.
+        const cadenceRank = (this.playerDataCache.get(p.playerId)?.skills?.["off-cadence"] ?? 0) as number;
+        let cadenceMul = 1;
+        if (cadenceRank > 0) {
+          const n = (this.shotCounters.get(p.playerId) ?? 0) + 1;
+          this.shotCounters.set(p.playerId, n);
+          if (n % 3 === 0) cadenceMul = 1 + cadenceRank * 0.50;
+        }
 
         // Determine firing pattern from equipped weapon
         const pCache = this.playerDataCache.get(p.playerId);
@@ -788,14 +1179,20 @@ export class GameEngine {
         }
 
         const fireProj = (ox: number, oy: number, fireAng: number, dmg: number, sz: number, spd: number, hpIdx: number) => {
+          // Free-aim shots clamp their flight time so the effective reach
+          // (~440 units) matches the 400-unit locked engagement range —
+          // free aiming must not extend weapon range.
+          const ttl = freeAim ? Math.min(1.5, 440 / spd) : 1.5;
           const proj: ServerProjectile = {
             id: eid("proj"), zone: zoneId, fromPlayerId: p.playerId,
             fromEnemyId: null, fromNpcId: null,
             pos: { x: ox, y: oy },
             vel: { x: Math.cos(fireAng) * spd, y: Math.sin(fireAng) * spd },
-            damage: dmg, ttl: 1.5, color: laserColor, size: sz, crit,
+            damage: dmg, ttl, color: laserColor, size: sz, crit,
             weaponKind: "laser", homing: false, homingTargetId: null,
             aoeRadius: stats.aoeRadius, empStun: 0, armorPiercing: false,
+            freeAim,
+            cadenceMul,
           };
           zs.projectiles.set(proj.id, proj);
           events.push({
@@ -805,7 +1202,7 @@ export class GameEngine {
             crit: proj.crit, weaponKind: proj.weaponKind, homing: proj.homing,
             ammoType: p.laserAmmoType, ttl: proj.ttl,
             hardpointIndex: hpIdx, hardpointRing: "muzzle", shipClass: p.shipClass,
-            targetId: target.id,
+            targetId: freeAim ? assistEnemy?.id : (target as any)?.id,
           });
         };
 
@@ -815,7 +1212,7 @@ export class GameEngine {
           const dmg = Math.round(laserDmg);
           const ox = p.posX + Math.cos(ang) * 10;
           const oy = p.posY + Math.sin(ang) * 10;
-          fireProj(ox, oy, ang, dmg, 6, 736, 0); // 230 * 3.2
+          fireProj(ox, oy, freeAim ? freeAimAng(ox, oy, 736) : ang, dmg, 6, 736, 0); // 230 * 3.2
         } else if (firingPattern === "scatter") {
           const pellets = 3;
           const perPellet = Math.round(laserDmg * 2.5 / pellets);
@@ -824,7 +1221,7 @@ export class GameEngine {
             const side = si === 0 ? -1 : si === 2 ? 1 : 0;
             const ox = p.posX + Math.cos(perpAng) * 5 * side;
             const oy = p.posY + Math.sin(perpAng) * 5 * side;
-            const baseAng = angleFromTo({ x: ox, y: oy }, target.pos);
+            const baseAng = freeAim ? freeAimAng(ox, oy, 414) : angleFromTo({ x: ox, y: oy }, target!.pos);
             const spreadAng = baseAng + (si - 1) * spread;
             fireProj(ox, oy, spreadAng, perPellet, 4, 414, si); // 230 * 1.8
           }
@@ -834,7 +1231,7 @@ export class GameEngine {
             const side = bi === 0 ? -1 : bi === 1 ? 1 : 0;
             const ox = p.posX + Math.cos(perpAng) * 5 * side;
             const oy = p.posY + Math.sin(perpAng) * 5 * side;
-            const baseAng = angleFromTo({ x: ox, y: oy }, target.pos);
+            const baseAng = freeAim ? freeAimAng(ox, oy, 575) : angleFromTo({ x: ox, y: oy }, target!.pos);
             const burstAng = baseAng + (Math.random() - 0.5) * 0.04;
             fireProj(ox, oy, burstAng, perBurst, 4, 575, bi); // 230 * 2.5
           }
@@ -855,11 +1252,16 @@ export class GameEngine {
             const side = si === 0 ? -1 : 1;
             const ox = p.posX + Math.cos(perpAng) * 4 * side;
             const oy = p.posY + Math.sin(perpAng) * 4 * side;
-            const travelDist = Math.sqrt((target.pos.x - ox) ** 2 + (target.pos.y - oy) ** 2);
-            const travelTime = travelDist / projSpeed;
-            const predictedX = target.pos.x + (target.vel?.x ?? 0) * travelTime;
-            const predictedY = target.pos.y + (target.vel?.y ?? 0) * travelTime;
-            const fireAng = angleFromTo({ x: ox, y: oy }, { x: predictedX, y: predictedY });
+            let fireAng: number;
+            if (freeAim) {
+              fireAng = freeAimAng(ox, oy, projSpeed);
+            } else {
+              const travelDist = Math.sqrt((target!.pos.x - ox) ** 2 + (target!.pos.y - oy) ** 2);
+              const travelTime = travelDist / projSpeed;
+              const predictedX = target!.pos.x + ((target as any).vel?.x ?? 0) * travelTime;
+              const predictedY = target!.pos.y + ((target as any).vel?.y ?? 0) * travelTime;
+              fireAng = angleFromTo({ x: ox, y: oy }, { x: predictedX, y: predictedY });
+            }
             fireProj(ox, oy, fireAng, perShot, 4, projSpeed, hpBase + si);
           }
           p.nextMuzzlePair = (p.nextMuzzlePair + 1) % LASER_PAIR_COUNT;
@@ -884,6 +1286,11 @@ export class GameEngine {
         const rocketColor = "#ff8a4e";
         const projSpeed = 272; // 230 * 1.18 — matches frontend rocket speedMul
 
+        // Free-aim rockets: with an assist target in the cone they keep
+        // their homing (fired along the intercept solution); into empty
+        // space they fly straight with clamped reach.
+        const rocketAng = freeAim ? freeAimAng(p.posX, p.posY, projSpeed) : ang;
+        const rocketHoming = freeAim ? assistEnemy != null : true;
         const proj: ServerProjectile = {
           id: eid("proj"),
           zone: zoneId,
@@ -891,18 +1298,19 @@ export class GameEngine {
           fromEnemyId: null,
           fromNpcId: null,
           pos: { x: p.posX, y: p.posY },
-          vel: { x: Math.cos(ang) * projSpeed, y: Math.sin(ang) * projSpeed },
+          vel: { x: Math.cos(rocketAng) * projSpeed, y: Math.sin(rocketAng) * projSpeed },
           damage: rocketDmg,
-          ttl: 4.0, // matches frontend homing ttl
+          ttl: rocketHoming ? 4.0 : 1.7, // homing value matches frontend ttl
           color: rocketColor,
           size: 5,
           crit,
           weaponKind: "rocket",
-          homing: true,
-          homingTargetId: target.id,
+          homing: rocketHoming,
+          homingTargetId: freeAim ? (assistEnemy?.id ?? null) : ((target as any)?.id ?? null),
           aoeRadius: stats.aoeRadius,
           empStun: 0,
           armorPiercing: false,
+          freeAim,
         };
         zs.projectiles.set(proj.id, proj);
         events.push({
@@ -912,10 +1320,111 @@ export class GameEngine {
           crit: proj.crit, weaponKind: proj.weaponKind, homing: proj.homing,
           ammoType: p.rocketAmmoType, ttl: proj.ttl,
           hardpointIndex: 0, hardpointRing: "weapon", shipClass: p.shipClass,
+          // homing target — remote clients steer their visual copy onto it
+          // (without this the remote rocket flew straight while the real
+          // one curved onto the enemy: wrong direction AND no hit effect)
+          targetId: proj.homingTargetId ?? undefined,
         });
 
         const rCd = 1.5 / (stats.fireRate * 0.5);
         p.rocketFireCd = rCd;
+      }
+
+      // ── PET DRONE WEAPON FIRE ──────────────────────────────────────────
+      // Previously 100% client-cosmetic: the client spawned a local-only
+      // projectile (fireProjectile("drone", ...)) with no server counterpart,
+      // so its hits were overwritten by the next authoritative enemy-hp
+      // snapshot and dealt zero real damage. This block makes it real: same
+      // trust model as the player's own laser/rocket fire above — server
+      // decides, spawns the authoritative projectile, client only predicts.
+      //
+      // One weapon slot on the drone (types.ts PetDroneSlot): whatever is
+      // equipped there fires — laser or rocket, matching its own weaponKind
+      // (no dual-fire; see the design decision this mirrors client-side).
+      // Fires only while the player is actively firing (isLaserFiring /
+      // isRocketFiring) — the drone is an extension of the player's trigger,
+      // not an independent auto-turret.
+      p.droneFireCd -= dt;
+      const petDrone = pData.petDrone;
+      const droneWeaponId: string | null = petDrone?.level > 0 ? petDrone?.equipped?.weapon ?? null : null;
+      if (droneWeaponId && p.droneFireCd <= 0 && (p.isLaserFiring || p.isRocketFiring)) {
+        const droneItem = pData.inventory?.find((m: any) => m.instanceId === droneWeaponId);
+        const droneDef = droneItem ? MODULE_DEFS[droneItem.defId] : null;
+        if (droneDef && (droneDef.weaponKind === "laser" || droneDef.weaponKind === "rocket")) {
+          // Anchor: same formation formula as the client's visual (loop.ts
+          // updatePetDrone) — fixed one ship-length behind, no bob/rotation —
+          // computed here from state the server already owns (p.angle/posX/posY),
+          // so no extra client-reported field is needed or trusted.
+          const behind = p.angle + Math.PI;
+          const anchorX = p.posX + Math.cos(behind) * 62;
+          const anchorY = p.posY + Math.sin(behind) * 62;
+          const droneTarget = target; // same lock/free-aim resolution as the player
+          if (droneTarget || freeAim) {
+            const droneAng = freeAim
+              ? freeAimAng(anchorX, anchorY, 400)
+              : angleFromTo({ x: anchorX, y: anchorY }, droneTarget!.pos);
+            // Own weapon's own base damage (its `stats.damage`), NOT the
+            // player's effectiveStats — the drone fires ITS gun, not a copy
+            // of the ship's. 0.6x is the existing drone-is-weaker convention
+            // (matches the client's old cosmetic-only multiplier).
+            const baseDmg = (droneDef.stats?.damage ?? 8) * 0.6;
+            const crit = Math.random() < (stats.critChance * 0.5); // drones crit less often
+            if (droneDef.weaponKind === "laser") {
+              const ammoDef = ROCKET_AMMO_TYPE_DEFS["x1" as RocketAmmoType]; // drone ammo is always weakest-tier equivalent
+              const dmg = Math.round(baseDmg * (ammoDef?.damageMul ?? 1));
+              const spd = 420;
+              const proj: ServerProjectile = {
+                id: eid("proj"), zone: zoneId, fromPlayerId: p.playerId,
+                fromEnemyId: null, fromNpcId: null,
+                pos: { x: anchorX, y: anchorY },
+                vel: { x: Math.cos(droneAng) * spd, y: Math.sin(droneAng) * spd },
+                damage: dmg, ttl: freeAim ? Math.min(1.5, 440 / spd) : 1.5,
+                color: "#8af1ff", size: 3, crit,
+                weaponKind: "laser", homing: false, homingTargetId: null,
+                aoeRadius: 0, empStun: 0, armorPiercing: false, freeAim,
+              };
+              zs.projectiles.set(proj.id, proj);
+              events.push({
+                type: "projectile:spawn", zone: zoneId, fromPlayerId: p.playerId,
+                x: proj.pos.x, y: proj.pos.y, vx: proj.vel.x, vy: proj.vel.y,
+                damage: proj.damage, color: proj.color, size: proj.size,
+                crit: proj.crit, weaponKind: "laser", homing: proj.homing,
+                ttl: proj.ttl, hardpointIndex: 0, hardpointRing: "drone",
+                shipClass: p.shipClass, targetId: freeAim ? assistEnemy?.id : (droneTarget as any)?.id,
+                fromDrone: true,
+              });
+              p.droneFireCd = Math.max(0.4, 1.1 / stats.fireRate);
+            } else {
+              // rocket
+              const missileDef = ROCKET_MISSILE_TYPE_DEFS["cl1" as RocketMissileType];
+              const dmg = Math.round(baseDmg * (missileDef?.damageMul ?? 1) * 2.5);
+              const spd = 260;
+              const rocketHoming = freeAim ? assistEnemy != null : true;
+              const proj: ServerProjectile = {
+                id: eid("proj"), zone: zoneId, fromPlayerId: p.playerId,
+                fromEnemyId: null, fromNpcId: null,
+                pos: { x: anchorX, y: anchorY },
+                vel: { x: Math.cos(droneAng) * spd, y: Math.sin(droneAng) * spd },
+                damage: dmg, ttl: rocketHoming ? 4.0 : 1.7,
+                color: "#ff8a4e", size: 4, crit,
+                weaponKind: "rocket", homing: rocketHoming,
+                homingTargetId: freeAim ? (assistEnemy?.id ?? null) : ((droneTarget as any)?.id ?? null),
+                aoeRadius: 0, empStun: 0, armorPiercing: false, freeAim,
+              };
+              zs.projectiles.set(proj.id, proj);
+              events.push({
+                type: "projectile:spawn", zone: zoneId, fromPlayerId: p.playerId,
+                x: proj.pos.x, y: proj.pos.y, vx: proj.vel.x, vy: proj.vel.y,
+                damage: proj.damage, color: proj.color, size: proj.size,
+                crit: proj.crit, weaponKind: "rocket", homing: proj.homing,
+                ttl: proj.ttl, hardpointIndex: 0, hardpointRing: "drone",
+                shipClass: p.shipClass, targetId: proj.homingTargetId ?? undefined,
+                fromDrone: true,
+              });
+              p.droneFireCd = Math.max(0.8, 1.8 / stats.fireRate);
+            }
+          }
+        }
       }
     }
   }
@@ -954,6 +1463,150 @@ export class GameEngine {
         });
       }
     }
+  }
+
+  // ── TIMED BUFF STACKS ───────────────────────────────────────────────────
+
+  // Expires buff entries and refreshes the affected players' cached stats.
+  // Runs once per zone tick, before movement/combat, so the stats used this
+  // tick already reflect any expiry.
+  private tickPlayerBuffs(players: OnlinePlayer[]): void {
+    const now = Date.now();
+    for (const p of players) {
+      const pData = this.playerDataCache.get(p.playerId);
+      if (!pData || !Array.isArray(pData.buffs) || pData.buffs.length === 0) continue;
+      const before = pData.buffs.length;
+      pData.buffs = (pData.buffs as PlayerBuff[]).filter(b => b && b.expiry > now);
+      if (pData.buffs.length !== before) this.refreshPlayerStats(p.playerId);
+    }
+  }
+
+  // ── SKILL HOOKS ─────────────────────────────────────────────────────────
+
+  // Crit landed → off-coldbore (+6%/rank damage, 4s) and eng-heatsink
+  // (+0.08/rank fireRate, 3s). Both are single-stack refresh-on-crit.
+  private onPlayerCrit(playerId: number, pData: any): void {
+    const sk = (id: SkillId) => (pData?.skills?.[id] ?? 0) as number;
+    let dirty = false;
+    if (sk("off-coldbore") > 0) {
+      grantBuff(pData, "off-coldbore", sk("off-coldbore") * 0.06, 4);
+      dirty = true;
+    }
+    if (sk("eng-heatsink") > 0) {
+      grantBuff(pData, "eng-heatsink", sk("eng-heatsink") * 0.08, 3);
+      dirty = true;
+    }
+    if (dirty) this.refreshPlayerStats(playerId);
+  }
+
+  // Enemy killed by this player. Extends the existing kill path with the
+  // on-kill expansion skills.
+  //   def-secondwind — restore sk*4 shield
+  //   off-apex       — refund 15% of max shield
+  //   eng-surge      — +12%/rank damage buff for 5s
+  //   off-chain      — NOT IMPLEMENTED (see comment below)
+  onEnemyKilled(playerId: number, enemy: { pos: { x: number; y: number } } | null): void {
+    const pData = this.playerDataCache.get(playerId);
+    if (!pData) return;
+    const sk = (id: SkillId) => (pData.skills?.[id] ?? 0) as number;
+    const p = this.livePlayers.get(playerId);
+    const stats = this.playerStatsCache.get(playerId);
+
+    if (p && stats) {
+      // def-secondwind: flat shield back on every kill.
+      if (sk("def-secondwind") > 0) {
+        p.shield = Math.min(stats.shieldMax, p.shield + sk("def-secondwind") * 4);
+      }
+      // off-apex: kills refund 15% of max shield.
+      if (sk("off-apex") > 0) {
+        p.shield = Math.min(stats.shieldMax, p.shield + stats.shieldMax * 0.15);
+      }
+    }
+
+    // eng-surge: on-kill damage buff.
+    if (sk("eng-surge") > 0) {
+      grantBuff(pData, "eng-surge", sk("eng-surge") * 0.12, 5);
+      this.refreshPlayerStats(playerId);
+    }
+
+    // off-chain (blast radius 40*rank on kill): SKIPPED. Spawning a real AoE
+    // here would mean re-entering the enemy-death path recursively from inside
+    // the enemy iteration (the kill sites delete from zs.enemies while looping,
+    // and each of the four kill sites builds its own LootDrop inline). Doing it
+    // safely needs the kill/loot path extracted into one reusable function
+    // first — out of scope for this change. Deliberately not stubbed.
+  }
+
+  // Player takes damage. Returns the post-mitigation damage plus any reflect
+  // that should be dealt back to the attacker.
+  //
+  // DR CAP NOTE: computeStats already clamps the passive damageReduction at
+  // 0.8 (`Math.min(0.8, ...)`). The conditional DR from def-overshield /
+  // def-lastditch / def-fortress must not let a stacked build reach 100%
+  // immunity, so it is applied MULTIPLICATIVELY against the post-clamp
+  // survival fraction rather than being summed into the pre-clamp total:
+  //     survival = (1 - clampedDR) * (1 - conditionalDR)
+  // This keeps the 0.8 passive cap intact and makes the conditional layers
+  // asymptotic — full immunity is unreachable no matter how they stack.
+  onPlayerDamaged(
+    playerData: any,
+    incomingDamage: number,
+    state: { hull: number; hullMax: number; shield: number; shieldMax: number; playerId?: number },
+  ): { damage: number; reflect: number } {
+    const sk = (id: SkillId) => (playerData?.skills?.[id] ?? 0) as number;
+
+    // ut-evasion: flat chance to take nothing at all.
+    if (sk("ut-evasion") > 0 && Math.random() < sk("ut-evasion") * 0.03) {
+      return { damage: 0, reflect: 0 };
+    }
+
+    const stats = state.playerId != null ? this.playerStatsCache.get(state.playerId) : undefined;
+    const baseDR = stats ? stats.damageReduction : 0;
+    const hullPct = state.hullMax > 0 ? state.hull / state.hullMax : 1;
+    const shieldPct = state.shieldMax > 0 ? state.shield / state.shieldMax : 0;
+
+    // Conditional DR layer (see DR CAP NOTE above).
+    let condDR = 0;
+    // def-overshield: shields at full.
+    if (sk("def-overshield") > 0 && state.shieldMax > 0 && state.shield >= state.shieldMax) {
+      condDR += sk("def-overshield") * 0.05;
+    }
+    // def-lastditch: hull below 30%.
+    if (sk("def-lastditch") > 0 && hullPct < 0.30) {
+      condDR += sk("def-lastditch") * 0.08;
+    }
+    // def-fortress — PREVIOUSLY DEAD SKILL. Catalogued as "-15%/rank damage
+    // taken while shield > 50%" but read nowhere in the engine until now.
+    if (sk("def-fortress") > 0 && shieldPct > 0.50) {
+      condDR += sk("def-fortress") * 0.15;
+    }
+    condDR = Math.min(0.9, condDR); // per-layer sanity clamp
+
+    const survival = (1 - Math.min(0.8, baseDR)) * (1 - condDR);
+    let dmg = Math.round(incomingDamage * survival);
+    if (dmg < 1) dmg = 1;
+
+    // ── Reflect ──
+    let reflect = 0;
+    // def-spines: passive fraction of the incoming hit sent back.
+    if (sk("def-spines") > 0) reflect += incomingDamage * (sk("def-spines") * 0.08);
+    // def-reflect — PREVIOUSLY DEAD SKILL. Catalogued as "+5%/rank chance to
+    // reflect 30%" but read nowhere in the engine until now.
+    if (sk("def-reflect") > 0 && Math.random() < sk("def-reflect") * 0.05) {
+      reflect += incomingDamage * 0.30;
+    }
+    // def-backlash: amplifies whatever reflect the pilot already has.
+    if (reflect > 0 && sk("def-backlash") > 0) {
+      reflect *= (1 + sk("def-backlash") * 0.30);
+    }
+
+    // def-nemesis: taking a hit builds a stacking damage buff (5 stacks max).
+    if (sk("def-nemesis") > 0 && state.playerId != null) {
+      grantBuff(playerData, "def-nemesis", 0.10, 5, 5);
+      this.refreshPlayerStats(state.playerId);
+    }
+
+    return { damage: dmg, reflect: Math.round(reflect) };
   }
 
   // ── SHIELD REGEN ────────────────────────────────────────────────────────
@@ -1014,13 +1667,19 @@ export class GameEngine {
             const comboMul = 1 + (stacks - 1) * 0.10;
 
             const pData = this.playerDataCache.get(proj.fromPlayerId);
-            const sk = (id: SkillId) => (pData?.skills?.[id] ?? 0) as number;
-            const execMul = (e.hull / e.hullMax < 0.25 && sk("off-execute") > 0) ? (1 + sk("off-execute") * 0.20) : 1;
-            const voidMul = ((e.type === "dread" || e.type === "voidling") && sk("off-void") > 0) ? (1 + sk("off-void") * 0.08) : 1;
+            const shooter = players.find(pl => pl.playerId === proj.fromPlayerId) ?? null;
+            const skillMul = applyOffensiveMultipliers(pData, e, shooter);
             const critMul = proj.crit ? 1.5 : 1;
+            // off-cadence: the shot was flagged as an empowered volley when it
+            // was fired (see tickPlayerCombat's shot counter).
+            const cadenceMul = proj.cadenceMul ?? 1;
 
-            let dmg = Math.round(proj.damage * comboMul * critMul * execMul * voidMul);
+            let dmg = Math.round(proj.damage * comboMul * critMul * skillMul * cadenceMul);
             if (dmg < 1) dmg = 1;
+
+            // Crit-triggered buffs (off-coldbore damage, eng-heatsink fireRate).
+            if (proj.crit && pData) this.onPlayerCrit(proj.fromPlayerId, pData);
+
             e.hull -= dmg;
             if (e.isBoss && e.hullMax > 0) { const hpPct = e.hull / e.hullMax; e.bossPhase = hpPct > 0.66 ? 0 : hpPct > 0.33 ? 1 : 2; }
             if (e.aggroTarget !== proj.fromPlayerId && (!e.retargetCd || e.retargetCd <= 0)) {
@@ -1036,22 +1695,32 @@ export class GameEngine {
               if (dropResource) dropResource.qty = Math.ceil(dropResource.qty * (1 + (zoneDef.enemyTier - 1) * 0.5));
               const bonusDrops: ResourceId[] = ["fuel-cell", "synth", "nanite", "food", "spice", "titanium", "medpack", "iron", "silk", "ore"];
               let bonusResource: { resourceId: ResourceId; qty: number } | undefined;
-              const bonusChance = 0.40 + zoneDef.enemyTier * 0.05;
+              // Reduced from 0.40+tier*0.05 (45-70%) to cut resource-drop spam.
+              const bonusChance = 0.12 + zoneDef.enemyTier * 0.02;
               if (Math.random() < bonusChance && !e.isBoss) {
                 const bonusRes = bonusDrops[Math.floor(Math.random() * bonusDrops.length)];
                 bonusResource = { resourceId: bonusRes, qty: Math.ceil((1 + Math.floor(Math.random() * 2)) * (1 + (zoneDef.enemyTier - 1) * 0.3)) };
               }
               const killerLootBonus = proj.fromPlayerId != null ? (this.playerStatsCache.get(proj.fromPlayerId)?.lootBonus ?? 0) : 0;
+              const clanMul1 = clanResearchMultipliers(pData?.clanResearch ?? null);
+              const lbMul1 = leaderboardBuffMultipliers(pData?.leaderboardAllTimeBuff ?? null);
               const loot: LootDrop = {
-                credits: Math.round(e.credits * tierMult) + Math.round(killerLootBonus * 2),
-                exp: Math.round(e.exp * tierMult * (e.isBoss ? 2 : 1)),
-                honor: e.honor,
+                credits: Math.round((Math.round(e.credits * tierMult) + Math.round(killerLootBonus * 2)) * clanMul1.salvageMul * lbMul1.creditsMul),
+                exp: Math.round(e.exp * tierMult * (e.isBoss ? 2 : 1) * lbMul1.xpMul),
+                honor: Math.round(e.honor * clanMul1.honorMul),
                 resource: dropResource,
                 bonusResource,
               };
+              // Bebcell — boss-only pet-drone upgrade material. Small per-kill
+              // amount (scales with zone tier) so upgrades take many boss kills.
+              if (e.isBoss) {
+                loot.bebcell = Math.max(1, Math.round((2 + Math.floor(Math.random() * 3)) * (1 + (zoneDef.enemyTier - 1) * 0.5)));
+                this.creditBossBebcell(proj.fromPlayerId, loot.bebcell);
+              }
               const rolledItem = rollEnemyEquipDrop(e, zoneId, proj.fromPlayerId, killerLootBonus);
               if (rolledItem) loot.item = rolledItem;
-              events.push({ type: "enemy:die", zone: zoneId, enemyId: e.id, killerId: proj.fromPlayerId, loot, pos: { ...e.pos } });
+              events.push({ type: "enemy:die", zone: zoneId, enemyId: e.id, enemyType: e.type, killerId: proj.fromPlayerId, loot, pos: { ...e.pos } });
+              this.onEnemyKilled(proj.fromPlayerId, e);
               zs.enemies.delete(e.id);
               if (e.isBoss) { zs.bossActive = false; zs.bossTimer = randRange(180, 420); }
             } else {
@@ -1069,15 +1738,18 @@ export class GameEngine {
                   if (dist(e.pos, e2.pos) < splashRange) {
                     e2.hull -= splashDmg;
                     if (e2.hull <= 0) {
+                      const splashClanMul = clanResearchMultipliers(this.playerDataCache.get(proj.fromPlayerId)?.clanResearch ?? null);
+                      const splashLbMul = leaderboardBuffMultipliers(this.playerDataCache.get(proj.fromPlayerId)?.leaderboardAllTimeBuff ?? null);
                       const loot2: LootDrop = {
-                        credits: Math.round(e2.credits * this.getZoneTierMult(zoneId)),
-                        exp: Math.round(e2.exp * this.getZoneTierMult(zoneId)),
-                        honor: e2.honor,
+                        credits: Math.round(e2.credits * this.getZoneTierMult(zoneId) * splashClanMul.salvageMul * splashLbMul.creditsMul),
+                        exp: Math.round(e2.exp * this.getZoneTierMult(zoneId) * splashLbMul.xpMul),
+                        honor: Math.round(e2.honor * splashClanMul.honorMul),
                         resource: e2.loot ? { ...e2.loot } : undefined,
                       };
                       const splashItem = rollEnemyEquipDrop(e2, zoneId, proj.fromPlayerId, this.playerStatsCache.get(proj.fromPlayerId)?.lootBonus ?? 0);
                       if (splashItem) loot2.item = splashItem;
-                      events.push({ type: "enemy:die", zone: zoneId, enemyId: e2.id, killerId: proj.fromPlayerId, loot: loot2, pos: { ...e2.pos } });
+                      events.push({ type: "enemy:die", zone: zoneId, enemyId: e2.id, enemyType: e2.type, killerId: proj.fromPlayerId, loot: loot2, pos: { ...e2.pos } });
+                      this.onEnemyKilled(proj.fromPlayerId, e2);
                       zs.enemies.delete(e2.id);
                     } else {
                       events.push({ type: "enemy:hit", zone: zoneId, enemyId: e2.id, damage: splashDmg, hp: e2.hull, hpMax: e2.hullMax, crit: false, attackerId: proj.fromPlayerId });
@@ -1090,6 +1762,67 @@ export class GameEngine {
             break;
           }
         }
+        // PvP: a player's shot also damages other players. Runs only if the
+        // shot wasn't already consumed by an enemy hit above (enemy loop
+        // deletes + breaks), so one projectile never hits both.
+        //   • DIFFERENT faction → always attackable.
+        //   • SAME faction → only when the attacker has explicitly selected
+        //     that player as their PvP target (opt-in duel), i.e. the victim
+        //     is the attacker's pvpTargetId.
+        // Guards: never self, never a docked victim, and a small station-core
+        // safe bubble (PVP_SAFE_RADIUS, much smaller than the enemy-spawn
+        // exclusion so PvP isn't disabled across the whole spawn area).
+        if (zs.projectiles.has(projId)) {
+          const attacker = players.find(pl => pl.playerId === proj.fromPlayerId);
+          if (attacker) {
+            for (const victim of players) {
+              if (victim.playerId === proj.fromPlayerId) continue; // never self
+              if (victim.isDocked) continue;                       // docked = safe
+              const diffFaction = !!attacker.faction && !!victim.faction && victim.faction !== attacker.faction;
+              const optInDuel = attacker.pvpTargetId != null && attacker.pvpTargetId === String(victim.playerId);
+              // An Outlaw has betrayed their own faction often enough to be
+              // fair game for everybody — no faction check, no duel opt-in.
+              const victimOutlawed = victim.honor <= OUTLAW_HONOR;
+              if (!diffFaction && !optInDuel && !victimOutlawed) continue; // allied & not a chosen duel
+              if (isInStationSafeZone(zoneId, { x: victim.posX, y: victim.posY }, -(STATION_SAFE_RADIUS - PVP_SAFE_RADIUS))) continue; // small station core only
+              if (projHitsPlayer(proj, victim, dt)) {
+                const vpos = { x: victim.posX, y: victim.posY };
+                const died = this.damagePlayer(victim, proj.damage);
+                events.push({ type: "player:hit", playerId: victim.playerId, damage: proj.damage, zone: zoneId, pos: vpos, killerId: attacker.playerId });
+                if (died) {
+                  events.push({ type: "player:die", playerId: victim.playerId, zone: zoneId, pos: vpos, killerId: attacker.playerId });
+                  // Killing your OWN faction costs honor. Sink far enough and
+                  // the pilot is branded an Outlaw (honor <= OUTLAW_HONOR),
+                  // which makes them attackable by everyone — see rankFor()
+                  // and isOutlaw() in the client's types.ts, which read the
+                  // same honor number the server owns here. Different-faction
+                  // kills are normal warfare and cost nothing.
+                  // Hunting an Outlaw is sanctioned, so it is exempt: without
+                  // this, anyone who answered the "attackable by everyone"
+                  // invitation would themselves be punished for it.
+                  const sameFaction = !!attacker.faction && attacker.faction === victim.faction;
+                  if (sameFaction && !victimOutlawed) {
+                    attacker.honor -= FRIENDLY_KILL_HONOR_PENALTY;
+                    events.push({ type: "player:honor", playerId: attacker.playerId, honor: attacker.honor, zone: zoneId });
+                  }
+                }
+                // def-spines / def-reflect / def-backlash: pay the reflected
+                // damage back into the attacker. Only meaningful in PvP —
+                // enemy/NPC shooters are handled by the other branches and
+                // have no reflect target.
+                const reflectDmg = this.lastReflect;
+                if (reflectDmg > 0 && !attacker.isDocked) {
+                  const apos = { x: attacker.posX, y: attacker.posY };
+                  const aDied = this.damagePlayer(attacker, reflectDmg);
+                  events.push({ type: "player:hit", playerId: attacker.playerId, damage: reflectDmg, zone: zoneId, pos: apos, killerId: victim.playerId });
+                  if (aDied) events.push({ type: "player:die", playerId: attacker.playerId, zone: zoneId, pos: apos, killerId: victim.playerId });
+                }
+                zs.projectiles.delete(projId);
+                break;
+              }
+            }
+          }
+        }
       } else if (proj.fromNpcId !== null) {
         // NPC projectile -> hit enemies (silhouette hulls)
         for (const e of zs.enemies.values()) {
@@ -1100,7 +1833,7 @@ export class GameEngine {
                 credits: Math.round(e.credits * this.getZoneTierMult(zoneId)),
                 exp: 0, honor: 0,
               };
-              events.push({ type: "enemy:die", zone: zoneId, enemyId: e.id, killerId: 0, loot, pos: { ...e.pos } });
+              events.push({ type: "enemy:die", zone: zoneId, enemyId: e.id, enemyType: e.type, killerId: 0, loot, pos: { ...e.pos } });
               zs.enemies.delete(e.id);
               if (e.isBoss) { zs.bossActive = false; zs.bossTimer = randRange(180, 420); }
             } else {
@@ -1115,8 +1848,10 @@ export class GameEngine {
         for (const p of players) {
           if (p.isDocked) continue;
           if (projHitsPlayer(proj, p, dt)) {
-            this.damagePlayer(p, proj.damage);
-            events.push({ type: "player:hit", playerId: p.playerId, damage: proj.damage, zone: zoneId });
+            const ppos = { x: p.posX, y: p.posY };
+            const died = this.damagePlayer(p, proj.damage);
+            events.push({ type: "player:hit", playerId: p.playerId, damage: proj.damage, zone: zoneId, pos: ppos, killerId: null });
+            if (died) events.push({ type: "player:die", playerId: p.playerId, zone: zoneId, pos: ppos, killerId: null });
             zs.projectiles.delete(projId);
             break;
           }
@@ -1127,17 +1862,66 @@ export class GameEngine {
 
   // ── DAMAGE PLAYER (server-authoritative) ────────────────────────────────
 
-  private damagePlayer(p: OnlinePlayer, rawDamage: number): void {
+  // Returns true if this hit destroyed the player (hull reached 0). On death
+  // the player is respawned server-side (full hull/shield) so they can keep
+  // playing; the caller emits player:die so every client sees the explosion.
+  // Reflect damage produced by the most recent damagePlayer() call (def-spines
+  // / def-reflect / def-backlash). Read by the PvP hit site so it can be paid
+  // back to the attacker; NPC/enemy attackers have no hull to reflect into.
+  private lastReflect = 0;
+
+  private damagePlayer(p: OnlinePlayer, rawDamage: number): boolean {
+    if (p.hull <= 0) return false; // already dead this tick, don't double-kill
+    this.lastReflect = 0;
     const stats = this.playerStatsCache.get(p.playerId) ?? null;
-    const reduction = stats ? stats.damageReduction : 0;
     const absorb = stats ? stats.shieldAbsorb : 0.5;
-    let dmg = Math.round(rawDamage * (1 - Math.min(0.8, reduction)));
-    if (dmg < 1) dmg = 1;
+
+    // Defensive skill hook — applies the passive DR clamp plus the conditional
+    // DR layers (def-overshield / def-lastditch / def-fortress), ut-evasion and
+    // the reflect chain. When the player has none of those skills this returns
+    // exactly the old `round(raw * (1 - min(0.8, DR)))`, so existing builds are
+    // unchanged.
+    const pData = this.playerDataCache.get(p.playerId);
+    const res = this.onPlayerDamaged(pData, rawDamage, {
+      hull: p.hull, hullMax: stats ? stats.hullMax : p.hullMax,
+      shield: p.shield, shieldMax: stats ? stats.shieldMax : p.shieldMax,
+      playerId: p.playerId,
+    });
+    this.lastReflect = res.reflect;
+    let dmg = res.damage;
+    if (dmg <= 0) { p.lastHitTick = Date.now() / 1000; return false; } // ut-evasion dodge
     const shieldDmg = Math.round(dmg * absorb);
     const hullDmg = dmg - shieldDmg;
     p.shield = Math.max(0, p.shield - shieldDmg);
     p.hull = Math.max(0, p.hull - hullDmg);
     p.lastHitTick = Date.now() / 1000;
+
+    // def-phoenix (maxRank 1): one cheat-death every 90s — the lethal hit
+    // instead leaves the pilot at 20% hull.
+    if (p.hull <= 0 && pData && ((pData.skills?.["def-phoenix"] ?? 0) as number) > 0) {
+      const now = Date.now();
+      const readyAt = this.phoenixReady.get(p.playerId) ?? 0;
+      if (now >= readyAt) {
+        this.phoenixReady.set(p.playerId, now + 90_000);
+        p.hull = Math.max(1, Math.round((stats ? stats.hullMax : p.hullMax) * 0.20));
+        return false;
+      }
+    }
+
+    if (p.hull <= 0) {
+      // Server-authoritative respawn: restore to full at the zone origin,
+      // stop firing/moving. Clients play the death explosion from player:die.
+      p.hull = p.hullMax;
+      p.shield = p.shieldMax;
+      p.posX = 0; p.posY = 0;
+      p.velX = 0; p.velY = 0;
+      p.isLaserFiring = false;
+      p.isRocketFiring = false;
+      p.attackTargetId = null;
+      p.pvpTargetId = null;
+      return true;
+    }
+    return false;
   }
 
   // ── CULLED STATE PER PLAYER ─────────────────────────────────────────────
@@ -1238,6 +2022,85 @@ export class GameEngine {
     return Array.from(zs.enemies.values()).map(enemyToClient);
   }
 
+  /**
+   * Admin spawn: drop one enemy of an explicit type into a zone, near `near`
+   * if given (e.g. the admin's own position). Adds it to the live zone state
+   * and returns the client payload so the caller can broadcast enemy:spawn.
+   * Same object shape as the auto-spawner (tickEnemySpawns) so the AI tick and
+   * hit-testing treat it identically. Returns null on unknown zone/type.
+   */
+  spawnEnemyOfType(zone: string, type: string, near?: Vec2): ClientEnemy | null {
+    const zs = this.zones.get(zone);
+    const zoneDef = ZONES[zone as ZoneId];
+    const baseDef = (ENEMY_DEFS as any)[type];
+    if (!zs || !zoneDef || !baseDef) return null;
+
+    // Faction tint/mods (same source as the auto-spawner), no tier multiplier.
+    const fMods = FACTION_ENEMY_MODS[zoneDef.faction]?.[type as EnemyType];
+    const hullMul = fMods?.hullMul ?? 1;
+    const dmgMul = fMods?.damageMul ?? 1;
+    const spdMul = fMods?.speedMul ?? 1;
+    const color = fMods?.color ?? baseDef.color;
+
+    // Position: a ring around `near` (the admin) if provided, else random.
+    let spawnPos: Vec2 | null = null;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      let cand: Vec2;
+      if (near) {
+        const ang = Math.random() * Math.PI * 2;
+        const d = 350 + Math.random() * 450;
+        cand = {
+          x: clamp(near.x + Math.cos(ang) * d, -MAP_RADIUS, MAP_RADIUS),
+          y: clamp(near.y + Math.sin(ang) * d, -MAP_RADIUS, MAP_RADIUS),
+        };
+      } else {
+        cand = {
+          x: randRange(-MAP_RADIUS * 0.95, MAP_RADIUS * 0.95),
+          y: randRange(-MAP_RADIUS * 0.95, MAP_RADIUS * 0.95),
+        };
+      }
+      if (!isInStationSafeZone(zone, cand)) { spawnPos = cand; break; }
+    }
+    if (!spawnPos) return null;
+
+    const names = ENEMY_NAMES[type as EnemyType] ?? [type];
+    const name = names[Math.floor(Math.random() * names.length)];
+
+    const enemy: ServerEnemy = {
+      id: eid("e"),
+      type: type as EnemyType,
+      behavior: baseDef.behavior,
+      name,
+      pos: { ...spawnPos },
+      vel: { x: 0, y: 0 },
+      angle: Math.random() * Math.PI * 2,
+      hull: Math.round(baseDef.hullMax * hullMul),
+      hullMax: Math.round(baseDef.hullMax * hullMul),
+      damage: Math.round(baseDef.damage * dmgMul),
+      speed: Math.round(baseDef.speed * spdMul),
+      exp: baseDef.exp,
+      credits: baseDef.credits,
+      honor: baseDef.honor,
+      loot: pickLoot(type),
+      color,
+      size: baseDef.size,
+      isBoss: false,
+      bossPhase: 0,
+      phaseTimer: 0,
+      fireTimer: randRange(1, 3),
+      burstCd: 0,
+      burstShots: 0,
+      aggroTarget: null, retargetCd: 0,
+      aggroRange: 400,
+      spawnPos: { ...spawnPos },
+      stunUntil: 0,
+      combo: new Map(),
+    };
+
+    zs.enemies.set(enemy.id, enemy);
+    return enemyToClient(enemy);
+  }
+
   getZoneAsteroids(zone: string): ClientAsteroid[] {
     const zs = this.zones.get(zone);
     if (!zs) return [];
@@ -1324,15 +2187,15 @@ export class GameEngine {
     const crit = Math.random() < stats.critChance;
     const critMul = crit ? 1.5 : 1;
 
-    // Execute bonus (below 25% HP)
-    const sk = (id: SkillId) => (pData.skills?.[id] ?? 0) as number;
-    const execMul = (e.hull / e.hullMax < 0.25 && sk("off-execute") > 0) ? (1 + sk("off-execute") * 0.20) : 1;
+    // Skill damage multipliers (off-execute, off-void + expansion nodes).
+    // Shared with the laser path via applyOffensiveMultipliers().
+    const skillMul = applyOffensiveMultipliers(pData, e, this.livePlayers.get(playerId) ?? null);
 
-    // Void rounds bonus (vs dread/voidling)
-    const voidMul = ((e.type === "dread" || e.type === "voidling") && sk("off-void") > 0) ? (1 + sk("off-void") * 0.08) : 1;
-
-    let dmg = Math.round(baseDmg * comboMul * critMul * execMul * voidMul);
+    let dmg = Math.round(baseDmg * comboMul * critMul * skillMul);
     if (dmg < 1) dmg = 1;
+
+    // Crit-triggered buffs (off-coldbore damage, eng-heatsink fireRate).
+    if (crit) this.onPlayerCrit(playerId, pData);
 
     e.hull -= dmg;
     e.aggroTarget = playerId;
@@ -1342,22 +2205,30 @@ export class GameEngine {
       const tierMult = this.getZoneTierMult(zone);
       let dropResource2 = e.loot ? { ...e.loot } : undefined;
       const bonusDrops2: ResourceId[] = ["fuel-cell", "synth", "nanite", "food", "spice", "titanium"];
-      if (Math.random() < 0.25 && !e.isBoss) {
+      if (Math.random() < 0.08 && !e.isBoss) { // reduced from 0.25 to cut spam
         const bonusRes2 = bonusDrops2[Math.floor(Math.random() * bonusDrops2.length)];
         dropResource2 = { resourceId: bonusRes2, qty: 1 + Math.floor(Math.random() * 2) };
       }
+      const clanMul2 = clanResearchMultipliers(pData.clanResearch ?? null);
+      const lbMul2 = leaderboardBuffMultipliers(pData.leaderboardAllTimeBuff ?? null);
       const loot: LootDrop = {
-        credits: Math.round(e.credits * tierMult) + Math.round(stats.lootBonus * 2),
-        exp: Math.round(e.exp * tierMult * (e.isBoss ? 2 : 1)),
-        honor: e.honor,
+        credits: Math.round((Math.round(e.credits * tierMult) + Math.round(stats.lootBonus * 2)) * clanMul2.salvageMul * lbMul2.creditsMul),
+        exp: Math.round(e.exp * tierMult * (e.isBoss ? 2 : 1) * lbMul2.xpMul),
+        honor: Math.round(e.honor * clanMul2.honorMul),
         resource: dropResource2,
       };
+      // Bebcell — boss-only pet-drone upgrade material (scales with zone tier).
+      if (e.isBoss) {
+        loot.bebcell = Math.max(1, Math.round((2 + Math.floor(Math.random() * 3)) * tierMult));
+        this.creditBossBebcell(playerId, loot.bebcell);
+      }
       const rolledItem = rollEnemyEquipDrop(e, zone, playerId, stats.lootBonus);
       if (rolledItem) loot.item = rolledItem;
       events.push({
-        type: "enemy:die", zone, enemyId: e.id,
+        type: "enemy:die", zone, enemyId: e.id, enemyType: e.type,
         killerId: playerId, loot, pos: { ...e.pos },
       });
+      this.onEnemyKilled(playerId, e);
       zs.enemies.delete(e.id);
       if (e.isBoss) {
         zs.bossActive = false;
@@ -1379,15 +2250,18 @@ export class GameEngine {
           if (dist(e.pos, e2.pos) < splashRange) {
             e2.hull -= splashDmg;
             if (e2.hull <= 0) {
+              const splashClanMul = clanResearchMultipliers(pData.clanResearch ?? null);
+              const splashLbMul2 = leaderboardBuffMultipliers(pData.leaderboardAllTimeBuff ?? null);
               const loot2: LootDrop = {
-                credits: Math.round(e2.credits * this.getZoneTierMult(zone)),
-                exp: Math.round(e2.exp * this.getZoneTierMult(zone)),
-                honor: e2.honor,
+                credits: Math.round(e2.credits * this.getZoneTierMult(zone) * splashClanMul.salvageMul * splashLbMul2.creditsMul),
+                exp: Math.round(e2.exp * this.getZoneTierMult(zone) * splashLbMul2.xpMul),
+                honor: Math.round(e2.honor * splashClanMul.honorMul),
                 resource: e2.loot ? { ...e2.loot } : undefined,
               };
               const splashItem = rollEnemyEquipDrop(e2, zone, playerId, stats.lootBonus);
               if (splashItem) loot2.item = splashItem;
-              events.push({ type: "enemy:die", zone, enemyId: e2.id, killerId: playerId, loot: loot2, pos: { ...e2.pos } });
+              events.push({ type: "enemy:die", zone, enemyId: e2.id, enemyType: e2.type, killerId: playerId, loot: loot2, pos: { ...e2.pos } });
+              this.onEnemyKilled(playerId, e2);
               zs.enemies.delete(e2.id);
             } else {
               events.push({ type: "enemy:hit", zone, enemyId: e2.id, damage: splashDmg, hp: e2.hull, hpMax: e2.hullMax, crit: false, attackerId: playerId });
@@ -1793,43 +2667,71 @@ export class GameEngine {
         const standOff = e.behavior === "ranged" ? 340 : (e.isBoss ? 300 : 220);
         const hseed = ((e.id.charCodeAt(e.id.length - 1) * 31 + e.id.charCodeAt(e.id.length - 2)) % 100) / 100;
         const side = (hseed - 0.5) * 2; // -1..1
-        const dirAng = angleFromTo(tPos, e.pos); // player → enemy: stay on own side
-        const spreadAng = dirAng + side * 0.55;
+        // Approach bearing FIXED per enemy, not recomputed from the live
+        // positions each tick.
+        //
+        // This is what produced the orbiting. `angleFromTo(tPos, e.pos)` is the
+        // player→enemy bearing RIGHT NOW, so the hold point was pinned to
+        // wherever the enemy currently stood; the moment the player moved, the
+        // hold point swung around them and the enemy chased a target that kept
+        // sliding sideways — which traces a circle. Deriving the bearing from
+        // the enemy id instead makes each attacker claim one fixed side of the
+        // player and hold it, so a pack fans out and stays put (DarkOrbit: the
+        // NPCs park around you and shoot, they do not strafe).
+        const spreadAng = hseed * Math.PI * 2 + side * 0.55;
         const holdPos = {
           x: tPos.x + Math.cos(spreadAng) * standOff,
           y: tPos.y + Math.sin(spreadAng) * standOff,
         };
         const dHold = dist(e.pos, holdPos);
 
+        // One steering model for all three cases instead of three blocks that
+        // each slammed e.vel to a new vector. Snapping the velocity made an
+        // enemy flip direction between ticks whenever it crossed a threshold
+        // (keep-out ↔ chase ↔ station-keeping), which is a large part of the
+        // twitchy read. Here the DESIRED velocity is chosen per case and the
+        // actual velocity eases toward it, so transitions are continuous.
+        let desiredVx: number;
+        let desiredVy: number;
+        let faceAng: number;
+
         if (d < standOff * 0.55) {
           // Hard keep-out: too close (player charged in) — back straight off
           const away = angleFromTo(tPos, e.pos);
-          e.angle = angleFromTo(e.pos, tPos); // still face the player
-          e.vel.x = Math.cos(away) * e.speed;
-          e.vel.y = Math.sin(away) * e.speed;
-          e.pos.x += e.vel.x * dt;
-          e.pos.y += e.vel.y * dt;
+          faceAng = angleFromTo(e.pos, tPos); // still face the player
+          desiredVx = Math.cos(away) * e.speed;
+          desiredVy = Math.sin(away) * e.speed;
         } else if (dHold > 80) {
           // Chase burst: noticeably faster than cruise, extra boost when far
           const chaseMul = dHold > 600 ? 1.9 : 1.45;
           const ang = angleFromTo(e.pos, holdPos);
-          e.angle = ang; // nose along the intercept path while repositioning
-          e.vel.x = Math.cos(ang) * e.speed * chaseMul;
-          e.vel.y = Math.sin(ang) * e.speed * chaseMul;
-          e.pos.x += e.vel.x * dt;
-          e.pos.y += e.vel.y * dt;
+          faceAng = ang; // nose along the intercept path while repositioning
+          desiredVx = Math.cos(ang) * e.speed * chaseMul;
+          desiredVy = Math.sin(ang) * e.speed * chaseMul;
         } else {
           // Station-keeping at range: face the player, keep firing
-          e.angle = angleFromTo(e.pos, tPos);
+          faceAng = angleFromTo(e.pos, tPos);
           let vx = (holdPos.x - e.pos.x) * 2.4;
           let vy = (holdPos.y - e.pos.y) * 2.4;
           const vmag = Math.sqrt(vx * vx + vy * vy);
           if (vmag > e.speed) { vx = (vx / vmag) * e.speed; vy = (vy / vmag) * e.speed; }
-          e.vel.x = vx;
-          e.vel.y = vy;
-          e.pos.x += vx * dt;
-          e.pos.y += vy * dt;
+          desiredVx = vx;
+          desiredVy = vy;
         }
+
+        // Ease velocity + heading rather than assigning them. 6.0/s reaches the
+        // target in ~1/6s — responsive enough to still feel aggressive, slow
+        // enough that no frame shows a hard direction flip.
+        const accelK = Math.min(1, dt * 6.0);
+        e.vel.x += (desiredVx - e.vel.x) * accelK;
+        e.vel.y += (desiredVy - e.vel.y) * accelK;
+        let dFace = faceAng - e.angle;
+        while (dFace > Math.PI) dFace -= Math.PI * 2;
+        while (dFace < -Math.PI) dFace += Math.PI * 2;
+        const COMBAT_TURN = 4.5; // rad/s — quicker than patrol, still not instant
+        e.angle += clamp(dFace, -COMBAT_TURN * dt, COMBAT_TURN * dt);
+        e.pos.x += e.vel.x * dt;
+        e.pos.y += e.vel.y * dt;
 
         // Fire at target — also while chasing/repositioning (extended range),
         // not only once parked at the hold point.
@@ -2064,27 +2966,60 @@ export class GameEngine {
           }
         }
       } else {
-        // Idle: patrol around spawn area actively
-        const dFromSpawn = dist(e.pos, e.spawnPos);
-        if (dFromSpawn > 500) {
-          // Too far from spawn - head back
-          const ang = angleFromTo(e.pos, e.spawnPos);
-          e.vel.x = Math.cos(ang) * e.speed * 0.5;
-          e.vel.y = Math.sin(ang) * e.speed * 0.5;
-          e.angle = ang;
+        // Idle: DarkOrbit-style drift — pick a point, cruise to it in a straight
+        // line, pause, pick the next. NPCs there read as patrolling, not fleeing.
+        //
+        // Replaces a re-roll of the heading on `Math.random() < 0.03` EVERY tick
+        // (~1x/second at 30Hz) at a random speed, which is what made them look
+        // panicked: no NPC ever held a course long enough to look deliberate.
+        // That block also advanced e.pos twice per tick (once inside the branch,
+        // once after it), so idle NPCs moved at double the intended speed.
+        const PATROL_RADIUS = 420;   // how far a waypoint may sit from spawn
+        const ARRIVE_EPS = 45;       // "close enough" to count as arrived
+        const CRUISE = 0.34;         // fraction of full speed while patrolling
+
+        if (e.patrolPause && e.patrolPause > 0) {
+          // Parked at a waypoint: bleed off velocity instead of stopping dead,
+          // so the ship coasts to a halt.
+          e.patrolPause -= dt;
+          e.vel.x *= 0.90;
+          e.vel.y *= 0.90;
         } else {
-          // Active patrol: fly in a direction, change often
-          e.pos.x += e.vel.x * dt;
-          e.pos.y += e.vel.y * dt;
-          const spdSq = e.vel.x * e.vel.x + e.vel.y * e.vel.y;
-          if (spdSq < e.speed * e.speed * 0.04 || Math.random() < 0.03) {
-            const ang = Math.random() * Math.PI * 2;
-            const patrolSpd = e.speed * (0.3 + Math.random() * 0.3);
-            e.vel.x = Math.cos(ang) * patrolSpd;
-            e.vel.y = Math.sin(ang) * patrolSpd;
-            e.angle = ang;
+          const tooFar = dist(e.pos, e.spawnPos) > PATROL_RADIUS * 1.6;
+          if (!e.patrolTarget || tooFar) {
+            // New waypoint inside the patrol radius around spawn. Drifting too
+            // far (knockback, a chase that broke off) just aims the next one
+            // back home rather than teleporting or hard-turning.
+            const a = Math.random() * Math.PI * 2;
+            const r = tooFar ? 0 : Math.sqrt(Math.random()) * PATROL_RADIUS;
+            e.patrolTarget = {
+              x: e.spawnPos.x + Math.cos(a) * r,
+              y: e.spawnPos.y + Math.sin(a) * r,
+            };
+          }
+
+          const tgt = e.patrolTarget;
+          if (dist(e.pos, tgt) <= ARRIVE_EPS) {
+            e.patrolTarget = null;
+            e.patrolPause = randRange(1.2, 3.0);  // hold station a beat
+          } else {
+            // Steer gradually toward the waypoint. Turning the HEADING rather
+            // than snapping the velocity vector is what removes the twitch:
+            // a real ship banks into a course change.
+            const want = angleFromTo(e.pos, tgt);
+            let da = want - e.angle;
+            while (da > Math.PI) da -= Math.PI * 2;
+            while (da < -Math.PI) da += Math.PI * 2;
+            const MAX_TURN = 1.6;                  // rad/s
+            e.angle += clamp(da, -MAX_TURN * dt, MAX_TURN * dt);
+            // Accelerate along the nose, capped at cruise speed — no instant
+            // direction changes, so the path stays smooth.
+            const cruiseSpd = e.speed * CRUISE;
+            e.vel.x += (Math.cos(e.angle) * cruiseSpd - e.vel.x) * Math.min(1, dt * 2.2);
+            e.vel.y += (Math.sin(e.angle) * cruiseSpd - e.vel.y) * Math.min(1, dt * 2.2);
           }
         }
+
         e.pos.x += e.vel.x * dt;
         e.pos.y += e.vel.y * dt;
       }
@@ -2458,7 +3393,6 @@ function enemyToClient(e: ServerEnemy): ClientEnemy {
     damage: e.damage, speed: e.speed,
     color: e.color, size: e.size,
     isBoss: e.isBoss, bossPhase: e.bossPhase,
-    aggro: e.aggroTarget !== null,
   };
 }
 

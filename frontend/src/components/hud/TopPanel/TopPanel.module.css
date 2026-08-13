@@ -19,7 +19,8 @@
   display: flex;
   align-items: flex-start;
   width: fit-content;
-  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.6));
+  /* no `filter` — it would break the frosted glass (backdrop-filter) on the
+     panel bodies below. Drop shadow lives on .mainBody's box-shadow. */
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -59,7 +60,7 @@
   position: absolute;
   inset: -3px;
   background: linear-gradient(180deg, #baf3ff 0%, var(--hud-cyan) 55%, var(--hud-shield-deep) 100%);
-  opacity: 0.8;
+  opacity: 0.34;
   filter: blur(6px);
   clip-path: polygon(
     22% 0, 78% 0, 100% 22%, 100% 78%,
@@ -71,7 +72,7 @@
 .portraitCrispEdge {
   position: absolute;
   inset: -1px;
-  background: linear-gradient(180deg, #d6f6ff 0%, var(--hud-cyan) 60%, var(--hud-shield-deep) 100%);
+  background: linear-gradient(180deg, #f2f8ff 0%, #c3d5ea 22%, #8098b5 50%, #3f5c7c 74%, var(--hud-shield-deep) 100%);
   clip-path: polygon(
     22% 0, 78% 0, 100% 22%, 100% 78%,
     78% 100%, 22% 100%, 0 78%, 0 22%
@@ -241,17 +242,29 @@
 }
 
 /* Pilot rank icon -- sits in the upper part of the dark window, same spot
-   the old pre-rebuild TopBar showed rank_XX.png, but sized down and
-   nudged up to leave room for portraitRankName underneath instead of
-   filling the whole window. */
+   the old pre-rebuild TopBar showed rank_XX.png, nudged up to leave room
+   for portraitRankName underneath.
+
+   Sized against portraitWindowCore, which is inset 30px inside the 158px
+   portrait: a ~98px dark window. At the old 46px the badge used under half
+   of it and read as a stamp rather than the pilot's insignia. 78px fills
+   the window properly while keeping a margin off the octagon's angled
+   corners -- the badge art is already 6% padded inside its own canvas, so
+   the visible metal lands a little under this box. */
 .portraitRankIcon {
   position: absolute;
   left: 50%;
-  top: 46%;
+  top: 42%;
   transform: translate(-50%, -50%);
   z-index: 1;
-  width: 46px;
-  height: 46px;
+  /* Height-driven, width follows. The art files are cropped tight to each
+     badge and keep their own aspect, so a fixed 78x78 square would letterbox
+     the wide chevron ranks down to ~41px of visible art while the compact
+     shields got the full 78. max-width keeps the widest ones inside the
+     octagon's angled corners. */
+  height: 78px;
+  width: auto;
+  max-width: 92px;
   object-fit: contain;
   pointer-events: none;
 }
@@ -483,6 +496,7 @@
   flex: 1 1 auto;
   align-self: stretch;
   min-width: 720px;
+  min-height: 118px;   /* was provided by .mainBody, now the .panel fills it */
   margin-left: -1px;
 }
 
@@ -497,7 +511,7 @@
   position: absolute;
   inset: -3px;
   background: linear-gradient(180deg, #baf3ff 0%, var(--hud-cyan) 55%, var(--hud-shield-deep) 100%);
-  opacity: 0.8;
+  opacity: 0.34;
   filter: blur(6px);
   clip-path: polygon(
     30px 0, 34% 0, 42% 6px, 58% 6px, 66% 0,
@@ -511,7 +525,7 @@
 .mainCrispEdge {
   position: absolute;
   inset: -1px;
-  background: linear-gradient(180deg, #d6f6ff 0%, var(--hud-cyan) 60%, var(--hud-shield-deep) 100%);
+  background: linear-gradient(180deg, #f2f8ff 0%, #c3d5ea 22%, #8098b5 50%, #3f5c7c 74%, var(--hud-shield-deep) 100%);
   clip-path: polygon(
     30px 0, 34% 0, 42% 6px, 58% 6px, 66% 0,
     calc(100% - 26px) 0, 100% 14px,
@@ -531,12 +545,19 @@
   width: 100%;
   height: 100%;
   min-height: 118px;
+  /* Frosted glass — translucent navy body + backdrop blur (matches .panel). */
   background:
-    linear-gradient(180deg, rgba(120, 175, 220, 0.14) 0%, transparent 40%),
-    linear-gradient(180deg, #283a58 0%, #17233c 32%, #0d1626 62%, #060a14 100%);
+    linear-gradient(180deg, rgba(150, 195, 235, 0.18) 0%, transparent 38%),
+    linear-gradient(180deg, rgba(40, 56, 88, 0.5) 0%, rgba(26, 39, 64, 0.52) 40%, rgba(13, 22, 38, 0.56) 100%);
+  -webkit-backdrop-filter: blur(7px) saturate(1.05);
+  backdrop-filter: blur(7px) saturate(1.05);
+  /* Phase 5/14 — directional bevel + deeper AO (was the flattest strip). */
   box-shadow:
-    inset 0 2px 5px rgba(180, 220, 255, 0.14),
-    inset 0 -10px 16px rgba(0, 0, 0, 0.55);
+    inset 0 2px 5px rgba(180, 220, 255, 0.16),      /* top highlight */
+    inset 3px 0 6px rgba(150, 195, 235, 0.10),      /* left lift     */
+    inset -3px 0 7px rgba(0, 0, 0, 0.38),           /* right shade   */
+    inset 0 -14px 22px rgba(0, 0, 0, 0.60),         /* bottom AO     */
+    0 8px 18px rgba(0, 0, 0, 0.6);                  /* outer drop    */
   clip-path: polygon(
     30px 0, 34% 0, 42% 6px, 58% 6px, 66% 0,
     calc(100% - 26px) 0, 100% 14px,
@@ -545,6 +566,28 @@
   );
   overflow: hidden;
 }
+/* Phase 10 — slow light travel across the top bar (~24s, staggered). */
+@keyframes tpLightTravel {
+  0%   { transform: translateX(-140%) skewX(-14deg); opacity: 0; }
+  9%   { opacity: 0.18; }
+  14%  { opacity: 0; }
+  100% { transform: translateX(240%) skewX(-14deg); opacity: 0; }
+}
+.mainBody::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  clip-path: inherit;
+  background: linear-gradient(100deg, transparent 44%, rgba(200, 230, 255, 0.8) 50%, transparent 56%);
+  mix-blend-mode: screen;
+  opacity: 0;
+  animation: tpLightTravel 13s ease-in-out infinite;
+  animation-delay: 3s;
+  will-change: transform, opacity;
+}
+@media (prefers-reduced-motion: reduce) { .mainBody::after { animation: none; } }
 
 /* Horizontal PCB/chip-trace energy veins running left-to-right across
    the full width of the (now wider) main strip -- same trace/node
@@ -577,123 +620,145 @@
   inset: 0;
   z-index: 2;
   display: flex;
-  align-items: center;
-  /* Left padding clears the portrait octagon's own overlap zone -- the
-     octagon is 158px wide but portraitWrap's -34px right margin only
-     reserves 124px of flex space for it, so its right ~34px visually
-     overlaps the start of mainStrip. Padding must exceed that or the
-     player name text renders partially under the octagon's edge. */
-  padding: 0 24px 0 46px;
-  gap: 14px;
-}
-
-.identityPanel {
-  display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  min-width: 0;
-  flex: 0 0 auto;
-  padding: 6px 16px;
-  background: linear-gradient(180deg, rgba(10, 16, 28, 0.22) 0%, rgba(10, 16, 28, 0.42) 45%, rgba(3, 5, 10, 0.12) 100%);
-  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.3), inset 0 0 0 1px rgba(140, 190, 220, 0.06);
-  clip-path: polygon(7px 0, 100% 0, 100% 100%, 7px 100%, 0 calc(100% - 7px), 0 7px);
+  justify-content: center;
+  gap: 8px;
+  /* Left padding clears the portrait octagon's overlap zone. Right side kept
+     clear (small padding) for future icons. */
+  padding: 11px 20px 11px 46px;
+  font-family: var(--hud-font);
 }
 
-.nameHeader {
+/* ── Row 1: name · faction tag · level/xp · cargo (all bundled left) ── */
+.topRow {
   display: flex;
   align-items: baseline;
-  gap: 10px;
+  gap: 8px;
+  min-width: 0;
 }
-
 .playerName {
   font-family: var(--hud-font);
   font-size: var(--hud-fs-md);
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
   color: var(--hud-text-bright);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
-
-.clanName {
+.factionTag {
   font-family: var(--hud-font);
   font-size: var(--hud-fs-xs);
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--hud-cyan);
+  padding: 1px 6px;
+  border: 1px solid rgba(78, 226, 255, 0.35);
+  background: rgba(78, 226, 255, 0.08);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  align-self: center;
 }
-
-.levelRow {
+.lvlGroup {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
+  margin-left: 6px;
 }
-
-.levelLabel {
+.lvlLabel {
   font-family: var(--hud-font);
   font-size: var(--hud-fs-xs);
-  font-weight: 700;
-  color: var(--hud-text-bright);
+  letter-spacing: 0.06em;
+  color: #b9cbe6;
   white-space: nowrap;
 }
-
-.cargoLabel {
-  font-family: var(--hud-font);
-  font-size: var(--hud-fs-xs);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-  margin-left: 4px;
-}
-
+.lvlLabel b { color: var(--hud-text-bright); font-weight: 700; }
 .expTrack {
   position: relative;
-  width: 100px;
+  display: inline-block;
+  width: 84px;
   height: 4px;
   background: rgba(3, 5, 10, 0.8);
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.7);
-  clip-path: polygon(0 0, calc(100% - 3px) 0, 100% 100%, 3px 100%);
   overflow: hidden;
 }
-
 .expFill {
+  position: absolute; inset: 0 auto 0 0;
   height: 100%;
   background: linear-gradient(90deg, var(--hud-cyan-dim) 0%, var(--hud-cyan) 100%);
   box-shadow: 0 0 5px rgba(78, 226, 255, 0.6);
 }
-
-.statRow {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.cargoLabel {
+  font-family: var(--hud-font);
+  font-size: var(--hud-fs-xs);
+  letter-spacing: 0.05em;
+  color: var(--hud-green);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  align-self: center;
 }
 
+/* ── Row 2: credits+honor stacked | reputation | mcoins, thin dividers ── */
+.statsRow {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  min-width: 0;
+}
+.divider {
+  width: 1px;
+  align-self: stretch;
+  margin: 1px 0;
+  flex-shrink: 0;
+  background: linear-gradient(180deg, transparent, rgba(120, 170, 210, 0.4) 18%, rgba(120, 170, 210, 0.4) 82%, transparent);
+}
+/* Reputation + MCoins cells: label ON TOP, value below (like the mockup). */
+.statCell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 13px;
+}
+.moneyCell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 0 13px 0 0;
+}
+.moneyLine { display: flex; align-items: center; gap: 6px; }
+.mcoinLine { display: flex; align-items: center; gap: 6px; }
 .statIcon {
   flex-shrink: 0;
   width: 13px;
   text-align: center;
-  font-size: 11px;
+  font-size: 12px;
 }
-
 .statLabel {
   font-family: var(--hud-font);
   font-size: var(--hud-fs-xs);
-  font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--hud-text-bright);
+  color: #b9cbe6;
 }
-
+.moneyLine .statLabel { min-width: 50px; }
 .statValue {
   font-family: var(--hud-font);
-  font-size: var(--hud-fs-xs);
+  font-size: var(--hud-fs-sm);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  line-height: 1.15;
+}
+.repPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--hud-font);
+  font-size: var(--hud-fs-xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border: 1px solid currentColor;
+  background: color-mix(in srgb, currentColor 14%, transparent);
   white-space: nowrap;
 }
 

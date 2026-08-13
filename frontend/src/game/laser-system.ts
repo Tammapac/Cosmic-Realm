@@ -50,7 +50,8 @@ function cached(key: string, w: number, h: number, draw: (ctx: CanvasRenderingCo
   const c = document.createElement("canvas");
   c.width = w; c.height = h;
   draw(c.getContext("2d")!, w, h);
-  t = PIXI.Texture.from(c, { scaleMode: PIXI.SCALE_MODES.LINEAR });
+  t = PIXI.Texture.from(c);
+  (t.source as PIXI.TextureSource).scaleMode = "linear";
   texCache.set(key, t);
   return t;
 }
@@ -224,14 +225,18 @@ const PRESETS: Record<LaserPreset, LaserCfg> = {
     hitFlashR: 26, hitRingR: 20, hitRingAlpha: 0.5, hitEmbers: 3,
     hitColor: 0x6dffb2, hitShake: 0,
   },
+  // Enemy laser — brought up to the player heavyLaser's visual quality (same
+  // core/glow scale, hit ring, embers, muzzle) but keeping the hot red enemy
+  // palette, so NPC fire reads as impressive as the player's. Only these preset
+  // numbers changed; the projectile system/pipeline is untouched.
   enemyLaser: {
-    coreLen: 30, coreW: 5, coreTint: 0xfff1ec,
-    glowR: 17, glowColor: 0xff4a38, glowAlpha: 0.8,
-    tipR: 6, pulseHull: false,
-    trailKind: "streak", trailColor: 0xff7a52, trailW: 7.5, trailLife: 0.2, trailSpacing: 10,
-    muzzleColor: 0xffb3a0, muzzleSize: 26,
-    hitFlashR: 15, hitRingR: 0, hitRingAlpha: 0, hitEmbers: 2,
-    hitColor: 0xff8a66, hitShake: 0,
+    coreLen: 42, coreW: 7.5, coreTint: 0xfff1ec,
+    glowR: 26, glowColor: 0xff4a38, glowAlpha: 0.88,
+    tipR: 8, pulseHull: false,
+    trailKind: "streak", trailColor: 0xff6a44, trailW: 11, trailLife: 0.28, trailSpacing: 11,
+    muzzleColor: 0xffb3a0, muzzleSize: 40,
+    hitFlashR: 22, hitRingR: 34, hitRingAlpha: 0.8, hitEmbers: 4,
+    hitColor: 0xff8a66, hitShake: 0.1,
   },
 };
 
@@ -326,13 +331,13 @@ export class LaserSystem {
       const cont = new PIXI.Container();
       const glow = new PIXI.Sprite(glowTex());
       glow.anchor.set(0.5);
-      glow.blendMode = PIXI.BLEND_MODES.ADD;
+      glow.blendMode = "add";
       const core = new PIXI.Sprite(coreTex());
       core.anchor.set(0.5);
-      core.blendMode = PIXI.BLEND_MODES.NORMAL; // stays readable over the glow
+      core.blendMode = "normal"; // stays readable over the glow
       const tip = new PIXI.Sprite(tipTex());
       tip.anchor.set(0.5);
-      tip.blendMode = PIXI.BLEND_MODES.ADD;
+      tip.blendMode = "add";
       cont.addChild(glow, core, tip);
       this.projFront.addChild(cont);
       v = {
@@ -567,7 +572,7 @@ export class LaserSystem {
     if (!t) {
       const spr = new PIXI.Sprite(tex);
       spr.anchor.set(0.5);
-      spr.blendMode = PIXI.BLEND_MODES.ADD;
+      spr.blendMode = "add";
       layer.addChild(spr);
       t = {
         active: false, spr, life: 0, maxLife: 1, kind,

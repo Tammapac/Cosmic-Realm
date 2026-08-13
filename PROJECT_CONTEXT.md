@@ -1,6 +1,10 @@
 # Project Context — Cosmic Realm
 
-*Last updated: 2026-07-06 (post-Phase 2.8)*
+*Last updated: 2026-07-22*
+
+> For AI-agent orientation (VPS/SSH, deploy, rules, key files) start with `CLAUDE.md`.
+> PvP, the ship material system, and the unified HUD were added in the 2026-07 session —
+> see `ARCHITECTURE.md`, `RENDERING_PIPELINE.md`, `HUD_UI_SYSTEM.md`.
 
 ## Game Overview
 

@@ -1,6 +1,6 @@
 # Current Issues — Cosmic Realm
 
-*Last updated: 2026-07-06*
+*Last updated: 2026-07-22*
 
 ---
 
@@ -10,6 +10,34 @@
 - 🟡 **Partial** — partially fixed, still investigating
 - 🟢 **Fixed** — resolved and deployed
 - ⚪ **Intentional gap** — known missing feature, not a bug
+
+---
+
+## 2026-07-22 session status (newest)
+
+**Fixed & deployed this session** (worktree `explosion-hit-effects`):
+- 🟢 **Mission Journal** — black-on-dark list text (stale `.j-row{color:#2a2214}` in
+  `index.css`); all `.j-row` states re-themed in `hud-skin.css`; title/description/
+  category fallbacks; progress-division guards; selection reconciliation on
+  complete/delete/invalid/reload. See `HUD_UI_SYSTEM.md`.
+- 🟢 **"Billige Ränder" through popup text** — the `.panel` inner ring drew two thin
+  horizontal lines across popup bodies. Inner ring → corner brackets; nested cards →
+  new `.panel-inset`. Migrated all small Hangar cards.
+- 🟢 **Orange / off-theme sweep** — `.gtip`, `.q-ticks`, BossBar name, Hangar ammo
+  accents → gold; off-theme blue/grey buttons → `.gbtn`; greys → tokens.
+- 🟢 **Ship/station "flat, no material depth"** — `space-material.ts` map tiling
+  (`.repeat`) + broken-white-emissive kill. See `RENDERING_PIPELINE.md`.
+- 🟢 **PvP** — mutual faction attack, player click-targeting, `player:die` + death VFX.
+
+**Open / to revisit:**
+- 🟡 **Red selection rim faint** — the post-process rim (`SELECT_FRAG`, `SELECT_LAYER=2`
+  in `three-ship-layer.ts`) may be too subtle. Enable `window.__DEBUG_SEL` and check the
+  falloff if asked to continue.
+- 🔵 **HUD/popup consolidation (not a bug — remaining work)** — hand-rolled popups
+  (App `RiftConfirmDialog`/notifications, `InventoryPanel` cells, `ZoneMapOverlay`,
+  `TopBar` logout, `EventBanners`, shadcn `components/ui/*`) not yet on the shared kit;
+  small nested `.panel` cards outside Hangar still need `.panel-inset`. Checklist in
+  `HUD_UI_SYSTEM.md` §8.
 
 ---
 

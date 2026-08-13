@@ -28,7 +28,7 @@ export function EventBanners() {
               className="font-bold tracking-widest whitespace-nowrap overflow-hidden"
               style={{
                 color: accentColor,
-                fontSize: 10,
+                fontSize: 11.8,
                 letterSpacing: "0.22em",
                 textOverflow: "ellipsis",
               }}
@@ -37,7 +37,7 @@ export function EventBanners() {
             </div>
             <div
               className="mt-0.5 leading-snug"
-              style={{ color: "var(--text-dim)", fontSize: 9 }}
+              style={{ color: "var(--text-dim)", fontSize: 10.6 }}
             >
               {ev.body}
             </div>

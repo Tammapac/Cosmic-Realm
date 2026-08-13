@@ -9,6 +9,15 @@ import {
   ConsumableId,
   DAILY_MISSION_POOL,
   Drone,
+  PetDrone,
+  PetDroneSlot,
+  PetDroneLevel,
+  newPetDrone,
+  petDroneSlotCount,
+  droneAmmoMaxForLevel,
+  DRONE_AMMO_COST_PER,
+  PET_DRONE_UPGRADE_COST,
+  PET_DRONE_SLOT_ORDER,
   DAILY_DUNGEON_BONUS,
   DUNGEONS,
   DungeonId,
@@ -50,13 +59,17 @@ import {
   ZONES, pickAsteroidYield, ASTEROID_BELTS, RefineJob, REFINE_RECIPES, FACTORY_SPEED_BONUS, FACTORY_UPGRADE_COSTS,
   ZoneId,
   MISSION_BOARD_POOL, MissionCategory,
+  resolveItemId,
 } from "./types";
 import { sfx } from "./sound";
 import { lootSellPrice } from "./loot-ui";
-import { sendWarp, sendStatsUpdate, sendDockRepair, sendDockLeave, sendInstanceEnter, sendInstanceLeave } from "../net/socket";
+import { sendWarp, sendStatsUpdate, sendDockRepair, sendDockLeave, sendInstanceEnter, sendInstanceLeave, sendDroneUpgrade } from "../net/socket";
 
 export type HangarTab =
-  | "bounties" | "loadout" | "ships" | "drones" | "market" | "ammo" | "cargo" | "repair" | "skills" | "missions" | "dungeons" | "refinery";
+  | "bounties" | "loadout" | "ships" | "drones" | "market" | "ammo" | "cargo" | "repair" | "skills" | "missions" | "dungeons" | "refinery"
+  // null = no section open (3D-hangar glass menu starts with only the item list
+  // visible over the live scene; a click slides the content panel out left→right).
+  | null;
 // "ammo" kept as valid value for internal use by loadout popup
 
 export type DockServiceEntry = {
@@ -79,9 +92,23 @@ export type GameState = {
   cameraTarget: { x: number; y: number };
   cameraShake: number;          // 0..1, decays
   dockedAt: string | null;
+  /** True once the 3D hangar fly-in intro has finished (or immediately when the
+   *  3D hangar is disabled). Gates the 2D hangar menu so it appears AFTER the
+   *  cinematic. Only meaningful when ENABLE_HANGAR_3D_SCENE is on. */
+  hangarIntroDone: boolean;
   hangarTab: HangarTab;
   showMap: boolean;
+  /** I-06 · ZONE MAP — local contact map for the current zone (not the
+   *  zone-to-zone travel picker, which is `showMap`/GalaxyMapPanel). */
+  showZoneMap: boolean;
   showClan: boolean;
+  /** Which tab the Clan window shows: directory (browse/apply/found) is the
+      no-clan default; hall (Kit I-07) is the own-clan default once you're in one. */
+  clanTab: "directory" | "hall";
+  /** I-01/E-01 · FINANCIAL EXCHANGE — stock market + credit line. */
+  showExchange: boolean;
+  /** I-13 · LEADERBOARD — 4 ranking boards, monthly/all-time seasons. */
+  showLeaderboard: boolean;
   showSocial: boolean;
   showJournal: boolean;
   journalQuestId: string | null;
@@ -117,15 +144,25 @@ export type GameState = {
   attackCooldownDuration: number; // total duration of last attack cooldown (for progress bar)
   hotbarCooldowns: number[];     // 8 slots, remaining cooldown seconds
   pendingRocketSalvo: number;    // rockets left to fire this tick
-  pendingDronePod: boolean;      // spawn a temp combat drone
+  pendingDronePod: boolean;      // trigger pet-drone overcharge
+  dronePodBoostUntil?: number;   // performance.now() until which the pet drone fires 2×
+  // Player death explosions to play, pushed by onPlayerDieFromServer and
+  // drained by the Pixi renderer each frame (the death event carries the
+  // exact death point; the victim respawns server-side so a hull diff can't
+  // catch the 0-HP frame reliably).
+  pendingPlayerDeaths: { x: number; y: number; shipClass: string; local: boolean }[];
   dockingSummary: DockServiceEntry[] | null;
   selectedWorldTarget: {
-    kind: "enemy" | "asteroid";
+    kind: "enemy" | "asteroid" | "player";
     id: string;
     name: string;
     detail: string;
   } | null;
   attackTargetId: string | null;
+  // Another player selected by clicking their ship — for the target HUD and
+  // later group invites. Independent from attackTargetId (players aren't
+  // auto-fired at the way enemies are).
+  selectedPlayerId: string | null;
   isAttacking: boolean;
   isLaserFiring: boolean;
   isRocketFiring: boolean;
@@ -135,15 +172,34 @@ export type GameState = {
   minimapScale: number;
   showFullZoneMap: boolean;
   showSettings: boolean;
+  /** Round-trip ms to the server, refreshed periodically by sendPing() in
+   *  net/socket.ts. null until the first ack lands. */
+  netPingMs: number | null;
   showAdmin: boolean;
+  /** Staff flag, from the server's welcome payload (players.is_admin).
+   *  Gates admin UI only — the server re-checks on every admin call. */
+  isAdmin: boolean;
   uiScale: number;
   cameraZoom: number;
+  /**
+   * Camera displacement from the ship, in world units. Normally {0,0} — the
+   * camera is hard-locked to the player. The docking cinematic (M5) uses it to
+   * lead the view toward the station. Only read by the renderer when
+   * ENABLE_NEW_DOCKING_FLOW is on, so it is inert while the flag is off.
+   */
+  cameraOffset: { x: number; y: number };
+  /** Steuerungsschema: "mouse" = klassisch (Klick/Halten fliegt), "wasd" =
+   *  bildschirm-relativer WASD-Schub, Cursor = Blickrichtung, Linksklick feuert. */
+  controlMode: "mouse" | "wasd";
+  /** WASD-Modus: Blickrichtung (rad) zum Cursor; null = klassische Steuerung
+   *  (Nase folgt Bewegung/Ziel). Wird an den Server gesendet (input:aim). */
+  aimAngle: number | null;
 };
 
 const STORAGE_KEY = "stellar-frontier-save-v5";
 
 function newMilestones(): Milestones {
-  return { totalKills: 0, totalMined: 0, totalCreditsEarned: 0, totalWarps: 0, totalDeaths: 0, bossKills: 0 };
+  return { totalKills: 0, totalMined: 0, totalCreditsEarned: 0, totalWarps: 0, totalDeaths: 0, bossKills: 0, totalContracts: 0, totalSalvaged: 0 };
 }
 
 function rollDailyMissions(): ActiveMission[] {
@@ -192,9 +248,9 @@ function emptyEquipped(shipId: ShipClassId): EquippedSlots {
 }
 
 function makeInitialPlayer(): Player {
-  const starterWeapon = newModuleItem("wp-pulse-1");
-  const starterCore   = newModuleItem("gn-core-1");
-  const starterMod    = newModuleItem("md-thrust-1");
+  const starterWeapon = newModuleItem("wp-laser-t0");
+  const starterCore   = newModuleItem("gn-shield-t0");
+  const starterMod    = newModuleItem("md0-t0");
   const equipped = emptyEquipped("skimmer");
   equipped.weapon[0]    = starterWeapon.instanceId;
   equipped.generator[0] = starterCore.instanceId;
@@ -213,14 +269,18 @@ function makeInitialPlayer(): Player {
     exp: 0,
     credits: 10000,
     honor: 0,
+    mcoins: 0,
     cargo: [],
     zone: "alpha",
     ownedShips: ["skimmer"],
     activeQuests: [],
     completedQuests: [],
     clan: null,
+    clanId: null,
     party: [],
-    drones: [],
+    petDrone: newPetDrone(),
+    bebcell: 0,
+    premium: false,
     faction: null,
     skills: {},
     skillPoints: 0,
@@ -234,6 +294,8 @@ function makeInitialPlayer(): Player {
     activeAmmoType: "x1" as RocketAmmoType,
     rocketAmmo: { cl1: 100, cl2: 0, bm3: 0, drock: 0 },
     activeRocketAmmoType: "cl1" as RocketMissileType,
+    droneAmmo: 100,
+    droneAmmoMax: droneAmmoMaxForLevel(0),
     autoRestock: false,
     autoRepairHull: false,
     autoShieldRecharge: false,
@@ -354,8 +416,25 @@ if (Array.isArray(initialPlayer.cargo)) {
     (c) => c && typeof (c as CargoItem).resourceId === "string" && RESOURCES[(c as CargoItem).resourceId]
   );
 }
-if (!Array.isArray(initialPlayer.drones)) initialPlayer.drones = [];
-for (const d of initialPlayer.drones) if (!d.mode) d.mode = "orbit";
+// Pet-drone migration: old multi-drone arrays are dropped; everyone starts with
+// a level-0 pet drone (no slots) and 0 Bebcell. Repair any partial pet object.
+delete (initialPlayer as any).drones;
+if (!initialPlayer.petDrone || typeof initialPlayer.petDrone !== "object") {
+  initialPlayer.petDrone = newPetDrone();
+} else {
+  const pd = initialPlayer.petDrone as any;
+  if (typeof pd.level !== "number") pd.level = 0;
+  pd.level = Math.max(0, Math.min(3, pd.level | 0)) as 0 | 1 | 2 | 3;
+  if (!pd.mode) pd.mode = "orbit";
+  if (typeof pd.hpMax !== "number") pd.hpMax = 400;
+  if (typeof pd.hp !== "number") pd.hp = pd.hpMax;
+  if (typeof pd.orbitPhase !== "number") pd.orbitPhase = 0;
+  if (typeof pd.fireCd !== "number") pd.fireCd = 0;
+  if (!pd.equipped || typeof pd.equipped !== "object") pd.equipped = { weapon: null, module: null, extra: null };
+  for (const k of ["weapon", "module", "extra"]) if (!(k in pd.equipped)) pd.equipped[k] = null;
+}
+if (typeof initialPlayer.bebcell !== "number") initialPlayer.bebcell = 0;
+if (typeof initialPlayer.mcoins !== "number") initialPlayer.mcoins = 0;
 if (!initialPlayer.ammo || typeof initialPlayer.ammo !== "object" || Array.isArray(initialPlayer.ammo)) {
   initialPlayer.ammo = { x1: 0, x2: 0, x3: 0, x4: 0 };
 } else {
@@ -413,10 +492,13 @@ function reconcileEquippedToShip(p: Player): void {
 }
 
 if (!Array.isArray(initialPlayer.inventory)) initialPlayer.inventory = [];
-// strip orphan defIds
-initialPlayer.inventory = initialPlayer.inventory.filter(
-  (m) => m && typeof m.defId === "string" && MODULE_DEFS[m.defId] && typeof m.instanceId === "string"
-);
+// Migrate legacy item ids to the current tier catalog, then strip true orphans.
+// (Rewrites the stored defId in place so old players keep their gear under the
+// new scheme instead of having it silently deleted.)
+initialPlayer.inventory = initialPlayer.inventory
+  .filter((m) => m && typeof m.defId === "string" && typeof m.instanceId === "string")
+  .map((m) => { const r = resolveItemId(m.defId); if (r !== m.defId) m.defId = r; return m; })
+  .filter((m) => !!MODULE_DEFS[m.defId]);
 const legacy = initialPlayer as any;
 if (!initialPlayer.equipped || typeof initialPlayer.equipped !== "object") {
   initialPlayer.equipped = emptyEquipped(initialPlayer.shipClass);
@@ -424,9 +506,9 @@ if (!initialPlayer.equipped || typeof initialPlayer.equipped !== "object") {
 // If migrating from v3 (no inventory), seed starters
 if (initialPlayer.inventory.length === 0) {
   const starters = [
-    newModuleItem(legacy.equipment?.laserTier >= 4 ? "wp-pulse-2" : "wp-pulse-1"),
-    newModuleItem(legacy.equipment?.shieldTier >= 4 ? "gn-core-2" : "gn-core-1"),
-    newModuleItem(legacy.equipment?.thrusterTier >= 4 ? "md-thrust-2" : "md-thrust-1"),
+    newModuleItem(legacy.equipment?.laserTier >= 4 ? "wp-laser-t3" : "wp-laser-t0"),
+    newModuleItem(legacy.equipment?.shieldTier >= 4 ? "gn-shield-t2" : "gn-shield-t0"),
+    newModuleItem(legacy.equipment?.thrusterTier >= 4 ? "md0-t2" : "md0-t0"),
   ];
   initialPlayer.inventory.push(...starters);
   initialPlayer.equipped = emptyEquipped(initialPlayer.shipClass);
@@ -483,13 +565,18 @@ export const state: GameState = {
   cameraTarget: { x: 0, y: 80 },
   cameraShake: 0,
   dockedAt: null,
+  hangarIntroDone: false,
   hangarTab: "bounties",
   showMap: false,
+  showZoneMap: false,
   showCargo: false,
   showInventory: false,
   refiningJobs: [],
   factoryLevel: 1,
   showClan: false,
+  clanTab: "directory",
+  showExchange: false,
+  showLeaderboard: false,
   showSocial: false,
   showJournal: false,
   journalQuestId: null,
@@ -524,9 +611,11 @@ export const state: GameState = {
   hotbarCooldowns: [0, 0, 0, 0, 0, 0, 0, 0],
   pendingRocketSalvo: 0,
   pendingDronePod: false,
+  pendingPlayerDeaths: [],
   dockingSummary: null,
   selectedWorldTarget: null,
   attackTargetId: null,
+  selectedPlayerId: null,
   isAttacking: false,
   isLaserFiring: false,
   isRocketFiring: false,
@@ -536,9 +625,14 @@ export const state: GameState = {
   minimapScale: 1,
   showFullZoneMap: false,
   showSettings: false,
+  netPingMs: null,
   showAdmin: false,
+  isAdmin: false,
   uiScale: parseFloat(localStorage.getItem("sf-ui-scale") || "1"),
   cameraZoom: Math.min(window.innerWidth, 1200) / 1200,
+  cameraOffset: { x: 0, y: 0 },
+  controlMode: (localStorage.getItem("cr-control-mode") === "wasd" ? "wasd" : "mouse") as "mouse" | "wasd",
+  aimAngle: null,
 };
 
 const listeners = new Set<() => void>();
@@ -630,13 +724,17 @@ function _buildSavePayload(): Partial<Player> {
     exp: p.exp,
     credits: p.credits,
     honor: p.honor,
+    // mcoins/bebcell deliberately omitted — server-authoritative, ignored by
+    // /save even if present; see currency.ts and the reconciliation in
+    // _scheduleDeferredSave's fetch().then() below.
     cargo: p.cargo,
     zone: p.zone,
     ownedShips: p.ownedShips,
     activeQuests: p.activeQuests,
     completedQuests: p.completedQuests,
     clan: p.clan,
-    drones: p.drones,
+    clanId: p.clanId ?? null,
+    petDrone: p.petDrone,
     faction: p.faction,
     skills: p.skills,
     skillPoints: p.skillPoints,
@@ -649,6 +747,8 @@ function _buildSavePayload(): Partial<Player> {
     activeAmmoType: p.activeAmmoType,
     rocketAmmo: p.rocketAmmo,
     activeRocketAmmoType: p.activeRocketAmmoType,
+    droneAmmo: p.droneAmmo,
+    droneAmmoMax: p.droneAmmoMax,
     autoRestock: p.autoRestock,
     autoRepairHull: p.autoRepairHull,
     autoShieldRecharge: p.autoShieldRecharge,
@@ -677,7 +777,19 @@ function _scheduleDeferredSave(toSave: Partial<Player>, pos: { x: number; y: num
             Authorization: `Bearer ${localStorage.getItem("cosmic-token")}`,
           },
           body: JSON.stringify({ ...toSave, pos }),
-        }).catch(() => {});
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((res) => {
+            // Reconcile the server-authoritative currency balances. Read
+            // from state.player fresh (not the `toSave` snapshot) since time
+            // has passed since this save was queued and another credit
+            // (e.g. a boss kill) may have landed in between — only overwrite
+            // with what the server just confirmed, never go backwards from
+            // a stale snapshot.
+            if (res && typeof res.bebcell === "number") state.player.bebcell = res.bebcell;
+            if (res && typeof res.mcoins === "number") state.player.mcoins = res.mcoins;
+          })
+          .catch(() => {});
       }
     } catch { /* ignore */ }
   };
@@ -691,11 +803,39 @@ function _scheduleDeferredSave(toSave: Partial<Player>, pos: { x: number; y: num
   }
 }
 
+// Opens (or closes) the Clan window, landing on the right tab: the Hall
+// (Kit I-07) if the player already belongs to a clan, the Directory (Kit
+// I-08) otherwise. Every entry point (TopBar, SideMenu, PlayerPanelCompact)
+// should call this instead of toggling state.showClan directly, so a player
+// with a clan is never dropped into the no-clan Directory by default.
+export function toggleClanWindow(): void {
+  if (state.showClan) {
+    state.showClan = false;
+  } else {
+    state.showClan = true;
+    state.clanTab = state.player.clan ? "hall" : "directory";
+  }
+  bump();
+}
+
+export function toggleExchange(): void {
+  state.showExchange = !state.showExchange;
+  bump();
+}
+
+export function toggleLeaderboard(): void {
+  state.showLeaderboard = !state.showLeaderboard;
+  bump();
+}
+
 export function save(): void {
   try {
     const p = state.player;
     const toSave = _buildSavePayload();
     // sendStatsUpdate is a lightweight socket emit — fine on the hot path.
+    // mcoins/bebcell are server-authoritative (backend/src/game/currency.ts)
+    // and deliberately NOT sent here — the server ignores them even if sent,
+    // but omitting them documents that this client can no longer set them.
     sendStatsUpdate({
       level: p.level,
       shipClass: p.shipClass,
@@ -703,7 +843,7 @@ export function save(): void {
       inventory: p.inventory,
       equipped: p.equipped,
       skills: p.skills,
-      drones: p.drones,
+      petDrone: p.petDrone,
       faction: p.faction ?? undefined,
     });
     // The heavy JSON.stringify + localStorage.setItem + fetch happens during
@@ -741,11 +881,26 @@ if (typeof window !== "undefined") {
 export function loadServerPlayer(data: any): void {
   const p = state.player;
   if (data.name) p.name = data.name;
+  // Clan membership was missing here: it was only ever set when you joined or
+  // left in the CURRENT session (ClanDirectoryPanel/ClanHallPanel write it
+  // directly), so after any reload player.clan was null even for a member.
+  // That drove the "NO CLAN" badge, hid the directory<->hall ClanTabBar
+  // (rendered under `player.clan &&`), and made toggleClanWindow open the
+  // Directory instead of the Hall — whose own load then bailed out with
+  // "Not in a clan." because clanId was null too.
+  // `!== undefined` rather than `!= null` so a server-side null (an actual
+  // clan exit) is applied instead of leaving a stale name in place.
+  if (data.clan !== undefined) p.clan = data.clan;
+  if (data.clanId !== undefined) p.clanId = data.clanId;
   if (data.shipClass) p.shipClass = data.shipClass;
   if (data.level != null) p.level = data.level;
   if (data.exp != null) p.exp = data.exp;
   if (data.credits != null && !isNaN(data.credits)) p.credits = data.credits;
   if (data.honor != null) p.honor = data.honor;
+  if (typeof data.mcoins === "number") p.mcoins = data.mcoins;
+  if (typeof data.inventoryExtraPage === "boolean") p.inventoryExtraPage = data.inventoryExtraPage;
+  if (typeof data.premium === "boolean") p.premium = data.premium;
+  if (typeof data.premiumUntil === "number") p.premiumUntil = data.premiumUntil;
   if (data.hull != null) p.hull = data.hull;
   if (data.shield != null) p.shield = data.shield;
   if (data.zone) p.zone = data.zone;
@@ -759,10 +914,18 @@ export function loadServerPlayer(data: any): void {
   if (data.skillPoints != null) p.skillPoints = data.skillPoints;
   if (data.skills) p.skills = data.skills;
   if (data.ownedShips) p.ownedShips = data.ownedShips;
-  if (data.inventory) p.inventory = data.inventory;
+  if (data.inventory) {
+    // Migrate legacy item ids (from before the tier catalog overhaul) to the
+    // current ids so server-saved gear keeps working instead of showing blank.
+    p.inventory = (data.inventory as any[])
+      .filter((m) => m && typeof m.defId === "string" && typeof m.instanceId === "string")
+      .map((m) => { const r = resolveItemId(m.defId); if (r !== m.defId) m.defId = r; return m; })
+      .filter((m) => !!MODULE_DEFS[m.defId]);
+  }
   if (data.equipped) p.equipped = data.equipped;
   if (data.cargo) p.cargo = data.cargo;
-  if (data.drones) p.drones = data.drones;
+  if (data.petDrone) p.petDrone = data.petDrone;
+  if (typeof data.bebcell === "number") p.bebcell = data.bebcell;
   if (data.consumables) p.consumables = data.consumables;
   if (data.hotbar) p.hotbar = data.hotbar;
   if (data.ammo && typeof data.ammo === "object" && typeof data.ammo.x1 === "number") p.ammo = data.ammo;
@@ -895,33 +1058,59 @@ function hashCode(s: string): number {
   return Math.abs(h);
 }
 
+// ── Market price wave ───────────────────────────────────────────────────────
+// A single sine with a fixed 10-minute period, so every commodity rises
+// steadily for 5 minutes, then falls steadily for the next 5 — long, calm
+// trends you can actually trade against (no fast up/down chop). Per-resource
+// `phase` just offsets where each good sits in its own 5-up/5-down cycle.
+const PRICE_PERIOD_MS = 600000; // 10 min full cycle = 5 min up + 5 min down
+const PRICE_AMPLITUDE = 0.15;   // ±15%
+function priceWaveAt(seed: number, t: number): number {
+  const phase = (seed % 1000) / 1000 * Math.PI * 2;
+  return Math.sin(t / PRICE_PERIOD_MS * Math.PI * 2 + phase);
+}
+
 export function stationPrice(stationId: string, resourceId: ResourceId): number {
   const station = STATIONS.find((s) => s.id === stationId);
   if (!station) return RESOURCES[resourceId].basePrice;
   const mod = station.prices[resourceId];
   let price = RESOURCES[resourceId].basePrice * (mod ?? 1.0);
 
-  // Dynamic price fluctuation (±15%, 8-minute cycles, unique per station+resource)
   const seed = hashCode(stationId + resourceId);
-  const period = 480000 + (seed % 5) * 60000; // 8-13 min cycles
-  const phase = (seed % 1000) / 1000 * Math.PI * 2;
-  const now = Date.now();
-  const wave = Math.sin(now / period * Math.PI * 2 + phase);
-  const amplitude = 0.15;
-  price *= (1 + wave * amplitude);
+  const wave = priceWaveAt(seed, Date.now());
+  price *= (1 + wave * PRICE_AMPLITUDE);
 
   return Math.max(1, Math.round(price));
 }
 
 export function priceDirection(stationId: string, resourceId: ResourceId): "up" | "down" | "stable" {
   const seed = hashCode(stationId + resourceId);
-  const period = 480000 + (seed % 5) * 60000;
+  // The derivative of the price sine is a cosine — positive slope = rising.
   const phase = (seed % 1000) / 1000 * Math.PI * 2;
+  const slope = Math.cos(Date.now() / PRICE_PERIOD_MS * Math.PI * 2 + phase);
+  if (slope > 0.02) return "up";
+  if (slope < -0.02) return "down";
+  return "stable"; // only right at the 5-min turning points
+}
+
+// Sample the same deterministic price curve at N points across the recent past
+// (spanMs back → now), for a trend sparkline. Reads the identical wave as
+// stationPrice — no new pricing behaviour, just the curve read at earlier t.
+export function priceHistory(
+  stationId: string, resourceId: ResourceId, points = 16, spanMs = 240000,
+): number[] {
+  const station = STATIONS.find((s) => s.id === stationId);
+  const base = RESOURCES[resourceId].basePrice;
+  const mod = station?.prices[resourceId] ?? 1.0;
+  const seed = hashCode(stationId + resourceId);
   const now = Date.now();
-  const wave = Math.cos(now / period * Math.PI * 2 + phase);
-  if (wave > 0.3) return "up";
-  if (wave < -0.3) return "down";
-  return "stable";
+  const out: number[] = [];
+  for (let i = 0; i < points; i++) {
+    const t = now - spanMs + (spanMs * i) / (points - 1);
+    const wave = priceWaveAt(seed, t);
+    out.push(Math.max(1, Math.round(base * mod * (1 + wave * PRICE_AMPLITUDE))));
+  }
+  return out;
 }
 
 export function cargoUsed(): number {
@@ -985,6 +1174,7 @@ export function tryCollectNearbyBoxes(): void {
         if (got > 0) {
           pushFloater({ text: `+${got} ${RESOURCES[cb.resourceId]?.name ?? cb.resourceId}`, color: "#5cff8a", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.3, bold: true, ttl: 2.0, trackPlayer: true });
           sfx.pickup();
+          state.player.milestones.totalSalvaged += 1;
           state.cargoBoxes.splice(i, 1);
         }
       } else {
@@ -1017,6 +1207,7 @@ export function collectCargoBox(boxId: string): void {
     const got = addCargo(cb.resourceId, cb.qty);
     if (got > 0) {
       pushFloater({ text: `+${got} ${RESOURCES[cb.resourceId]?.name ?? cb.resourceId}`, color: "#5cff8a", x: state.player.pos.x, y: state.player.pos.y - 30, scale: 1.3, bold: true, ttl: 2.0, trackPlayer: true });
+      state.player.milestones.totalSalvaged += 1;
     } else {
       pushNotification("Cargo bay full", "bad");
       return;
@@ -1027,18 +1218,95 @@ export function collectCargoBox(boxId: string): void {
   save(); bump();
 }
 
-// ── DRONES ────────────────────────────────────────────────────────────────
-export function addDrone(d: Drone): void {
-  state.player.drones.push(d);
+// ── PET DRONE ───────────────────────────────────────────────────────────────
+/** Number of active equipment slots on the pet drone (0-3, by level). */
+export function petDroneSlots(): number {
+  return petDroneSlotCount(state.player.petDrone.level);
 }
 
-export function removeDrone(droneId: string): void {
-  state.player.drones = state.player.drones.filter((d) => d.id !== droneId);
+/** Bebcell needed to reach the next level, or null when already maxed. */
+export function petDroneNextCost(): number | null {
+  const lvl = state.player.petDrone.level;
+  if (lvl >= 6) return null;
+  return PET_DRONE_UPGRADE_COST[(lvl + 1) as 1 | 2 | 3 | 4 | 5 | 6];
 }
 
-export function maxDroneSlots(): number {
-  const cls = SHIP_CLASSES[state.player.shipClass];
-  return cls.droneSlots + (state.player.skills["ut-droneops"] ?? 0);
+/** Spend Bebcell to raise the pet drone one level. A new slot unlocks only
+ *  every OTHER level (2/4/6) — see petDroneSlotCount. Server-authoritative:
+ *  this only REQUESTS the upgrade over the socket (sendDroneUpgrade); the
+ *  server re-checks the level/cost against its own DB row and spends
+ *  bebcell atomically there. Nothing here mutates state.player.bebcell or
+ *  .petDrone.level directly — those come back in the server's response and
+ *  are applied only on success, so a stale/forged client can't grant itself
+ *  levels it didn't pay for. */
+export async function upgradePetDrone(): Promise<void> {
+  const pet = state.player.petDrone;
+  if (pet.level >= 6) { pushNotification("Drone already at max level", "bad"); return; }
+  // Optimistic pre-check only — purely to avoid a pointless round trip when
+  // the balance is obviously insufficient; the server re-validates for real.
+  const cost = PET_DRONE_UPGRADE_COST[(pet.level + 1) as 1 | 2 | 3 | 4 | 5 | 6];
+  if (state.player.bebcell < cost) {
+    pushNotification(`Need ${cost} Bebcell (have ${state.player.bebcell})`, "bad");
+    return;
+  }
+  const slotsBefore = petDroneSlotCount(pet.level);
+  const res = await sendDroneUpgrade();
+  if (!res.ok) {
+    if (typeof res.bebcell === "number") state.player.bebcell = res.bebcell;
+    pushNotification(res.error ?? "Upgrade failed", "bad");
+    bump();
+    return;
+  }
+  if (typeof res.bebcell === "number") state.player.bebcell = res.bebcell;
+  if (res.petDrone) {
+    pet.level = res.petDrone.level as PetDroneLevel;
+    pet.hpMax = res.petDrone.hpMax;
+    pet.hp = res.petDrone.hp;
+  }
+  const gainedSlot = petDroneSlotCount(pet.level) > slotsBefore;
+  pushNotification(`Drone upgraded to Lv ${pet.level}${gainedSlot ? " · +1 slot" : ""}`, "good");
+  save(); bump();
+}
+
+/** True if `slot` is unlocked at the pet's current level. */
+export function petSlotUnlocked(slot: PetDroneSlot): boolean {
+  const idx = PET_DRONE_SLOT_ORDER.indexOf(slot);
+  return idx >= 0 && idx < petDroneSlots();
+}
+
+/** Equip an inventory item (by instanceId) into a pet slot. Bound while equipped. */
+export function equipPetSlot(slot: PetDroneSlot, instanceId: string): void {
+  if (!petSlotUnlocked(slot)) { pushNotification("Slot locked — upgrade the drone", "bad"); return; }
+  const item = state.player.inventory.find((m) => m.instanceId === instanceId);
+  const def = item ? MODULE_DEFS[item.defId] : null;
+  if (!item || !def) return;
+  // slot type gate: weapon slot takes weapons; module slot takes generators/modules;
+  // extra slot takes anything.
+  if (slot === "weapon" && def.slot !== "weapon") { pushNotification("That slot only takes weapons", "bad"); return; }
+  if (slot === "module" && def.slot === "weapon") { pushNotification("That slot only takes gear/modules", "bad"); return; }
+  // an item bound to the ship can't also go on the drone
+  const onShip =
+    state.player.equipped.weapon.includes(instanceId) ||
+    state.player.equipped.generator.includes(instanceId) ||
+    state.player.equipped.module.includes(instanceId);
+  if (onShip) { pushNotification("Unequip it from the ship first", "bad"); return; }
+  // free it from any other pet slot, then bind here
+  const eq = state.player.petDrone.equipped;
+  for (const k of PET_DRONE_SLOT_ORDER) if (eq[k] === instanceId) eq[k] = null;
+  eq[slot] = instanceId;
+  pushNotification(`${def.name} → drone ${slot}`, "good");
+  save(); bump();
+}
+
+export function unequipPetSlot(slot: PetDroneSlot): void {
+  state.player.petDrone.equipped[slot] = null;
+  save(); bump();
+}
+
+/** All instanceIds currently bound to the pet drone (for "in use" checks). */
+export function petBoundIds(): Set<string> {
+  const eq = state.player.petDrone.equipped;
+  return new Set([eq.weapon, eq.module, eq.extra].filter(Boolean) as string[]);
 }
 
 // ── AMMO ──────────────────────────────────────────────────────────────────
@@ -1090,6 +1358,11 @@ export function ensureAmmoInitialized(): void {
     p.rocketAmmo[t] = Math.min(p.rocketAmmo[t], rMax);
   }
   if (!p.activeRocketAmmoType || !["cl1","cl2","bm3","drock"].includes(p.activeRocketAmmoType)) p.activeRocketAmmoType = "cl1";
+  // Drone ammo — a separate pool from the above, sized off drone level rather
+  // than equipped modules. Repaired here too, for saves predating this field.
+  p.droneAmmoMax = droneAmmoMaxForLevel(p.petDrone?.level ?? 0);
+  if (typeof p.droneAmmo !== "number") p.droneAmmo = Math.min(100, p.droneAmmoMax);
+  p.droneAmmo = Math.max(0, Math.min(p.droneAmmo, p.droneAmmoMax));
 }
 
 export function restockAmmo(): void {
@@ -1136,6 +1409,30 @@ export function purchaseAmmoAmount(type: RocketAmmoType, amount: number): void {
   p.ammo[type] = cur + canBuy;
   bumpMission("spend-credits", cost);
   pushNotification(`Bought ${canBuy} ${def.shortName} · -${cost}cr`, "good");
+  save(); bump();
+}
+
+/** Buy rounds for the drone's separate, weaker ammo pool. Cheaper per round
+ *  than any player laser/rocket tier, but its own pool — buying player ammo
+ *  never refills this, and vice versa. */
+export function purchaseDroneAmmoAmount(amount: number): void {
+  const p = state.player;
+  ensureAmmoInitialized();
+  const cur = p.droneAmmo ?? 0;
+  const canBuy = Math.min(amount, p.droneAmmoMax - cur);
+  if (canBuy <= 0) {
+    pushNotification("Drone ammo already full", "info");
+    return;
+  }
+  const cost = canBuy * DRONE_AMMO_COST_PER;
+  if (p.credits < cost) {
+    pushNotification(`Need ${cost}cr for ${canBuy} drone rounds`, "bad");
+    return;
+  }
+  p.credits -= cost;
+  p.droneAmmo = cur + canBuy;
+  bumpMission("spend-credits", cost);
+  pushNotification(`Bought ${canBuy} drone rounds · -${cost}cr`, "good");
   save(); bump();
 }
 
@@ -1377,6 +1674,34 @@ export function buyAttribute(id: string): void {
   (state.player.skills as any)[id] = attrValue(id) + 1;
   save(); bump();
 }
+// Pull one point back out of an attribute — the Pilot Dossier's "-" button,
+// free (no cost, since nothing was actually spent yet from the server's
+// perspective until save() commits it). Symmetric with buyAttribute.
+export function sellAttribute(id: string): void {
+  if (!ATTRIBUTES.some((a) => a.id === id)) return;
+  if (attrValue(id) <= 0) return;
+  (state.player.skills as any)[id] = attrValue(id) - 1;
+  save(); bump();
+}
+// Full attribute respec: refunds every spent point back to the pool for a
+// flat Credits cost (mirrors resetSkills()'s Credits-based respec — MCoins
+// is server-authoritative and never sent by save(), so a client-side MCoins
+// charge here would silently revert on the next sync and never really
+// deduct anything real).
+export const RESPEC_ATTRIBUTES_COST = 2500;
+export function respecAttributes(): boolean {
+  const p = state.player;
+  if (attrSpent() <= 0) return false;
+  if (p.credits < RESPEC_ATTRIBUTES_COST) {
+    pushNotification(`Respec costs ${RESPEC_ATTRIBUTES_COST.toLocaleString()}cr`, "bad");
+    return false;
+  }
+  p.credits -= RESPEC_ATTRIBUTES_COST;
+  for (const a of ATTRIBUTES) (p.skills as any)[a.id] = 0;
+  pushNotification("Attributes reset", "good");
+  save(); bump();
+  return true;
+}
 
 // ── MISSIONS / MILESTONES ─────────────────────────────────────────────────
 export function bumpMission(kind: ActiveMission["kind"], amount: number, zone?: ZoneId, extra?: { resourceId?: string; stationId?: string }): void {
@@ -1404,6 +1729,7 @@ export function claimMission(missionId: string): void {
   state.player.exp += m.rewardExp;
   state.player.honor += m.rewardHonor;
   state.player.milestones.totalCreditsEarned += m.rewardCredits;
+  state.player.milestones.totalContracts += 1;
   pushNotification(`+${m.rewardCredits}cr +${m.rewardExp}xp +${m.rewardHonor}hr`, "good");
   save(); bump();
 }
@@ -1450,8 +1776,9 @@ export function dismissIdleReward(): void {
 
 // ── MODULES / LOADOUT ─────────────────────────────────────────────────────
 export function addInventoryItem(defId: string): ModuleItem | null {
-  if (!MODULE_DEFS[defId]) return null;
-  const item = newModuleItem(defId);
+  const id = resolveItemId(defId); // accept legacy ids (dungeon reward pools etc.)
+  if (!MODULE_DEFS[id]) return null;
+  const item = newModuleItem(id);
   state.player.inventory.push(item);
   return item;
 }

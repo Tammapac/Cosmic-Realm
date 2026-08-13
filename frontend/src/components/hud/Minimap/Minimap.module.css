@@ -23,7 +23,7 @@
 .consoleWrap {
   position: relative;
   width: fit-content;
-  filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.6));
+  /* no `filter` — would break .console's frosted backdrop-filter. */
   --mm-chamfer: 26px;
   /* Notch geometry, shared by all 4 edges -- a flat-bottomed trapezoid,
      NOT a V: --mm-notch-a/--mm-notch-b are where the angled sides start
@@ -43,7 +43,7 @@
   position: absolute;
   inset: -3px;
   background: linear-gradient(180deg, #baf3ff 0%, var(--hud-cyan) 55%, var(--hud-shield-deep) 100%);
-  opacity: 0.8;
+  opacity: 0.34;
   filter: blur(6px);
   clip-path: polygon(
     var(--mm-chamfer) 0, var(--mm-notch-a) 0, var(--mm-notch-mid-a) var(--mm-notch-d), var(--mm-notch-mid-b) var(--mm-notch-d), var(--mm-notch-b) 0,
@@ -61,7 +61,7 @@
 .crispEdge {
   position: absolute;
   inset: -1px;
-  background: linear-gradient(180deg, #d6f6ff 0%, var(--hud-cyan) 60%, var(--hud-shield-deep) 100%);
+  background: linear-gradient(180deg, #f2f8ff 0%, #c3d5ea 22%, #8098b5 50%, #3f5c7c 74%, var(--hud-shield-deep) 100%);
   clip-path: polygon(
     var(--mm-chamfer) 0, var(--mm-notch-a) 0, var(--mm-notch-mid-a) var(--mm-notch-d), var(--mm-notch-mid-b) var(--mm-notch-d), var(--mm-notch-b) 0,
     calc(100% - var(--mm-chamfer)) 0,
@@ -77,7 +77,7 @@
     linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
-  padding: 1.5px;
+  padding: 2.5px;
   pointer-events: none;
 }
 
@@ -108,28 +108,12 @@
   padding: 1px;
 }
 
+/* Frame + fill now come from the shared global .panel / .panel-rim. This class
+   only carries layout. */
 .console {
   position: relative;
   width: clamp(200px, 17vw, 250px);
-  padding: 6px 6px 6px;
-  background:
-    linear-gradient(180deg, rgba(120, 175, 220, 0.16) 0%, transparent 40%),
-    linear-gradient(180deg, #283a58 0%, #17233c 32%, #0d1626 62%, #060a14 100%);
-  box-shadow:
-    inset 0 2px 5px rgba(180, 220, 255, 0.14),
-    inset 0 -14px 22px rgba(0, 0, 0, 0.55),
-    0 0 22px rgba(78, 226, 255, 0.18);
-  clip-path: polygon(
-    var(--mm-chamfer) 0, var(--mm-notch-a) 0, var(--mm-notch-mid-a) var(--mm-notch-d), var(--mm-notch-mid-b) var(--mm-notch-d), var(--mm-notch-b) 0,
-    calc(100% - var(--mm-chamfer)) 0,
-    100% var(--mm-chamfer), 100% var(--mm-notch-a), calc(100% - var(--mm-notch-d)) var(--mm-notch-mid-a), calc(100% - var(--mm-notch-d)) var(--mm-notch-mid-b), 100% var(--mm-notch-b),
-    100% calc(100% - var(--mm-chamfer)),
-    calc(100% - var(--mm-chamfer)) 100%, calc(100% - var(--mm-notch-a)) 100%, calc(100% - var(--mm-notch-mid-a)) calc(100% - var(--mm-notch-d)), calc(100% - var(--mm-notch-mid-b)) calc(100% - var(--mm-notch-d)), calc(100% - var(--mm-notch-b)) 100%,
-    var(--mm-chamfer) 100%,
-    0 calc(100% - var(--mm-chamfer)), 0 calc(100% - var(--mm-notch-a)), var(--mm-notch-d) calc(100% - var(--mm-notch-mid-a)), var(--mm-notch-d) calc(100% - var(--mm-notch-mid-b)), 0 calc(100% - var(--mm-notch-b)),
-    0 var(--mm-chamfer)
-  );
-  overflow: hidden;
+  padding: 10px 10px 8px;
 }
 
 /* Flat top-to-bottom fade only -- no radial component. A radial highlight
@@ -160,7 +144,7 @@
   z-index: 0;
   pointer-events: none;
   padding: 3px;
-  background: linear-gradient(180deg, rgba(210, 235, 255, 0.22) 0%, rgba(0, 0, 0, 0.35) 100%);
+  background: linear-gradient(180deg, rgba(235, 245, 255, 0.5) 0%, rgba(140, 175, 210, 0.15) 40%, rgba(0, 0, 0, 0.5) 100%);
   clip-path: polygon(
     var(--mm-chamfer) 0, var(--mm-notch-a) 0, var(--mm-notch-mid-a) var(--mm-notch-d), var(--mm-notch-mid-b) var(--mm-notch-d), var(--mm-notch-b) 0,
     calc(100% - var(--mm-chamfer)) 0,
@@ -335,6 +319,59 @@
     inset 0 0 0 1px rgba(0, 0, 0, 0.6),
     inset 0 0 22px rgba(78, 226, 255, 0.08);
 }
+/* Phase 3/15 — TECH-GLASS on the sensor face: a faint diagonal reflection
+   streak in the upper-left (minimal, never competes with the blips) + a
+   Fresnel edge that brightens at the rim of the dome. */
+.scanWindow::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  border-radius: 50%;
+  background:
+    radial-gradient(120% 90% at 32% 20%, rgba(200, 230, 255, 0.12) 0%, transparent 42%);
+  mix-blend-mode: screen;
+}
+.scanWindow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  border-radius: 50%;
+  /* Fresnel: transparent centre → brighter cold ring at the glass edge */
+  background: radial-gradient(circle at 50% 50%, transparent 74%, rgba(120, 200, 255, 0.14) 90%, rgba(160, 215, 255, 0.22) 100%);
+}
+/* Phase 4/9 — the metal collar: a specular sheen arc top-left + tiny milled
+   screws at 4 points around the ring. */
+.scanCollarWrap::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  border-radius: 50%;
+  padding: 5px;
+  background: conic-gradient(from 210deg, transparent 0deg, rgba(225, 242, 255, 0.55) 26deg, transparent 60deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.7;
+}
+.scanCollarWrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  --bolt: radial-gradient(circle at center,
+      rgba(0,0,0,0.55) 0 1px, rgba(170,195,225,0.4) 1px 2.2px, rgba(0,0,0,0.4) 2.2px 3px, transparent 3px);
+  background-image: var(--bolt), var(--bolt), var(--bolt), var(--bolt);
+  background-repeat: no-repeat;
+  background-position: 50% 4%, 96% 50%, 50% 96%, 4% 50%;
+  background-size: 6px 6px;
+}
 
 /* Thin bright arc, top-weighted only -- masked with a gradient so it fades
    out by 9/3 o'clock instead of ringing the whole circle evenly. */
@@ -413,6 +450,17 @@
   background: var(--hud-cyan);
   box-shadow: 0 0 6px 2px var(--hud-cyan-glow);
   z-index: 2;
+}
+
+/* All blips render into this one canvas (see BlipCanvas in Minimap.tsx) —
+   per-blip DOM nodes with animations/blur were the #1 frame-time cost at
+   100+ NPCs. The .blip* classes below are kept as the visual reference the
+   canvas reproduces. */
+.blipCanvas {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
 }
 
 .blip {
@@ -532,3 +580,25 @@
   text-transform: uppercase;
   color: var(--hud-text-mute);
 }
+
+/* Phase 10 — slow LIGHT TRAVEL across the console metal (~22s, a few %). */
+@keyframes mmLightTravel {
+  0%   { transform: translateX(-140%) skewX(-14deg); opacity: 0; }
+  9%   { opacity: 0.18; }
+  14%  { opacity: 0; }
+  100% { transform: translateX(240%) skewX(-14deg); opacity: 0; }
+}
+.console::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  clip-path: inherit;
+  background: linear-gradient(100deg, transparent 42%, rgba(200, 230, 255, 0.85) 50%, transparent 58%);
+  mix-blend-mode: screen;
+  opacity: 0;
+  animation: mmLightTravel 13s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+@media (prefers-reduced-motion: reduce) { .console::after { animation: none; } }

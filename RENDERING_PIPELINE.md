@@ -1,18 +1,25 @@
 # Rendering Pipeline — Cosmic Realm
 
-*Last updated: 2026-07-06 (post-Phase 2.8)*
+*Last updated: 2026-07-22*
 
 ## Overview
 
-Three rendering systems stack on top of each other in the browser:
+Rendering systems stack on top of each other in the browser:
 
 ```
 z=2  Label overlay div          — HTML player name tags (absolute positioned)
-z=1  Three.js <canvas>          — 3D ship models, transparent background
-z=0  PixiJS <div> (WebGL)       — 2D world: background, entities, UI
+z=1  Three.js <canvas>(es)      — 3D ship + enemy models, transparent background
+z=0  PixiJS <div> (WebGL)       — 2D world: background, entities, UI (+ station blit)
 ```
 
-All three are fullscreen and positioned with CSS `position: absolute`.
+All are fullscreen and positioned with CSS `position: absolute`. The React/DOM HUD sits
+above everything — see `HUD_UI_SYSTEM.md`.
+
+> **Three separate Three.js `WebGLRenderer` instances** (2026-07): player/remote ships
+> (`three-ship-layer.ts`), enemy ships (same module re-loaded via `?instance=enemy`), and
+> stations (`three-station-layer.ts`, offscreen → blit). Shared setup: OrthographicCamera
+> top-down, `ACESFilmicToneMapping`, PMREM `RoomEnvironment`, `PCFSoftShadowMap`,
+> `MeshStandardMaterial`. Render layers `FX_LAYER = 1`, `SELECT_LAYER = 2`.
 
 ---
 
@@ -187,6 +194,37 @@ For each hardpoint (mx, my, mz):
 intensity = speed < 1 ? 0 : min(1, speed / 80)
 ```
 No opacity floor — glow fully turns off at rest. Called every frame regardless of speed so opacity doesn't stick.
+
+### Material System (`space-material.ts`, 2026-07)
+
+On GLB load, `loadModel` traverses every mesh and calls `applySpaceMaterial` with a preset
+(`player` / `npc` / `boss` / `station` / `portal`). Each preset sets metalness/roughness/
+`envMapIntensity` and attaches procedural, **cached and tiled** maps:
+
+- `detailRoughAoTex` / `dirtTex` / `detailNormalTex` — surface aging, applied with
+  `texture.repeat.set(tile, tile)`. **A missing `.repeat` (1× stretch) made the maps
+  invisible → the "flat / cheap / no material depth" bug.**
+- `energyCrackTex` — drives the leviathan's pulsing green cracks.
+- `ENEMY_ACCENTS` table — per-enemy signature glow accents (e.g. overlord blue crystal,
+  juggernaut red).
+- `addSpaceLightRig` — local key/fill/rim lights.
+
+**Broken-emissive kill (root cause):** several GLBs shipped albedo in the emissive slot
+(`emissive ≈ #ffffff`, sum ≈ 3.0), self-lighting the hull flat regardless of lights. The
+loader detects near-white desaturated emissive (`emSum > 0.35 && emHsl.s < 0.25`) and
+zeroes it. This was the true cause of "too bright / flat / cut-out" hulls, not lighting.
+
+> Do NOT re-introduce a Pixi `SceneLighting` overlay on top of these ships — it flattens
+> them. Use `setVignetteOnly` if a vignette is wanted.
+
+### Ship Selection Rim (2026-07)
+
+Click-targeted ships are added to `_selectedShipIds` (via `setSelectedShipIds()`), rendered
+on `SELECT_LAYER = 2`. A post-process edge pass `SELECT_FRAG` (distance falloff) draws a
+thin, slightly transparent red rim + mini glow — `gl_FragColor = vec4(1.0, 0.2, 0.22,
+min(0.9, a))`. Replaced the old filled-hull area / circle-under-ship selection; the black
+`OUTLINE_FRAG` silhouette was removed. `window.__DEBUG_SEL` prints diagnostics. *(Rim
+visibility was still being tuned when work pivoted to HUD — may need revisiting.)*
 
 ### Debug Marker Overlay (Phase 2.6)
 
